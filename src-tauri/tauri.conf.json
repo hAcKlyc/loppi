@@ -1,0 +1,44 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "hear",
+  "version": "0.1.0",
+  "identifier": "app.hear.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "hear",
+        "width": 1120,
+        "height": 760,
+        "minWidth": 760,
+        "minHeight": 540
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "macOS": {
+      "minimumSystemVersion": "13.0",
+      "infoPlist": "Info.plist",
+      "files": {
+        "Library/LoginItems/HearCore.app": "../build/macos/HearCore.app",
+        "MacOS/hear": "../build/macos/hear"
+      }
+    },
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns"
+    ]
+  }
+}

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>hear 需要使用麦克风记录你电脑可用时的人声。</string>
+  <key>NSScreenCaptureUsageDescription</key>
+  <string>hear 需要记录电脑声音，并在你主动截屏时捕获当前屏幕。</string>
+  <key>NSAudioCaptureUsageDescription</key>
+  <string>hear 需要记录电脑播放的声音。</string>
+</dict>
+</plist>

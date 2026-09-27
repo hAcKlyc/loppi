@@ -1,0 +1,18 @@
+[package]
+name = "hear-desktop"
+version = "0.1.0"
+description = "A private, continuous context recorder for macOS"
+edition = "2024"
+
+[lib]
+name = "hear_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+cc = "1"
+
+[dependencies]
+tauri = { version = "2", features = [] }
+hear-protocol = { path = "../crates/hear-protocol" }
+serde = { version = "1", features = ["derive"] }

@@ -10,4 +10,5 @@ coverage/
 /recordings/
 /screenshots/
 /logs/
+/build/
 *.log
