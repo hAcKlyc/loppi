@@ -12,3 +12,4 @@ hear-protocol = { path = "../hear-protocol" }
 serde_json.workspace = true
 clap = { version = "4", features = ["derive"] }
 uuid = "1"
+rpassword = "7.5.4"

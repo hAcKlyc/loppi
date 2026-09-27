@@ -14,6 +14,7 @@ fn core_status() -> Result<hear_protocol::ServiceState, String> {
         }
         hear_protocol::Response::Logs { .. } => Err("unexpected log response".to_owned()),
         hear_protocol::Response::Error { code, message, .. } => Err(format!("{code}: {message}")),
+        _ => Err("unexpected core response".to_owned()),
     }
 }
 

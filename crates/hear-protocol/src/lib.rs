@@ -9,7 +9,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
-pub const PROTOCOL_VERSION: u32 = 2;
+pub const PROTOCOL_VERSION: u32 = 3;
 const MAX_RESPONSE_BYTES: u64 = 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -57,6 +57,77 @@ pub enum Request {
         enabled: bool,
         expected_revision: i64,
     },
+    CloudStatus,
+    CloudTasks {
+        provider: CloudProvider,
+        limit: u16,
+    },
+    ConfigureCloud {
+        provider: CloudProvider,
+        api_key: String,
+        model: Option<String>,
+    },
+    SetCloudPaused {
+        provider: CloudProvider,
+        paused: bool,
+    },
+    RetryCloudTask {
+        task_id: Uuid,
+    },
+    ProcessNow,
+    Timeline {
+        from_ms: i64,
+        to_ms: i64,
+    },
+    EventDetail {
+        event_id: Uuid,
+        offset: u32,
+        limit: u16,
+    },
+    RangeDetail {
+        started_ms: i64,
+        ended_ms: i64,
+        sources: EventSources,
+        offset: u32,
+        limit: u16,
+    },
+    CreateEvent {
+        started_ms: i64,
+        ended_ms: i64,
+        title: String,
+        sources: EventSources,
+    },
+    EditEvent {
+        event_id: Uuid,
+        expected_revision: i64,
+        started_ms: i64,
+        ended_ms: i64,
+        title: String,
+        sources: Option<EventSources>,
+    },
+    DeleteEvent {
+        event_id: Uuid,
+        expected_revision: i64,
+    },
+    SplitEvent {
+        event_id: Uuid,
+        expected_revision: i64,
+        at_ms: i64,
+        left_title: String,
+        right_title: String,
+    },
+    MergeEvents {
+        left_id: Uuid,
+        left_revision: i64,
+        right_id: Uuid,
+        right_revision: i64,
+        title: String,
+    },
+    TranscribeRange {
+        started_ms: i64,
+        ended_ms: i64,
+        sources: EventSources,
+    },
     Log {
         event: LogEvent,
     },
@@ -79,6 +150,21 @@ impl Request {
             Self::Pause { .. } => "pause",
             Self::Resume { .. } => "resume",
             Self::SetSource { .. } => "set_source",
+            Self::CloudStatus => "cloud_status",
+            Self::CloudTasks { .. } => "cloud_tasks",
+            Self::ConfigureCloud { .. } => "configure_cloud",
+            Self::SetCloudPaused { .. } => "set_cloud_paused",
+            Self::RetryCloudTask { .. } => "retry_cloud_task",
+            Self::ProcessNow => "process_now",
+            Self::Timeline { .. } => "timeline",
+            Self::EventDetail { .. } => "event_detail",
+            Self::RangeDetail { .. } => "range_detail",
+            Self::CreateEvent { .. } => "create_event",
+            Self::EditEvent { .. } => "edit_event",
+            Self::DeleteEvent { .. } => "delete_event",
+            Self::SplitEvent { .. } => "split_event",
+            Self::MergeEvents { .. } => "merge_events",
+            Self::TranscribeRange { .. } => "transcribe_range",
             Self::Log { .. } => "log",
             Self::Logs { .. } => "logs",
             Self::YieldToLogin => "yield_to_login",
@@ -166,6 +252,78 @@ pub enum AudioSource {
     System,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EventSources {
+    Both,
+    Microphone,
+    System,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CloudProvider {
+    Llm,
+    Asr,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CloudQueueState {
+    pub provider: CloudProvider,
+    pub configured: bool,
+    pub paused: bool,
+    pub pending: u64,
+    pub processing: u64,
+    pub failed: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CloudTaskView {
+    pub id: Uuid,
+    pub provider: CloudProvider,
+    pub target_kind: String,
+    pub target_id: String,
+    pub started_ms: i64,
+    pub ended_ms: i64,
+    pub state: String,
+    pub error_code: Option<String>,
+    pub manual: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TimelineItem {
+    pub id: Option<Uuid>,
+    pub started_ms: i64,
+    pub ended_ms: i64,
+    pub title: Option<String>,
+    pub sources: EventSources,
+    pub revision: Option<i64>,
+    pub fit_state: Option<String>,
+    pub processing_state: String,
+    pub manual_asr_state: Option<String>,
+    pub coarse_segments: Vec<CoarseSegment>,
+    pub precise_segments: Vec<PreciseSegment>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CoarseSegment {
+    pub id: Uuid,
+    pub source: AudioSource,
+    pub started_ms: i64,
+    pub ended_ms: i64,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PreciseSegment {
+    pub id: Uuid,
+    pub source: AudioSource,
+    pub started_ms: i64,
+    pub ended_ms: i64,
+    pub text: String,
+    pub speaker: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Response {
@@ -191,6 +349,30 @@ pub enum Response {
     Logs {
         id: Uuid,
         entries: Vec<LogRecord>,
+    },
+    CloudStatus {
+        id: Uuid,
+        queues: Vec<CloudQueueState>,
+    },
+    CloudTasks {
+        id: Uuid,
+        tasks: Vec<CloudTaskView>,
+    },
+    Timeline {
+        id: Uuid,
+        items: Vec<TimelineItem>,
+    },
+    Event {
+        id: Uuid,
+        event: TimelineItem,
+    },
+    Accepted {
+        id: Uuid,
+        task_id: Uuid,
+    },
+    EventsChanged {
+        id: Uuid,
+        event_ids: Vec<Uuid>,
     },
     Error {
         id: Uuid,
@@ -306,6 +488,7 @@ fn send_with_policy(
         Request::Probe { seconds, .. } | Request::RecordTest { seconds, .. } => {
             Duration::from_secs(seconds as u64 + 70)
         }
+        Request::ConfigureCloud { .. } => Duration::from_secs(90),
         _ => Duration::from_secs(5),
     };
     stream
@@ -341,6 +524,12 @@ fn send_with_policy(
         | Response::ProbeResult { id, .. }
         | Response::RecordTestResult { id, .. }
         | Response::Logs { id, .. }
+        | Response::CloudStatus { id, .. }
+        | Response::CloudTasks { id, .. }
+        | Response::Timeline { id, .. }
+        | Response::Event { id, .. }
+        | Response::Accepted { id, .. }
+        | Response::EventsChanged { id, .. }
         | Response::Error { id, .. }
             if *id == envelope.id =>
         {

@@ -4,6 +4,7 @@ use hear_protocol::{
     ModelState, PROTOCOL_VERSION, ProbeStats, Request, Response, ServiceState, data_dir,
 };
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
+use sha2::{Digest, Sha256};
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
@@ -20,6 +21,8 @@ const MAX_REQUEST_BYTES: u64 = 1024 * 1024;
 const MAX_CLIENTS: usize = 32;
 mod analysis;
 mod capture;
+mod cloud;
+mod events;
 mod media;
 mod microphone;
 mod model_pack;
@@ -101,6 +104,7 @@ fn run() -> Result<(), String> {
         Connection::open(directory.join("hear.sqlite")).map_err(|error| error.to_string())?;
     let mut store = Store::new(connection)?;
     store.recover(&directory)?;
+    events::recover_tasks(&mut store.db, now_ms()?)?;
     let login_session = current_login_session()?;
     let capture_after_launch =
         launch_mode == LaunchMode::Login && !store.quit_in_login(login_session)?;
@@ -126,6 +130,8 @@ fn run() -> Result<(), String> {
     );
     let shared = Arc::new(CoreState {
         store: Mutex::new(store),
+        llm_outbound: Mutex::new(()),
+        asr_outbound: Mutex::new(()),
         logs,
         launch_mode,
         run_id,
@@ -163,6 +169,14 @@ fn run() -> Result<(), String> {
         let analysis_shared = Arc::clone(&shared);
         let analysis_stop = Arc::clone(&stop);
         thread::spawn(move || analysis_loop(analysis_shared, analysis_stop));
+    }
+    for provider in [
+        hear_protocol::CloudProvider::Llm,
+        hear_protocol::CloudProvider::Asr,
+    ] {
+        let cloud_shared = Arc::clone(&shared);
+        let cloud_stop = Arc::clone(&stop);
+        thread::spawn(move || cloud_loop(cloud_shared, cloud_stop, provider));
     }
     let clients = Arc::new(AtomicUsize::new(0));
     listener
@@ -306,6 +320,242 @@ fn analysis_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
             .logs
             .emit(ClientKind::Worker, uuid::Uuid::new_v4(), event);
     }
+}
+
+fn cloud_loop(
+    shared: Arc<CoreState>,
+    stop: Arc<AtomicBool>,
+    provider: hear_protocol::CloudProvider,
+) {
+    let mut last_refresh = Instant::now() - Duration::from_secs(30);
+    while !stop.load(Ordering::Acquire) {
+        let now = match now_ms() {
+            Ok(now) => now,
+            Err(_) => {
+                thread::sleep(Duration::from_secs(1));
+                continue;
+            }
+        };
+        if provider == hear_protocol::CloudProvider::Llm
+            && last_refresh.elapsed() >= Duration::from_secs(15)
+        {
+            if let Ok(mut store) = shared.store.lock() {
+                if let Err(error) = events::refresh_candidates(&mut store.db, now, false) {
+                    eprintln!("hear-core event candidate refresh failed: {error}");
+                }
+            }
+            last_refresh = Instant::now();
+        }
+        let task = shared
+            .store
+            .lock()
+            .map_err(|e| e.to_string())
+            .and_then(|mut store| events::take_task(&mut store.db, provider, now));
+        let task = match task {
+            Ok(Some(task)) => task,
+            Ok(None) => {
+                thread::sleep(Duration::from_secs(1));
+                continue;
+            }
+            Err(_) => {
+                thread::sleep(Duration::from_secs(2));
+                continue;
+            }
+        };
+        let task_id = task.id;
+        let outcome = process_cloud_task(&shared, &task, now);
+        let mut event = LogEvent::simple(
+            "cloud",
+            if outcome.is_ok() {
+                LogLevel::Info
+            } else {
+                LogLevel::Warn
+            },
+            if outcome.is_ok() {
+                "task_progress"
+            } else {
+                "task_failed"
+            },
+        );
+        event.job_id = Some(task_id);
+        if let Err(error) = &outcome {
+            event.error_code = Some(error.clone());
+        }
+        shared.logs.emit(ClientKind::Worker, task_id, event);
+        if let Err(error) = outcome {
+            if let Ok(store) = shared.store.lock() {
+                let _ = events::task_failed(&store.db, &task, &error, now_ms().unwrap_or(now));
+            }
+        }
+    }
+}
+
+fn process_cloud_task(
+    shared: &CoreState,
+    task: &events::CloudTask,
+    now: i64,
+) -> Result<(), String> {
+    let (current, model) = shared
+        .store
+        .lock()
+        .map_err(|e| e.to_string())
+        .and_then(|store| {
+            Ok((
+                events::task_current(&store.db, task)?,
+                events::model(&store.db, task.provider)?,
+            ))
+        })?;
+    if !current {
+        let store = shared.store.lock().map_err(|e| e.to_string())?;
+        events::supersede_task(&store.db, task, now)?;
+        return Ok(());
+    }
+    if model.is_none() {
+        return Err("provider_not_configured".to_owned());
+    }
+    match task.provider {
+        hear_protocol::CloudProvider::Llm => {
+            let input = {
+                let store = shared.store.lock().map_err(|e| e.to_string())?;
+                events::llm_input(&store.db, task)?
+            };
+            let outbound = shared
+                .outbound_gate(task.provider)
+                .lock()
+                .map_err(|e| e.to_string())?;
+            let current = {
+                let store = shared.store.lock().map_err(|e| e.to_string())?;
+                events::task_current(&store.db, task)?
+            };
+            if !current {
+                let store = shared.store.lock().map_err(|e| e.to_string())?;
+                events::supersede_task(&store.db, task, now)?;
+                return Ok(());
+            }
+            if queue_is_paused(shared, task.provider)? {
+                let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                events::defer_paused(&mut store.db, task, now)?;
+                return Ok(());
+            }
+            let key = active_cloud_credential(shared, task.provider)?;
+            let output = cloud::chat(&key, &task.model_id, events::FIT_SYSTEM, &input)?;
+            drop(outbound);
+            let _event_gate = shared.asr_outbound.lock().map_err(|e| e.to_string())?;
+            let count = {
+                let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                events::publish_fit(&mut store.db, task, output, now_ms()?)?
+            };
+            let mut event = LogEvent::simple("events", LogLevel::Info, "fit_published");
+            event.job_id = Some(task.id);
+            event.duration_ms = Some(count as u64);
+            shared.logs.emit(ClientKind::Worker, task.id, event);
+            Ok(())
+        }
+        hear_protocol::CloudProvider::Asr => {
+            let query = {
+                let _outbound = shared.asr_outbound.lock().map_err(|e| e.to_string())?;
+                let current = {
+                    let store = shared.store.lock().map_err(|e| e.to_string())?;
+                    events::task_current(&store.db, task)?
+                };
+                if !current {
+                    let store = shared.store.lock().map_err(|e| e.to_string())?;
+                    events::supersede_task(&store.db, task, now)?;
+                    return Ok(());
+                }
+                if queue_is_paused(shared, task.provider)? {
+                    let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                    events::defer_paused(&mut store.db, task, now)?;
+                    return Ok(());
+                }
+                let key = active_cloud_credential(shared, task.provider)?;
+                cloud::query_audio(&key, task.remote_id)?
+            };
+            match query {
+                cloud::AsrQuery::Complete(utterances) => {
+                    let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                    events::publish_asr(&mut store.db, task, &utterances, now_ms()?)?;
+                    Ok(())
+                }
+                cloud::AsrQuery::Processing => {
+                    if task.submit_attempts > 0 && now - task.updated_ms > 2 * 60 * 60 * 1000 {
+                        return Err("provider_processing_timeout".to_owned());
+                    }
+                    let store = shared.store.lock().map_err(|e| e.to_string())?;
+                    events::asr_wait(&store.db, task, now_ms()?)
+                }
+                cloud::AsrQuery::Missing => {
+                    if task.submit_attempts > 0 && now - task.updated_ms < 60_000 {
+                        let store = shared.store.lock().map_err(|e| e.to_string())?;
+                        return events::asr_wait(&store.db, task, now_ms()?);
+                    }
+                    if task.submit_attempts >= 3 {
+                        return Err("provider_missing_submitted_task".to_owned());
+                    }
+                    if queue_is_paused(shared, task.provider)? {
+                        let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                        events::defer_paused(&mut store.db, task, now)?;
+                        return Ok(());
+                    }
+                    let parts = {
+                        let store = shared.store.lock().map_err(|e| e.to_string())?;
+                        events::audio_manifest(&store.db, task)?
+                    };
+                    let wav = events::assemble_wav(&shared.directory, task, &parts)?;
+                    let _outbound = shared.asr_outbound.lock().map_err(|e| e.to_string())?;
+                    // Recheck after audio decoding: a boundary edit or cleanup
+                    // may have superseded the task before any upload.
+                    let current = {
+                        let store = shared.store.lock().map_err(|e| e.to_string())?;
+                        events::task_current(&store.db, task)?
+                    };
+                    if !current {
+                        let store = shared.store.lock().map_err(|e| e.to_string())?;
+                        events::supersede_task(&store.db, task, now)?;
+                        return Ok(());
+                    }
+                    if queue_is_paused(shared, task.provider)? {
+                        let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                        events::defer_paused(&mut store.db, task, now)?;
+                        return Ok(());
+                    }
+                    {
+                        let store = shared.store.lock().map_err(|e| e.to_string())?;
+                        events::mark_submit_intent(&store.db, task, now_ms()?)?;
+                    }
+                    let key = active_cloud_credential(shared, task.provider)?;
+                    cloud::submit_audio(&key, task.remote_id, &wav)?;
+                    let store = shared.store.lock().map_err(|e| e.to_string())?;
+                    events::asr_wait(&store.db, task, now_ms()?)
+                }
+            }
+        }
+    }
+}
+
+// Call only while holding this provider's outbound gate. Configuration swaps
+// and retires Keychain references under the same gate.
+fn active_cloud_credential(
+    shared: &CoreState,
+    provider: hear_protocol::CloudProvider,
+) -> Result<String, String> {
+    let reference = {
+        let store = shared.store.lock().map_err(|e| e.to_string())?;
+        events::credential_reference(&store.db, provider)?
+    }
+    .ok_or_else(|| "credential_missing".to_owned())?;
+    cloud::credential(provider, &reference)?.ok_or_else(|| "credential_missing".to_owned())
+}
+
+fn queue_is_paused(
+    shared: &CoreState,
+    provider: hear_protocol::CloudProvider,
+) -> Result<bool, String> {
+    let store = shared.store.lock().map_err(|e| e.to_string())?;
+    Ok(events::queue_states(&store.db)?
+        .into_iter()
+        .find(|q| q.provider == provider)
+        .is_some_and(|q| q.paused))
 }
 
 fn decode_saved_block(directory: &Path, block: &PendingBlock) -> Result<Vec<f32>, String> {
@@ -569,6 +819,8 @@ fn capture_supervisor(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
 
 struct CoreState {
     store: Mutex<Store>,
+    llm_outbound: Mutex<()>,
+    asr_outbound: Mutex<()>,
     logs: LogWorker,
     launch_mode: LaunchMode,
     run_id: uuid::Uuid,
@@ -589,12 +841,21 @@ struct CaptureRuntime {
 }
 
 impl CoreState {
+    fn outbound_gate(&self, provider: hear_protocol::CloudProvider) -> &Mutex<()> {
+        match provider {
+            hear_protocol::CloudProvider::Llm => &self.llm_outbound,
+            hear_protocol::CloudProvider::Asr => &self.asr_outbound,
+        }
+    }
     fn service_state(&self) -> Result<ServiceState, String> {
-        let mut state = self
-            .store
-            .lock()
-            .map_err(|error| error.to_string())?
-            .state()?;
+        let store = self.store.lock().map_err(|error| error.to_string())?;
+        let mut state = store.state()?;
+        let cloud_ready = events::configured(&store.db)?;
+        drop(store);
+        let models_ready = matches!(
+            self.models.lock().map_err(|e| e.to_string())?.phase,
+            ModelPhase::Ready
+        );
         let runtime = self.capture.lock().map_err(|error| error.to_string())?;
         state.microphone_recording = runtime.microphone_active;
         state.system_recording = runtime.system_active;
@@ -620,6 +881,13 @@ impl CoreState {
         } else if state.paused_intent {
             state.capture_state = CaptureState::Paused;
             state.reason = Some("recording was paused by the user".to_owned());
+        } else if !models_ready || !cloud_ready {
+            state.capture_state = CaptureState::NotReady;
+            state.reason = Some(if !models_ready {
+                "local speech models are not ready".to_owned()
+            } else {
+                "configure both cloud providers before recording".to_owned()
+            });
         } else if state.enabled_intent && !self.allow_capture.load(Ordering::Acquire) {
             state.capture_state = CaptureState::Stopped;
             state.reason = Some(if self.launch_mode == LaunchMode::Login {
@@ -642,6 +910,9 @@ impl CoreState {
             } else {
                 "audio sources are unavailable or retrying".to_owned()
             });
+        } else {
+            state.capture_state = CaptureState::Stopped;
+            state.reason = None;
         }
         Ok(state)
     }
@@ -857,6 +1128,11 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
         return Err("request exceeded protocol limit".to_owned());
     }
     let envelope: Envelope = serde_json::from_slice(&input).map_err(|error| error.to_string())?;
+    // Store only a digest: ConfigureCloud contains a user-supplied secret.
+    let mutation_fingerprint = format!(
+        "sha256:{:x}",
+        Sha256::digest(serde_json::to_vec(&envelope.request).map_err(|error| error.to_string())?)
+    );
     let explicit_quit = matches!(envelope.request, Request::Quit);
     let quit = explicit_quit
         || matches!(envelope.request, Request::YieldToLogin)
@@ -874,6 +1150,412 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
         }
     } else {
         match envelope.request {
+            Request::CloudStatus => {
+                let queues = {
+                    let store = shared.store.lock().map_err(|e| e.to_string())?;
+                    events::queue_states(&store.db)?
+                };
+                Response::CloudStatus {
+                    id: envelope.id,
+                    queues,
+                }
+            }
+            Request::CloudTasks { provider, limit } => {
+                let store = shared.store.lock().map_err(|e| e.to_string())?;
+                Response::CloudTasks {
+                    id: envelope.id,
+                    tasks: events::task_views(&store.db, provider, limit)?,
+                }
+            }
+            Request::ConfigureCloud {
+                provider,
+                api_key,
+                model,
+            } => {
+                let chosen = match provider {
+                    hear_protocol::CloudProvider::Llm => {
+                        model.unwrap_or_else(|| "deepseek-flash".to_owned())
+                    }
+                    hear_protocol::CloudProvider::Asr => "bigmodel".to_owned(),
+                };
+                let allowed = match provider {
+                    hear_protocol::CloudProvider::Llm => {
+                        matches!(chosen.as_str(), "deepseek-flash" | "deepseek-v4-pro")
+                    }
+                    hear_protocol::CloudProvider::Asr => chosen == "bigmodel",
+                };
+                let _outbound = shared
+                    .outbound_gate(provider)
+                    .lock()
+                    .map_err(|e| e.to_string())?;
+                let (prior, previous_reference) = {
+                    let store = shared.store.lock().map_err(|e| e.to_string())?;
+                    (
+                        store.prior_mutation_response(envelope.id, &mutation_fingerprint)?,
+                        events::credential_reference(&store.db, provider)?,
+                    )
+                };
+                if let Some(response) = prior {
+                    response
+                } else if !allowed {
+                    Response::Error {
+                        id: envelope.id,
+                        code: "model_unsupported".to_owned(),
+                        message: "select a supported cloud model".to_owned(),
+                    }
+                } else {
+                    let verified = match provider {
+                        hear_protocol::CloudProvider::Llm => cloud::verify_llm(&api_key, &chosen),
+                        hear_protocol::CloudProvider::Asr => cloud::verify_asr(&api_key),
+                    };
+                    match verified.and_then(|()| cloud::save_credential(provider, &api_key)) {
+                        Ok(reference) => {
+                            let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                            let outcome =
+                                store.mutate_response(envelope.id, &mutation_fingerprint, |tx| {
+                                    events::set_configured_with_credential(
+                                        tx, provider, &chosen, &reference,
+                                    )?;
+                                    Ok(Response::CloudStatus {
+                                        id: envelope.id,
+                                        queues: events::queue_states(tx)?,
+                                    })
+                                });
+                            drop(store);
+                            match outcome {
+                                Ok(response @ Response::Error { .. }) => {
+                                    let _ = cloud::delete_credential(&reference);
+                                    response
+                                }
+                                Ok(response) => {
+                                    if let Some(old) = previous_reference {
+                                        let _ = cloud::delete_credential(&old);
+                                    }
+                                    response
+                                }
+                                Err(error) => {
+                                    let _ = cloud::delete_credential(&reference);
+                                    return Err(error);
+                                }
+                            }
+                        }
+                        Err(error) => Response::Error {
+                            id: envelope.id,
+                            code: error,
+                            message: "cloud provider verification or macOS Keychain storage failed"
+                                .to_owned(),
+                        },
+                    }
+                }
+            }
+            Request::SetCloudPaused { provider, paused } => {
+                let _outbound = shared
+                    .outbound_gate(provider)
+                    .lock()
+                    .map_err(|e| e.to_string())?;
+                let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                store.mutate_response(envelope.id, &mutation_fingerprint, |tx| {
+                    events::set_paused(tx, provider, paused)?;
+                    Ok(Response::CloudStatus {
+                        id: envelope.id,
+                        queues: events::queue_states(tx)?,
+                    })
+                })?
+            }
+            Request::RetryCloudTask { task_id } => {
+                let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                match store.mutate_response(envelope.id, &mutation_fingerprint, |tx| {
+                    events::retry_task_in(tx, task_id, now_ms()?)?;
+                    Ok(Response::Accepted {
+                        id: envelope.id,
+                        task_id,
+                    })
+                }) {
+                    Ok(response) => response,
+                    Err(_) => Response::Error {
+                        id: envelope.id,
+                        code: "task_not_retryable".to_owned(),
+                        message: "task is not failed or no longer matches the current event"
+                            .to_owned(),
+                    },
+                }
+            }
+            Request::ProcessNow => {
+                let mut count = 0;
+                let response = {
+                    let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                    store.mutate_response(envelope.id, &mutation_fingerprint, |tx| {
+                        count = events::refresh_candidates_in(tx, now_ms()?, true)?;
+                        Ok(Response::CloudStatus {
+                            id: envelope.id,
+                            queues: events::queue_states(tx)?,
+                        })
+                    })?
+                };
+                let mut event =
+                    LogEvent::simple("events", LogLevel::Info, "manual_candidate_refresh");
+                event.duration_ms = Some(count as u64);
+                shared.logs.emit(envelope.client, envelope.id, event);
+                response
+            }
+            Request::Timeline { from_ms, to_ms } => {
+                let store = shared.store.lock().map_err(|e| e.to_string())?;
+                match events::timeline(&store.db, from_ms, to_ms) {
+                    Ok(items) => Response::Timeline {
+                        id: envelope.id,
+                        items,
+                    },
+                    Err(_) => Response::Error {
+                        id: envelope.id,
+                        code: "invalid_time_range".to_owned(),
+                        message: "timeline range must be within one day".to_owned(),
+                    },
+                }
+            }
+            Request::EventDetail {
+                event_id,
+                offset,
+                limit,
+            } => {
+                let store = shared.store.lock().map_err(|e| e.to_string())?;
+                match events::event_detail(&store.db, event_id, offset, limit) {
+                    Ok(event) => Response::Event {
+                        id: envelope.id,
+                        event,
+                    },
+                    Err(_) => Response::Error {
+                        id: envelope.id,
+                        code: "event_detail_unavailable".to_owned(),
+                        message: "event not found or transcript page invalid".to_owned(),
+                    },
+                }
+            }
+            Request::RangeDetail {
+                started_ms,
+                ended_ms,
+                sources,
+                offset,
+                limit,
+            } => {
+                let store = shared.store.lock().map_err(|e| e.to_string())?;
+                match events::range_detail(&store.db, started_ms, ended_ms, sources, offset, limit)
+                {
+                    Ok(event) => Response::Event {
+                        id: envelope.id,
+                        event,
+                    },
+                    Err(_) => Response::Error {
+                        id: envelope.id,
+                        code: "range_detail_unavailable".to_owned(),
+                        message: "invalid time range or transcript page".to_owned(),
+                    },
+                }
+            }
+            Request::CreateEvent {
+                started_ms,
+                ended_ms,
+                title,
+                sources,
+            } => {
+                let result = {
+                    let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                    store.mutate_response(envelope.id, &mutation_fingerprint, |tx| {
+                        let task_id = events::create_event_in(
+                            tx,
+                            started_ms,
+                            ended_ms,
+                            &title,
+                            sources,
+                            now_ms()?,
+                        )?;
+                        Ok(Response::Accepted {
+                            id: envelope.id,
+                            task_id,
+                        })
+                    })
+                };
+                match result {
+                    Ok(response) => response,
+                    Err(error) => Response::Error {
+                        id: envelope.id,
+                        code: "event_invalid".to_owned(),
+                        message: error,
+                    },
+                }
+            }
+            Request::EditEvent {
+                event_id,
+                expected_revision,
+                started_ms,
+                ended_ms,
+                title,
+                sources,
+            } => {
+                let _outbound = shared.asr_outbound.lock().map_err(|e| e.to_string())?;
+                let result = {
+                    let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                    store.mutate_response(envelope.id, &mutation_fingerprint, |tx| {
+                        events::edit_event_in(
+                            tx,
+                            event_id,
+                            expected_revision,
+                            started_ms,
+                            ended_ms,
+                            &title,
+                            sources,
+                            now_ms()?,
+                        )?;
+                        Ok(Response::Accepted {
+                            id: envelope.id,
+                            task_id: event_id,
+                        })
+                    })
+                };
+                match result {
+                    Ok(response) => response,
+                    Err(error) => Response::Error {
+                        id: envelope.id,
+                        code: "event_invalid".to_owned(),
+                        message: error,
+                    },
+                }
+            }
+            Request::DeleteEvent {
+                event_id,
+                expected_revision,
+            } => {
+                let _outbound = shared.asr_outbound.lock().map_err(|e| e.to_string())?;
+                let result = {
+                    let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                    store.mutate_response(envelope.id, &mutation_fingerprint, |tx| {
+                        events::delete_event_in(tx, event_id, expected_revision, now_ms()?)?;
+                        Ok(Response::EventsChanged {
+                            id: envelope.id,
+                            event_ids: Vec::new(),
+                        })
+                    })
+                };
+                match result {
+                    Ok(response) => response,
+                    Err(error) => Response::Error {
+                        id: envelope.id,
+                        code: "event_invalid".to_owned(),
+                        message: error,
+                    },
+                }
+            }
+            Request::SplitEvent {
+                event_id,
+                expected_revision,
+                at_ms,
+                left_title,
+                right_title,
+            } => {
+                let _outbound = shared.asr_outbound.lock().map_err(|e| e.to_string())?;
+                let result = {
+                    let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                    store.mutate_response(envelope.id, &mutation_fingerprint, |tx| {
+                        let (left, right) = events::split_event_in(
+                            tx,
+                            event_id,
+                            expected_revision,
+                            at_ms,
+                            &left_title,
+                            &right_title,
+                            now_ms()?,
+                        )?;
+                        Ok(Response::EventsChanged {
+                            id: envelope.id,
+                            event_ids: vec![left, right],
+                        })
+                    })
+                };
+                match result {
+                    Ok(response) => response,
+                    Err(error) => Response::Error {
+                        id: envelope.id,
+                        code: "event_invalid".to_owned(),
+                        message: error,
+                    },
+                }
+            }
+            Request::MergeEvents {
+                left_id,
+                left_revision,
+                right_id,
+                right_revision,
+                title,
+            } => {
+                let _outbound = shared.asr_outbound.lock().map_err(|e| e.to_string())?;
+                let result = {
+                    let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                    store.mutate_response(envelope.id, &mutation_fingerprint, |tx| {
+                        let event = events::merge_events_in(
+                            tx,
+                            left_id,
+                            left_revision,
+                            right_id,
+                            right_revision,
+                            &title,
+                            now_ms()?,
+                        )?;
+                        Ok(Response::EventsChanged {
+                            id: envelope.id,
+                            event_ids: vec![event],
+                        })
+                    })
+                };
+                match result {
+                    Ok(response) => response,
+                    Err(error) => Response::Error {
+                        id: envelope.id,
+                        code: "event_invalid".to_owned(),
+                        message: error,
+                    },
+                }
+            }
+            Request::TranscribeRange {
+                started_ms,
+                ended_ms,
+                sources,
+            } => {
+                let result = {
+                    let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                    store.mutate_response(envelope.id, &mutation_fingerprint, |tx| {
+                        let task_id = events::transcribe_range_in(
+                            tx,
+                            started_ms,
+                            ended_ms,
+                            sources,
+                            now_ms()?,
+                        )?;
+                        Ok(Response::Accepted {
+                            id: envelope.id,
+                            task_id,
+                        })
+                    })
+                };
+                match result {
+                    Ok(response) => response,
+                    Err(error) => Response::Error {
+                        id: envelope.id,
+                        code: "range_invalid".to_owned(),
+                        message: error,
+                    },
+                }
+            }
+            Request::Start { .. }
+                if !shared
+                    .models
+                    .lock()
+                    .is_ok_and(|models| matches!(models.phase, ModelPhase::Ready)) =>
+            {
+                Response::Error {
+                    id: envelope.id,
+                    code: "model_not_ready".to_owned(),
+                    message: "install and verify local speech models before recording".to_owned(),
+                }
+            }
             Request::Models => Response::Models {
                 id: envelope.id,
                 state: shared
@@ -1258,6 +1940,7 @@ impl Store {
              );",
         )
         .map_err(|error| error.to_string())?;
+        events::init(&db)?;
         Ok(Self { db })
     }
 
@@ -1827,6 +2510,7 @@ impl Store {
             params![block.id, result.speech_active],
         )
         .map_err(|error| error.to_string())?;
+        events::note_analysis(&tx, &block.id)?;
         tx.commit().map_err(|error| error.to_string())
     }
 
@@ -1837,11 +2521,14 @@ impl Store {
                 id,
                 state: self.state()?,
             }),
-            Request::Start { .. } => Ok(Response::Error {
-                id,
-                code: "setup_incomplete".to_owned(),
-                message: "recording cannot start until local speech models and both cloud providers are ready".to_owned(),
-            }),
+            Request::Start { expected_revision } => {
+                if !events::configured(&self.db)? {
+                    return Ok(Response::Error { id, code: "setup_incomplete".to_owned(),
+                        message: "configure both cloud providers before recording".to_owned() });
+                }
+                self.mutate(id, expected_revision, fingerprint, |tx| tx.execute(
+                    "UPDATE service_state SET enabled_intent=1,paused_intent=0,revision=revision+1 WHERE id=1",[]))
+            }
             Request::Pause { expected_revision } => self.mutate(
                 id,
                 expected_revision,
@@ -1884,7 +2571,46 @@ impl Store {
             | Request::YieldToLogin => {
                 unreachable!("handled by IPC dispatcher")
             }
+            Request::CloudStatus | Request::CloudTasks { .. } | Request::ConfigureCloud { .. } | Request::SetCloudPaused { .. }
+            | Request::RetryCloudTask { .. } | Request::ProcessNow | Request::Timeline { .. }
+            | Request::EventDetail { .. } | Request::RangeDetail { .. }
+            | Request::CreateEvent { .. } | Request::EditEvent { .. } | Request::DeleteEvent { .. }
+            | Request::SplitEvent { .. } | Request::MergeEvents { .. } | Request::TranscribeRange { .. } => {
+                unreachable!("handled by IPC dispatcher")
+            }
         }
+    }
+
+    fn prior_mutation_response(
+        &self,
+        id: uuid::Uuid,
+        fingerprint: &str,
+    ) -> Result<Option<Response>, String> {
+        prior_mutation_response(&self.db, id, fingerprint)
+    }
+
+    fn mutate_response(
+        &mut self,
+        id: uuid::Uuid,
+        fingerprint: &str,
+        change: impl FnOnce(&Transaction<'_>) -> Result<Response, String>,
+    ) -> Result<Response, String> {
+        let tx = self.db.transaction().map_err(|error| error.to_string())?;
+        if let Some(response) = prior_mutation_response(&tx, id, fingerprint)? {
+            return Ok(response);
+        }
+        let response = change(&tx)?;
+        if matches!(response, Response::Error { .. }) {
+            return Ok(response);
+        }
+        let response_json = serde_json::to_string(&response).map_err(|error| error.to_string())?;
+        tx.execute(
+            "INSERT INTO mutation_receipts (request_id, fingerprint, state_json) VALUES (?1, ?2, ?3)",
+            params![id.to_string(), fingerprint, response_json],
+        )
+        .map_err(|error| error.to_string())?;
+        tx.commit().map_err(|error| error.to_string())?;
+        Ok(response)
     }
 
     fn mutate(
@@ -1936,6 +2662,32 @@ impl Store {
         .map_err(|error| error.to_string())?;
         tx.commit().map_err(|error| error.to_string())?;
         Ok(Response::Status { id, state })
+    }
+}
+
+fn prior_mutation_response(
+    db: &Connection,
+    id: uuid::Uuid,
+    fingerprint: &str,
+) -> Result<Option<Response>, String> {
+    let prior: Option<(String, String)> = db
+        .query_row(
+            "SELECT fingerprint,state_json FROM mutation_receipts WHERE request_id=?1",
+            params![id.to_string()],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    match prior {
+        None => Ok(None),
+        Some((previous, _)) if previous != fingerprint => Ok(Some(Response::Error {
+            id,
+            code: "idempotency_conflict".to_owned(),
+            message: "request ID was already used for a different mutation".to_owned(),
+        })),
+        Some((_, response)) => serde_json::from_str(&response)
+            .map(Some)
+            .map_err(|error| error.to_string()),
     }
 }
 
@@ -2383,6 +3135,180 @@ mod tests {
             .unwrap();
         assert!(matches!(reused, Response::Error { code, .. } if code == "idempotency_conflict"));
         assert!(reopened.state().unwrap().paused_intent);
+    }
+
+    #[test]
+    fn event_mutation_receipt_survives_lost_reply_and_commits_with_event() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("events.sqlite");
+        let create_request = Uuid::new_v4();
+        let split_request = Uuid::new_v4();
+        let mut store = Store::new(Connection::open(&path).unwrap()).unwrap();
+        let created = store
+            .mutate_response(create_request, "sha256:create", |tx| {
+                let task_id = events::create_event_in(
+                    tx,
+                    1_000,
+                    6_000,
+                    "会议",
+                    hear_protocol::EventSources::Microphone,
+                    7_000,
+                )?;
+                Ok(Response::Accepted {
+                    id: create_request,
+                    task_id,
+                })
+            })
+            .unwrap();
+        let Response::Accepted {
+            task_id: original, ..
+        } = created
+        else {
+            panic!("expected event")
+        };
+        drop(store);
+
+        let mut reopened = Store::new(Connection::open(&path).unwrap()).unwrap();
+        let replay = reopened
+            .mutate_response(create_request, "sha256:create", |_| {
+                panic!("a duplicate request must not create another event")
+            })
+            .unwrap();
+        assert!(matches!(replay,Response::Accepted {task_id,..} if task_id==original));
+        let split = reopened
+            .mutate_response(split_request, "sha256:split", |tx| {
+                let (left, right) =
+                    events::split_event_in(tx, original, 1, 3_000, "前半", "后半", 7_001)?;
+                Ok(Response::EventsChanged {
+                    id: split_request,
+                    event_ids: vec![left, right],
+                })
+            })
+            .unwrap();
+        let Response::EventsChanged {
+            event_ids: successors,
+            ..
+        } = split
+        else {
+            panic!("expected successors")
+        };
+        drop(reopened);
+
+        let mut reopened = Store::new(Connection::open(&path).unwrap()).unwrap();
+        let replay = reopened
+            .mutate_response(split_request, "sha256:split", |_| {
+                panic!("a split retry must not consume revisions or change successors")
+            })
+            .unwrap();
+        assert!(matches!(replay,Response::EventsChanged {event_ids,..} if event_ids==successors));
+        let conflict = reopened
+            .mutate_response(split_request, "sha256:different", |_| {
+                panic!("a reused ID with new arguments must be rejected")
+            })
+            .unwrap();
+        assert!(matches!(conflict,Response::Error {code,..} if code=="idempotency_conflict"));
+        let failed = Uuid::new_v4();
+        assert!(
+            reopened
+                .mutate_response(failed, "sha256:failed", |tx| {
+                    events::create_event_in(
+                        tx,
+                        6_000,
+                        8_000,
+                        "未提交",
+                        hear_protocol::EventSources::Microphone,
+                        7_002,
+                    )?;
+                    Err("simulate reply creation failure".to_owned())
+                })
+                .is_err()
+        );
+        let active: i64 = reopened
+            .db
+            .query_row(
+                "SELECT count(*) FROM named_events WHERE deleted_ms IS NULL",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(active, 2);
+        let receipts: i64 = reopened
+            .db
+            .query_row("SELECT count(*) FROM mutation_receipts", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(receipts, 2);
+    }
+
+    #[test]
+    fn conflicting_cloud_configuration_cannot_switch_active_credential() {
+        let mut store = Store::new(Connection::open_in_memory().unwrap()).unwrap();
+        let initial = Uuid::new_v4();
+        let original_ref = format!("deepseek:{}", Uuid::new_v4());
+        store
+            .mutate_response(initial, "sha256:initial", |tx| {
+                events::set_configured_with_credential(
+                    tx,
+                    hear_protocol::CloudProvider::Llm,
+                    "deepseek-flash",
+                    &original_ref,
+                )?;
+                Ok(Response::CloudStatus {
+                    id: initial,
+                    queues: events::queue_states(tx)?,
+                })
+            })
+            .unwrap();
+        let contested = Uuid::new_v4();
+        assert!(
+            store
+                .prior_mutation_response(contested, "sha256:cloud")
+                .unwrap()
+                .is_none()
+        );
+        store
+            .mutate_response(contested, "sha256:event", |tx| {
+                let task_id = events::create_event_in(
+                    tx,
+                    1_000,
+                    6_000,
+                    "先到的事件",
+                    hear_protocol::EventSources::Microphone,
+                    7_000,
+                )?;
+                Ok(Response::Accepted {
+                    id: contested,
+                    task_id,
+                })
+            })
+            .unwrap();
+        let new_ref = format!("deepseek:{}", Uuid::new_v4());
+        let conflict = store
+            .mutate_response(contested, "sha256:cloud", |tx| {
+                events::set_configured_with_credential(
+                    tx,
+                    hear_protocol::CloudProvider::Llm,
+                    "deepseek-v4-pro",
+                    &new_ref,
+                )?;
+                Ok(Response::CloudStatus {
+                    id: contested,
+                    queues: events::queue_states(tx)?,
+                })
+            })
+            .unwrap();
+        assert!(matches!(conflict,Response::Error {code,..} if code=="idempotency_conflict"));
+        assert_eq!(
+            events::credential_reference(&store.db, hear_protocol::CloudProvider::Llm).unwrap(),
+            Some(original_ref)
+        );
+        assert_eq!(
+            events::model(&store.db, hear_protocol::CloudProvider::Llm)
+                .unwrap()
+                .as_deref(),
+            Some("deepseek-flash")
+        );
     }
 
     #[test]
