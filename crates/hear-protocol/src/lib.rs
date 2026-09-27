@@ -9,7 +9,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
-pub const PROTOCOL_VERSION: u32 = 3;
+pub const PROTOCOL_VERSION: u32 = 6;
 const MAX_RESPONSE_BYTES: u64 = 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -128,6 +128,86 @@ pub enum Request {
         ended_ms: i64,
         sources: EventSources,
     },
+    CorrectText {
+        segment_id: Uuid,
+        text: String,
+        expected_revision: i64,
+    },
+    RevertText {
+        segment_id: Uuid,
+        expected_revision: i64,
+    },
+    ObjectRevision {
+        kind: String,
+        object_id: Uuid,
+    },
+    People,
+    CreatePerson {
+        display_name: String,
+    },
+    RenamePerson {
+        person_id: Uuid,
+        display_name: String,
+        expected_revision: i64,
+    },
+    DeletePerson {
+        person_id: Uuid,
+        expected_revision: i64,
+    },
+    BindSpeaker {
+        segment_id: Uuid,
+        person_id: Uuid,
+        entire_local_speaker: bool,
+        expected_revision: i64,
+    },
+    UnbindSpeaker {
+        segment_id: Uuid,
+        entire_local_speaker: bool,
+        expected_revision: i64,
+    },
+    AddVoiceSample {
+        segment_id: Uuid,
+        expected_revision: i64,
+    },
+    RemoveVoiceSample {
+        sample_id: Uuid,
+        expected_revision: i64,
+    },
+    VoiceSamples {
+        person_id: Uuid,
+    },
+    ReviewItems,
+    ResolveReview {
+        item_id: Uuid,
+        target_segment_id: Option<Uuid>,
+        expected_revision: i64,
+    },
+    Search {
+        query: Option<String>,
+        from_ms: i64,
+        to_ms: i64,
+        person_id: Option<Uuid>,
+        offset: u32,
+        limit: u16,
+    },
+    PreviewCleanup {
+        from_ms: i64,
+        to_ms: i64,
+        sources: EventSources,
+        mode: CleanupMode,
+    },
+    ExecuteCleanup {
+        preview_token: Uuid,
+        confirmed_all_data: bool,
+    },
+    ExportRange {
+        from_ms: i64,
+        to_ms: i64,
+        sources: EventSources,
+        include_audio: bool,
+        include_screenshots: bool,
+        destination: PathBuf,
+    },
     Log {
         event: LogEvent,
     },
@@ -165,6 +245,24 @@ impl Request {
             Self::SplitEvent { .. } => "split_event",
             Self::MergeEvents { .. } => "merge_events",
             Self::TranscribeRange { .. } => "transcribe_range",
+            Self::CorrectText { .. } => "correct_text",
+            Self::RevertText { .. } => "revert_text",
+            Self::ObjectRevision { .. } => "object_revision",
+            Self::People => "people",
+            Self::CreatePerson { .. } => "create_person",
+            Self::RenamePerson { .. } => "rename_person",
+            Self::DeletePerson { .. } => "delete_person",
+            Self::BindSpeaker { .. } => "bind_speaker",
+            Self::UnbindSpeaker { .. } => "unbind_speaker",
+            Self::AddVoiceSample { .. } => "add_voice_sample",
+            Self::RemoveVoiceSample { .. } => "remove_voice_sample",
+            Self::VoiceSamples { .. } => "voice_samples",
+            Self::ReviewItems => "review_items",
+            Self::ResolveReview { .. } => "resolve_review",
+            Self::Search { .. } => "search",
+            Self::PreviewCleanup { .. } => "preview_cleanup",
+            Self::ExecuteCleanup { .. } => "execute_cleanup",
+            Self::ExportRange { .. } => "export_range",
             Self::Log { .. } => "log",
             Self::Logs { .. } => "logs",
             Self::YieldToLogin => "yield_to_login",
@@ -267,6 +365,33 @@ pub enum CloudProvider {
     Asr,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CleanupMode {
+    RawAudio,
+    AllData,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CleanupPreview {
+    pub token: Uuid,
+    pub mode: CleanupMode,
+    pub from_ms: i64,
+    pub to_ms: i64,
+    pub sources: EventSources,
+    pub audio_blocks: u64,
+    pub audio_bytes: u64,
+    pub coarse_segments: u64,
+    pub precise_segments: u64,
+    pub voice_samples: u64,
+    pub asr_tasks_awaiting_upload: u64,
+    pub voice_extractions_awaiting_audio: u64,
+    pub affected_event_count: u64,
+    pub affected_events: Vec<Uuid>,
+    pub overlap_may_remove_whole_sentences: bool,
+    pub voice_features_retained: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CloudQueueState {
     pub provider: CloudProvider,
@@ -322,6 +447,60 @@ pub struct PreciseSegment {
     pub ended_ms: i64,
     pub text: String,
     pub speaker: Option<String>,
+    pub original_text: Option<String>,
+    pub corrected: bool,
+    pub person_id: Option<Uuid>,
+    pub person_name: Option<String>,
+    pub person_origin: Option<String>,
+    pub revision: i64,
+    pub speaker_revision: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PersonView {
+    pub id: Uuid,
+    pub display_name: String,
+    pub sample_count: u32,
+    pub created_ms: i64,
+    pub revision: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceSampleView {
+    pub id: Uuid,
+    pub person_id: Uuid,
+    pub source: AudioSource,
+    pub started_ms: i64,
+    pub ended_ms: i64,
+    pub model_version: String,
+    pub created_ms: i64,
+    pub revision: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReviewItem {
+    pub id: Uuid,
+    pub kind: String,
+    pub original_segment_id: Uuid,
+    pub source: AudioSource,
+    pub started_ms: i64,
+    pub ended_ms: i64,
+    pub text: Option<String>,
+    pub person_id: Option<Uuid>,
+    pub person_name: Option<String>,
+    pub revision: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchHit {
+    pub kind: String,
+    pub item_id: Uuid,
+    pub source: Option<AudioSource>,
+    pub started_ms: i64,
+    pub ended_ms: i64,
+    pub text: String,
+    pub person_id: Option<Uuid>,
+    pub person_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -374,6 +553,58 @@ pub enum Response {
         id: Uuid,
         event_ids: Vec<Uuid>,
     },
+    TextChanged {
+        id: Uuid,
+        segment_id: Uuid,
+        revision: i64,
+    },
+    People {
+        id: Uuid,
+        people: Vec<PersonView>,
+    },
+    VoiceSamples {
+        id: Uuid,
+        samples: Vec<VoiceSampleView>,
+    },
+    ReviewItems {
+        id: Uuid,
+        items: Vec<ReviewItem>,
+    },
+    ReviewResolved {
+        id: Uuid,
+        item_id: Uuid,
+        target_revision: Option<i64>,
+    },
+    ObjectRevision {
+        id: Uuid,
+        revision: i64,
+    },
+    PersonChanged {
+        id: Uuid,
+        person_id: Uuid,
+        revision: Option<i64>,
+        deleted: bool,
+    },
+    Search {
+        id: Uuid,
+        hits: Vec<SearchHit>,
+        empty_reason: Option<String>,
+    },
+    CleanupPreview {
+        id: Uuid,
+        preview: CleanupPreview,
+    },
+    CleanupComplete {
+        id: Uuid,
+        cleared_audio_blocks: u64,
+        physical_deletions_pending: u64,
+    },
+    ExportComplete {
+        id: Uuid,
+        destination: PathBuf,
+        audio_files: u64,
+        transcript_segments: u64,
+    },
     Error {
         id: Uuid,
         code: String,
@@ -395,6 +626,7 @@ pub struct ProbeStats {
 pub struct ModelState {
     pub phase: ModelPhase,
     pub progress_percent: u8,
+    pub speaker_phase: ModelPhase,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -489,6 +721,7 @@ fn send_with_policy(
             Duration::from_secs(seconds as u64 + 70)
         }
         Request::ConfigureCloud { .. } => Duration::from_secs(90),
+        Request::ExecuteCleanup { .. } | Request::ExportRange { .. } => Duration::from_secs(180),
         _ => Duration::from_secs(5),
     };
     stream
@@ -530,6 +763,17 @@ fn send_with_policy(
         | Response::Event { id, .. }
         | Response::Accepted { id, .. }
         | Response::EventsChanged { id, .. }
+        | Response::TextChanged { id, .. }
+        | Response::People { id, .. }
+        | Response::VoiceSamples { id, .. }
+        | Response::ReviewItems { id, .. }
+        | Response::ReviewResolved { id, .. }
+        | Response::ObjectRevision { id, .. }
+        | Response::PersonChanged { id, .. }
+        | Response::Search { id, .. }
+        | Response::CleanupPreview { id, .. }
+        | Response::CleanupComplete { id, .. }
+        | Response::ExportComplete { id, .. }
         | Response::Error { id, .. }
             if *id == envelope.id =>
         {

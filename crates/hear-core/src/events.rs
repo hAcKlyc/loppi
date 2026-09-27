@@ -134,9 +134,16 @@ pub fn init(db: &Connection) -> Result<(), String> {
             CHECK(ended_ms > started_ms)
          );
          CREATE UNIQUE INDEX IF NOT EXISTS manual_ranges_scope
-           ON manual_ranges(started_ms,ended_ms,source_mask);",
+           ON manual_ranges(started_ms,ended_ms,source_mask);
+         CREATE TABLE IF NOT EXISTS event_lineage (
+           old_event_id TEXT NOT NULL,
+           new_event_id TEXT NOT NULL,
+           created_ms INTEGER NOT NULL,
+           PRIMARY KEY(old_event_id,new_event_id)
+         );",
     )
-    .map_err(|error| error.to_string())
+    .map_err(|error| error.to_string())?;
+    crate::knowledge::init(db)
 }
 
 fn provider_name(provider: CloudProvider) -> &'static str {
@@ -257,7 +264,8 @@ pub fn task_views(
         CASE WHEN state='complete' AND provider='asr'
           AND NOT EXISTS(SELECT 1 FROM precise_segments p WHERE p.task_id=cloud_tasks.id)
           THEN 'no_transcript' ELSE state END,error_code,manual
-        FROM cloud_tasks WHERE provider=?1 ORDER BY created_ms DESC LIMIT ?2",
+        FROM cloud_tasks WHERE provider=?1 AND coalesce(error_code,'')!='data_cleared'
+        ORDER BY created_ms DESC LIMIT ?2",
         )
         .map_err(|e| e.to_string())?;
     stmt.query_map(
@@ -298,7 +306,8 @@ fn evidence(db: &Connection, from: i64, to: i64) -> Result<Vec<Evidence>, String
          WHERE ended_ms > ?1 AND started_ms < ?2
          UNION ALL
          SELECT b.id,b.started_ms,b.ended_ms,NULL,b.source FROM audio_blocks b
-         WHERE b.speech_active = 1 AND b.ended_ms > ?1 AND b.started_ms < ?2
+         WHERE b.speech_active = 1 AND b.retention_decision!='all_data'
+           AND b.ended_ms > ?1 AND b.started_ms < ?2
            AND NOT EXISTS (SELECT 1 FROM coarse_segments c WHERE c.block_id=b.id)
          ORDER BY 2,3,1",
         )
@@ -326,15 +335,29 @@ pub struct Candidate {
     pub hash: String,
 }
 
-fn build_candidates(evidence: &[Evidence]) -> Vec<Candidate> {
+fn build_candidates_with_cuts(
+    evidence: &[Evidence],
+    cuts: &[(i64, i64, i64, i64)],
+) -> Vec<Candidate> {
     let mut groups: Vec<Vec<&Evidence>> = Vec::new();
     for item in evidence {
         if item.end <= item.start {
             continue;
         }
         let new_group = groups.last().is_none_or(|group| {
-            item.start - group.iter().map(|e| e.end).max().unwrap() > CANDIDATE_POLICY.quiet_cut_ms
+            let prior_end = group.iter().map(|e| e.end).max().unwrap();
+            let mask = group.iter().fold(source_bit(&item.source), |mask, e| {
+                mask | source_bit(&e.source)
+            });
+            item.start - prior_end > CANDIDATE_POLICY.quiet_cut_ms
                 || item.end - g_start(group) > CANDIDATE_POLICY.max_window_ms
+                || cuts.iter().any(|(a, b, cut_mask, committed)| {
+                    *a <= item.start
+                        && *b >= prior_end
+                        && *a < *b
+                        && *cut_mask & mask == mask
+                        && item.start <= *committed
+                })
         });
         if new_group {
             groups.push(Vec::new());
@@ -371,6 +394,10 @@ fn build_candidates(evidence: &[Evidence]) -> Vec<Candidate> {
         .collect()
 }
 
+fn source_bit(source: &str) -> i64 {
+    if source == "microphone" { 1 } else { 2 }
+}
+
 fn g_start(group: &[&Evidence]) -> i64 {
     group[0].start
 }
@@ -405,7 +432,21 @@ pub fn refresh_candidates_in(tx: &Transaction<'_>, now: i64, force: bool) -> Res
         from = start;
     }
     let all = evidence(tx, from, now + 1)?;
-    let candidates = build_candidates(&all);
+    let cuts = {
+        let mut stmt = tx
+            .prepare(
+                "SELECT from_ms,to_ms,source_mask,committed_ms FROM clear_ranges
+          WHERE mode='all_data' AND from_ms<?2 AND to_ms>?1 ORDER BY from_ms",
+            )
+            .map_err(|e| e.to_string())?;
+        stmt.query_map(params![from, now + 1], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?
+    };
+    let candidates = build_candidates_with_cuts(&all, &cuts);
     let mut queued = 0;
     for mut candidate in candidates {
         if !force
@@ -420,6 +461,9 @@ pub fn refresh_candidates_in(tx: &Transaction<'_>, now: i64, force: bool) -> Res
             .query_row(
                 "SELECT id FROM candidate_windows WHERE started_ms < ?2 AND ended_ms > ?1
              AND min(ended_ms,?2)-max(started_ms,?1) >= (?2-?1)/2
+             AND NOT EXISTS(SELECT 1 FROM clear_ranges cut WHERE cut.mode='all_data'
+               AND cut.from_ms<candidate_windows.ended_ms
+               AND cut.to_ms>candidate_windows.started_ms)
              ORDER BY min(ended_ms,?2)-max(started_ms,?1) DESC LIMIT 1",
                 params![candidate.start, candidate.end],
                 |row| row.get(0),
@@ -568,7 +612,7 @@ fn sources_for(mask: i64) -> EventSources {
     }
 }
 
-fn asr_version(mask: i64, start: i64, end: i64) -> String {
+pub(crate) fn asr_version(mask: i64, start: i64, end: i64) -> String {
     format!("{mask}:{start}:{end}")
 }
 
@@ -697,6 +741,9 @@ pub fn edit_event_in(
     ensure_nonoverlap(tx, start, end, mask, Some(&id.to_string()))?;
     let audio_changed = old_start != start || old_end != end || old_mask != mask;
     let title_changed = old_title != title.trim();
+    if audio_changed {
+        crate::knowledge::pending_event_corrections(tx, id, now)?;
+    }
     tx.execute("UPDATE named_events SET started_ms=?2,ended_ms=?3,title=?4,source_mask=?5,revision=revision+1,
         boundary_locked=CASE WHEN ?6 THEN 1 ELSE boundary_locked END,
         title_locked=CASE WHEN ?7 THEN 1 ELSE title_locked END,asr_required=1 WHERE id=?1",
@@ -760,6 +807,7 @@ fn suppress_old(
     mask: i64,
     now: i64,
 ) -> Result<(), String> {
+    crate::knowledge::pending_event_corrections(tx, id, now)?;
     tx.execute(
         "UPDATE named_events SET deleted_ms=?2 WHERE id=?1 AND deleted_ms IS NULL",
         params![id.to_string(), now],
@@ -861,6 +909,13 @@ pub fn split_event_in(
     suppress_old(tx, id, start, end, mask, now)?;
     let left = insert_manual_tx(tx, start, at, mask, left_title.trim(), now)?;
     let right = insert_manual_tx(tx, at, end, mask, right_title.trim(), now)?;
+    for next in [left, right] {
+        tx.execute(
+            "INSERT INTO event_lineage VALUES (?1,?2,?3)",
+            params![id.to_string(), next.to_string(), now],
+        )
+        .map_err(|error| error.to_string())?;
+    }
     Ok((left, right))
 }
 
@@ -902,6 +957,13 @@ pub fn merge_events_in(
     suppress_old(tx, left, a_start, a_end, a_mask, now)?;
     suppress_old(tx, right, b_start, b_end, b_mask, now)?;
     let merged = insert_manual_tx(tx, start, end, mask, title.trim(), now)?;
+    for prior in [left, right] {
+        tx.execute(
+            "INSERT INTO event_lineage VALUES (?1,?2,?3)",
+            params![prior.to_string(), merged.to_string(), now],
+        )
+        .map_err(|error| error.to_string())?;
+    }
     Ok(merged)
 }
 
@@ -969,7 +1031,7 @@ pub fn transcribe_range_in(
     Ok(id)
 }
 
-fn queue_asr(
+pub(crate) fn queue_asr(
     tx: &Transaction<'_>,
     kind: &str,
     target: &str,
@@ -1255,7 +1317,7 @@ pub fn event_detail(
         return Err("event not found".to_owned());
     };
     let version = asr_version(mask, start, end);
-    Ok(TimelineItem {
+    let mut item = TimelineItem {
         id: Some(id),
         started_ms: start,
         ended_ms: end,
@@ -1276,7 +1338,9 @@ pub fn event_detail(
             limit,
             offset,
         )?,
-    })
+    };
+    fill_precise_revisions(db, &mut item.precise_segments)?;
+    Ok(item)
 }
 
 pub fn range_detail(
@@ -1293,7 +1357,25 @@ pub fn range_detail(
     let mut item = unorganized(db, start, end, mask)?;
     item.coarse_segments = coarse_for(db, start, end, mask, limit, offset)?;
     item.precise_segments = range_precise_for(db, start, end, mask, limit, offset)?;
+    fill_precise_revisions(db, &mut item.precise_segments)?;
     Ok(item)
+}
+
+fn fill_precise_revisions(db: &Connection, segments: &mut [PreciseSegment]) -> Result<(), String> {
+    let mut group_revisions = std::collections::HashMap::<String, i64>::new();
+    for segment in segments {
+        segment.revision = crate::knowledge::object_revision(db, "segment", segment.id)?;
+        if let Some(group) = &segment.speaker {
+            segment.speaker_revision = if let Some(revision) = group_revisions.get(group) {
+                *revision
+            } else {
+                let revision = crate::knowledge::object_revision(db, "speaker_group", segment.id)?;
+                group_revisions.insert(group.clone(), revision);
+                revision
+            };
+        }
+    }
+    Ok(())
 }
 
 fn coarse_for(
@@ -1342,7 +1424,11 @@ fn event_state(db: &Connection, id: &str, version: &str) -> Result<String, Strin
            ON b.started_ms<e.ended_ms AND b.ended_ms>e.started_ms
            AND ((b.source='microphone' AND e.source_mask&1!=0)
              OR (b.source='system' AND e.source_mask&2!=0))
-           WHERE e.id=?1 AND b.speech_active=1 AND b.media_path IS NULL)",
+           WHERE e.id=?1 AND b.speech_active=1 AND b.media_path IS NULL)
+         OR EXISTS(SELECT 1 FROM named_events e JOIN clear_ranges c
+           ON c.from_ms<e.ended_ms AND c.to_ms>e.started_ms
+           AND c.source_mask&e.source_mask!=0 AND c.mode='all_data'
+           AND c.committed_ms>=e.created_ms WHERE e.id=?1)",
             params![id],
             |row| row.get(0),
         )
@@ -1418,8 +1504,14 @@ fn precise_for(
 ) -> Result<Vec<PreciseSegment>, String> {
     let mut stmt = db
         .prepare(
-            "SELECT p.id,p.source,p.started_ms,p.ended_ms,p.text,p.speaker_scope,p.speaker_label
+            "SELECT p.id,p.source,p.started_ms,p.ended_ms,p.text,g.group_id,p.speaker_label,
+             (SELECT c.text FROM text_corrections c WHERE c.current_segment_id=p.id
+              AND c.state='active' ORDER BY c.updated_ms DESC LIMIT 1),
+             sb.person_id,person.display_name,sb.origin
         FROM precise_segments p JOIN cloud_tasks t ON t.id=p.task_id
+        LEFT JOIN speaker_groups g ON g.speaker_scope=p.speaker_scope AND g.speaker_label=p.speaker_label
+        LEFT JOIN speaker_bindings sb ON sb.current_segment_id=p.id AND sb.state='active'
+        LEFT JOIN people person ON person.id=sb.person_id
         WHERE t.target_kind=?1 AND t.target_id=?2 AND t.target_version=?3 AND t.state='complete'
           AND p.started_ms < ?5 AND p.ended_ms > ?4
           ORDER BY p.started_ms,p.id LIMIT ?6 OFFSET ?7",
@@ -1429,6 +1521,8 @@ fn precise_for(
         params![kind, id, version, start, end, limit, offset],
         |row| {
             let source: String = row.get(1)?;
+            let original: String = row.get(4)?;
+            let correction: Option<String> = row.get(7)?;
             Ok(PreciseSegment {
                 id: Uuid::parse_str(&row.get::<_, String>(0)?).unwrap(),
                 source: if source == "microphone" {
@@ -1438,10 +1532,17 @@ fn precise_for(
                 },
                 started_ms: row.get(2)?,
                 ended_ms: row.get(3)?,
-                text: row.get(4)?,
-                speaker: row
-                    .get::<_, Option<String>>(6)?
-                    .map(|s| format!("{}:{s}", row.get::<_, String>(5).unwrap())),
+                text: correction.clone().unwrap_or_else(|| original.clone()),
+                speaker: row.get(5)?,
+                original_text: correction.as_ref().map(|_| original),
+                corrected: correction.is_some(),
+                person_id: row
+                    .get::<_, Option<String>>(8)?
+                    .map(|id| Uuid::parse_str(&id).unwrap()),
+                person_name: row.get(9)?,
+                person_origin: row.get(10)?,
+                revision: 0,
+                speaker_revision: 0,
             })
         },
     )
@@ -1458,8 +1559,14 @@ fn range_precise_for(
     limit: i64,
     offset: i64,
 ) -> Result<Vec<PreciseSegment>, String> {
-    let mut stmt=db.prepare("SELECT p.id,p.source,p.started_ms,p.ended_ms,p.text,p.speaker_scope,p.speaker_label
+    let mut stmt=db.prepare("SELECT p.id,p.source,p.started_ms,p.ended_ms,p.text,g.group_id,p.speaker_label,
+             (SELECT c.text FROM text_corrections c WHERE c.current_segment_id=p.id
+              AND c.state='active' ORDER BY c.updated_ms DESC LIMIT 1),
+             sb.person_id,person.display_name,sb.origin
         FROM precise_segments p JOIN cloud_tasks t ON t.id=p.task_id
+        LEFT JOIN speaker_groups g ON g.speaker_scope=p.speaker_scope AND g.speaker_label=p.speaker_label
+        LEFT JOIN speaker_bindings sb ON sb.current_segment_id=p.id AND sb.state='active'
+        LEFT JOIN people person ON person.id=sb.person_id
         JOIN manual_ranges m ON m.id=t.target_id
         WHERE t.target_kind='range' AND t.state='complete' AND t.target_version=cast(m.revision AS TEXT)
           AND p.started_ms < ?2 AND p.ended_ms > ?1
@@ -1468,6 +1575,8 @@ fn range_precise_for(
         .map_err(|e|e.to_string())?;
     stmt.query_map(params![start, end, mask, limit, offset], |row| {
         let source: String = row.get(1)?;
+        let original: String = row.get(4)?;
+        let correction: Option<String> = row.get(7)?;
         Ok(PreciseSegment {
             id: Uuid::parse_str(&row.get::<_, String>(0)?).unwrap(),
             source: if source == "microphone" {
@@ -1477,10 +1586,17 @@ fn range_precise_for(
             },
             started_ms: row.get(2)?,
             ended_ms: row.get(3)?,
-            text: row.get(4)?,
-            speaker: row
-                .get::<_, Option<String>>(6)?
-                .map(|s| format!("{}:{s}", row.get::<_, String>(5).unwrap())),
+            text: correction.clone().unwrap_or_else(|| original.clone()),
+            speaker: row.get(5)?,
+            original_text: correction.as_ref().map(|_| original),
+            corrected: correction.is_some(),
+            person_id: row
+                .get::<_, Option<String>>(8)?
+                .map(|id| Uuid::parse_str(&id).unwrap()),
+            person_name: row.get(9)?,
+            person_origin: row.get(10)?,
+            revision: 0,
+            speaker_revision: 0,
         })
     })
     .map_err(|e| e.to_string())?
@@ -1605,6 +1721,31 @@ pub fn take_task(
 }
 
 pub fn task_current(db: &Connection, task: &CloudTask) -> Result<bool, String> {
+    let state: Option<String> = db
+        .query_row(
+            "SELECT state FROM cloud_tasks WHERE id=?1",
+            params![task.id.to_string()],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+    if state.as_deref() == Some("superseded") || state.is_none() {
+        return Ok(false);
+    }
+    let erased: bool = db
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM clear_ranges c WHERE c.mode='all_data'
+         AND c.committed_ms > (SELECT created_ms FROM cloud_tasks WHERE id=?1)
+         AND c.from_ms<?3 AND c.to_ms>?2
+         AND (?4 IS NULL OR (?4='microphone' AND c.source_mask&1!=0)
+              OR (?4='system' AND c.source_mask&2!=0)))",
+            params![task.id.to_string(), task.start, task.end, task.source],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if erased {
+        return Ok(false);
+    }
     let current: Option<String> = match task.target_kind.as_str() {
         "candidate" => db
             .query_row(
@@ -1740,29 +1881,30 @@ pub fn task_failed(db: &Connection, task: &CloudTask, error: &str, now: i64) -> 
     let retry = transient;
     let scale = attempts.min(10);
     let next = now + (30_000_i64 * scale * scale).min(10 * 60 * 1000);
-    db.execute(
-        "UPDATE cloud_tasks SET state=?2,attempts=?3,next_attempt_ms=?4,
+    let updated = db
+        .execute(
+            "UPDATE cloud_tasks SET state=?2,attempts=?3,next_attempt_ms=?4,
         error_code=?5,updated_ms=CASE WHEN provider='asr' THEN updated_ms ELSE ?6 END
         WHERE id=?1 AND state IN ('processing','submitted')",
-        params![
-            task.id.to_string(),
-            if retry {
-                if task.provider == CloudProvider::Asr {
-                    "submitted"
+            params![
+                task.id.to_string(),
+                if retry {
+                    if task.provider == CloudProvider::Asr {
+                        "submitted"
+                    } else {
+                        "pending"
+                    }
                 } else {
-                    "pending"
-                }
-            } else {
-                "failed"
-            },
-            attempts,
-            next,
-            error,
-            now
-        ],
-    )
-    .map_err(|e| e.to_string())?;
-    if task.provider == CloudProvider::Llm {
+                    "failed"
+                },
+                attempts,
+                next,
+                error,
+                now
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+    if updated > 0 && task.provider == CloudProvider::Llm {
         db.execute(
             "UPDATE candidate_windows SET state=?2,error_code=?3 WHERE id=?1
             AND input_hash=?4",
@@ -2149,6 +2291,7 @@ pub fn publish_asr(
         .source
         .as_deref()
         .ok_or_else(|| "asr task missing source".to_owned())?;
+    let mut inserted_segments = Vec::new();
     for utterance in utterances {
         let start = task
             .start
@@ -2161,13 +2304,14 @@ pub fn publish_asr(
         if start < task.start || end > task.end || end <= start {
             return Err("provider_invalid_timing".to_owned());
         }
-        if !utterance_has_retained_audio(&tx, source, start, end)? {
+        if !utterance_has_retained_audio(&tx, source, start, end, task.submit_attempts > 0)? {
             return Err("provider_unmapped_timing".to_owned());
         }
+        let segment_id = Uuid::new_v4();
         tx.execute(
             "INSERT INTO precise_segments VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
             params![
-                Uuid::new_v4().to_string(),
+                segment_id.to_string(),
                 task.id.to_string(),
                 source,
                 start,
@@ -2178,7 +2322,21 @@ pub fn publish_asr(
             ],
         )
         .map_err(|e| e.to_string())?;
+        inserted_segments.push((segment_id, source.to_owned(), start, end));
+        if let Some(speaker) = &utterance.speaker {
+            crate::knowledge::register_speaker(&tx, &task.id.to_string(), speaker)?;
+            crate::knowledge::enqueue_voice_observation(
+                &tx,
+                segment_id,
+                &format!("{}:{speaker}", task.id),
+                source,
+                start,
+                end,
+                now,
+            )?;
+        }
     }
+    crate::knowledge::reconcile_corrections(&tx, &inserted_segments, now)?;
     tx.execute(
         "UPDATE cloud_tasks SET state='complete',updated_ms=?2,error_code=NULL WHERE id=?1",
         params![task.id.to_string(), now],
@@ -2193,6 +2351,7 @@ fn utterance_has_retained_audio(
     source: &str,
     start: i64,
     end: i64,
+    allow_cleared_original: bool,
 ) -> Result<bool, String> {
     let gap: bool = db
         .query_row(
@@ -2208,12 +2367,13 @@ fn utterance_has_retained_audio(
     let mut statement = db
         .prepare(
             "SELECT started_ms,ended_ms FROM audio_blocks WHERE source=?1
-            AND media_path IS NOT NULL AND started_ms<?3 AND ended_ms>?2
+            AND (media_path IS NOT NULL OR (?4 AND retention_decision='raw_audio'))
+            AND started_ms<?3 AND ended_ms>?2
             ORDER BY started_ms,ended_ms",
         )
         .map_err(|e| e.to_string())?;
     let spans = statement
-        .query_map(params![source, start, end], |row| {
+        .query_map(params![source, start, end, allow_cleared_original], |row| {
             Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
         })
         .map_err(|e| e.to_string())?;
@@ -2263,6 +2423,59 @@ pub fn audio_manifest(db: &Connection, task: &CloudTask) -> Result<Vec<AudioPart
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())
+}
+
+pub fn voice_manifest(
+    db: &Connection,
+    source: &str,
+    start: i64,
+    end: i64,
+) -> Result<(CloudTask, Vec<AudioPart>), String> {
+    if end - start < 2_000
+        || end - start > 15_000
+        || !matches!(source, "microphone" | "system")
+        || !utterance_has_retained_audio(db, source, start, end, false)?
+    {
+        return Err("speaker audio is unavailable or unsuitable".to_owned());
+    }
+    let task = CloudTask {
+        id: Uuid::nil(),
+        provider: CloudProvider::Asr,
+        target_kind: "range".into(),
+        target_id: String::new(),
+        target_version: String::new(),
+        model_id: String::new(),
+        start,
+        end,
+        source: Some(source.to_owned()),
+        remote_id: Uuid::nil(),
+        attempts: 0,
+        submit_attempts: 0,
+        updated_ms: 0,
+    };
+    let parts = audio_manifest(db, &task)?;
+    Ok((task, parts))
+}
+
+pub fn voice_pcm_16k(
+    directory: &Path,
+    task: &CloudTask,
+    parts: &[AudioPart],
+) -> Result<Vec<f32>, String> {
+    let wav = assemble_wav(directory, task, parts)?;
+    let samples: Vec<f32> = wav
+        .get(44..)
+        .ok_or_else(|| "speaker WAV invalid".to_owned())?
+        .chunks_exact(2)
+        .map(|bytes| i16::from_le_bytes([bytes[0], bytes[1]]) as f32 / 32768.0)
+        .collect();
+    let power =
+        samples.iter().map(|value| value * value).sum::<f32>() / samples.len().max(1) as f32;
+    let clipped = samples.iter().filter(|value| value.abs() > 0.98).count();
+    if power.sqrt() < 0.005 || clipped * 20 > samples.len() {
+        return Err("speaker audio level unsuitable".to_owned());
+    }
+    Ok(samples)
 }
 
 pub fn assemble_wav(

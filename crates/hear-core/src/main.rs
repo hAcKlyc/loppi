@@ -10,6 +10,7 @@ use std::io::{Read, Write};
 use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
+use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, SyncSender};
 use std::sync::{Arc, Mutex};
@@ -20,9 +21,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 const MAX_REQUEST_BYTES: u64 = 1024 * 1024;
 const MAX_CLIENTS: usize = 32;
 mod analysis;
+mod archive;
 mod capture;
+mod cleanup;
 mod cloud;
 mod events;
+mod knowledge;
 mod media;
 mod microphone;
 mod model_pack;
@@ -103,8 +107,13 @@ fn run() -> Result<(), String> {
     let connection =
         Connection::open(directory.join("hear.sqlite")).map_err(|error| error.to_string())?;
     let mut store = Store::new(connection)?;
+    archive::recover(&store.db)?;
+    archive::cleanup_spool(&directory)?;
+    cleanup::drain_deletions(&store.db, &directory, now_ms()?)?;
+    cleanup::recover_staging(&store.db, &directory)?;
     store.recover(&directory)?;
     events::recover_tasks(&mut store.db, now_ms()?)?;
+    knowledge::recover_voice(&store.db)?;
     let login_session = current_login_session()?;
     let capture_after_launch =
         launch_mode == LaunchMode::Login && !store.quit_in_login(login_session)?;
@@ -115,6 +124,7 @@ fn run() -> Result<(), String> {
     let run_id = uuid::Uuid::new_v4();
     let logs = LogWorker::start(directory.clone());
     let models_present = model_pack::installed_path(&directory).is_dir();
+    let speaker_present = model_pack::speaker_model_path(&directory).is_file();
     let models = Arc::new(Mutex::new(ModelState {
         phase: if models_present {
             ModelPhase::Checking
@@ -122,6 +132,11 @@ fn run() -> Result<(), String> {
             ModelPhase::Missing
         },
         progress_percent: 0,
+        speaker_phase: if speaker_present {
+            ModelPhase::Checking
+        } else {
+            ModelPhase::Missing
+        },
     }));
     logs.emit(
         ClientKind::Core,
@@ -132,6 +147,8 @@ fn run() -> Result<(), String> {
         store: Mutex::new(store),
         llm_outbound: Mutex::new(()),
         asr_outbound: Mutex::new(()),
+        voice_outbound: Mutex::new(()),
+        cleanup_gate: Mutex::new(()),
         logs,
         launch_mode,
         run_id,
@@ -141,12 +158,14 @@ fn run() -> Result<(), String> {
         system_busy: AtomicBool::new(false),
         capture: Mutex::new(CaptureRuntime::default()),
         allow_capture: AtomicBool::new(capture_after_launch),
+        maintenance_pause: AtomicBool::new(false),
     });
-    if models_present {
+    if models_present || speaker_present {
         let models = Arc::clone(&shared.models);
         let directory = directory.clone();
         thread::spawn(move || {
             let verified = model_pack::ready(&directory);
+            let speaker_verified = model_pack::speaker_ready(&directory);
             if let Ok(mut state) = models.lock() {
                 if matches!(state.phase, ModelPhase::Checking) {
                     state.phase = if verified {
@@ -155,6 +174,13 @@ fn run() -> Result<(), String> {
                         ModelPhase::Missing
                     };
                     state.progress_percent = if verified { 100 } else { 0 };
+                }
+                if matches!(state.speaker_phase, ModelPhase::Checking) {
+                    state.speaker_phase = if speaker_verified {
+                        ModelPhase::Ready
+                    } else {
+                        ModelPhase::Missing
+                    };
                 }
             }
         });
@@ -177,6 +203,11 @@ fn run() -> Result<(), String> {
         let cloud_shared = Arc::clone(&shared);
         let cloud_stop = Arc::clone(&stop);
         thread::spawn(move || cloud_loop(cloud_shared, cloud_stop, provider));
+    }
+    {
+        let voice_shared = Arc::clone(&shared);
+        let voice_stop = Arc::clone(&stop);
+        thread::spawn(move || voice_loop(voice_shared, voice_stop));
     }
     let clients = Arc::new(AtomicUsize::new(0));
     listener
@@ -386,6 +417,172 @@ fn cloud_loop(
             if let Ok(store) = shared.store.lock() {
                 let _ = events::task_failed(&store.db, &task, &error, now_ms().unwrap_or(now));
             }
+        }
+    }
+}
+
+fn run_voice_worker(model_path: &Path, samples: &[f32]) -> Result<Vec<f32>, String> {
+    let worker = std::env::current_exe()
+        .map_err(|error| error.to_string())?
+        .with_file_name("hear-worker");
+    run_voice_worker_with_timeout(&worker, model_path, samples, Duration::from_secs(30))
+}
+
+fn run_voice_worker_with_timeout(
+    worker: &Path,
+    model_path: &Path,
+    samples: &[f32],
+    timeout: Duration,
+) -> Result<Vec<f32>, String> {
+    let deadline = Instant::now() + timeout;
+    let mut child = Command::new(worker)
+        .arg("embed")
+        .arg(model_path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|_| "worker_failed".to_owned())?;
+    let mut input = child
+        .stdin
+        .take()
+        .ok_or_else(|| "worker_failed".to_owned())?;
+    let mut bytes = Vec::with_capacity(4 + samples.len() * 4);
+    bytes.extend_from_slice(&(samples.len() as u32).to_le_bytes());
+    for sample in samples {
+        bytes.extend_from_slice(&sample.to_le_bytes());
+    }
+    let (sender, receiver) = mpsc::sync_channel(1);
+    thread::spawn(move || {
+        let result = input
+            .write_all(&bytes)
+            .map_err(|_| "worker_failed".to_owned());
+        drop(input);
+        let _ = sender.send(result);
+    });
+    let mut write_result = None;
+    loop {
+        if let Ok(result) = receiver.try_recv() {
+            write_result = Some(result);
+        }
+        if matches!(write_result, Some(Err(_))) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err("worker_failed".into());
+        }
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(50)),
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err("worker_timeout".to_owned());
+            }
+        }
+    }
+    if write_result.is_none() {
+        write_result = receiver.recv_timeout(Duration::from_millis(500)).ok();
+    }
+    if !matches!(write_result, Some(Ok(()))) {
+        let _ = child.wait();
+        return Err("worker_failed".into());
+    }
+    let output = child
+        .wait_with_output()
+        .map_err(|_| "worker_failed".to_owned())?;
+    if !output.status.success() || output.stdout.len() > 8_192 {
+        return Err("worker_failed".to_owned());
+    }
+    serde_json::from_slice(&output.stdout).map_err(|_| "model_invalid".to_owned())
+}
+
+fn voice_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
+    while !stop.load(Ordering::Acquire) {
+        let ready = shared
+            .models
+            .lock()
+            .is_ok_and(|state| matches!(state.speaker_phase, ModelPhase::Ready));
+        if !ready {
+            thread::sleep(Duration::from_secs(2));
+            continue;
+        }
+        let Ok(_voice_gate) = shared.voice_outbound.lock() else {
+            break;
+        };
+        let now = now_ms().unwrap_or(0);
+        let work = shared
+            .store
+            .lock()
+            .map_err(|error| error.to_string())
+            .and_then(|mut store| knowledge::take_voice(&mut store.db, now));
+        match work {
+            Ok(Some(work)) => {
+                let manifest = shared
+                    .store
+                    .lock()
+                    .map_err(|error| error.to_string())
+                    .and_then(|store| {
+                        events::voice_manifest(&store.db, &work.source, work.start, work.end)
+                    });
+                let result = manifest
+                    .and_then(|(task, parts)| {
+                        events::voice_pcm_16k(&shared.directory, &task, &parts)
+                    })
+                    .and_then(|pcm| {
+                        run_voice_worker(&model_pack::speaker_model_path(&shared.directory), &pcm)
+                    });
+                let mut event = LogEvent::simple("identity", LogLevel::Info, "voice_processed");
+                event.job_id = Some(work.segment_id);
+                match result {
+                    Ok(vector) => {
+                        if let Ok(mut store) = shared.store.lock() {
+                            if knowledge::publish_voice(
+                                &mut store.db,
+                                &work,
+                                &vector,
+                                now_ms().unwrap_or(now),
+                            )
+                            .is_err()
+                            {
+                                let _ = knowledge::fail_voice(
+                                    &store.db,
+                                    work.segment_id,
+                                    "model_invalid",
+                                    now,
+                                );
+                                event.level = LogLevel::Warn;
+                                event.error_code = Some("model_invalid".into());
+                            }
+                        }
+                    }
+                    Err(error) => {
+                        let code = if error.contains("audio") {
+                            "audio_unavailable"
+                        } else if error == "worker_timeout" {
+                            "worker_timeout"
+                        } else {
+                            "worker_failed"
+                        };
+                        if let Ok(store) = shared.store.lock() {
+                            let _ = knowledge::fail_voice(&store.db, work.segment_id, code, now);
+                        }
+                        event.level = LogLevel::Warn;
+                        event.error_code = Some(code.to_owned());
+                    }
+                }
+                shared.logs.emit(ClientKind::Worker, work.segment_id, event);
+            }
+            Ok(None) => {
+                let matched = shared
+                    .store
+                    .lock()
+                    .map_err(|error| error.to_string())
+                    .and_then(|mut store| knowledge::match_one_ready(&mut store.db, now));
+                if !matches!(matched, Ok(true)) {
+                    thread::sleep(Duration::from_secs(1));
+                }
+            }
+            Err(_) => thread::sleep(Duration::from_secs(2)),
         }
     }
 }
@@ -737,6 +934,7 @@ fn capture_supervisor(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
             .lock()
             .is_ok_and(|models| matches!(models.phase, ModelPhase::Ready));
         let capture_allowed = shared.allow_capture.load(Ordering::Acquire)
+            && !shared.maintenance_pause.load(Ordering::Acquire)
             && models_ready
             && state.as_ref().is_ok_and(|state| {
                 state.enabled_intent && !state.paused_intent && !state.storage_paused
@@ -821,6 +1019,8 @@ struct CoreState {
     store: Mutex<Store>,
     llm_outbound: Mutex<()>,
     asr_outbound: Mutex<()>,
+    voice_outbound: Mutex<()>,
+    cleanup_gate: Mutex<()>,
     logs: LogWorker,
     launch_mode: LaunchMode,
     run_id: uuid::Uuid,
@@ -830,6 +1030,30 @@ struct CoreState {
     system_busy: AtomicBool,
     capture: Mutex<CaptureRuntime>,
     allow_capture: AtomicBool,
+    maintenance_pause: AtomicBool,
+}
+
+struct CaptureMaintenance<'a>(&'a CoreState);
+
+impl Drop for CaptureMaintenance<'_> {
+    fn drop(&mut self) {
+        self.0.maintenance_pause.store(false, Ordering::Release);
+    }
+}
+
+fn pause_capture_for_cleanup(shared: &CoreState) -> Result<CaptureMaintenance<'_>, String> {
+    shared.maintenance_pause.store(true, Ordering::Release);
+    let guard = CaptureMaintenance(shared);
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while shared.microphone_busy.load(Ordering::Acquire)
+        || shared.system_busy.load(Ordering::Acquire)
+    {
+        if Instant::now() >= deadline {
+            return Err("audio capture did not finish sealing in time; retry cleanup".into());
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    Ok(guard)
 }
 
 #[derive(Default)]
@@ -1544,6 +1768,504 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                     },
                 }
             }
+            Request::CorrectText {
+                segment_id,
+                text,
+                expected_revision,
+            } => {
+                let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                match store.mutate_response(envelope.id, &mutation_fingerprint, |tx| {
+                    knowledge::expect_revision(tx, "segment", segment_id, expected_revision)?;
+                    knowledge::correct_text(tx, segment_id, &text, now_ms()?)?;
+                    Ok(Response::TextChanged {
+                        id: envelope.id,
+                        segment_id,
+                        revision: knowledge::object_revision(tx, "segment", segment_id)?,
+                    })
+                }) {
+                    Ok(response) => response,
+                    Err(error) => Response::Error {
+                        id: envelope.id,
+                        code: mutation_error_code(&error, "text_correction_invalid"),
+                        message: error,
+                    },
+                }
+            }
+            Request::RevertText {
+                segment_id,
+                expected_revision,
+            } => {
+                let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                match store.mutate_response(envelope.id, &mutation_fingerprint, |tx| {
+                    knowledge::expect_revision(tx, "segment", segment_id, expected_revision)?;
+                    knowledge::revert_text(tx, segment_id, now_ms()?)?;
+                    Ok(Response::TextChanged {
+                        id: envelope.id,
+                        segment_id,
+                        revision: knowledge::object_revision(tx, "segment", segment_id)?,
+                    })
+                }) {
+                    Ok(response) => response,
+                    Err(error) => Response::Error {
+                        id: envelope.id,
+                        code: mutation_error_code(&error, "text_correction_invalid"),
+                        message: error,
+                    },
+                }
+            }
+            Request::People => {
+                let store = shared.store.lock().map_err(|e| e.to_string())?;
+                Response::People {
+                    id: envelope.id,
+                    people: knowledge::people(&store.db)?,
+                }
+            }
+            Request::ObjectRevision { kind, object_id } => {
+                let store = shared.store.lock().map_err(|error| error.to_string())?;
+                match knowledge::object_revision(&store.db, &kind, object_id) {
+                    Ok(revision) => Response::ObjectRevision {
+                        id: envelope.id,
+                        revision,
+                    },
+                    Err(message) => Response::Error {
+                        id: envelope.id,
+                        code: "revision_invalid".into(),
+                        message,
+                    },
+                }
+            }
+            Request::VoiceSamples { person_id } => {
+                let store = shared.store.lock().map_err(|e| e.to_string())?;
+                Response::VoiceSamples {
+                    id: envelope.id,
+                    samples: knowledge::voice_samples(&store.db, person_id)?,
+                }
+            }
+            Request::ReviewItems => {
+                let store = shared.store.lock().map_err(|e| e.to_string())?;
+                Response::ReviewItems {
+                    id: envelope.id,
+                    items: knowledge::review_items(&store.db)?,
+                }
+            }
+            Request::ResolveReview {
+                item_id,
+                target_segment_id,
+                expected_revision,
+            } => {
+                let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                match store.mutate_response(envelope.id, &mutation_fingerprint, |tx| {
+                    knowledge::expect_revision(tx, "review", item_id, expected_revision)?;
+                    knowledge::resolve_review(tx, item_id, target_segment_id, now_ms()?)?;
+                    Ok(Response::ReviewResolved {
+                        id: envelope.id,
+                        item_id,
+                        target_revision: target_segment_id
+                            .map(|target| knowledge::object_revision(tx, "segment", target))
+                            .transpose()?,
+                    })
+                }) {
+                    Ok(response) => response,
+                    Err(error) => Response::Error {
+                        id: envelope.id,
+                        code: mutation_error_code(&error, "review_invalid"),
+                        message: error,
+                    },
+                }
+            }
+            Request::Search {
+                query,
+                from_ms,
+                to_ms,
+                person_id,
+                offset,
+                limit,
+            } => {
+                let store = shared.store.lock().map_err(|e| e.to_string())?;
+                match knowledge::search(
+                    &store.db,
+                    query.as_deref(),
+                    from_ms,
+                    to_ms,
+                    person_id,
+                    offset,
+                    limit,
+                ) {
+                    Ok(hits) => Response::Search {
+                        id: envelope.id,
+                        empty_reason: if hits.is_empty() && offset == 0 {
+                            Some(knowledge::search_empty_reason(
+                                &store.db, from_ms, to_ms, person_id,
+                            )?)
+                        } else {
+                            None
+                        },
+                        hits,
+                    },
+                    Err(error) => Response::Error {
+                        id: envelope.id,
+                        code: "search_invalid".into(),
+                        message: error,
+                    },
+                }
+            }
+            Request::PreviewCleanup {
+                from_ms,
+                to_ms,
+                sources,
+                mode,
+            } => {
+                let store = shared.store.lock().map_err(|e| e.to_string())?;
+                match cleanup::preview(&store.db, from_ms, to_ms, sources, mode, now_ms()?) {
+                    Ok(preview) => Response::CleanupPreview {
+                        id: envelope.id,
+                        preview,
+                    },
+                    Err(error) => Response::Error {
+                        id: envelope.id,
+                        code: "cleanup_preview_invalid".into(),
+                        message: error,
+                    },
+                }
+            }
+            Request::ExecuteCleanup {
+                preview_token,
+                confirmed_all_data,
+            } => {
+                let _cleanup_gate = shared.cleanup_gate.lock().map_err(|e| e.to_string())?;
+                let _llm = shared.llm_outbound.lock().map_err(|e| e.to_string())?;
+                let _asr = shared.asr_outbound.lock().map_err(|e| e.to_string())?;
+                let _voice = shared.voice_outbound.lock().map_err(|e| e.to_string())?;
+                let near_capture_edge = {
+                    let store = shared.store.lock().map_err(|e| e.to_string())?;
+                    cleanup::verified_scope(&store.db, preview_token, confirmed_all_data, now_ms()?)
+                        .is_ok_and(|scope| scope.end >= now_ms().unwrap_or(0) - 20_000)
+                };
+                let _maintenance = if near_capture_edge {
+                    Some(pause_capture_for_cleanup(shared)?)
+                } else {
+                    None
+                };
+                let snapshot = (|| {
+                    let store = shared.store.lock().map_err(|e| e.to_string())?;
+                    if let Some(previous) =
+                        store.prior_mutation_response(envelope.id, &mutation_fingerprint)?
+                    {
+                        Ok(Err(previous))
+                    } else {
+                        let scope = cleanup::verified_scope(
+                            &store.db,
+                            preview_token,
+                            confirmed_all_data,
+                            now_ms()?,
+                        )?;
+                        let originals = cleanup::originals(&store.db, &scope)?;
+                        Ok(Ok((scope, originals)))
+                    }
+                })();
+                match snapshot {
+                    Ok(Err(previous)) => previous,
+                    Ok(Ok((scope, originals))) => {
+                        match cleanup::prepare_media(&shared.directory, &scope, originals) {
+                            Ok(prepared) => {
+                                let result = {
+                                    let mut store =
+                                        shared.store.lock().map_err(|e| e.to_string())?;
+                                    store.mutate_response(
+                                        envelope.id,
+                                        &mutation_fingerprint,
+                                        |tx| {
+                                            let (cleared_audio_blocks, physical_deletions_pending) =
+                                                cleanup::apply(tx, &scope, &prepared, now_ms()?)?;
+                                            Ok(Response::CleanupComplete {
+                                                id: envelope.id,
+                                                cleared_audio_blocks,
+                                                physical_deletions_pending,
+                                            })
+                                        },
+                                    )
+                                };
+                                match result {
+                                    Ok(response @ Response::CleanupComplete { .. }) => {
+                                        cleanup::clear_staging_markers(
+                                            &shared.directory,
+                                            &prepared,
+                                        );
+                                        if let Ok(store) = shared.store.lock() {
+                                            let _ = cleanup::drain_deletions(
+                                                &store.db,
+                                                &shared.directory,
+                                                now_ms()?,
+                                            );
+                                        }
+                                        response
+                                    }
+                                    Ok(response) => {
+                                        cleanup::remove_prepared(&shared.directory, &prepared);
+                                        response
+                                    }
+                                    Err(error) => {
+                                        cleanup::remove_prepared(&shared.directory, &prepared);
+                                        Response::Error {
+                                            id: envelope.id,
+                                            code: "cleanup_failed".into(),
+                                            message: error,
+                                        }
+                                    }
+                                }
+                            }
+                            Err(error) => Response::Error {
+                                id: envelope.id,
+                                code: "cleanup_failed".into(),
+                                message: error,
+                            },
+                        }
+                    }
+                    Err(error) => Response::Error {
+                        id: envelope.id,
+                        code: "cleanup_invalid".into(),
+                        message: error,
+                    },
+                }
+            }
+            Request::ExportRange {
+                from_ms,
+                to_ms,
+                sources,
+                include_audio,
+                include_screenshots,
+                destination,
+            } => {
+                let db_path = shared.directory.join("hear.sqlite");
+                let result = rusqlite::Connection::open(db_path)
+                    .map_err(|error| error.to_string())
+                    .and_then(|db| {
+                        db.busy_timeout(Duration::from_secs(5))
+                            .map_err(|error| error.to_string())?;
+                        archive::export(
+                            &db,
+                            &shared.directory,
+                            from_ms,
+                            to_ms,
+                            sources,
+                            include_audio,
+                            include_screenshots,
+                            &destination,
+                            &shared.cleanup_gate,
+                        )
+                    });
+                match result {
+                    Ok((audio_files, transcript_segments)) => Response::ExportComplete {
+                        id: envelope.id,
+                        destination,
+                        audio_files,
+                        transcript_segments,
+                    },
+                    Err(error) => Response::Error {
+                        id: envelope.id,
+                        code: "export_failed".into(),
+                        message: error,
+                    },
+                }
+            }
+            Request::CreatePerson { display_name } => {
+                let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                match store.mutate_response(envelope.id, &mutation_fingerprint, |tx| {
+                    let person_id = knowledge::create_person(tx, &display_name, now_ms()?)?;
+                    Ok(Response::PersonChanged {
+                        id: envelope.id,
+                        person_id,
+                        revision: Some(knowledge::object_revision(tx, "person", person_id)?),
+                        deleted: false,
+                    })
+                }) {
+                    Ok(response) => response,
+                    Err(error) => Response::Error {
+                        id: envelope.id,
+                        code: "person_invalid".into(),
+                        message: error,
+                    },
+                }
+            }
+            Request::RenamePerson {
+                person_id,
+                display_name,
+                expected_revision,
+            } => {
+                let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                match store.mutate_response(envelope.id, &mutation_fingerprint, |tx| {
+                    knowledge::expect_revision(tx, "person", person_id, expected_revision)?;
+                    knowledge::rename_person(tx, person_id, &display_name, now_ms()?)?;
+                    Ok(Response::PersonChanged {
+                        id: envelope.id,
+                        person_id,
+                        revision: Some(knowledge::object_revision(tx, "person", person_id)?),
+                        deleted: false,
+                    })
+                }) {
+                    Ok(response) => response,
+                    Err(error) => Response::Error {
+                        id: envelope.id,
+                        code: mutation_error_code(&error, "person_invalid"),
+                        message: error,
+                    },
+                }
+            }
+            Request::DeletePerson {
+                person_id,
+                expected_revision,
+            } => {
+                let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                match store.mutate_response(envelope.id, &mutation_fingerprint, |tx| {
+                    knowledge::expect_revision(tx, "person", person_id, expected_revision)?;
+                    knowledge::delete_person(tx, person_id)?;
+                    Ok(Response::PersonChanged {
+                        id: envelope.id,
+                        person_id,
+                        revision: None,
+                        deleted: true,
+                    })
+                }) {
+                    Ok(response) => response,
+                    Err(error) => Response::Error {
+                        id: envelope.id,
+                        code: mutation_error_code(&error, "person_invalid"),
+                        message: error,
+                    },
+                }
+            }
+            Request::BindSpeaker {
+                segment_id,
+                person_id,
+                entire_local_speaker,
+                expected_revision,
+            } => {
+                let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                match store.mutate_response(envelope.id, &mutation_fingerprint, |tx| {
+                    knowledge::expect_revision(
+                        tx,
+                        if entire_local_speaker {
+                            "speaker_group"
+                        } else {
+                            "segment"
+                        },
+                        segment_id,
+                        expected_revision,
+                    )?;
+                    knowledge::bind_speaker(
+                        tx,
+                        segment_id,
+                        person_id,
+                        entire_local_speaker,
+                        now_ms()?,
+                    )?;
+                    Ok(Response::TextChanged {
+                        id: envelope.id,
+                        segment_id,
+                        revision: knowledge::object_revision(
+                            tx,
+                            if entire_local_speaker {
+                                "speaker_group"
+                            } else {
+                                "segment"
+                            },
+                            segment_id,
+                        )?,
+                    })
+                }) {
+                    Ok(response) => response,
+                    Err(error) => Response::Error {
+                        id: envelope.id,
+                        code: mutation_error_code(&error, "speaker_binding_invalid"),
+                        message: error,
+                    },
+                }
+            }
+            Request::UnbindSpeaker {
+                segment_id,
+                entire_local_speaker,
+                expected_revision,
+            } => {
+                let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                match store.mutate_response(envelope.id, &mutation_fingerprint, |tx| {
+                    knowledge::expect_revision(
+                        tx,
+                        if entire_local_speaker {
+                            "speaker_group"
+                        } else {
+                            "segment"
+                        },
+                        segment_id,
+                        expected_revision,
+                    )?;
+                    knowledge::unbind_speaker(tx, segment_id, entire_local_speaker, now_ms()?)?;
+                    Ok(Response::TextChanged {
+                        id: envelope.id,
+                        segment_id,
+                        revision: knowledge::object_revision(
+                            tx,
+                            if entire_local_speaker {
+                                "speaker_group"
+                            } else {
+                                "segment"
+                            },
+                            segment_id,
+                        )?,
+                    })
+                }) {
+                    Ok(response) => response,
+                    Err(error) => Response::Error {
+                        id: envelope.id,
+                        code: mutation_error_code(&error, "speaker_binding_invalid"),
+                        message: error,
+                    },
+                }
+            }
+            Request::AddVoiceSample {
+                segment_id,
+                expected_revision,
+            } => {
+                let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                match store.mutate_response(envelope.id, &mutation_fingerprint, |tx| {
+                    knowledge::expect_revision(tx, "segment", segment_id, expected_revision)?;
+                    knowledge::add_voice_sample(tx, segment_id, now_ms()?)?;
+                    Ok(Response::TextChanged {
+                        id: envelope.id,
+                        segment_id,
+                        revision: knowledge::object_revision(tx, "segment", segment_id)?,
+                    })
+                }) {
+                    Ok(response) => response,
+                    Err(error) => Response::Error {
+                        id: envelope.id,
+                        code: mutation_error_code(&error, "voice_sample_invalid"),
+                        message: error,
+                    },
+                }
+            }
+            Request::RemoveVoiceSample {
+                sample_id,
+                expected_revision,
+            } => {
+                let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                match store.mutate_response(envelope.id, &mutation_fingerprint, |tx| {
+                    knowledge::expect_revision(tx, "sample", sample_id, expected_revision)?;
+                    let person_id = knowledge::remove_voice_sample(tx, sample_id, now_ms()?)?;
+                    Ok(Response::PersonChanged {
+                        id: envelope.id,
+                        person_id,
+                        revision: Some(knowledge::object_revision(tx, "person", person_id)?),
+                        deleted: false,
+                    })
+                }) {
+                    Ok(response) => response,
+                    Err(error) => Response::Error {
+                        id: envelope.id,
+                        code: mutation_error_code(&error, "voice_sample_invalid"),
+                        message: error,
+                    },
+                }
+            }
             Request::Start { .. }
                 if !shared
                     .models
@@ -1566,28 +2288,56 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
             },
             Request::PrepareModels => {
                 let mut state = shared.models.lock().map_err(|error| error.to_string())?;
-                if matches!(state.phase, ModelPhase::Missing | ModelPhase::Failed) {
-                    state.phase = ModelPhase::Downloading;
-                    state.progress_percent = 0;
+                let speech_needed = matches!(state.phase, ModelPhase::Missing | ModelPhase::Failed);
+                let speaker_needed = matches!(
+                    state.speaker_phase,
+                    ModelPhase::Missing | ModelPhase::Failed
+                );
+                if speech_needed || speaker_needed {
+                    if speech_needed {
+                        state.phase = ModelPhase::Downloading;
+                        state.progress_percent = 0;
+                    }
+                    if speaker_needed {
+                        state.speaker_phase = ModelPhase::Downloading;
+                    }
                     let models = Arc::clone(&shared.models);
                     let directory = shared.directory.clone();
                     let logs = shared.logs.clone();
                     let correlation_id = envelope.id;
                     thread::spawn(move || {
-                        let result = model_pack::install(&directory, |progress| {
+                        let speech_success = if speech_needed {
+                            let result = model_pack::install(&directory, |progress| {
+                                if let Ok(mut state) = models.lock() {
+                                    state.progress_percent = progress;
+                                }
+                            });
                             if let Ok(mut state) = models.lock() {
-                                state.progress_percent = progress;
+                                state.phase = if result.is_ok() {
+                                    ModelPhase::Ready
+                                } else {
+                                    ModelPhase::Failed
+                                };
+                                state.progress_percent = if result.is_ok() { 100 } else { 0 };
                             }
-                        });
-                        let success = result.is_ok();
-                        if let Ok(mut state) = models.lock() {
-                            state.phase = if success {
-                                ModelPhase::Ready
-                            } else {
-                                ModelPhase::Failed
-                            };
-                            state.progress_percent = if success { 100 } else { 0 };
-                        }
+                            result.is_ok()
+                        } else {
+                            true
+                        };
+                        let speaker_success = if speaker_needed {
+                            let result = model_pack::install_speaker(&directory);
+                            if let Ok(mut state) = models.lock() {
+                                state.speaker_phase = if result.is_ok() {
+                                    ModelPhase::Ready
+                                } else {
+                                    ModelPhase::Failed
+                                };
+                            }
+                            result.is_ok()
+                        } else {
+                            true
+                        };
+                        let success = speech_success && speaker_success;
                         let mut event = LogEvent::simple(
                             "models",
                             if success {
@@ -1835,6 +2585,14 @@ fn now_ms() -> Result<i64, String> {
     i64::try_from(duration.as_millis()).map_err(|error| error.to_string())
 }
 
+fn mutation_error_code(error: &str, fallback: &str) -> String {
+    if error.starts_with("revision_conflict:") {
+        "revision_conflict".into()
+    } else {
+        fallback.into()
+    }
+}
+
 fn source_name(source: AudioSource) -> &'static str {
     match source {
         AudioSource::Microphone => "microphone",
@@ -1941,6 +2699,8 @@ impl Store {
         )
         .map_err(|error| error.to_string())?;
         events::init(&db)?;
+        cleanup::init(&db)?;
+        archive::init(&db)?;
         Ok(Self { db })
     }
 
@@ -2482,6 +3242,17 @@ impl Store {
             return Err("local speech worker rejected audio".to_owned());
         }
         let tx = self.db.transaction().map_err(|error| error.to_string())?;
+        let still_current: bool = tx
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM audio_blocks WHERE id=?1 AND
+             analysis_state='processing' AND media_path=?2)",
+                params![block.id, block.media_path],
+                |row| row.get(0),
+            )
+            .map_err(|error| error.to_string())?;
+        if !still_current {
+            return Ok(());
+        }
         for segment in result.segments {
             if segment.end_sample <= segment.start_sample {
                 return Err("local speech worker returned an invalid time range".to_owned());
@@ -2575,7 +3346,17 @@ impl Store {
             | Request::RetryCloudTask { .. } | Request::ProcessNow | Request::Timeline { .. }
             | Request::EventDetail { .. } | Request::RangeDetail { .. }
             | Request::CreateEvent { .. } | Request::EditEvent { .. } | Request::DeleteEvent { .. }
-            | Request::SplitEvent { .. } | Request::MergeEvents { .. } | Request::TranscribeRange { .. } => {
+            | Request::SplitEvent { .. } | Request::MergeEvents { .. } | Request::TranscribeRange { .. }
+            | Request::CorrectText { .. } | Request::RevertText { .. } => {
+                unreachable!("handled by IPC dispatcher")
+            }
+            Request::ObjectRevision { .. } | Request::People | Request::CreatePerson { .. } | Request::RenamePerson { .. }
+            | Request::DeletePerson { .. } | Request::BindSpeaker { .. }
+            | Request::UnbindSpeaker { .. } | Request::AddVoiceSample { .. }
+            | Request::RemoveVoiceSample { .. } | Request::VoiceSamples { .. }
+            | Request::ReviewItems | Request::ResolveReview { .. } | Request::Search { .. }
+            | Request::PreviewCleanup { .. } | Request::ExecuteCleanup { .. }
+            | Request::ExportRange { .. } => {
                 unreachable!("handled by IPC dispatcher")
             }
         }
@@ -2740,6 +3521,24 @@ fn map_sample(db: &Connection, session_id: &str, sample_16k: u64) -> Result<i64,
 mod tests {
     use super::*;
     use uuid::Uuid;
+
+    #[test]
+    fn stalled_voice_worker_cannot_hold_the_core_forever_while_stdin_is_full() {
+        let directory = tempfile::tempdir().unwrap();
+        let worker = directory.path().join("stalled-worker");
+        fs::write(&worker, b"#!/bin/sh\nexec sleep 60\n").unwrap();
+        fs::set_permissions(&worker, fs::Permissions::from_mode(0o700)).unwrap();
+        let started = Instant::now();
+        let samples = vec![0.1; 16_000 * 15];
+        let result = run_voice_worker_with_timeout(
+            &worker,
+            directory.path(),
+            &samples,
+            Duration::from_millis(200),
+        );
+        assert_eq!(result.unwrap_err(), "worker_timeout");
+        assert!(started.elapsed() < Duration::from_secs(3));
+    }
 
     #[test]
     fn query_does_not_enable_recording() {

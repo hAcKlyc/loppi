@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 use sherpa_onnx::{
     OfflineRecognizer, OfflineRecognizerConfig, OfflineSenseVoiceModelConfig, SileroVadModelConfig,
-    VadModelConfig, VoiceActivityDetector, Wave,
+    SpeakerEmbeddingExtractor, SpeakerEmbeddingExtractorConfig, VadModelConfig,
+    VoiceActivityDetector, Wave,
 };
 use std::collections::HashMap;
 use std::io::{self, Read, Write};
@@ -218,10 +219,57 @@ fn serve(model_dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
+fn embed(model_path: &Path) -> Result<(), String> {
+    let config = SpeakerEmbeddingExtractorConfig {
+        model: Some(model_path.to_string_lossy().into_owned()),
+        num_threads: 1,
+        debug: false,
+        provider: Some("cpu".to_owned()),
+    };
+    let extractor = SpeakerEmbeddingExtractor::create(&config)
+        .ok_or_else(|| "speaker model could not load".to_owned())?;
+    let mut input = io::stdin().lock();
+    let mut count = [0u8; 4];
+    input
+        .read_exact(&mut count)
+        .map_err(|error| error.to_string())?;
+    let count = u32::from_le_bytes(count) as usize;
+    if !(RATE as usize * 2..=RATE as usize * 15).contains(&count) {
+        return Err("speaker sample duration invalid".to_owned());
+    }
+    let mut bytes = vec![0u8; count * 4];
+    input
+        .read_exact(&mut bytes)
+        .map_err(|error| error.to_string())?;
+    let samples: Vec<f32> = bytes
+        .chunks_exact(4)
+        .map(|piece| f32::from_le_bytes(piece.try_into().unwrap()))
+        .collect();
+    if samples.iter().any(|sample| !sample.is_finite()) {
+        return Err("speaker sample is invalid".to_owned());
+    }
+    let stream = extractor
+        .create_stream()
+        .ok_or_else(|| "speaker stream unavailable".to_owned())?;
+    stream.accept_waveform(RATE as i32, &samples);
+    stream.input_finished();
+    if !extractor.is_ready(&stream) {
+        return Err("speaker sample is too short".to_owned());
+    }
+    let embedding = extractor
+        .compute(&stream)
+        .ok_or_else(|| "speaker embedding failed".to_owned())?;
+    if embedding.len() < 64 || embedding.iter().any(|value| !value.is_finite()) {
+        return Err("speaker embedding invalid".to_owned());
+    }
+    serde_json::to_writer(io::stdout().lock(), &embedding).map_err(|error| error.to_string())
+}
+
 fn run() -> Result<(), String> {
     let args: Vec<_> = std::env::args().skip(1).collect();
     match args.as_slice() {
         [command, model_dir] if command == "serve" => serve(Path::new(model_dir)),
+        [command, model_path] if command == "embed" => embed(Path::new(model_path)),
         [command, model_dir, wav] if command == "self-test" => {
             let worker = Worker::new(Path::new(model_dir))?;
             let wave = Wave::read(wav).ok_or_else(|| "cannot read test WAV".to_owned())?;
@@ -232,7 +280,10 @@ fn run() -> Result<(), String> {
             println!("{}", result.text);
             Ok(())
         }
-        _ => Err("usage: hear-worker serve MODEL_DIR | self-test MODEL_DIR WAV".to_owned()),
+        _ => Err(
+            "usage: hear-worker serve MODEL_DIR | embed MODEL_PATH | self-test MODEL_DIR WAV"
+                .to_owned(),
+        ),
     }
 }
 

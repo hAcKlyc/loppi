@@ -15,9 +15,51 @@ const SILERO_URL: &str =
     "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx";
 const SILERO_SHA: &str = "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6";
 const SENSE_ROOT: &str = "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17";
+const SPEAKER_URL: &str = "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx";
+const SPEAKER_SHA: &str = "f682b514c05d947ee3fa91cd6ec6c5c7543479a128373fa29b1faedccd21fd11";
 
 pub fn installed_path(data_dir: &Path) -> PathBuf {
     data_dir.join("models").join("speech-v1")
+}
+
+pub fn speaker_model_path(data_dir: &Path) -> PathBuf {
+    data_dir.join("models/speaker-v1/model.onnx")
+}
+
+pub fn speaker_ready(data_dir: &Path) -> bool {
+    verify(&speaker_model_path(data_dir), SPEAKER_SHA).is_ok()
+}
+
+pub fn install_speaker(data_dir: &Path) -> Result<PathBuf, String> {
+    let target = speaker_model_path(data_dir);
+    if speaker_ready(data_dir) {
+        return Ok(target);
+    }
+    let root = data_dir.join("models");
+    fs::create_dir_all(&root).map_err(|error| error.to_string())?;
+    fs::set_permissions(&root, fs::Permissions::from_mode(0o700))
+        .map_err(|error| error.to_string())?;
+    let staging = root.join(format!(".speaker-installing-{}", Uuid::new_v4()));
+    fs::create_dir(&staging).map_err(|error| error.to_string())?;
+    fs::set_permissions(&staging, fs::Permissions::from_mode(0o700))
+        .map_err(|error| error.to_string())?;
+    let result = (|| {
+        let downloaded = staging.join("model.onnx");
+        download(SPEAKER_URL, &downloaded, SPEAKER_SHA, 35_000_000, |_| {})?;
+        let destination = root.join("speaker-v1");
+        if destination.exists() {
+            fs::remove_dir_all(&destination).map_err(|error| error.to_string())?;
+        }
+        fs::rename(&staging, &destination).map_err(|error| error.to_string())?;
+        File::open(&root)
+            .and_then(|file| file.sync_all())
+            .map_err(|error| error.to_string())?;
+        Ok(target.clone())
+    })();
+    if result.is_err() {
+        let _ = fs::remove_dir_all(staging);
+    }
+    result
 }
 
 fn sha_file(path: &Path) -> Result<String, String> {

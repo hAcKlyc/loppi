@@ -1,9 +1,10 @@
 use clap::{Parser, Subcommand, ValueEnum};
 use hear_protocol::{
-    AudioSource, ClientKind, CloudProvider, EventSources, LogFilter, LogLevel, Request, Response,
-    send, send_from_with_id,
+    AudioSource, CleanupMode, ClientKind, CloudProvider, EventSources, LogFilter, LogLevel,
+    Request, Response, send, send_from_with_id,
 };
-use std::io::{IsTerminal, Read};
+use std::io::{IsTerminal, Read, Write};
+use std::path::PathBuf;
 use uuid::Uuid;
 
 #[derive(Parser)]
@@ -69,6 +70,59 @@ enum Command {
         ended_ms: i64,
         #[arg(long)]
         sources: Sources,
+    },
+    Text {
+        #[command(subcommand)]
+        action: TextCommand,
+    },
+    Person {
+        #[command(subcommand)]
+        action: PersonCommand,
+    },
+    Speaker {
+        #[command(subcommand)]
+        action: SpeakerCommand,
+    },
+    Review {
+        #[command(subcommand)]
+        action: ReviewCommand,
+    },
+    Search {
+        query: Option<String>,
+        #[arg(long, default_value_t = 0)]
+        from_ms: i64,
+        #[arg(long,default_value_t=i64::MAX)]
+        to_ms: i64,
+        #[arg(long)]
+        person: Option<Uuid>,
+        #[arg(long, default_value_t = 0)]
+        offset: u32,
+        #[arg(long, default_value_t = 100)]
+        limit: u16,
+    },
+    Cleanup {
+        from_ms: Option<i64>,
+        to_ms: Option<i64>,
+        #[arg(long, default_value = "both")]
+        sources: Sources,
+        #[arg(long)]
+        all_data: bool,
+        #[arg(long)]
+        preview_only: bool,
+        /// Reuse the preview token from a previous cleanup with the same --request-id.
+        #[arg(long)]
+        retry_preview_token: Option<Uuid>,
+    },
+    Export {
+        from_ms: i64,
+        to_ms: i64,
+        destination: PathBuf,
+        #[arg(long, default_value = "both")]
+        sources: Sources,
+        #[arg(long)]
+        audio: bool,
+        #[arg(long)]
+        screenshots: bool,
     },
     Logs {
         #[arg(long)]
@@ -158,6 +212,58 @@ enum EventCommand {
     },
 }
 
+#[derive(Subcommand)]
+enum TextCommand {
+    Correct { segment_id: Uuid },
+    Revert { segment_id: Uuid },
+}
+
+#[derive(Subcommand)]
+enum PersonCommand {
+    List,
+    Samples {
+        person_id: Uuid,
+    },
+    Create {
+        display_name: String,
+    },
+    Rename {
+        person_id: Uuid,
+        display_name: String,
+    },
+    Delete {
+        person_id: Uuid,
+    },
+}
+
+#[derive(Subcommand)]
+enum ReviewCommand {
+    List,
+    Apply { item_id: Uuid, segment_id: Uuid },
+    Dismiss { item_id: Uuid },
+}
+
+#[derive(Subcommand)]
+enum SpeakerCommand {
+    Bind {
+        segment_id: Uuid,
+        person_id: Uuid,
+        #[arg(long)]
+        segment_only: bool,
+    },
+    Unbind {
+        segment_id: Uuid,
+        #[arg(long)]
+        segment_only: bool,
+    },
+    SampleAdd {
+        segment_id: Uuid,
+    },
+    SampleRemove {
+        sample_id: Uuid,
+    },
+}
+
 #[derive(Clone, ValueEnum)]
 enum Sources {
     Both,
@@ -210,6 +316,34 @@ enum Switch {
 
 fn main() {
     let cli = Cli::parse();
+    if let Command::Cleanup {
+        from_ms,
+        to_ms,
+        sources,
+        all_data,
+        preview_only,
+        retry_preview_token,
+    } = &cli.command
+    {
+        let (start, end) = match (from_ms, to_ms) {
+            (None, None) => (0, i64::MAX),
+            (Some(start), Some(end)) => (*start, *end),
+            _ => {
+                eprintln!("hear: supply both range boundaries, or neither for all history");
+                std::process::exit(2)
+            }
+        };
+        run_cleanup(
+            start,
+            end,
+            sources.clone().into(),
+            *all_data,
+            *preview_only,
+            cli.request_id,
+            *retry_preview_token,
+        );
+        return;
+    }
     let expected_revision = || -> i64 {
         if let Some(revision) = cli.if_revision {
             return revision;
@@ -227,6 +361,29 @@ fn main() {
             Err(error) => {
                 eprintln!("hear: {error}");
                 std::process::exit(1);
+            }
+        }
+    };
+    let object_revision = |kind: &str, object_id: Uuid| -> i64 {
+        if let Some(revision) = cli.if_revision {
+            return revision;
+        }
+        match send(Request::ObjectRevision {
+            kind: kind.into(),
+            object_id,
+        }) {
+            Ok(Response::ObjectRevision { revision, .. }) => revision,
+            Ok(Response::Error { code, message, .. }) => {
+                eprintln!("hear: {code}: {message}");
+                std::process::exit(2)
+            }
+            Ok(_) => {
+                eprintln!("hear: unexpected revision response");
+                std::process::exit(1)
+            }
+            Err(error) => {
+                eprintln!("hear: {error}");
+                std::process::exit(1)
             }
         }
     };
@@ -390,6 +547,130 @@ fn main() {
             ended_ms,
             sources: sources.into(),
         },
+        Command::Text { action } => match action {
+            TextCommand::Correct { segment_id } => {
+                let mut text = String::new();
+                if std::io::stdin().read_to_string(&mut text).is_err() {
+                    eprintln!("hear: could not read corrected text from standard input");
+                    std::process::exit(1);
+                }
+                Request::CorrectText {
+                    segment_id,
+                    text: text.trim_end_matches('\n').to_owned(),
+                    expected_revision: object_revision("segment", segment_id),
+                }
+            }
+            TextCommand::Revert { segment_id } => Request::RevertText {
+                segment_id,
+                expected_revision: object_revision("segment", segment_id),
+            },
+        },
+        Command::Person { action } => match action {
+            PersonCommand::List => Request::People,
+            PersonCommand::Samples { person_id } => Request::VoiceSamples { person_id },
+            PersonCommand::Create { display_name } => Request::CreatePerson { display_name },
+            PersonCommand::Rename {
+                person_id,
+                display_name,
+            } => Request::RenamePerson {
+                person_id,
+                display_name,
+                expected_revision: object_revision("person", person_id),
+            },
+            PersonCommand::Delete { person_id } => Request::DeletePerson {
+                person_id,
+                expected_revision: object_revision("person", person_id),
+            },
+        },
+        Command::Speaker { action } => match action {
+            SpeakerCommand::Bind {
+                segment_id,
+                person_id,
+                segment_only,
+            } => Request::BindSpeaker {
+                segment_id,
+                person_id,
+                entire_local_speaker: !segment_only,
+                expected_revision: object_revision(
+                    if segment_only {
+                        "segment"
+                    } else {
+                        "speaker_group"
+                    },
+                    segment_id,
+                ),
+            },
+            SpeakerCommand::Unbind {
+                segment_id,
+                segment_only,
+            } => Request::UnbindSpeaker {
+                segment_id,
+                entire_local_speaker: !segment_only,
+                expected_revision: object_revision(
+                    if segment_only {
+                        "segment"
+                    } else {
+                        "speaker_group"
+                    },
+                    segment_id,
+                ),
+            },
+            SpeakerCommand::SampleAdd { segment_id } => Request::AddVoiceSample {
+                segment_id,
+                expected_revision: object_revision("segment", segment_id),
+            },
+            SpeakerCommand::SampleRemove { sample_id } => Request::RemoveVoiceSample {
+                sample_id,
+                expected_revision: object_revision("sample", sample_id),
+            },
+        },
+        Command::Review { action } => match action {
+            ReviewCommand::List => Request::ReviewItems,
+            ReviewCommand::Apply {
+                item_id,
+                segment_id,
+            } => Request::ResolveReview {
+                item_id,
+                target_segment_id: Some(segment_id),
+                expected_revision: object_revision("review", item_id),
+            },
+            ReviewCommand::Dismiss { item_id } => Request::ResolveReview {
+                item_id,
+                target_segment_id: None,
+                expected_revision: object_revision("review", item_id),
+            },
+        },
+        Command::Search {
+            query,
+            from_ms,
+            to_ms,
+            person,
+            offset,
+            limit,
+        } => Request::Search {
+            query,
+            from_ms,
+            to_ms,
+            person_id: person,
+            offset,
+            limit,
+        },
+        Command::Cleanup { .. } => unreachable!("handled before request dispatch"),
+        Command::Export {
+            from_ms,
+            to_ms,
+            destination,
+            sources,
+            audio,
+            screenshots,
+        } => Request::ExportRange {
+            from_ms,
+            to_ms,
+            destination,
+            sources: sources.into(),
+            include_audio: audio,
+            include_screenshots: screenshots,
+        },
         Command::Logs {
             component,
             level,
@@ -433,7 +714,18 @@ fn main() {
             | Response::Timeline { .. }
             | Response::Event { .. }
             | Response::Accepted { .. }
-            | Response::EventsChanged { .. }),
+            | Response::EventsChanged { .. }
+            | Response::TextChanged { .. }
+            | Response::People { .. }
+            | Response::VoiceSamples { .. }
+            | Response::ReviewItems { .. }
+            | Response::ReviewResolved { .. }
+            | Response::ObjectRevision { .. }
+            | Response::PersonChanged { .. }
+            | Response::Search { .. }
+            | Response::CleanupPreview { .. }
+            | Response::CleanupComplete { .. }
+            | Response::ExportComplete { .. }),
         ) => {
             println!("{}", serde_json::to_string_pretty(&response).unwrap());
         }
@@ -445,6 +737,121 @@ fn main() {
         Ok(Response::Error { code, message, .. }) => {
             eprintln!("hear: {code}: {message}");
             std::process::exit(2);
+        }
+        Err(error) => {
+            eprintln!("hear: {error}");
+            std::process::exit(1);
+        }
+    }
+}
+
+fn run_cleanup(
+    from_ms: i64,
+    to_ms: i64,
+    sources: EventSources,
+    all_data: bool,
+    preview_only: bool,
+    request_id: Option<Uuid>,
+    retry_preview_token: Option<Uuid>,
+) {
+    if retry_preview_token.is_some() && (request_id.is_none() || preview_only) {
+        eprintln!(
+            "hear: --retry-preview-token requires --request-id and cannot be used with --preview-only"
+        );
+        std::process::exit(2);
+    }
+    let mode = if all_data {
+        CleanupMode::AllData
+    } else {
+        CleanupMode::RawAudio
+    };
+    let preview = if let Some(token) = retry_preview_token {
+        eprintln!(
+            "hear: retrying cleanup request {id} with preview token {token}",
+            id = request_id.unwrap()
+        );
+        None
+    } else {
+        Some(
+            match send(Request::PreviewCleanup {
+                from_ms,
+                to_ms,
+                sources,
+                mode,
+            }) {
+                Ok(Response::CleanupPreview { preview, .. }) => preview,
+                Ok(Response::Error { code, message, .. }) => {
+                    eprintln!("hear: {code}: {message}");
+                    std::process::exit(2);
+                }
+                Ok(_) => {
+                    eprintln!("hear: unexpected cleanup preview response");
+                    std::process::exit(1);
+                }
+                Err(error) => {
+                    eprintln!("hear: {error}");
+                    std::process::exit(1);
+                }
+            },
+        )
+    };
+    if let Some(preview) = &preview {
+        println!("{}", serde_json::to_string_pretty(preview).unwrap());
+    }
+    if preview_only {
+        return;
+    }
+    if all_data {
+        // The separate native sheet is intentional, including CLI callers.
+        // Without a graphical login session, osascript fails and no request is sent.
+        let outcome=std::process::Command::new("/usr/bin/osascript")
+            .args(["-e","display dialog \"将永久清除选中范围的录音、文字、笔记、截图和相关声纹样例。已经导出或发送给服务商的副本无法从这里撤回。\" with title \"清除全部数据\" buttons {\"取消\", \"清除全部数据\"} default button \"取消\" cancel button \"取消\" with icon caution"])
+            .output();
+        match outcome {
+            Ok(result)
+                if result.status.success()
+                    && String::from_utf8_lossy(&result.stdout)
+                        .contains("button returned:清除全部数据") => {}
+            Ok(result) if result.status.success() => {
+                eprintln!("hear: cleanup cancelled");
+                return;
+            }
+            _ => {
+                eprintln!("hear: a graphical macOS session is required to confirm 清除全部数据");
+                std::process::exit(2);
+            }
+        }
+    } else {
+        if !std::io::stdin().is_terminal() {
+            eprintln!("hear: an interactive terminal is required to confirm 清除原始音频");
+            std::process::exit(2);
+        }
+        print!("确认清除原始音频？输入 清除 继续: ");
+        let _ = std::io::stdout().flush();
+        let mut answer = String::new();
+        if std::io::stdin().read_line(&mut answer).is_err() || answer.trim() != "清除" {
+            eprintln!("hear: cleanup cancelled");
+            return;
+        }
+    }
+    match send_from_with_id(
+        ClientKind::Cli,
+        Request::ExecuteCleanup {
+            preview_token: retry_preview_token.unwrap_or_else(|| preview.unwrap().token),
+            confirmed_all_data: all_data,
+        },
+        request_id.unwrap_or_else(Uuid::new_v4),
+    ) {
+        Ok(result @ Response::CleanupComplete { .. }) => {
+            println!("{}", serde_json::to_string_pretty(&result).unwrap())
+        }
+        Ok(Response::Error { code, message, .. }) => {
+            eprintln!("hear: {code}: {message}");
+            std::process::exit(2);
+        }
+        Ok(_) => {
+            eprintln!("hear: unexpected cleanup response");
+            std::process::exit(1);
         }
         Err(error) => {
             eprintln!("hear: {error}");
