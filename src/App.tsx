@@ -6,9 +6,14 @@ type ServiceState = {
 	revision: number;
 	enabled_intent: boolean;
 	paused_intent: boolean;
+	storage_paused: boolean;
 	microphone_enabled: boolean;
 	system_enabled: boolean;
-	capture_state: "not_ready" | "stopped" | "paused" | "recording";
+	microphone_recording: boolean;
+	system_recording: boolean;
+	microphone_reason: string | null;
+	system_reason: string | null;
+	capture_state: "not_ready" | "stopped" | "starting" | "stopping" | "paused" | "recording";
 	reason: string | null;
 };
 
@@ -113,7 +118,14 @@ function App() {
 	const description = error
 		? "服务暂时不可用"
 		: state?.capture_state === "recording"
-			? "正在记录"
+			? `正在记录 · ${[
+				state.microphone_recording ? "麦克风" : null,
+				state.system_recording ? "电脑声音" : null,
+			].filter(Boolean).join("、")}`
+			: state?.capture_state === "starting"
+				? "正在启动"
+				: state?.capture_state === "stopping"
+					? "正在暂停"
 			: state?.capture_state === "not_ready"
 				? "尚未就绪"
 				: state?.paused_intent
@@ -161,7 +173,9 @@ function App() {
 				<div className="setup-row">
 					<div>
 						<strong>麦克风</strong>
-						<span>{privacy?.microphone === 3 ? "已允许" : "未允许"}</span>
+						<span>{privacy?.microphone !== 3 ? "未授权" : state?.microphone_recording
+							? "录制中" : !state?.microphone_enabled ? "已关闭" : state?.paused_intent || state?.storage_paused
+								? "已暂停" : state?.microphone_reason ? "连接中断 · 等待重试" : "等待声音来源"}</span>
 					</div>
 					<button
 						type="button"
@@ -175,7 +189,9 @@ function App() {
 					<div>
 						<strong>电脑声音</strong>
 						<span>
-							{privacy?.screen_and_system_audio === 1 ? "已允许" : "未允许"}
+							{privacy?.screen_and_system_audio !== 1 ? "未授权" : state?.system_recording
+								? "录制中" : !state?.system_enabled ? "已关闭" : state?.paused_intent || state?.storage_paused
+									? "已暂停" : state?.system_reason ? "连接中断 · 等待重试" : "等待声音来源"}
 						</span>
 					</div>
 					<button

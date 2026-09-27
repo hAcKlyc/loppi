@@ -10,15 +10,17 @@ if [[ -z "$hear_sign_identity" ]]; then
   exit 1
 fi
 
-cargo build --release -p hear-core -p hear-cli
+cargo build --release -p hear-core -p hear-cli -p hear-worker
 mkdir -p build/macos/HearCore.app/Contents/MacOS
 cp target/release/hear-core build/macos/HearCore.app/Contents/MacOS/hear-core
+cp target/release/hear-worker build/macos/HearCore.app/Contents/MacOS/hear-worker
 cp src-tauri/native/HearCore-Info.plist build/macos/HearCore.app/Contents/Info.plist
 cp target/release/hear build/macos/hear
 npm run tauri build -- --bundles app
 
 hear_app=target/release/bundle/macos/hear.app
 hear_helper="$hear_app/Contents/Library/LoginItems/HearCore.app"
+codesign --force --options runtime --timestamp --sign "$hear_sign_identity" "$hear_helper/Contents/MacOS/hear-worker"
 codesign --force --options runtime --timestamp --entitlements src-tauri/native/HearCore.entitlements --sign "$hear_sign_identity" "$hear_helper"
 codesign --force --options runtime --timestamp --sign "$hear_sign_identity" "$hear_app/Contents/MacOS/hear"
 codesign --force --options runtime --timestamp --entitlements src-tauri/native/HearCore.entitlements --sign "$hear_sign_identity" "$hear_app"

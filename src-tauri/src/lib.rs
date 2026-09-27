@@ -1,3 +1,5 @@
+use tauri::Manager;
+
 #[tauri::command]
 fn core_status() -> Result<hear_protocol::ServiceState, String> {
     match hear_protocol::send_from(
@@ -5,7 +7,11 @@ fn core_status() -> Result<hear_protocol::ServiceState, String> {
         hear_protocol::Request::Status,
     )? {
         hear_protocol::Response::Status { state, .. } => Ok(state),
+        hear_protocol::Response::Models { .. } => Err("unexpected model response".to_owned()),
         hear_protocol::Response::ProbeResult { .. } => Err("unexpected probe response".to_owned()),
+        hear_protocol::Response::RecordTestResult { .. } => {
+            Err("unexpected recording test response".to_owned())
+        }
         hear_protocol::Response::Logs { .. } => Err("unexpected log response".to_owned()),
         hear_protocol::Response::Error { code, message, .. } => Err(format!("{code}: {message}")),
     }
@@ -91,6 +97,12 @@ fn unregister_login_item() -> Result<i32, String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             core_status,
             gui_ready,
@@ -101,6 +113,24 @@ pub fn run() {
             request_microphone_permission,
             request_system_audio_permission
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| match event {
+            tauri::RunEvent::ExitRequested { .. } => {
+                let _ = hear_protocol::send_from(
+                    hear_protocol::ClientKind::Gui,
+                    hear_protocol::Request::Quit,
+                );
+            }
+            tauri::RunEvent::Reopen {
+                has_visible_windows: false,
+                ..
+            } => {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+            _ => {}
+        });
 }

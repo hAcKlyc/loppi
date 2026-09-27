@@ -1,22 +1,18 @@
+use crate::capture::AudioPacket;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleFormat, Stream, StreamConfig};
 use hear_protocol::{AudioSource, ProbeStats};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, mpsc};
-use std::time::{Duration, Instant};
-
-pub struct AudioPacket {
-    pub at: Instant,
-    pub samples: Vec<f32>,
-}
+use std::time::{Duration, Instant, SystemTime};
 
 pub struct Microphone {
     _stream: Stream,
-    receiver: mpsc::Receiver<AudioPacket>,
+    pub receiver: mpsc::Receiver<AudioPacket>,
     pub sample_rate: u32,
     pub channels: usize,
-    dropped_packets: Arc<AtomicU64>,
-    stream_failed: Arc<AtomicBool>,
+    pub dropped_packets: Arc<AtomicU64>,
+    pub stream_failed: Arc<AtomicBool>,
 }
 
 impl Microphone {
@@ -51,14 +47,18 @@ impl Microphone {
         let stream = match supported.sample_format() {
             SampleFormat::F32 => device.build_input_stream(
                 config,
-                move |data: &[f32], _| enqueue(data, &sender, &dropped, |sample| sample),
+                move |data: &[f32], _| {
+                    enqueue(data, &sender, &dropped, sample_rate, channels, |sample| {
+                        sample
+                    })
+                },
                 on_error,
                 None,
             ),
             SampleFormat::I16 => device.build_input_stream(
                 config,
                 move |data: &[i16], _| {
-                    enqueue(data, &sender, &dropped, |sample| {
+                    enqueue(data, &sender, &dropped, sample_rate, channels, |sample| {
                         sample as f32 / i16::MAX as f32
                     })
                 },
@@ -68,7 +68,7 @@ impl Microphone {
             SampleFormat::U16 => device.build_input_stream(
                 config,
                 move |data: &[u16], _| {
-                    enqueue(data, &sender, &dropped, |sample| {
+                    enqueue(data, &sender, &dropped, sample_rate, channels, |sample| {
                         sample as f32 / (u16::MAX as f32 / 2.0) - 1.0
                     })
                 },
@@ -128,11 +128,16 @@ fn enqueue<T: Copy>(
     data: &[T],
     sender: &mpsc::SyncSender<AudioPacket>,
     dropped: &AtomicU64,
+    rate: u32,
+    channels: usize,
     convert: impl Fn(T) -> f32,
 ) {
     let packet = AudioPacket {
         at: Instant::now(),
+        wall_at: SystemTime::now(),
         samples: data.iter().copied().map(convert).collect(),
+        rate,
+        channels,
     };
     if sender.try_send(packet).is_err() {
         dropped.fetch_add(1, Ordering::Relaxed);

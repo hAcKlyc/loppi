@@ -18,9 +18,18 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     Status,
+    Models {
+        #[command(subcommand)]
+        action: ModelCommand,
+    },
     Probe {
         source: Source,
         #[arg(long, default_value_t = 3)]
+        seconds: u8,
+    },
+    RecordTest {
+        source: Source,
+        #[arg(long, default_value_t = 10)]
         seconds: u8,
     },
     Start,
@@ -41,6 +50,12 @@ enum Command {
         limit: usize,
     },
     Quit,
+}
+
+#[derive(Subcommand)]
+enum ModelCommand {
+    Status,
+    Install,
 }
 
 #[derive(Clone, ValueEnum)]
@@ -87,7 +102,18 @@ fn main() {
     };
     let request = match cli.command {
         Command::Status => Request::Status,
+        Command::Models { action } => match action {
+            ModelCommand::Status => Request::Models,
+            ModelCommand::Install => Request::PrepareModels,
+        },
         Command::Probe { source, seconds } => Request::Probe {
+            source: match source {
+                Source::Microphone => AudioSource::Microphone,
+                Source::System => AudioSource::System,
+            },
+            seconds,
+        },
+        Command::RecordTest { source, seconds } => Request::RecordTest {
             source: match source {
                 Source::Microphone => AudioSource::Microphone,
                 Source::System => AudioSource::System,
@@ -137,7 +163,12 @@ fn main() {
         request,
         cli.request_id.unwrap_or_else(Uuid::new_v4),
     ) {
-        Ok(response @ (Response::Status { .. } | Response::ProbeResult { .. })) => {
+        Ok(
+            response @ (Response::Status { .. }
+            | Response::Models { .. }
+            | Response::ProbeResult { .. }
+            | Response::RecordTestResult { .. }),
+        ) => {
             println!("{}", serde_json::to_string_pretty(&response).unwrap());
         }
         Ok(Response::Logs { entries, .. }) => {

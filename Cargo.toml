@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/hear-protocol", "crates/hear-core", "crates/hear-cli", "src-tauri"]
+members = ["crates/hear-protocol", "crates/hear-core", "crates/hear-cli", "crates/hear-worker", "src-tauri"]
 resolver = "2"
 
 [workspace.package]

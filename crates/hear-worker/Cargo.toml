@@ -1,0 +1,9 @@
+[package]
+name = "hear-worker"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+sherpa-onnx = "=1.13.8"
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true

@@ -9,7 +9,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
-pub const PROTOCOL_VERSION: u32 = 1;
+pub const PROTOCOL_VERSION: u32 = 2;
 const MAX_RESPONSE_BYTES: u64 = 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,7 +33,13 @@ pub enum ClientKind {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Request {
     Status,
+    Models,
+    PrepareModels,
     Probe {
+        source: AudioSource,
+        seconds: u8,
+    },
+    RecordTest {
         source: AudioSource,
         seconds: u8,
     },
@@ -65,7 +71,10 @@ impl Request {
     pub fn name(&self) -> &'static str {
         match self {
             Self::Status => "status",
+            Self::Models => "models",
+            Self::PrepareModels => "prepare_models",
             Self::Probe { .. } => "probe",
+            Self::RecordTest { .. } => "record_test",
             Self::Start { .. } => "start",
             Self::Pause { .. } => "pause",
             Self::Resume { .. } => "resume",
@@ -164,9 +173,20 @@ pub enum Response {
         id: Uuid,
         state: ServiceState,
     },
+    Models {
+        id: Uuid,
+        state: ModelState,
+    },
     ProbeResult {
         id: Uuid,
         stats: ProbeStats,
+    },
+    RecordTestResult {
+        id: Uuid,
+        source: AudioSource,
+        blocks: usize,
+        frames: u64,
+        dropped_packets: u64,
     },
     Logs {
         id: Uuid,
@@ -190,14 +210,35 @@ pub struct ProbeStats {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelState {
+    pub phase: ModelPhase,
+    pub progress_percent: u8,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelPhase {
+    Missing,
+    Checking,
+    Downloading,
+    Ready,
+    Failed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServiceState {
     pub revision: i64,
     pub enabled_intent: bool,
     pub paused_intent: bool,
+    pub storage_paused: bool,
     pub microphone_enabled: bool,
     pub system_enabled: bool,
     pub capture_state: CaptureState,
     pub reason: Option<String>,
+    pub microphone_recording: bool,
+    pub system_recording: bool,
+    pub microphone_reason: Option<String>,
+    pub system_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -205,6 +246,8 @@ pub struct ServiceState {
 pub enum CaptureState {
     NotReady,
     Stopped,
+    Starting,
+    Stopping,
     Paused,
     Recording,
 }
@@ -260,7 +303,9 @@ fn send_with_policy(
         Err(error) => return Err(error.to_string()),
     };
     let timeout = match request {
-        Request::Probe { seconds, .. } => Duration::from_secs(seconds as u64 + 70),
+        Request::Probe { seconds, .. } | Request::RecordTest { seconds, .. } => {
+            Duration::from_secs(seconds as u64 + 70)
+        }
         _ => Duration::from_secs(5),
     };
     stream
@@ -292,7 +337,9 @@ fn send_with_policy(
     let decoded: Response = serde_json::from_slice(&response).map_err(|error| error.to_string())?;
     match &decoded {
         Response::Status { id, .. }
+        | Response::Models { id, .. }
         | Response::ProbeResult { id, .. }
+        | Response::RecordTestResult { id, .. }
         | Response::Logs { id, .. }
         | Response::Error { id, .. }
             if *id == envelope.id =>
