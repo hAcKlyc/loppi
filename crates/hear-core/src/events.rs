@@ -2,7 +2,7 @@
 //! coarse text. Candidate windows are scheduling inputs, never user events.
 use hear_protocol::{
     AudioSource, CloudProvider, CloudQueueState, CloudTaskView, CoarseSegment, EventSources,
-    PreciseSegment, TimelineItem,
+    PreciseSegment, TimeGap, TimelineItem,
 };
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use sha2::{Digest, Sha256};
@@ -1202,15 +1202,132 @@ pub fn timeline(db: &Connection, start: i64, end: i64) -> Result<Vec<TimelineIte
             fit_state: Some(event_fit_state(db, &id)?),
             processing_state: event_state(db, &id, &asr_version(mask, a, b))?,
             manual_asr_state: None,
+            manual_asr_started_ms: None,
+            manual_asr_ended_ms: None,
+            manual_asr_source: None,
             coarse_segments: Vec::new(),
             precise_segments: Vec::new(),
         });
+    }
+    // A comment, mark or screenshot may be the only retained material in an
+    // otherwise quiet period. Keep its real timestamp visible on the same
+    // timeline without inventing recorded audio for that interval.
+    let mut statement = db.prepare(
+        "SELECT DISTINCT anchor_ms FROM moments WHERE anchor_ms>=?1 AND anchor_ms<?2 ORDER BY anchor_ms"
+    ).map_err(|error| error.to_string())?;
+    let anchors = statement
+        .query_map(params![start, end], |row| row.get::<_, i64>(0))
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    let mut moment_gaps: std::collections::BTreeMap<(i64, i64), (i64, i64)> =
+        std::collections::BTreeMap::new();
+    for anchor in anchors {
+        if output
+            .iter()
+            .any(|item| item.started_ms <= anchor && item.ended_ms > anchor)
+        {
+            continue;
+        }
+        let left = output
+            .iter()
+            .filter(|item| item.id.is_some() && item.ended_ms <= anchor)
+            .map(|item| item.ended_ms)
+            .max()
+            .unwrap_or(start);
+        let right = output
+            .iter()
+            .filter(|item| item.id.is_some() && item.started_ms > anchor)
+            .map(|item| item.started_ms)
+            .min()
+            .unwrap_or(end);
+        let group = moment_gaps.entry((left, right)).or_insert((anchor, anchor));
+        group.0 = group.0.min(anchor);
+        group.1 = group.1.max(anchor);
+    }
+    for ((left, right), (first, last)) in moment_gaps {
+        let mut a = first;
+        let mut b = (last + 1).min(end);
+        let mut mask = 0;
+        for item in output
+            .iter()
+            .filter(|item| item.id.is_none() && item.started_ms >= left && item.ended_ms <= right)
+        {
+            a = a.min(item.started_ms);
+            b = b.max(item.ended_ms);
+            mask |= match item.sources {
+                EventSources::Microphone => 1,
+                EventSources::System => 2,
+                EventSources::Both => 3,
+            };
+        }
+        output.retain(|item| item.id.is_some() || item.started_ms < left || item.ended_ms > right);
+        output.push(unorganized(db, a, b, if mask == 0 { 3 } else { mask })?);
     }
     output.sort_by(|a, b| b.started_ms.cmp(&a.started_ms));
     Ok(output)
 }
 
+pub fn timeline_gaps(
+    db: &Connection,
+    start: i64,
+    end: i64,
+    now: i64,
+) -> Result<Vec<TimeGap>, String> {
+    validate_range(start, end)?;
+    let mut statement = db
+        .prepare(
+            "SELECT source,max(started_ms,?1),min(coalesce(ended_ms,?3),?2),reason
+         FROM media_gaps WHERE started_ms<?2 AND coalesce(ended_ms,?3)>?1
+         ORDER BY started_ms,source",
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map(params![start, end, now], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        })
+        .map_err(|error| error.to_string())?;
+    let mut gaps: Vec<TimeGap> = Vec::new();
+    for row in rows {
+        let (source, a, b, reason) = row.map_err(|error| error.to_string())?;
+        if b - a < 1_000 {
+            continue;
+        }
+        let source = match source.as_str() {
+            "microphone" => AudioSource::Microphone,
+            "system" => AudioSource::System,
+            _ => return Err("invalid gap source".into()),
+        };
+        if let Some(last) = gaps.last_mut() {
+            if last.source == source && last.reason == reason && a <= last.ended_ms + 1_000 {
+                last.ended_ms = last.ended_ms.max(b);
+                continue;
+            }
+        }
+        gaps.push(TimeGap {
+            source,
+            started_ms: a,
+            ended_ms: b,
+            reason,
+        });
+    }
+    Ok(gaps)
+}
+
 fn unorganized(db: &Connection, start: i64, end: i64, mask: i64) -> Result<TimelineItem, String> {
+    let has_sound: bool = db.query_row(
+        "SELECT EXISTS(SELECT 1 FROM audio_blocks WHERE speech_active=1 AND retention_decision!='all_data'
+         AND started_ms<?2 AND ended_ms>?1 AND
+         ((source='microphone' AND ?3&1!=0) OR (source='system' AND ?3&2!=0))
+         UNION ALL SELECT 1 FROM coarse_segments WHERE started_ms<?2 AND ended_ms>?1 AND
+         ((source='microphone' AND ?3&1!=0) OR (source='system' AND ?3&2!=0)))",
+        params![start,end,mask], |row| row.get(0),
+    ).map_err(|error| error.to_string())?;
     let status: Option<String> = db
         .query_row(
             "SELECT state FROM candidate_windows
@@ -1220,16 +1337,23 @@ fn unorganized(db: &Connection, start: i64, end: i64, mask: i64) -> Result<Timel
         )
         .optional()
         .map_err(|e| e.to_string())?;
-    let manual_asr_state = db
+    let manual_asr = db
         .query_row(
             "SELECT CASE WHEN state='complete'
           AND NOT EXISTS(SELECT 1 FROM precise_segments p WHERE p.task_id=cloud_tasks.id)
-          THEN 'no_transcript' ELSE state END FROM cloud_tasks
+          THEN 'no_transcript' ELSE state END,started_ms,ended_ms,source FROM cloud_tasks
         WHERE target_kind='range' AND started_ms < ?2 AND ended_ms > ?1
           AND ((source='microphone' AND ?3&1!=0) OR (source='system' AND ?3&2!=0))
           AND state!='superseded' ORDER BY created_ms DESC LIMIT 1",
             params![start, end, mask],
-            |row| row.get::<_, String>(0),
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            },
         )
         .optional()
         .map_err(|e| e.to_string())?;
@@ -1241,14 +1365,27 @@ fn unorganized(db: &Connection, start: i64, end: i64, mask: i64) -> Result<Timel
         sources: sources_for(mask),
         revision: None,
         fit_state: None,
-        processing_state: match status.as_deref() {
-            Some("complete") => "unorganized",
-            Some("failed") => "fit_failed",
-            Some("processing") => "fitting",
-            _ => "pending_fit",
+        processing_state: if !has_sound {
+            "moment_only"
+        } else {
+            match status.as_deref() {
+                Some("complete") => "unorganized",
+                Some("failed") => "fit_failed",
+                Some("processing") => "fitting",
+                _ => "pending_fit",
+            }
         }
         .to_owned(),
-        manual_asr_state,
+        manual_asr_state: manual_asr.as_ref().map(|task| task.0.clone()),
+        manual_asr_started_ms: manual_asr.as_ref().map(|task| task.1),
+        manual_asr_ended_ms: manual_asr.as_ref().map(|task| task.2),
+        manual_asr_source: manual_asr.as_ref().map(|task| {
+            if task.3 == "system" {
+                AudioSource::System
+            } else {
+                AudioSource::Microphone
+            }
+        }),
         coarse_segments: Vec::new(),
         precise_segments: Vec::new(),
     })
@@ -1327,6 +1464,9 @@ pub fn event_detail(
         fit_state: Some(event_fit_state(db, &id.to_string())?),
         processing_state: event_state(db, &id.to_string(), &version)?,
         manual_asr_state: None,
+        manual_asr_started_ms: None,
+        manual_asr_ended_ms: None,
+        manual_asr_source: None,
         coarse_segments: coarse_for(db, start, end, mask, limit, offset)?,
         precise_segments: precise_for(
             db,
@@ -2353,6 +2493,11 @@ fn utterance_has_retained_audio(
     end: i64,
     allow_cleared_original: bool,
 ) -> Result<bool, String> {
+    // Each block is timestamped from a wall-clock anchor, while its length is
+    // measured in audio frames. Adjacent live blocks can therefore differ by
+    // a few milliseconds even though the samples are continuous. Keep the
+    // real gap check below and reject larger holes caused by discarded audio.
+    const BLOCK_CLOCK_TOLERANCE_MS: i64 = 10;
     let gap: bool = db
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM media_gaps WHERE source=?1
@@ -2380,7 +2525,7 @@ fn utterance_has_retained_audio(
     let mut covered = start;
     for span in spans {
         let (block_start, block_end) = span.map_err(|e| e.to_string())?;
-        if block_start > covered {
+        if block_start - covered > BLOCK_CLOCK_TOLERANCE_MS {
             return Ok(false);
         }
         covered = covered.max(block_end);
@@ -2592,6 +2737,24 @@ mod tests {
         assert_eq!(items.len(), 1);
         assert!(items[0].title.is_none());
         assert_eq!((items[0].started_ms, items[0].ended_ms), (0, 3 * hour));
+
+        set_configured(&db, CloudProvider::Asr, "bigmodel").unwrap();
+        transcribe_range(
+            &mut db,
+            15 * 60_000,
+            16 * 60_000,
+            EventSources::Microphone,
+            3 * hour + 1,
+        )
+        .unwrap();
+        let items = timeline(&db, 0, 3 * hour).unwrap();
+        assert_eq!(items[0].manual_asr_state.as_deref(), Some("pending"));
+        assert_eq!(items[0].manual_asr_started_ms, Some(15 * 60_000));
+        assert_eq!(items[0].manual_asr_ended_ms, Some(16 * 60_000));
+        assert!(matches!(
+            items[0].manual_asr_source,
+            Some(AudioSource::Microphone)
+        ));
     }
 
     #[test]
@@ -3400,6 +3563,32 @@ mod tests {
             .unwrap(),
             1
         );
+    }
+
+    #[test]
+    fn provider_timing_allows_only_block_clock_rounding_gaps() {
+        let db = db();
+        media(&db, "first", 1_000, 6_000);
+        media(&db, "next", 6_003, 11_003);
+        assert!(utterance_has_retained_audio(&db, "microphone", 2_000, 10_000, false).unwrap());
+        assert!(!utterance_has_retained_audio(&db, "microphone", 980, 10_000, false).unwrap());
+        db.execute(
+            "UPDATE audio_blocks SET started_ms=6030,ended_ms=11030 WHERE id='next'",
+            [],
+        )
+        .unwrap();
+        assert!(!utterance_has_retained_audio(&db, "microphone", 2_000, 10_000, false).unwrap());
+        db.execute(
+            "UPDATE audio_blocks SET started_ms=6003,ended_ms=11003 WHERE id='next'",
+            [],
+        )
+        .unwrap();
+        db.execute(
+            "INSERT INTO media_gaps VALUES ('real','microphone',6001,6002,'source_failure')",
+            [],
+        )
+        .unwrap();
+        assert!(!utterance_has_retained_audio(&db, "microphone", 2_000, 10_000, false).unwrap());
     }
 
     #[test]

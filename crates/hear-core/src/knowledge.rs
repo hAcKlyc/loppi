@@ -404,7 +404,11 @@ pub fn object_revision(db: &Connection, kind: &str, id: Uuid) -> Result<i64, Str
         _ => return Err("unknown revision subject".into()),
     }
     let bytes = hash.finalize();
-    Ok(i64::from_le_bytes(bytes[..8].try_into().unwrap()) & i64::MAX)
+    // Revisions cross JSON into the JavaScript client. Keep the digest inside
+    // Number.MAX_SAFE_INTEGER so an unchanged object can be edited without
+    // losing low bits during JSON.parse and triggering a false conflict.
+    const MAX_SAFE_JSON_INTEGER: i64 = (1 << 53) - 1;
+    Ok(i64::from_le_bytes(bytes[..8].try_into().unwrap()) & MAX_SAFE_JSON_INTEGER)
 }
 
 pub fn expect_revision(db: &Connection, kind: &str, id: Uuid, expected: i64) -> Result<(), String> {
@@ -769,9 +773,17 @@ pub fn search(
     } else {
         "instr(lower(sr.text),lower(?4))>0"
     };
+    let coarse_duplicate = if query.is_some() {
+        "hit.kind!='coarse' OR NOT EXISTS (SELECT 1 FROM visible refined
+          WHERE refined.kind='precise' AND refined.source=hit.source
+            AND refined.started_ms<hit.ended_ms AND refined.ended_ms>hit.started_ms)"
+    } else {
+        "1"
+    };
     let sql = format!(
-        "SELECT sr.kind,sr.item_id,sr.source,sr.started_ms,sr.ended_ms,sr.text,
-      sb.person_id,person.display_name FROM search_records sr
+        "WITH visible AS (SELECT sr.rowid AS result_rowid,sr.kind,sr.item_id,sr.source,
+      sr.started_ms,sr.ended_ms,sr.text,sb.person_id,person.display_name,t.target_kind
+      FROM search_records sr
       LEFT JOIN precise_segments p ON sr.kind='precise' AND p.id=sr.item_id
       LEFT JOIN cloud_tasks t ON t.id=p.task_id
       LEFT JOIN speaker_bindings sb ON sb.current_segment_id=p.id AND sb.state='active'
@@ -784,8 +796,16 @@ pub fn search(
             WHERE e.id=t.target_id AND e.deleted_ms IS NULL
             AND t.target_version=printf('%d:%d:%d',e.source_mask,e.started_ms,e.ended_ms)))
           OR (t.target_kind='range' AND EXISTS (SELECT 1 FROM manual_ranges m
-            WHERE m.id=t.target_id AND t.target_version=cast(m.revision AS TEXT))))))
-      ORDER BY sr.started_ms DESC,sr.rowid DESC LIMIT ?5 OFFSET ?6"
+            WHERE m.id=t.target_id AND t.target_version=cast(m.revision AS TEXT)))))))
+      SELECT hit.kind,hit.item_id,hit.source,hit.started_ms,hit.ended_ms,hit.text,
+        hit.person_id,hit.display_name FROM visible hit WHERE ({coarse_duplicate})
+        AND (hit.kind!='precise' OR NOT EXISTS (SELECT 1 FROM visible twin
+          WHERE twin.kind='precise' AND twin.source=hit.source
+            AND twin.started_ms=hit.started_ms AND twin.ended_ms=hit.ended_ms
+            AND twin.text=hit.text AND twin.result_rowid!=hit.result_rowid
+            AND (twin.target_kind='event' AND hit.target_kind!='event'
+              OR twin.target_kind=hit.target_kind AND twin.result_rowid<hit.result_rowid)))
+      ORDER BY hit.started_ms DESC,hit.result_rowid DESC LIMIT ?5 OFFSET ?6"
     );
     let mut stmt = db.prepare(&sql).map_err(|error| error.to_string())?;
     stmt.query_map(
@@ -841,6 +861,11 @@ pub fn search_empty_reason(
     }
     for (sql, reason) in [
         (
+            "SELECT EXISTS(SELECT 1 FROM moments WHERE kind='screenshot' AND ocr_state='failed'
+             AND anchor_ms>=?1 AND anchor_ms<?2)",
+            "ocr_failed",
+        ),
+        (
             "SELECT EXISTS(SELECT 1 FROM cloud_tasks WHERE state='failed'
             AND started_ms<?2 AND ended_ms>?1)",
             "processing_failed",
@@ -862,6 +887,7 @@ pub fn search_empty_reason(
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM audio_blocks WHERE started_ms<?2 AND ended_ms>?1
            AND retention_decision!='all_data') OR
+         EXISTS(SELECT 1 FROM moments WHERE anchor_ms>=?1 AND anchor_ms<?2) OR
          EXISTS(SELECT 1 FROM search_records WHERE started_ms<?2 AND ended_ms>?1)",
             params![start, end],
             |r| r.get(0),
@@ -2022,6 +2048,20 @@ mod tests {
     use hear_protocol::{CloudProvider, EventSources};
 
     #[test]
+    fn content_revision_survives_javascript_number_round_trip() {
+        let mut db = crate::Store::new(Connection::open_in_memory().unwrap())
+            .unwrap()
+            .db;
+        let tx = db.transaction().unwrap();
+        let person = create_person(&tx, "测试人物", 1000).unwrap();
+        tx.commit().unwrap();
+        let revision = object_revision(&db, "person", person).unwrap();
+        assert!(revision > 0);
+        assert!(revision <= (1 << 53) - 1);
+        assert_eq!(revision, revision as f64 as i64);
+    }
+
+    #[test]
     fn search_empty_reason_distinguishes_unrecorded_and_identity_pending() {
         let mut db = crate::Store::new(Connection::open_in_memory().unwrap())
             .unwrap()
@@ -2398,6 +2438,66 @@ mod tests {
                 .iter()
                 .all(|item| !next.iter().any(|other| other.item_id == item.item_id))
         );
+    }
+
+    #[test]
+    fn search_prefers_matching_precise_text_over_overlapping_coarse_text() {
+        let mut db = crate::Store::new(Connection::open_in_memory().unwrap())
+            .unwrap()
+            .db;
+        db.execute(
+            "INSERT INTO audio_blocks(id,session_id,source,started_ms,ended_ms,sample_start,
+          frames,bytes,media_path,retention_decision,analysis_state,speech_active)
+          VALUES ('block','session','microphone',1000,6000,0,240000,100,
+          'media/microphone/block.opus','retain','complete',1)",
+            [],
+        )
+        .unwrap();
+        db.execute(
+            "INSERT INTO coarse_segments VALUES (?1,'block','session','microphone',
+          1000,5000,'需要精确转录记录','test')",
+            params![Uuid::new_v4().to_string()],
+        )
+        .unwrap();
+        events::set_configured(&db, CloudProvider::Asr, "bigmodel").unwrap();
+        events::create_event(&mut db, 1000, 6000, "讨论", EventSources::Microphone, 8000).unwrap();
+        let task = events::take_task(&mut db, CloudProvider::Asr, 8001)
+            .unwrap()
+            .unwrap();
+        events::publish_asr(
+            &mut db,
+            &task,
+            &[AsrUtterance {
+                start_ms: 500,
+                end_ms: 3000,
+                text: "精确转录完成".into(),
+                speaker: Some("1".into()),
+            }],
+            8002,
+        )
+        .unwrap();
+        events::transcribe_range(&mut db, 1000, 6000, EventSources::Microphone, 8003).unwrap();
+        let overlapping = events::take_task(&mut db, CloudProvider::Asr, 8004)
+            .unwrap()
+            .unwrap();
+        events::publish_asr(
+            &mut db,
+            &overlapping,
+            &[AsrUtterance {
+                start_ms: 500,
+                end_ms: 3000,
+                text: "精确转录完成".into(),
+                speaker: Some("1".into()),
+            }],
+            8005,
+        )
+        .unwrap();
+        let refined = search(&db, Some("精确转录"), 0, 10_000, None, 0, 10).unwrap();
+        assert_eq!(refined.len(), 1);
+        assert_eq!(refined[0].kind, "precise");
+        let coarse_only = search(&db, Some("需要"), 0, 10_000, None, 0, 10).unwrap();
+        assert_eq!(coarse_only.len(), 1);
+        assert_eq!(coarse_only[0].kind, "coarse");
     }
 
     #[test]

@@ -9,8 +9,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
-pub const PROTOCOL_VERSION: u32 = 6;
-const MAX_RESPONSE_BYTES: u64 = 1024 * 1024;
+pub const PROTOCOL_VERSION: u32 = 11;
+const MAX_RESPONSE_BYTES: u64 = 48 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Envelope {
@@ -57,6 +57,10 @@ pub enum Request {
         enabled: bool,
         expected_revision: i64,
     },
+    SetAudioLimit {
+        limit_bytes: u64,
+        expected_revision: i64,
+    },
     CloudStatus,
     CloudTasks {
         provider: CloudProvider,
@@ -90,6 +94,11 @@ pub enum Request {
         sources: EventSources,
         offset: u32,
         limit: u16,
+    },
+    PlaybackChunk {
+        from_ms: i64,
+        to_ms: i64,
+        sources: EventSources,
     },
     CreateEvent {
         started_ms: i64,
@@ -145,6 +154,12 @@ pub enum Request {
     CreatePerson {
         display_name: String,
     },
+    CreateAndBindSpeaker {
+        segment_id: Uuid,
+        display_name: String,
+        entire_local_speaker: bool,
+        expected_revision: i64,
+    },
     RenamePerson {
         person_id: Uuid,
         display_name: String,
@@ -190,6 +205,21 @@ pub enum Request {
         offset: u32,
         limit: u16,
     },
+    Moments {
+        from_ms: i64,
+        to_ms: i64,
+        offset: u32,
+        limit: u16,
+    },
+    AddMoment {
+        kind: MomentKind,
+        anchor_ms: i64,
+        text: Option<String>,
+    },
+    CaptureScreenshot,
+    ScreenshotData {
+        moment_id: Uuid,
+    },
     PreviewCleanup {
         from_ms: i64,
         to_ms: i64,
@@ -230,6 +260,7 @@ impl Request {
             Self::Pause { .. } => "pause",
             Self::Resume { .. } => "resume",
             Self::SetSource { .. } => "set_source",
+            Self::SetAudioLimit { .. } => "set_audio_limit",
             Self::CloudStatus => "cloud_status",
             Self::CloudTasks { .. } => "cloud_tasks",
             Self::ConfigureCloud { .. } => "configure_cloud",
@@ -239,6 +270,7 @@ impl Request {
             Self::Timeline { .. } => "timeline",
             Self::EventDetail { .. } => "event_detail",
             Self::RangeDetail { .. } => "range_detail",
+            Self::PlaybackChunk { .. } => "playback_chunk",
             Self::CreateEvent { .. } => "create_event",
             Self::EditEvent { .. } => "edit_event",
             Self::DeleteEvent { .. } => "delete_event",
@@ -250,6 +282,7 @@ impl Request {
             Self::ObjectRevision { .. } => "object_revision",
             Self::People => "people",
             Self::CreatePerson { .. } => "create_person",
+            Self::CreateAndBindSpeaker { .. } => "create_and_bind_speaker",
             Self::RenamePerson { .. } => "rename_person",
             Self::DeletePerson { .. } => "delete_person",
             Self::BindSpeaker { .. } => "bind_speaker",
@@ -260,6 +293,10 @@ impl Request {
             Self::ReviewItems => "review_items",
             Self::ResolveReview { .. } => "resolve_review",
             Self::Search { .. } => "search",
+            Self::Moments { .. } => "moments",
+            Self::AddMoment { .. } => "add_moment",
+            Self::CaptureScreenshot => "capture_screenshot",
+            Self::ScreenshotData { .. } => "screenshot_data",
             Self::PreviewCleanup { .. } => "preview_cleanup",
             Self::ExecuteCleanup { .. } => "execute_cleanup",
             Self::ExportRange { .. } => "export_range",
@@ -343,7 +380,7 @@ impl LogEvent {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AudioSource {
     Microphone,
@@ -372,6 +409,26 @@ pub enum CleanupMode {
     AllData,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MomentKind {
+    Mark,
+    Comment,
+    Screenshot,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MomentView {
+    pub id: Uuid,
+    pub kind: MomentKind,
+    pub anchor_ms: i64,
+    pub created_ms: i64,
+    pub captured_ms: Option<i64>,
+    pub text: Option<String>,
+    pub ocr_text: Option<String>,
+    pub ocr_state: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CleanupPreview {
     pub token: Uuid,
@@ -388,6 +445,8 @@ pub struct CleanupPreview {
     pub voice_extractions_awaiting_audio: u64,
     pub affected_event_count: u64,
     pub affected_events: Vec<Uuid>,
+    pub moment_count: u64,
+    pub screenshot_count: u64,
     pub overlap_may_remove_whole_sentences: bool,
     pub voice_features_retained: bool,
 }
@@ -426,6 +485,9 @@ pub struct TimelineItem {
     pub fit_state: Option<String>,
     pub processing_state: String,
     pub manual_asr_state: Option<String>,
+    pub manual_asr_started_ms: Option<i64>,
+    pub manual_asr_ended_ms: Option<i64>,
+    pub manual_asr_source: Option<AudioSource>,
     pub coarse_segments: Vec<CoarseSegment>,
     pub precise_segments: Vec<PreciseSegment>,
 }
@@ -540,6 +602,7 @@ pub enum Response {
     Timeline {
         id: Uuid,
         items: Vec<TimelineItem>,
+        gaps: Vec<TimeGap>,
     },
     Event {
         id: Uuid,
@@ -589,6 +652,27 @@ pub enum Response {
         id: Uuid,
         hits: Vec<SearchHit>,
         empty_reason: Option<String>,
+    },
+    Moments {
+        id: Uuid,
+        moments: Vec<MomentView>,
+    },
+    MomentSaved {
+        id: Uuid,
+        moment: MomentView,
+    },
+    ScreenshotData {
+        id: Uuid,
+        moment_id: Uuid,
+        png_base64: String,
+    },
+    PlaybackChunk {
+        id: Uuid,
+        from_ms: i64,
+        to_ms: i64,
+        wav_base64: String,
+        has_audio: bool,
+        next_audio_ms: Option<i64>,
     },
     CleanupPreview {
         id: Uuid,
@@ -645,6 +729,14 @@ pub struct ServiceState {
     pub enabled_intent: bool,
     pub paused_intent: bool,
     pub storage_paused: bool,
+    #[serde(default)]
+    pub audio_used_bytes: u64,
+    #[serde(default)]
+    pub audio_limit_bytes: u64,
+    #[serde(default)]
+    pub disk_free_bytes: u64,
+    #[serde(default)]
+    pub storage_warning: bool,
     pub microphone_enabled: bool,
     pub system_enabled: bool,
     pub capture_state: CaptureState,
@@ -653,6 +745,14 @@ pub struct ServiceState {
     pub system_recording: bool,
     pub microphone_reason: Option<String>,
     pub system_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TimeGap {
+    pub source: AudioSource,
+    pub started_ms: i64,
+    pub ended_ms: i64,
+    pub reason: String,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -771,6 +871,10 @@ fn send_with_policy(
         | Response::ObjectRevision { id, .. }
         | Response::PersonChanged { id, .. }
         | Response::Search { id, .. }
+        | Response::Moments { id, .. }
+        | Response::MomentSaved { id, .. }
+        | Response::ScreenshotData { id, .. }
+        | Response::PlaybackChunk { id, .. }
         | Response::CleanupPreview { id, .. }
         | Response::CleanupComplete { id, .. }
         | Response::ExportComplete { id, .. }

@@ -1,0 +1,533 @@
+use base64::Engine;
+use hear_protocol::{MomentKind, MomentView};
+use rusqlite::{Connection, OptionalExtension, Transaction, params};
+use std::ffi::{CStr, CString};
+use std::fs::{self, File};
+use std::io::Read;
+use std::os::unix::ffi::OsStrExt;
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use uuid::Uuid;
+
+unsafe extern "C" {
+    fn hear_active_display_rect(x: *mut i32, y: *mut i32, width: *mut i32, height: *mut i32)
+    -> i32;
+    fn hear_ocr_png(path: *const libc::c_char, output: *mut *mut libc::c_char) -> i32;
+}
+
+pub fn init(db: &Connection) -> Result<(), String> {
+    db.execute_batch(
+        "CREATE TABLE IF NOT EXISTS moments (
+      id TEXT PRIMARY KEY,kind TEXT NOT NULL CHECK(kind IN ('mark','comment','screenshot')),
+      anchor_ms INTEGER NOT NULL,created_ms INTEGER NOT NULL,captured_ms INTEGER,
+      text TEXT,media_path TEXT,ocr_text TEXT,ocr_state TEXT
+        CHECK(ocr_state IS NULL OR ocr_state IN ('complete','failed'))
+    );
+    CREATE INDEX IF NOT EXISTS moments_time ON moments(anchor_ms,id);
+    CREATE TRIGGER IF NOT EXISTS moment_note_insert AFTER INSERT ON moments
+      WHEN new.kind='comment' BEGIN
+      INSERT INTO search_records(kind,item_id,source,started_ms,ended_ms,text)
+        VALUES('note',new.id,NULL,new.anchor_ms,new.anchor_ms+1,new.text);
+    END;
+    CREATE TRIGGER IF NOT EXISTS moment_ocr_insert AFTER INSERT ON moments
+      WHEN new.kind='screenshot' AND new.ocr_text IS NOT NULL AND new.ocr_text!='' BEGIN
+      INSERT INTO search_records(kind,item_id,source,started_ms,ended_ms,text)
+        VALUES('ocr',new.id,NULL,new.anchor_ms,new.anchor_ms+1,new.ocr_text);
+    END;
+    CREATE TRIGGER IF NOT EXISTS moment_search_delete AFTER DELETE ON moments BEGIN
+      DELETE FROM search_records WHERE kind IN ('note','ocr') AND item_id=old.id;
+    END;",
+    )
+    .map_err(|error| error.to_string())
+}
+
+fn name(kind: MomentKind) -> &'static str {
+    match kind {
+        MomentKind::Mark => "mark",
+        MomentKind::Comment => "comment",
+        MomentKind::Screenshot => "screenshot",
+    }
+}
+
+fn view(
+    id: String,
+    kind: String,
+    anchor_ms: i64,
+    created_ms: i64,
+    captured_ms: Option<i64>,
+    text: Option<String>,
+    ocr_text: Option<String>,
+    ocr_state: Option<String>,
+) -> rusqlite::Result<MomentView> {
+    Ok(MomentView {
+        id: Uuid::parse_str(&id).map_err(|_| rusqlite::Error::InvalidQuery)?,
+        kind: match kind.as_str() {
+            "mark" => MomentKind::Mark,
+            "comment" => MomentKind::Comment,
+            "screenshot" => MomentKind::Screenshot,
+            _ => return Err(rusqlite::Error::InvalidQuery),
+        },
+        anchor_ms,
+        created_ms,
+        captured_ms,
+        text,
+        ocr_text,
+        ocr_state,
+    })
+}
+
+pub fn list(
+    db: &Connection,
+    start: i64,
+    end: i64,
+    offset: u32,
+    limit: u16,
+) -> Result<Vec<MomentView>, String> {
+    if start < 0 || end <= start || limit == 0 || limit > 200 {
+        return Err("invalid moment range or page size".into());
+    }
+    let mut stmt = db
+        .prepare(
+            "SELECT id,kind,anchor_ms,created_ms,captured_ms,text,ocr_text,ocr_state
+       FROM moments WHERE anchor_ms>=?1 AND anchor_ms<?2
+       ORDER BY anchor_ms,id LIMIT ?3 OFFSET ?4",
+        )
+        .map_err(|error| error.to_string())?;
+    stmt.query_map(
+        params![start, end, i64::from(limit), i64::from(offset)],
+        |row| {
+            view(
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+                row.get(5)?,
+                row.get(6)?,
+                row.get(7)?,
+            )
+        },
+    )
+    .map_err(|error| error.to_string())?
+    .collect::<Result<Vec<_>, _>>()
+    .map_err(|error| error.to_string())
+}
+
+pub fn add(
+    tx: &Transaction<'_>,
+    kind: MomentKind,
+    anchor_ms: i64,
+    text: Option<&str>,
+    now: i64,
+) -> Result<MomentView, String> {
+    if kind == MomentKind::Screenshot {
+        return Err("use screenshot capture for images".into());
+    }
+    if anchor_ms <= 0 || anchor_ms > now + 5_000 {
+        return Err("moment anchor is outside valid time".into());
+    }
+    let text = match kind {
+        MomentKind::Comment => {
+            let text = text.map(str::trim).filter(|value| !value.is_empty());
+            let Some(text) = text else {
+                return Err("comment cannot be empty".into());
+            };
+            if text.chars().count() > 5_000 {
+                return Err("comment is too long".into());
+            }
+            Some(text.to_owned())
+        }
+        MomentKind::Mark => None,
+        MomentKind::Screenshot => unreachable!(),
+    };
+    let id = Uuid::new_v4();
+    tx.execute(
+        "INSERT INTO moments(id,kind,anchor_ms,created_ms,text)
+       VALUES(?1,?2,?3,?4,?5)",
+        params![id.to_string(), name(kind), anchor_ms, now, text],
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(MomentView {
+        id,
+        kind,
+        anchor_ms,
+        created_ms: now,
+        captured_ms: None,
+        text,
+        ocr_text: None,
+        ocr_state: None,
+    })
+}
+
+pub struct CaptureResult {
+    pub id: Uuid,
+    pub relative: PathBuf,
+    pub triggered_ms: i64,
+    pub captured_ms: i64,
+    pub ocr_text: Option<String>,
+    pub ocr_state: &'static str,
+}
+
+pub fn capture(directory: &Path, now: i64) -> Result<CaptureResult, String> {
+    const DISK_RESERVE: u64 = 1_073_741_824;
+    const MAX_SCREENSHOT: u64 = 32_000_000;
+    if fs2::available_space(directory).map_err(|error| error.to_string())?
+        <= DISK_RESERVE + MAX_SCREENSHOT
+    {
+        return Err("disk space is too low to save a screenshot".into());
+    }
+    let target_dir = directory.join("screenshots");
+    fs::create_dir_all(&target_dir).map_err(|error| error.to_string())?;
+    fs::set_permissions(&target_dir, fs::Permissions::from_mode(0o700))
+        .map_err(|error| error.to_string())?;
+    let id = Uuid::new_v4();
+    let pending = target_dir.join(format!("{id}.pending"));
+    let relative = PathBuf::from("screenshots").join(format!("{id}.png"));
+    let final_path = directory.join(&relative);
+    let mut x = 0;
+    let mut y = 0;
+    let mut width = 0;
+    let mut height = 0;
+    if unsafe { hear_active_display_rect(&mut x, &mut y, &mut width, &mut height) } == 0 {
+        return Err("cannot find the active display".into());
+    }
+    let region = format!("-R{x},{y},{width},{height}");
+    let status = Command::new("/usr/sbin/screencapture")
+        .args(["-x", "-t", "png", &region])
+        .arg(&pending)
+        .status()
+        .map_err(|error| error.to_string())?;
+    if !status.success() {
+        let _ = fs::remove_file(&pending);
+        return Err("screen capture failed or screen recording permission is missing".into());
+    }
+    let captured_ms = crate::now_ms()?;
+    let result = (|| {
+        let meta = fs::symlink_metadata(&pending).map_err(|error| error.to_string())?;
+        if !meta.file_type().is_file() || meta.file_type().is_symlink() || meta.len() > 32_000_000 {
+            return Err("screenshot is not a valid private image".into());
+        }
+        if fs2::available_space(directory).map_err(|error| error.to_string())? <= DISK_RESERVE {
+            return Err("disk space is too low to save a screenshot".into());
+        }
+        let mut signature = [0; 8];
+        File::open(&pending)
+            .and_then(|mut file| file.read_exact(&mut signature))
+            .map_err(|error| error.to_string())?;
+        if signature != [137, 80, 78, 71, 13, 10, 26, 10] {
+            return Err("screenshot is not PNG".into());
+        }
+        fs::set_permissions(&pending, fs::Permissions::from_mode(0o600))
+            .map_err(|error| error.to_string())?;
+        File::open(&pending)
+            .and_then(|file| file.sync_all())
+            .map_err(|error| error.to_string())?;
+        fs::rename(&pending, &final_path).map_err(|error| error.to_string())?;
+        File::open(&target_dir)
+            .and_then(|directory| directory.sync_all())
+            .map_err(|error| error.to_string())?;
+        let c_path =
+            CString::new(final_path.as_os_str().as_bytes()).map_err(|error| error.to_string())?;
+        let mut output = std::ptr::null_mut();
+        let recognized = unsafe { hear_ocr_png(c_path.as_ptr(), &mut output) } != 0;
+        let ocr_text = if recognized && !output.is_null() {
+            let value = unsafe { CStr::from_ptr(output) }
+                .to_string_lossy()
+                .to_string();
+            unsafe { libc::free(output.cast()) };
+            Some(value)
+        } else {
+            None
+        };
+        Ok(CaptureResult {
+            id,
+            relative,
+            triggered_ms: now,
+            captured_ms: captured_ms.max(now),
+            ocr_text,
+            ocr_state: if recognized { "complete" } else { "failed" },
+        })
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&pending);
+        let _ = fs::remove_file(&final_path);
+    }
+    result
+}
+
+pub fn save_capture(
+    tx: &Transaction<'_>,
+    captured: &CaptureResult,
+    now: i64,
+) -> Result<MomentView, String> {
+    let anchor_ms = captured.triggered_ms;
+    tx.execute(
+        "INSERT INTO moments
+      (id,kind,anchor_ms,created_ms,captured_ms,media_path,ocr_text,ocr_state)
+      VALUES(?1,'screenshot',?2,?3,?4,?5,?6,?7)",
+        params![
+            captured.id.to_string(),
+            anchor_ms,
+            now,
+            captured.captured_ms,
+            captured.relative.to_string_lossy().to_string(),
+            captured.ocr_text,
+            captured.ocr_state
+        ],
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(MomentView {
+        id: captured.id,
+        kind: MomentKind::Screenshot,
+        anchor_ms,
+        created_ms: now,
+        captured_ms: Some(captured.captured_ms),
+        text: None,
+        ocr_text: captured.ocr_text.clone(),
+        ocr_state: Some(captured.ocr_state.to_owned()),
+    })
+}
+
+pub fn image(db: &Connection, directory: &Path, id: Uuid) -> Result<String, String> {
+    let relative: Option<String> = db
+        .query_row(
+            "SELECT media_path FROM moments WHERE id=?1 AND kind='screenshot'",
+            params![id.to_string()],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    let expected = PathBuf::from("screenshots").join(format!("{id}.png"));
+    if relative.as_deref() != Some(expected.to_string_lossy().as_ref()) {
+        return Err("screenshot is unavailable".into());
+    }
+    let path = directory.join(expected);
+    let meta = fs::symlink_metadata(&path).map_err(|error| error.to_string())?;
+    if !meta.file_type().is_file() || meta.file_type().is_symlink() || meta.len() > 32_000_000 {
+        return Err("screenshot media is invalid".into());
+    }
+    let data = fs::read(path).map_err(|error| error.to_string())?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(data))
+}
+
+pub fn valid_screenshot_path(path: &Path) -> bool {
+    let mut parts = path.components();
+    parts
+        .next()
+        .is_some_and(|part| part.as_os_str() == "screenshots")
+        && parts.next().is_some_and(|part| {
+            part.as_os_str()
+                .to_str()
+                .and_then(|name| name.strip_suffix(".png"))
+                .is_some_and(|stem| Uuid::parse_str(stem).is_ok())
+        })
+        && parts.next().is_none()
+}
+
+pub fn clear_all_data(tx: &Transaction<'_>, start: i64, end: i64, now: i64) -> Result<(), String> {
+    tx.execute(
+        "INSERT OR IGNORE INTO media_deletion_jobs(media_path,created_ms)
+       SELECT media_path,?3 FROM moments WHERE kind='screenshot' AND
+       anchor_ms>=?1 AND anchor_ms<?2 AND media_path IS NOT NULL",
+        params![start, end, now],
+    )
+    .map_err(|error| error.to_string())?;
+    tx.execute(
+        "DELETE FROM moments WHERE anchor_ms>=?1 AND anchor_ms<?2",
+        params![start, end],
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+pub fn recover(db: &Connection, directory: &Path) -> Result<(), String> {
+    let screenshot_dir = directory.join("screenshots");
+    let entries = match fs::read_dir(&screenshot_dir) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.to_string()),
+    };
+    for entry in entries {
+        let entry = entry.map_err(|error| error.to_string())?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        let remove = if name.ends_with(".pending") {
+            true
+        } else if let Some(id) = name.strip_suffix(".png") {
+            Uuid::parse_str(id).is_ok()
+                && db
+                    .query_row(
+                        "SELECT EXISTS(SELECT 1 FROM moments WHERE id=?1 AND kind='screenshot')",
+                        params![id],
+                        |row| row.get::<_, i64>(0),
+                    )
+                    .map_err(|error| error.to_string())?
+                    == 0
+        } else {
+            false
+        };
+        if remove {
+            let _ = fs::remove_file(entry.path());
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn read_only_connection_can_load_committed_screenshot() {
+        let directory = tempfile::tempdir().unwrap();
+        let db_path = directory.path().join("hear.sqlite");
+        let mut store = crate::Store::new(Connection::open(&db_path).unwrap()).unwrap();
+        let id = Uuid::new_v4();
+        let relative = PathBuf::from("screenshots").join(format!("{id}.png"));
+        fs::create_dir(directory.path().join("screenshots")).unwrap();
+        fs::write(
+            directory.path().join(&relative),
+            [137, 80, 78, 71, 13, 10, 26, 10],
+        )
+        .unwrap();
+        let tx = store.db.transaction().unwrap();
+        save_capture(
+            &tx,
+            &CaptureResult {
+                id,
+                relative,
+                triggered_ms: 1000,
+                captured_ms: 1001,
+                ocr_text: None,
+                ocr_state: "failed",
+            },
+            1002,
+        )
+        .unwrap();
+        tx.commit().unwrap();
+        let reader =
+            Connection::open_with_flags(&db_path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+                .unwrap();
+        assert!(!image(&reader, directory.path(), id).unwrap().is_empty());
+    }
+
+    #[test]
+    fn screenshot_uses_actual_trigger_time_even_if_capture_finishes_later() {
+        let mut store = crate::Store::new(Connection::open_in_memory().unwrap()).unwrap();
+        let capture = CaptureResult {
+            id: Uuid::new_v4(),
+            relative: PathBuf::from("screenshots/test.png"),
+            triggered_ms: 1_000,
+            captured_ms: 4_000,
+            ocr_text: None,
+            ocr_state: "failed",
+        };
+        let tx = store.db.transaction().unwrap();
+        let moment = save_capture(&tx, &capture, 5_000).unwrap();
+        tx.commit().unwrap();
+        assert_eq!(moment.anchor_ms, 1_000);
+        assert_eq!(moment.captured_ms, Some(4_000));
+        assert_eq!(list(&store.db, 0, 2_000, 0, 10).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn notes_and_marks_keep_original_anchors_and_search_text() {
+        let mut store = crate::Store::new(Connection::open_in_memory().unwrap()).unwrap();
+        let tx = store.db.transaction().unwrap();
+        let note = add(&tx, MomentKind::Comment, 1000, Some("路演备忘"), 4000).unwrap();
+        add(&tx, MomentKind::Mark, 2000, None, 4000).unwrap();
+        tx.commit().unwrap();
+        let rows = list(&store.db, 0, 3000, 0, 50).unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].id, note.id);
+        assert_eq!(rows[0].anchor_ms, 1000);
+        let hits = crate::knowledge::search(&store.db, Some("路演"), 0, 3000, None, 0, 20).unwrap();
+        assert_eq!(hits.len(), 1);
+        let tx = store.db.transaction().unwrap();
+        clear_all_data(&tx, 500, 1500, 5000).unwrap();
+        tx.commit().unwrap();
+        assert_eq!(list(&store.db, 0, 3000, 0, 50).unwrap().len(), 1);
+        assert!(
+            crate::knowledge::search(&store.db, Some("路演"), 0, 3000, None, 0, 20)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn quiet_screenshot_is_visible_and_raw_clear_preserves_it_but_all_data_removes_it() {
+        use hear_protocol::{CleanupMode, EventSources};
+        let directory = tempfile::tempdir().unwrap();
+        let mut store = crate::Store::new(Connection::open_in_memory().unwrap()).unwrap();
+        let id = Uuid::new_v4();
+        let image_dir = directory.path().join("screenshots");
+        fs::create_dir(&image_dir).unwrap();
+        let image = image_dir.join(format!("{id}.png"));
+        fs::write(&image, [137, 80, 78, 71, 13, 10, 26, 10]).unwrap();
+        store.db.execute(
+            "INSERT INTO moments(id,kind,anchor_ms,created_ms,captured_ms,media_path,ocr_text,ocr_state)
+             VALUES(?1,'screenshot',1000,1001,1001,?2,'演示画面','complete')",
+            params![id.to_string(),format!("screenshots/{id}.png")],
+        ).unwrap();
+        let tx = store.db.transaction().unwrap();
+        add(&tx, MomentKind::Comment, 1200, Some("现场笔记"), 3000).unwrap();
+        tx.commit().unwrap();
+        let timeline = crate::events::timeline(&store.db, 0, 2000).unwrap();
+        assert_eq!(timeline.len(), 1);
+        assert!(
+            timeline
+                .iter()
+                .all(|item| item.processing_state == "moment_only")
+        );
+        assert_eq!((timeline[0].started_ms, timeline[0].ended_ms), (1000, 1201));
+        assert_eq!(
+            crate::knowledge::search(&store.db, Some("演示"), 0, 2000, None, 0, 20)
+                .unwrap()
+                .len(),
+            1
+        );
+        let empty_media = crate::cleanup::PreparedMedia {
+            originals: vec![],
+            replacements: vec![],
+        };
+        let raw = crate::cleanup::preview(
+            &store.db,
+            0,
+            2000,
+            EventSources::Microphone,
+            CleanupMode::RawAudio,
+            5000,
+        )
+        .unwrap();
+        assert_eq!(raw.screenshot_count, 0);
+        let scope = crate::cleanup::verified_scope(&store.db, raw.token, false, 5001).unwrap();
+        let tx = store.db.transaction().unwrap();
+        crate::cleanup::apply(&tx, &scope, &empty_media, 5001).unwrap();
+        tx.commit().unwrap();
+        assert_eq!(list(&store.db, 0, 2000, 0, 20).unwrap().len(), 2);
+        assert!(image.exists());
+        let all = crate::cleanup::preview(
+            &store.db,
+            0,
+            2000,
+            EventSources::Microphone,
+            CleanupMode::AllData,
+            6000,
+        )
+        .unwrap();
+        assert_eq!(all.moment_count, 2);
+        assert_eq!(all.screenshot_count, 1);
+        let scope = crate::cleanup::verified_scope(&store.db, all.token, true, 6001).unwrap();
+        let tx = store.db.transaction().unwrap();
+        crate::cleanup::apply(&tx, &scope, &empty_media, 6001).unwrap();
+        tx.commit().unwrap();
+        assert!(list(&store.db, 0, 2000, 0, 20).unwrap().is_empty());
+        assert!(
+            crate::knowledge::search(&store.db, Some("演示"), 0, 2000, None, 0, 20)
+                .unwrap()
+                .is_empty()
+        );
+        crate::cleanup::drain_deletions(&store.db, directory.path(), 7000).unwrap();
+        assert!(!image.exists());
+    }
+}

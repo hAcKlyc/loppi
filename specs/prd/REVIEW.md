@@ -34,7 +34,7 @@
 
 本次逐段对照最新版 PRD 与 MyAgents 录音/本地推理代码，并核对 Apple、SQLite、sherpa-onnx、火山引擎的一手资料。已直接修订 RFC，重点是以下原先不足以指导实现的环节：
 
-客户端形态也已明确为首版选型：Tauri 2 + React/TypeScript/Vite 主界面，独立 Rust 常驻核心与 Rust CLI，本地推理 worker，必要的 AppKit/SwiftUI/ServiceManagement/ScreenCaptureKit/Vision/Keychain 桥接；SQLite、短 Opus 封块与本机模型包作为本地数据/推理基础。悬浮球优先使用原生 `NSPanel` 内容，避免把 MyAgents 透明 WebView 所需的 macOS 私有 API 当作发行前提。MyAgents 证明这套主界面和部分录音底层已有代码可供抽取，但其 Node 服务、单 Record 领域模型和悬浮聊天业务不属于 hear 的必需依赖。常驻核心在安装版取得采集权限和登录恢复能力仍是原型阻断验证。
+客户端形态已明确为首版选型：Tauri 2 + React/TypeScript/Vite 主界面，独立 Rust 常驻核心与 Rust CLI，本地推理 worker，必要的 AppKit/ServiceManagement/ScreenCaptureKit/Vision/Keychain 桥接；SQLite、短 Opus 封块与本机模型包作为本地数据/推理基础。此处早期审查曾建议原生 `NSPanel` 内容；Batch 5 已改用独立 Tauri 透明窗口，原因、私有 API 使用及待验证门槛记录在 RFC。MyAgents 的 Node 服务、单 Record 领域模型和悬浮聊天业务不属于 hear 的依赖。常驻核心在安装版取得采集权限和登录恢复能力须有实测证据。
 
 | 优先级 | 原先的技术缺口 | RFC 当前处理 |
 |---|---|---|

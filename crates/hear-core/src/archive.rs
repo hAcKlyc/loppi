@@ -262,7 +262,7 @@ where
     result
 }
 
-fn wav_mono_48k(samples: &[f32]) -> Result<Vec<u8>, String> {
+pub(crate) fn wav_mono_48k(samples: &[f32]) -> Result<Vec<u8>, String> {
     let data_bytes = u32::try_from(
         samples
             .len()
@@ -306,9 +306,6 @@ pub fn export(
     }
     if !destination.is_absolute() || destination.extension().is_none_or(|value| value != "tar") {
         return Err("choose an absolute .tar destination".into());
-    }
-    if include_screenshots {
-        return Err("screenshots are not ready for export".into());
     }
     let mask = source_mask(sources);
     fs::create_dir_all(directory.join("export_tmp")).map_err(|error| error.to_string())?;
@@ -356,6 +353,12 @@ pub fn export(
             )
             .map_err(|error| error.to_string())?;
         }
+        db.execute(
+            "INSERT INTO temp.export_allow(kind,id) SELECT 'moments.jsonl',id FROM moments
+             WHERE anchor_ms>=?1 AND anchor_ms<?2 AND ?3>=0",
+            params![start, end, mask],
+        )
+        .map_err(|error| error.to_string())?;
         Ok::<(), String>(())
     })();
     if let Err(error) = selected {
@@ -512,6 +515,25 @@ pub fn export(
                 )
             },
         )?;
+        let moments = archive_rows(
+            &mut builder,
+            db,
+            &spool,
+            "moments.jsonl",
+            "SELECT id,kind,anchor_ms AS started_ms,created_ms,captured_ms,text,ocr_text,ocr_state
+             FROM moments WHERE anchor_ms>=?1 AND anchor_ms<?2 AND ?3>=0",
+            start,
+            end,
+            mask,
+            |row| {
+                Ok(
+                    json!({"id":row.get::<_,String>(0)?,"kind":row.get::<_,String>(1)?,
+                "anchor_ms":row.get::<_,i64>(2)?,"created_ms":row.get::<_,i64>(3)?,
+                "captured_ms":row.get::<_,Option<i64>>(4)?,"text":row.get::<_,Option<String>>(5)?,
+                "ocr_text":row.get::<_,Option<String>>(6)?,"ocr_state":row.get::<_,Option<String>>(7)?}),
+                )
+            },
+        )?;
         let mut audio_files = 0;
         if include_audio {
             let mut cursor_time = i64::MIN;
@@ -591,10 +613,69 @@ pub fn export(
                 }
             }
         }
+        let mut screenshot_files = 0;
+        if include_screenshots {
+            let mut cursor_time = i64::MIN;
+            let mut cursor_id = String::new();
+            loop {
+                let rows = {
+                    let mut stmt = db.prepare(
+                        "SELECT id,anchor_ms,media_path FROM moments WHERE kind='screenshot'
+                         AND anchor_ms>=?1 AND anchor_ms<?2 AND EXISTS(
+                           SELECT 1 FROM temp.export_allow a WHERE a.kind='moments.jsonl' AND a.id=moments.id)
+                         AND (anchor_ms>?3 OR (anchor_ms=?3 AND id>?4))
+                         ORDER BY anchor_ms,id LIMIT 128"
+                    ).map_err(|error| error.to_string())?;
+                    stmt.query_map(params![start, end, cursor_time, cursor_id], |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, i64>(1)?,
+                            row.get::<_, String>(2)?,
+                        ))
+                    })
+                    .map_err(|error| error.to_string())?
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(|error| error.to_string())?
+                };
+                let page_len = rows.len();
+                for (id, anchor, relative) in rows {
+                    cursor_time = anchor;
+                    cursor_id = id.clone();
+                    let _media_guard = cleanup_gate.lock().map_err(|error| error.to_string())?;
+                    let still_current: i64 = db.query_row(
+                        "SELECT EXISTS(SELECT 1 FROM moments WHERE id=?1 AND anchor_ms=?2 AND media_path=?3)",
+                        params![id,anchor,relative], |row| row.get(0),
+                    ).map_err(|error| error.to_string())?;
+                    if still_current == 0 {
+                        continue;
+                    }
+                    let expected = PathBuf::from("screenshots").join(format!("{id}.png"));
+                    if Path::new(&relative) != expected
+                        || !crate::moments::valid_screenshot_path(&expected)
+                    {
+                        return Err("screenshot export manifest invalid".into());
+                    }
+                    let path = directory.join(&expected);
+                    let meta = fs::symlink_metadata(&path).map_err(|error| error.to_string())?;
+                    if !meta.file_type().is_file()
+                        || meta.file_type().is_symlink()
+                        || meta.len() > 32_000_000
+                    {
+                        return Err("screenshot export source invalid".into());
+                    }
+                    let content = fs::read(&path).map_err(|error| error.to_string())?;
+                    archive_bytes(&mut builder, &format!("screenshots/{id}.png"), &content)?;
+                    screenshot_files += 1;
+                }
+                if page_len < 128 {
+                    break;
+                }
+            }
+        }
         let manifest = json!({"format":"hear-export-0.1","from_ms":start,"to_ms":end,
             "sources":sources,"events":events,"coarse_segments":coarse,
-            "precise_segments":precise,"audio_files":audio_files,
-            "screenshots_included":false});
+            "precise_segments":precise,"moments":moments,"audio_files":audio_files,
+            "screenshot_files":screenshot_files,"screenshots_included":include_screenshots});
         archive_bytes(
             &mut builder,
             "manifest.json",
@@ -610,7 +691,7 @@ pub fn export(
         let cleared_during: i64 = db
             .query_row(
                 "SELECT EXISTS(SELECT 1 FROM clear_ranges WHERE rowid>?1 AND from_ms<?3
-             AND to_ms>?2 AND source_mask&?4!=0)",
+             AND to_ms>?2 AND (source_mask&?4!=0 OR mode='all_data'))",
                 params![cleared_before, start, end, mask],
                 |r| r.get(0),
             )
@@ -669,10 +750,63 @@ mod tests {
     use crate::cleanup;
 
     #[test]
-    fn cleanup_before_publish_discards_private_export() {
+    fn screenshot_and_note_export_follow_the_selected_time_and_media_option() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut store = crate::Store::new(Connection::open_in_memory().unwrap()).unwrap();
+        let id = Uuid::new_v4();
+        fs::create_dir(directory.path().join("screenshots")).unwrap();
+        fs::write(
+            directory.path().join(format!("screenshots/{id}.png")),
+            b"private-png",
+        )
+        .unwrap();
+        store.db.execute(
+            "INSERT INTO moments(id,kind,anchor_ms,created_ms,captured_ms,media_path,ocr_text,ocr_state)
+             VALUES(?1,'screenshot',1000,1000,1000,?2,'画面文字','complete')",
+            params![id.to_string(),format!("screenshots/{id}.png")],
+        ).unwrap();
+        let tx = store.db.transaction().unwrap();
+        crate::moments::add(
+            &tx,
+            hear_protocol::MomentKind::Comment,
+            1200,
+            Some("记录现场"),
+            2000,
+        )
+        .unwrap();
+        tx.commit().unwrap();
+        let destination = directory.path().join("history.tar");
+        export(
+            &store.db,
+            directory.path(),
+            900,
+            1500,
+            EventSources::Microphone,
+            false,
+            true,
+            &destination,
+            &Mutex::new(()),
+        )
+        .unwrap();
+        let mut tar = tar::Archive::new(File::open(destination).unwrap());
+        let names = tar
+            .entries()
+            .unwrap()
+            .map(|entry| entry.unwrap().path().unwrap().to_string_lossy().to_string())
+            .collect::<Vec<_>>();
+        assert!(names.contains(&"moments.jsonl".to_owned()));
+        assert!(names.contains(&format!("screenshots/{id}.png")));
+    }
+
+    #[test]
+    fn opposite_source_all_data_cleanup_prevents_publishing_a_stale_moment() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("hear.sqlite");
         let store = crate::Store::new(Connection::open(&path).unwrap()).unwrap();
+        store.db.execute(
+            "INSERT INTO moments(id,kind,anchor_ms,created_ms,text) VALUES(?1,'comment',1000,1000,'private note')",
+            params![Uuid::new_v4().to_string()],
+        ).unwrap();
         let gate = std::sync::Arc::new(Mutex::new(()));
         let hold = gate.lock().unwrap();
         let dest = directory.path().join("history.tar");
@@ -686,7 +820,7 @@ mod tests {
                 &worker_dir,
                 500,
                 1500,
-                EventSources::Microphone,
+                EventSources::System,
                 false,
                 false,
                 &worker_dest,

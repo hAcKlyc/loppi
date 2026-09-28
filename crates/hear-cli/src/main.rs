@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand, ValueEnum};
 use hear_protocol::{
     AudioSource, CleanupMode, ClientKind, CloudProvider, EventSources, LogFilter, LogLevel,
-    Request, Response, send, send_from_with_id,
+    MomentKind, Request, Response, send, send_from_with_id,
 };
 use std::io::{IsTerminal, Read, Write};
 use std::path::PathBuf;
@@ -42,6 +42,9 @@ enum Command {
         source: Source,
         enabled: Switch,
     },
+    AudioLimit {
+        mebibytes: u64,
+    },
     Cloud {
         #[command(subcommand)]
         action: CloudCommand,
@@ -51,6 +54,24 @@ enum Command {
         from_ms: i64,
         to_ms: i64,
     },
+    Moments {
+        from_ms: i64,
+        to_ms: i64,
+        #[arg(long, default_value_t = 0)]
+        offset: u32,
+        #[arg(long, default_value_t = 100)]
+        limit: u16,
+    },
+    Mark {
+        #[arg(long)]
+        at_ms: Option<i64>,
+    },
+    Comment {
+        text: String,
+        #[arg(long)]
+        at_ms: Option<i64>,
+    },
+    Screenshot,
     RangeDetail {
         started_ms: i64,
         ended_ms: i64,
@@ -314,6 +335,13 @@ enum Switch {
     Off,
 }
 
+fn current_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64
+}
+
 fn main() {
     let cli = Cli::parse();
     if let Command::Cleanup {
@@ -458,6 +486,28 @@ fn main() {
         },
         Command::ProcessNow => Request::ProcessNow,
         Command::Timeline { from_ms, to_ms } => Request::Timeline { from_ms, to_ms },
+        Command::Moments {
+            from_ms,
+            to_ms,
+            offset,
+            limit,
+        } => Request::Moments {
+            from_ms,
+            to_ms,
+            offset,
+            limit,
+        },
+        Command::Mark { at_ms } => Request::AddMoment {
+            kind: MomentKind::Mark,
+            anchor_ms: at_ms.unwrap_or_else(current_ms),
+            text: None,
+        },
+        Command::Comment { text, at_ms } => Request::AddMoment {
+            kind: MomentKind::Comment,
+            anchor_ms: at_ms.unwrap_or_else(current_ms),
+            text: Some(text),
+        },
+        Command::Screenshot => Request::CaptureScreenshot,
         Command::RangeDetail {
             started_ms,
             ended_ms,
@@ -697,6 +747,10 @@ fn main() {
             enabled: matches!(enabled, Switch::On),
             expected_revision: expected_revision(),
         },
+        Command::AudioLimit { mebibytes } => Request::SetAudioLimit {
+            limit_bytes: mebibytes.saturating_mul(1_048_576),
+            expected_revision: expected_revision(),
+        },
     };
 
     match send_from_with_id(
@@ -723,11 +777,17 @@ fn main() {
             | Response::ObjectRevision { .. }
             | Response::PersonChanged { .. }
             | Response::Search { .. }
+            | Response::Moments { .. }
+            | Response::MomentSaved { .. }
             | Response::CleanupPreview { .. }
             | Response::CleanupComplete { .. }
             | Response::ExportComplete { .. }),
         ) => {
             println!("{}", serde_json::to_string_pretty(&response).unwrap());
+        }
+        Ok(Response::PlaybackChunk { .. } | Response::ScreenshotData { .. }) => {
+            eprintln!("hear: binary data response is unavailable from this command");
+            std::process::exit(1);
         }
         Ok(Response::Logs { entries, .. }) => {
             for entry in entries {

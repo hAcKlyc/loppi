@@ -118,8 +118,15 @@ void *hear_system_audio_start(void *context, HearAudioCallback callback, int *st
     if (stage) *stage = 2;
     return NULL;
   }
+  NSMutableArray<SCRunningApplication *> *excluded = [NSMutableArray array];
+  for (SCRunningApplication *application in content.applications) {
+    if ([application.bundleIdentifier isEqualToString:@"app.hear.desktop"]) {
+      [excluded addObject:application];
+    }
+  }
   SCContentFilter *filter = [[SCContentFilter alloc] initWithDisplay:content.displays.firstObject
-                                                   excludingWindows:@[]];
+                                               excludingApplications:excluded
+                                                    exceptingWindows:@[]];
   SCStreamConfiguration *config = [[SCStreamConfiguration alloc] init];
   config.capturesAudio = YES;
   config.excludesCurrentProcessAudio = YES;

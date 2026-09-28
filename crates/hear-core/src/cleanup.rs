@@ -123,6 +123,17 @@ fn selection_signature(db: &Connection, start: i64, end: i64, mask: i64) -> Resu
             "SELECT id||'|'||revision||'|'||source_mask FROM manual_ranges
           WHERE started_ms<?2 AND ended_ms>?1 AND source_mask&?3!=0 ORDER BY id",
         ),
+        (
+            "moment",
+            "SELECT id||'|'||kind||'|'||coalesce(text,'')||'|'||coalesce(media_path,'')||'|'||coalesce(ocr_text,'')
+          FROM moments WHERE anchor_ms>=?1 AND anchor_ms<?2 AND ?3>=0 ORDER BY id",
+        ),
+		(
+			"gap",
+			"SELECT id||'|'||source||'|'||started_ms||'|'||coalesce(ended_ms,-1)||'|'||reason
+			 FROM media_gaps WHERE started_ms<?2 AND coalesce(ended_ms,9223372036854775807)>?1
+			 AND ((source='microphone' AND ?3&1!=0) OR (source='system' AND ?3&2!=0)) ORDER BY id",
+		),
     ] {
         let mut stmt = db.prepare(sql).map_err(|error| error.to_string())?;
         let rows = stmt
@@ -212,13 +223,18 @@ pub fn preview(
         end,
         mask,
     )? as u64;
+    let event_mask = if mode == CleanupMode::AllData {
+        3
+    } else {
+        mask
+    };
     let affected_event_count = count(
         db,
         "SELECT count(*) FROM named_events WHERE deleted_ms IS NULL
       AND started_ms<?2 AND ended_ms>?1 AND source_mask&?3!=0",
         start,
         end,
-        mask,
+        event_mask,
     )? as u64;
     let affected_events = {
         let mut stmt = db
@@ -228,7 +244,7 @@ pub fn preview(
           ORDER BY started_ms LIMIT 100",
             )
             .map_err(|error| error.to_string())?;
-        stmt.query_map(params![start, end, mask], |r| r.get::<_, String>(0))
+        stmt.query_map(params![start, end, event_mask], |r| r.get::<_, String>(0))
             .map_err(|error| error.to_string())?
             .map(|row| {
                 Uuid::parse_str(&row.map_err(|error| error.to_string())?)
@@ -236,6 +252,17 @@ pub fn preview(
             })
             .collect::<Result<Vec<_>, _>>()?
     };
+    let moment_count: u64 = db
+        .query_row(
+            "SELECT count(*) FROM moments WHERE anchor_ms>=?1 AND anchor_ms<?2",
+            params![start, end],
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(|error| error.to_string())? as u64;
+    let screenshot_count: u64 = db.query_row(
+        "SELECT count(*) FROM moments WHERE kind='screenshot' AND anchor_ms>=?1 AND anchor_ms<?2",
+        params![start, end], |row| row.get::<_, i64>(0),
+    ).map_err(|error| error.to_string())? as u64;
     let partial = count(
         db,
         "SELECT count(*) FROM (
@@ -282,6 +309,16 @@ pub fn preview(
         voice_extractions_awaiting_audio,
         affected_event_count,
         affected_events,
+        moment_count: if mode == CleanupMode::AllData {
+            moment_count
+        } else {
+            0
+        },
+        screenshot_count: if mode == CleanupMode::AllData {
+            screenshot_count
+        } else {
+            0
+        },
         overlap_may_remove_whole_sentences: mode == CleanupMode::AllData && partial,
         voice_features_retained: mode == CleanupMode::RawAudio,
     })
@@ -661,6 +698,65 @@ pub fn apply(
         .map_err(|error| error.to_string())?;
     }
     if scope.mode == CleanupMode::AllData {
+        crate::moments::clear_all_data(tx, scope.start, scope.end, now)?;
+        let gaps = {
+            let mut statement = tx
+                .prepare(
+                    "SELECT id,source,started_ms,ended_ms,reason FROM media_gaps
+			 WHERE started_ms<?2 AND coalesce(ended_ms,9223372036854775807)>?1
+			 AND ((source='microphone' AND ?3&1!=0) OR (source='system' AND ?3&2!=0))",
+                )
+                .map_err(|error| error.to_string())?;
+            statement
+                .query_map(params![scope.start, scope.end, scope.mask], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, i64>(2)?,
+                        row.get::<_, Option<i64>>(3)?,
+                        row.get::<_, String>(4)?,
+                    ))
+                })
+                .map_err(|error| error.to_string())?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|error| error.to_string())?
+        };
+        for (id, source, start, maybe_end, reason) in gaps {
+            let end = maybe_end.unwrap_or(i64::MAX);
+            tx.execute("DELETE FROM media_gaps WHERE id=?1", params![id])
+                .map_err(|error| error.to_string())?;
+            if start < scope.start {
+                tx.execute(
+                    "INSERT INTO media_gaps VALUES (?1,?2,?3,?4,?5)",
+                    params![
+                        Uuid::new_v4().to_string(),
+                        source,
+                        start,
+                        scope.start,
+                        reason
+                    ],
+                )
+                .map_err(|error| error.to_string())?;
+            }
+            if end > scope.end {
+                let tail_start = if maybe_end.is_none() {
+                    scope.end.min(now)
+                } else {
+                    scope.end
+                };
+                tx.execute(
+                    "INSERT INTO media_gaps VALUES (?1,?2,?3,?4,?5)",
+                    params![
+                        Uuid::new_v4().to_string(),
+                        source,
+                        tail_start,
+                        maybe_end,
+                        reason
+                    ],
+                )
+                .map_err(|error| error.to_string())?;
+            }
+        }
         // A previous raw-audio clear leaves a speech-bearing manifest with no
         // file. Split its metadata at this selection, then retire the parent;
         // otherwise a later candidate scan could resurrect the erased voice.
@@ -954,7 +1050,9 @@ pub fn drain_deletions(db: &Connection, directory: &Path, now: i64) -> Result<u6
         after = jobs.last().unwrap().clone();
         for job in jobs {
             let relative = PathBuf::from(&job);
-            if !valid_media_path(&relative, "microphone") && !valid_media_path(&relative, "system")
+            if !valid_media_path(&relative, "microphone")
+                && !valid_media_path(&relative, "system")
+                && !crate::moments::valid_screenshot_path(&relative)
             {
                 return Err("invalid pending media deletion path".to_owned());
             }
@@ -989,6 +1087,66 @@ pub fn drain_deletions(db: &Connection, directory: &Path, now: i64) -> Result<u6
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn all_data_clear_trims_gap_history_without_erasing_other_source() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut store = crate::Store::new(Connection::open_in_memory().unwrap()).unwrap();
+        for (id, source) in [("mic", "microphone"), ("sys", "system")] {
+            store
+                .db
+                .execute(
+                    "INSERT INTO media_gaps VALUES (?1,?2,1000,5000,'source_failure')",
+                    params![id, source],
+                )
+                .unwrap();
+        }
+        let preview = preview(
+            &store.db,
+            2000,
+            4000,
+            EventSources::Microphone,
+            CleanupMode::AllData,
+            10_000,
+        )
+        .unwrap();
+        let scope = verified_scope(&store.db, preview.token, true, 10_000).unwrap();
+        let prepared = prepare_media(
+            directory.path(),
+            &scope,
+            originals(&store.db, &scope).unwrap(),
+        )
+        .unwrap();
+        let tx = store.db.transaction().unwrap();
+        apply(&tx, &scope, &prepared, 10_001).unwrap();
+        tx.commit().unwrap();
+        let gaps = crate::events::timeline_gaps(&store.db, 0, 6_000, 10_000).unwrap();
+        assert!(
+            gaps.iter()
+                .any(|gap| gap.source == hear_protocol::AudioSource::Microphone
+                    && gap.started_ms == 1_000
+                    && gap.ended_ms == 2_000)
+        );
+        assert!(
+            gaps.iter()
+                .any(|gap| gap.source == hear_protocol::AudioSource::Microphone
+                    && gap.started_ms == 4_000
+                    && gap.ended_ms == 5_000)
+        );
+        assert!(
+            gaps.iter()
+                .any(|gap| gap.source == hear_protocol::AudioSource::System
+                    && gap.started_ms == 1_000
+                    && gap.ended_ms == 5_000)
+        );
+        assert!(
+            !gaps
+                .iter()
+                .any(|gap| gap.source == hear_protocol::AudioSource::Microphone
+                    && gap.started_ms < 4_000
+                    && gap.ended_ms > 2_000)
+        );
+    }
 
     #[test]
     fn crash_before_cleanup_commit_removes_only_staged_audio() {

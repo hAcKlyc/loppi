@@ -1,9 +1,11 @@
 fn main() {
     println!("cargo:rerun-if-changed=native/system_audio.m");
     println!("cargo:rerun-if-changed=native/permissions.m");
+    println!("cargo:rerun-if-changed=native/moments.m");
     cc::Build::new()
         .file("native/system_audio.m")
         .file("native/permissions.m")
+        .file("native/moments.m")
         .flag("-fobjc-arc")
         .flag("-fblocks")
         .compile("hear_system_audio");
@@ -12,4 +14,6 @@ fn main() {
     println!("cargo:rustc-link-lib=framework=CoreMedia");
     println!("cargo:rustc-link-lib=framework=AVFoundation");
     println!("cargo:rustc-link-lib=framework=CoreGraphics");
+    println!("cargo:rustc-link-lib=framework=ImageIO");
+    println!("cargo:rustc-link-lib=framework=Vision");
 }

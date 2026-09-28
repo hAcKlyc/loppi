@@ -30,6 +30,8 @@ mod knowledge;
 mod media;
 mod microphone;
 mod model_pack;
+mod moments;
+mod playback;
 mod record;
 mod retention;
 mod system_audio;
@@ -110,6 +112,7 @@ fn run() -> Result<(), String> {
     archive::recover(&store.db)?;
     archive::cleanup_spool(&directory)?;
     cleanup::drain_deletions(&store.db, &directory, now_ms()?)?;
+    moments::recover(&store.db, &directory)?;
     cleanup::recover_staging(&store.db, &directory)?;
     store.recover(&directory)?;
     events::recover_tasks(&mut store.db, now_ms()?)?;
@@ -222,6 +225,9 @@ fn run() -> Result<(), String> {
             }
             Err(error) => return Err(error.to_string()),
         };
+        stream
+            .set_nonblocking(false)
+            .map_err(|error| error.to_string())?;
         if let Err(error) = verify_peer(&stream) {
             eprintln!("hear-core rejected a local client: {error}");
             continue;
@@ -1056,6 +1062,33 @@ fn pause_capture_for_cleanup(shared: &CoreState) -> Result<CaptureMaintenance<'_
     Ok(guard)
 }
 
+fn open_intent_gap(
+    tx: &Transaction<'_>,
+    source: &str,
+    reason: &str,
+    at: i64,
+) -> rusqlite::Result<()> {
+    tx.execute(
+        "INSERT INTO media_gaps(id,source,started_ms,ended_ms,reason)
+         SELECT ?1,?2,?3,NULL,?4 WHERE EXISTS(
+           SELECT 1 FROM service_state WHERE id=1 AND enabled_intent=1 AND
+           ((?2='microphone' AND microphone_enabled=1) OR (?2='system' AND system_enabled=1))
+         ) AND NOT EXISTS(
+           SELECT 1 FROM media_gaps WHERE source=?2 AND reason=?4 AND ended_ms IS NULL
+         )",
+        params![uuid::Uuid::new_v4().to_string(), source, at, reason],
+    )?;
+    Ok(())
+}
+
+fn close_intent_gaps(tx: &Transaction<'_>, reason: &str, at: i64) -> rusqlite::Result<()> {
+    tx.execute(
+        "UPDATE media_gaps SET ended_ms=max(started_ms,?2) WHERE reason=?1 AND ended_ms IS NULL",
+        params![reason, at],
+    )?;
+    Ok(())
+}
+
 #[derive(Default)]
 struct CaptureRuntime {
     microphone_active: bool,
@@ -1076,6 +1109,10 @@ impl CoreState {
         let mut state = store.state()?;
         let cloud_ready = events::configured(&store.db)?;
         drop(store);
+        state.disk_free_bytes = fs2::available_space(&self.directory).unwrap_or(0);
+        state.storage_warning = !state.storage_paused
+            && (state.audio_used_bytes >= state.audio_limit_bytes.saturating_mul(85) / 100
+                || state.disk_free_bytes <= 2 * 1_073_741_824);
         let models_ready = matches!(
             self.models.lock().map_err(|e| e.to_string())?.phase,
             ModelPhase::Ready
@@ -1528,6 +1565,7 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                     Ok(items) => Response::Timeline {
                         id: envelope.id,
                         items,
+                        gaps: events::timeline_gaps(&store.db, from_ms, to_ms, now_ms()?)?,
                     },
                     Err(_) => Response::Error {
                         id: envelope.id,
@@ -1909,6 +1947,137 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                     },
                 }
             }
+            Request::Moments {
+                from_ms,
+                to_ms,
+                offset,
+                limit,
+            } => {
+                let store = shared.store.lock().map_err(|e| e.to_string())?;
+                match moments::list(&store.db, from_ms, to_ms, offset, limit) {
+                    Ok(moments) => Response::Moments {
+                        id: envelope.id,
+                        moments,
+                    },
+                    Err(message) => Response::Error {
+                        id: envelope.id,
+                        code: "moments_invalid".into(),
+                        message,
+                    },
+                }
+            }
+            Request::AddMoment {
+                kind,
+                anchor_ms,
+                text,
+            } => {
+                let _gate = shared.cleanup_gate.lock().map_err(|e| e.to_string())?;
+                let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                match store.mutate_response(envelope.id, &mutation_fingerprint, |tx| {
+                    let moment = moments::add(tx, kind, anchor_ms, text.as_deref(), now_ms()?)?;
+                    Ok(Response::MomentSaved {
+                        id: envelope.id,
+                        moment,
+                    })
+                }) {
+                    Ok(response) => response,
+                    Err(message) => Response::Error {
+                        id: envelope.id,
+                        code: "moment_invalid".into(),
+                        message,
+                    },
+                }
+            }
+            Request::CaptureScreenshot => {
+                let trigger_ms = now_ms()?;
+                let _gate = shared.cleanup_gate.lock().map_err(|e| e.to_string())?;
+                let prior = {
+                    let store = shared.store.lock().map_err(|e| e.to_string())?;
+                    store.prior_mutation_response(envelope.id, &mutation_fingerprint)?
+                };
+                if let Some(prior) = prior {
+                    prior
+                } else {
+                    match moments::capture(&shared.directory, trigger_ms) {
+                        Ok(captured) => {
+                            let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                            let saved =
+                                store.mutate_response(envelope.id, &mutation_fingerprint, |tx| {
+                                    let moment = moments::save_capture(tx, &captured, now_ms()?)?;
+                                    Ok(Response::MomentSaved {
+                                        id: envelope.id,
+                                        moment,
+                                    })
+                                });
+                            if saved.is_err() {
+                                let _ = fs::remove_file(shared.directory.join(&captured.relative));
+                            }
+                            match saved {
+                                Ok(response) => response,
+                                Err(message) => Response::Error {
+                                    id: envelope.id,
+                                    code: "screenshot_invalid".into(),
+                                    message,
+                                },
+                            }
+                        }
+                        Err(message) => Response::Error {
+                            id: envelope.id,
+                            code: "screenshot_failed".into(),
+                            message,
+                        },
+                    }
+                }
+            }
+            Request::ScreenshotData { moment_id } => {
+                let _gate = shared.cleanup_gate.lock().map_err(|e| e.to_string())?;
+                let result = Connection::open_with_flags(
+                    shared.directory.join("hear.sqlite"),
+                    rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+                )
+                .map_err(|error| error.to_string())
+                .and_then(|db| moments::image(&db, &shared.directory, moment_id));
+                match result {
+                    Ok(png_base64) => Response::ScreenshotData {
+                        id: envelope.id,
+                        moment_id,
+                        png_base64,
+                    },
+                    Err(message) => Response::Error {
+                        id: envelope.id,
+                        code: "screenshot_unavailable".into(),
+                        message,
+                    },
+                }
+            }
+            Request::PlaybackChunk {
+                from_ms,
+                to_ms,
+                sources,
+            } => {
+                let _gate = shared.cleanup_gate.lock().map_err(|e| e.to_string())?;
+                let result = Connection::open_with_flags(
+                    shared.directory.join("hear.sqlite"),
+                    rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+                )
+                .map_err(|error| error.to_string())
+                .and_then(|db| playback::chunk(&db, &shared.directory, from_ms, to_ms, sources));
+                match result {
+                    Ok((wav_base64, has_audio, next_audio_ms)) => Response::PlaybackChunk {
+                        id: envelope.id,
+                        from_ms,
+                        to_ms,
+                        wav_base64,
+                        has_audio,
+                        next_audio_ms,
+                    },
+                    Err(message) => Response::Error {
+                        id: envelope.id,
+                        code: "playback_unavailable".into(),
+                        message,
+                    },
+                }
+            }
             Request::PreviewCleanup {
                 from_ms,
                 to_ms,
@@ -2083,6 +2252,47 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                     Err(error) => Response::Error {
                         id: envelope.id,
                         code: "person_invalid".into(),
+                        message: error,
+                    },
+                }
+            }
+            Request::CreateAndBindSpeaker {
+                segment_id,
+                display_name,
+                entire_local_speaker,
+                expected_revision,
+            } => {
+                let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                match store.mutate_response(envelope.id, &mutation_fingerprint, |tx| {
+                    knowledge::expect_revision(
+                        tx,
+                        if entire_local_speaker {
+                            "speaker_group"
+                        } else {
+                            "segment"
+                        },
+                        segment_id,
+                        expected_revision,
+                    )?;
+                    let person_id = knowledge::create_person(tx, &display_name, now_ms()?)?;
+                    knowledge::bind_speaker(
+                        tx,
+                        segment_id,
+                        person_id,
+                        entire_local_speaker,
+                        now_ms()?,
+                    )?;
+                    Ok(Response::PersonChanged {
+                        id: envelope.id,
+                        person_id,
+                        revision: Some(knowledge::object_revision(tx, "person", person_id)?),
+                        deleted: false,
+                    })
+                }) {
+                    Ok(response) => response,
+                    Err(error) => Response::Error {
+                        id: envelope.id,
+                        code: mutation_error_code(&error, "speaker_invalid"),
                         message: error,
                     },
                 }
@@ -2699,6 +2909,7 @@ impl Store {
         )
         .map_err(|error| error.to_string())?;
         events::init(&db)?;
+        moments::init(&db)?;
         cleanup::init(&db)?;
         archive::init(&db)?;
         Ok(Self { db })
@@ -2975,7 +3186,8 @@ impl Store {
         self.db
             .execute(
                 "UPDATE media_gaps SET ended_ms = max(started_ms, ?2)
-             WHERE source = ?1 AND ended_ms IS NULL",
+             WHERE source = ?1 AND ended_ms IS NULL
+             AND reason NOT IN ('manual_pause','storage_limit','source_disabled')",
                 params![source_name(source), at],
             )
             .map_err(|error| error.to_string())?;
@@ -3114,13 +3326,17 @@ impl Store {
     }
 
     fn pause_storage(&mut self) -> Result<(), String> {
-        self.db
-            .execute(
-                "UPDATE capture_guard SET pause_reason = 'storage_limit' WHERE id = 1",
-                [],
-            )
+        let at = now_ms()?;
+        let tx = self.db.transaction().map_err(|error| error.to_string())?;
+        open_intent_gap(&tx, "microphone", "storage_limit", at)
             .map_err(|error| error.to_string())?;
-        Ok(())
+        open_intent_gap(&tx, "system", "storage_limit", at).map_err(|error| error.to_string())?;
+        tx.execute(
+            "UPDATE capture_guard SET pause_reason = 'storage_limit' WHERE id = 1",
+            [],
+        )
+        .map_err(|error| error.to_string())?;
+        tx.commit().map_err(|error| error.to_string())
     }
 
     fn take_pending_block(&mut self) -> Result<Option<PendingBlock>, String> {
@@ -3294,18 +3510,26 @@ impl Store {
             }),
             Request::Start { expected_revision } => {
                 if !events::configured(&self.db)? {
-                    return Ok(Response::Error { id, code: "setup_incomplete".to_owned(),
-                        message: "configure both cloud providers before recording".to_owned() });
+                    return Ok(Response::Error {
+                        id,
+                        code: "setup_incomplete".to_owned(),
+                        message: "configure both cloud providers before recording".to_owned(),
+                    });
                 }
-                self.mutate(id, expected_revision, fingerprint, |tx| tx.execute(
-                    "UPDATE service_state SET enabled_intent=1,paused_intent=0,revision=revision+1 WHERE id=1",[]))
+                let at = now_ms()?;
+                self.mutate(id, expected_revision, fingerprint, |tx| {
+                    close_intent_gaps(tx, "manual_pause", at)?;
+                    tx.execute("UPDATE service_state SET enabled_intent=1,paused_intent=0,revision=revision+1 WHERE id=1",[])
+                })
             }
-            Request::Pause { expected_revision } => self.mutate(
-                id,
-                expected_revision,
-                fingerprint,
-                |tx| tx.execute("UPDATE service_state SET paused_intent = 1, revision = revision + 1 WHERE id = 1", []),
-            ),
+            Request::Pause { expected_revision } => {
+                let at = now_ms()?;
+                self.mutate(id, expected_revision, fingerprint, |tx| {
+                    open_intent_gap(tx, "microphone", "manual_pause", at)?;
+                    open_intent_gap(tx, "system", "manual_pause", at)?;
+                    tx.execute("UPDATE service_state SET paused_intent = 1, revision = revision + 1 WHERE id = 1", [])
+                })
+            }
             Request::Resume { expected_revision } => {
                 if self.state()?.storage_paused
                     && !self.storage_available(&hear_protocol::data_dir()?)?
@@ -3316,20 +3540,73 @@ impl Store {
                         message: "free audio space before resuming recording".to_owned(),
                     });
                 }
+                let at = now_ms()?;
                 self.mutate(id, expected_revision, fingerprint, |tx| {
+                    close_intent_gaps(tx, "manual_pause", at)?;
+                    close_intent_gaps(tx, "storage_limit", at)?;
                     tx.execute("UPDATE capture_guard SET pause_reason = NULL WHERE id = 1", [])?;
                     tx.execute("UPDATE service_state SET paused_intent = 0, revision = revision + 1 WHERE id = 1", [])
                 })
             }
-            Request::SetSource { source, enabled, expected_revision } => {
+            Request::SetSource {
+                source,
+                enabled,
+                expected_revision,
+            } => {
                 let column = match source {
                     AudioSource::Microphone => "microphone_enabled",
                     AudioSource::System => "system_enabled",
                 };
+                let source_name = source_name(source);
+                let at = now_ms()?;
                 self.mutate(id, expected_revision, fingerprint, |tx| {
+                    if enabled {
+                        tx.execute("UPDATE media_gaps SET ended_ms=max(started_ms,?2)
+                          WHERE source=?1 AND reason='source_disabled' AND ended_ms IS NULL",
+                            params![source_name,at])?;
+                    } else {
+                        open_intent_gap(tx, source_name, "source_disabled", at)?;
+                    }
                     tx.execute(
                         &format!("UPDATE service_state SET {column} = ?1, revision = revision + 1 WHERE id = 1"),
                         params![enabled],
+                    )
+                })
+            }
+            Request::SetAudioLimit {
+                limit_bytes,
+                expected_revision,
+            } => {
+                if !(64 * 1_048_576..=1024 * 1_073_741_824).contains(&limit_bytes) {
+                    return Ok(Response::Error {
+                        id,
+                        code: "audio_limit_invalid".to_owned(),
+                        message: "audio limit must be between 64 MiB and 1 TiB".to_owned(),
+                    });
+                }
+                let at = now_ms()?;
+                self.mutate(id, expected_revision, fingerprint, |tx| {
+                    tx.execute(
+                        "UPDATE capture_guard SET audio_limit_bytes=?1,
+                         pause_reason=CASE WHEN
+                           (SELECT coalesce(sum(bytes),0) FROM audio_blocks) +
+                           (SELECT coalesce(sum(bytes),0) FROM orphan_media) >= ?1
+                           THEN 'storage_limit' ELSE pause_reason END
+                         WHERE id=1",
+                        params![limit_bytes as i64],
+                    )?;
+                    let paused: bool = tx.query_row(
+                        "SELECT pause_reason IS NOT NULL FROM capture_guard WHERE id=1",
+                        [],
+                        |row| row.get(0),
+                    )?;
+                    if paused {
+                        open_intent_gap(tx, "microphone", "storage_limit", at)?;
+                        open_intent_gap(tx, "system", "storage_limit", at)?;
+                    }
+                    tx.execute(
+                        "UPDATE service_state SET revision=revision+1 WHERE id=1",
+                        [],
                     )
                 })
             }
@@ -3342,20 +3619,46 @@ impl Store {
             | Request::YieldToLogin => {
                 unreachable!("handled by IPC dispatcher")
             }
-            Request::CloudStatus | Request::CloudTasks { .. } | Request::ConfigureCloud { .. } | Request::SetCloudPaused { .. }
-            | Request::RetryCloudTask { .. } | Request::ProcessNow | Request::Timeline { .. }
-            | Request::EventDetail { .. } | Request::RangeDetail { .. }
-            | Request::CreateEvent { .. } | Request::EditEvent { .. } | Request::DeleteEvent { .. }
-            | Request::SplitEvent { .. } | Request::MergeEvents { .. } | Request::TranscribeRange { .. }
-            | Request::CorrectText { .. } | Request::RevertText { .. } => {
+            Request::CloudStatus
+            | Request::CloudTasks { .. }
+            | Request::ConfigureCloud { .. }
+            | Request::SetCloudPaused { .. }
+            | Request::RetryCloudTask { .. }
+            | Request::ProcessNow
+            | Request::Timeline { .. }
+            | Request::EventDetail { .. }
+            | Request::RangeDetail { .. }
+            | Request::CreateEvent { .. }
+            | Request::EditEvent { .. }
+            | Request::DeleteEvent { .. }
+            | Request::SplitEvent { .. }
+            | Request::MergeEvents { .. }
+            | Request::TranscribeRange { .. }
+            | Request::CorrectText { .. }
+            | Request::RevertText { .. } => {
                 unreachable!("handled by IPC dispatcher")
             }
-            Request::ObjectRevision { .. } | Request::People | Request::CreatePerson { .. } | Request::RenamePerson { .. }
-            | Request::DeletePerson { .. } | Request::BindSpeaker { .. }
-            | Request::UnbindSpeaker { .. } | Request::AddVoiceSample { .. }
-            | Request::RemoveVoiceSample { .. } | Request::VoiceSamples { .. }
-            | Request::ReviewItems | Request::ResolveReview { .. } | Request::Search { .. }
-            | Request::PreviewCleanup { .. } | Request::ExecuteCleanup { .. }
+            Request::ObjectRevision { .. }
+            | Request::People
+            | Request::CreatePerson { .. }
+            | Request::CreateAndBindSpeaker { .. }
+            | Request::RenamePerson { .. }
+            | Request::DeletePerson { .. }
+            | Request::BindSpeaker { .. }
+            | Request::UnbindSpeaker { .. }
+            | Request::AddVoiceSample { .. }
+            | Request::RemoveVoiceSample { .. }
+            | Request::VoiceSamples { .. }
+            | Request::ReviewItems
+            | Request::ResolveReview { .. }
+            | Request::Search { .. }
+            | Request::Moments { .. }
+            | Request::AddMoment { .. }
+            | Request::CaptureScreenshot
+            | Request::ScreenshotData { .. }
+            | Request::PlaybackChunk { .. }
+            | Request::PreviewCleanup { .. }
+            | Request::ExecuteCleanup { .. }
             | Request::ExportRange { .. } => {
                 unreachable!("handled by IPC dispatcher")
             }
@@ -3475,7 +3778,10 @@ fn prior_mutation_response(
 fn read_state(db: &Connection) -> Result<ServiceState, String> {
     db.query_row(
         "SELECT revision, enabled_intent, paused_intent, microphone_enabled, system_enabled,
-                (SELECT pause_reason IS NOT NULL FROM capture_guard WHERE id = 1)
+                (SELECT pause_reason IS NOT NULL FROM capture_guard WHERE id = 1),
+                (SELECT coalesce(sum(bytes),0) FROM audio_blocks) +
+                (SELECT coalesce(sum(bytes),0) FROM orphan_media),
+                (SELECT audio_limit_bytes FROM capture_guard WHERE id=1)
          FROM service_state WHERE id = 1",
         [],
         |row| {
@@ -3484,6 +3790,10 @@ fn read_state(db: &Connection) -> Result<ServiceState, String> {
                 enabled_intent: row.get(1)?,
                 paused_intent: row.get(2)?,
                 storage_paused: row.get(5)?,
+                audio_used_bytes: row.get::<_, i64>(6)?.max(0) as u64,
+                audio_limit_bytes: row.get::<_, i64>(7)?.max(0) as u64,
+                disk_free_bytes: 0,
+                storage_warning: false,
                 microphone_enabled: row.get(3)?,
                 system_enabled: row.get(4)?,
                 capture_state: CaptureState::NotReady,
@@ -3861,6 +4171,41 @@ mod tests {
     }
 
     #[test]
+    fn lowering_audio_limit_pauses_and_raising_it_requires_manual_resume() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("state.sqlite");
+        let mut store = Store::new(Connection::open(&path).unwrap()).unwrap();
+        store
+            .db
+            .execute(
+                "INSERT INTO orphan_media(media_path,bytes,detected_ms) VALUES ('media/orphan',?1,1)",
+                params![80 * 1_048_576_i64],
+            )
+            .unwrap();
+        store
+            .handle(
+                Uuid::new_v4(),
+                Request::SetAudioLimit {
+                    limit_bytes: 64 * 1_048_576,
+                    expected_revision: 0,
+                },
+            )
+            .unwrap();
+        assert!(store.state().unwrap().storage_paused);
+        store
+            .handle(
+                Uuid::new_v4(),
+                Request::SetAudioLimit {
+                    limit_bytes: 512 * 1_048_576,
+                    expected_revision: 1,
+                },
+            )
+            .unwrap();
+        assert!(store.state().unwrap().storage_paused);
+        assert_eq!(store.state().unwrap().audio_limit_bytes, 512 * 1_048_576);
+    }
+
+    #[test]
     fn pause_can_be_cleared_before_setup_without_starting_recording() {
         let db = Connection::open_in_memory().unwrap();
         let mut store = Store::new(db).unwrap();
@@ -3886,6 +4231,56 @@ mod tests {
         assert!(!state.paused_intent);
         assert!(!state.enabled_intent);
         assert!(matches!(state.capture_state, CaptureState::NotReady));
+    }
+
+    #[test]
+    fn active_manual_pause_is_visible_as_a_timed_gap_until_resume() {
+        let mut store = Store::new(Connection::open_in_memory().unwrap()).unwrap();
+        store
+            .db
+            .execute("UPDATE service_state SET enabled_intent=1 WHERE id=1", [])
+            .unwrap();
+        let before = now_ms().unwrap();
+        store
+            .handle(
+                Uuid::new_v4(),
+                Request::Pause {
+                    expected_revision: 0,
+                },
+            )
+            .unwrap();
+        store.db.execute("UPDATE media_gaps SET started_ms=?1 WHERE reason='manual_pause' AND ended_ms IS NULL", params![before - 5_000]).unwrap();
+        let during = events::timeline_gaps(
+            &store.db,
+            before - 5_000,
+            before + 10_000,
+            now_ms().unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            during
+                .iter()
+                .filter(|gap| gap.reason == "manual_pause")
+                .count(),
+            2
+        );
+        store
+            .handle(
+                Uuid::new_v4(),
+                Request::Resume {
+                    expected_revision: 1,
+                },
+            )
+            .unwrap();
+        let open_count: i64 = store
+            .db
+            .query_row(
+                "SELECT count(*) FROM media_gaps WHERE reason='manual_pause' AND ended_ms IS NULL",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(open_count, 0);
     }
 
     #[test]

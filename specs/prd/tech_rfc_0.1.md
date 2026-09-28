@@ -58,9 +58,11 @@ flowchart LR
 | 常驻 `hear-core` | 独立 Rust 可执行程序，按当前登录用户运行；优先通过 `SMAppService` launch agent 注册 | 两路采集、短封块落盘、本地任务调度、SQLite 唯一写入、云队列与媒体授权；界面崩溃或关窗不使核心随之退出 |
 | 本地推理 worker | Rust worker + 经许可核对的 sherpa-onnx/ONNX Runtime 与模型包 | VAD、SenseVoice 粗转、会话内分段与声纹特征；独立进程、有界任务，崩溃可由核心恢复，不拥有权威库写入口 |
 | `hear` 命令行 | 独立签名的 Rust CLI，调用与界面相同的核心 IPC | 完整查询、控制、修订、导出与清理；不另起录音管线或 JavaScript/Node 服务 |
-| macOS 原生桥接 | 少量 AppKit/SwiftUI、ServiceManagement、ScreenCaptureKit、Vision、Keychain 调用；按接口选择 Rust 绑定或 Swift 薄层 | 悬浮组件用原生 `NSPanel` 与少量原生控件，处理登录项、授权、截图 OCR 与凭据；时间线/详情等主页面仍用 WebView 绘制 |
+| macOS 原生桥接 | 少量 AppKit、ServiceManagement、ScreenCaptureKit、Vision、Keychain 调用；按接口选择 Rust 绑定或 Objective-C 薄层 | 处理登录项、双路采集、屏幕区域与截图 OCR、凭据；窗口内容由 Tauri WebView 绘制 |
 
-悬浮组件的行为可参考 MyAgents 已有透明 `NSPanel` + WebView 原型，但 hear 的悬浮球和三项菜单很小，正式选型优先用**原生 `NSPanel` 内容**实现，不搬入 MyAgents 的伴侣聊天窗口业务，也不让悬浮球依赖 Tauri 的透明 WebView 私有 API。直接分发消除了本版对 Mac App Store 审核的依赖，但不能因此把 MyAgents 的透明 WebView 实现视作适合 hear 的现成组件；原生小面板仍需验证常驻时的焦点、拖动、多屏、全屏和功耗（[Tauri 窗口 API](https://v2.tauri.app/reference/javascript/api/namespacewindow/)）。核心录音与媒体库不依赖该悬浮窗是否可见。
+**Batch 5 实现决策：**悬浮组件是与主窗口同进程的独立 Tauri 透明、置顶 WebView 窗口，沿用同一套 React 交互与 IPC；本版直接分发 `.dmg`，启用了 `macos-private-api` 以支持透明窗口。它没有复制 MyAgents 的伴侣聊天业务，也不拥有录音状态。此选型取代上文旧版 `NSPanel` 原生内容建议；仍需在安装版验证悬浮球的透明区域是否截获点击、拖动、多屏/全屏、焦点、关闭主窗后的可用性和空闲功耗。如果验证发现不可接受的问题，应在交付前改为原生小面板，而不是降低这些验收条件（[Tauri 窗口 API](https://v2.tauri.app/reference/javascript/api/namespacewindow/)）。
+
+**Batch 5 实机修正：**固定 132×246 的透明置顶窗口即使菜单不可见，原生窗口仍截获下方主窗口鼠标操作；详情笔记的「发送」在键盘可用但鼠标不可点。现在收起时窗口为 68×68，仅包住悬浮球；悬停或键盘聚焦时向上/向左扩至 132×246，并保持球在屏幕上原来的位置，离开后收回。详情笔记区另留球的底部安全空间。最终签名版须再直接点击笔记发送和相邻控件，及复测展开菜单、拖动、多屏/全屏行为；这项 OS 交互证据不能由 CSS 单测替代。
 
 数据放在应用私有目录：SQLite 管事件、任务、人物、修订和索引，短 Opus/Ogg 文件管音频，截图为独立图片文件；云端仅是用户配置的 LLM/ASR 供应商，不设 hear 账号或持续在线的自建服务器。凭据进入 macOS Keychain，模型包有版本、哈希和升级/回滚记录。0.1 以直接分发的 `.dmg` 为交付物；发布构建须将 GUI、核心、worker、CLI 和原生库逐项签名，启用所需 Hardened Runtime，完成公证并验证磁盘映像安装体验（[Apple 分发准备](https://developer.apple.com/documentation/Xcode/preparing-your-app-for-distribution)、[磁盘映像打包](https://developer.apple.com/documentation/xcode/packaging-mac-software-for-distribution)、[公证说明](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution)）。首个安装版就验证授权、登录启动、更新时不中断/可恢复记录以及从无权限状态的可解释失败。具体最低 macOS 版本在采集 API 与完整打包原型通过后冻结。
 
@@ -112,7 +114,7 @@ flowchart LR
 
 本地粗转在录制过程中持续生成时间锚定的文本，不等整场结束。MyAgents 当前做法是 Silero VAD 找到片段后，调用离线 SenseVoice 逐段识别并发布句段；这是面向用户的实时产出，不是模型逐帧流式解码。hear 可先复用此方式，但须实测短句等待、连续讲话分段、句首召回与积压。封块、VAD 句尾和候选切分可有不同窗口大小，均不成为用户层事件边界。长静音期间减少写空文件与重推理，同时保持声音恢复检测。回放 hear 自己保存的音频不得成为新事件或再送精转；系统声排除本进程输出可优先验证，但麦克风仍可能收进扬声器回放，需额外识别/抑制并记录来源。
 
-主动截图可评估 [SCScreenshotManager](https://developer.apple.com/documentation/screencapturekit/scscreenshotmanager) 的单帧接口；用户触发截屏操作时取当前操作屏幕，触发与实际捕获时刻分别记录，截图落盘与本地 OCR 分开报告成功状态。本地 OCR 可先以 [Apple Vision 文本识别](https://developer.apple.com/documentation/vision/recognizing-text-in-images) 做基线，验证中英混排、缩放和搜索命中质量；OCR 任务落后不阻止下一次主动截图。截图权限、多个显示器、全屏和受限内容须验证，不能把 MyAgents 的系统声 `SCStream` 当作已实现截图方案。Mark、评论与截图先按真实时刻存储，之后才映射到事件。它们不改变音频保留资格。
+主动截图首版实现通过 AppKit 取得当前指针所在显示器的边界，再调用 macOS 自带 `screencapture` 捕获该屏幕区域并保存到应用私有目录；Apple Vision 在本机对保存结果做 OCR。触发和捕获时刻分别记录；截图落盘和 OCR 分别报告状态，OCR 失败不丢已保存原图。截图文件先校验、设置私有权限并同步文件，再原子改名、同步父目录，最后由核心提交数据库引用；读取截图和解码回放音频使用独立 SQLite 只读连接，以清理门闩保护媒体文件，不占采集写入锁。需要在安装版验证多显示器坐标、全屏/受限内容和用户授权；`SCScreenshotManager` 是后续可替换实现，不应写成已采用接口（[Apple Vision 文本识别](https://developer.apple.com/documentation/vision/recognizing-text-in-images)）。Mark、评论与截图先按真实时刻存储，之后才映射到事件。它们不改变音频保留资格。
 
 ## 4. 从粗转文字到虚拟事件
 

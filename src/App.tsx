@@ -1,214 +1,830 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useState } from "react";
+import {
+	type CloudQueue,
+	type CloudTask,
+	core,
+	dayBounds,
+	type Moment,
+	type Person,
+	type ReviewItem,
+	type ServiceState,
+	type Sources,
+	type TimeGap,
+	type TimelineItem,
+	time,
+} from "./api";
+import { DetailDrawer } from "./DetailDrawer";
+import { TimelineView } from "./TimelineView";
+import { PeopleView, QueueView, SettingsView } from "./WorkspaceViews";
 import "./App.css";
 
-type ServiceState = {
-	revision: number;
-	enabled_intent: boolean;
-	paused_intent: boolean;
-	storage_paused: boolean;
-	microphone_enabled: boolean;
-	system_enabled: boolean;
-	microphone_recording: boolean;
-	system_recording: boolean;
-	microphone_reason: string | null;
-	system_reason: string | null;
-	capture_state: "not_ready" | "stopped" | "starting" | "stopping" | "paused" | "recording";
-	reason: string | null;
-};
+type Page = "timeline" | "queue" | "people" | "settings";
+type EventForm = { mode: "create" | "edit"; item?: TimelineItem };
+type EventTool = { item: TimelineItem; mode: "split" | "merge" | "delete" };
+type DataAction = { kind: "export" | "cleanup"; item: TimelineItem };
+type PrivacyStatus = { microphone: number; screen_and_system_audio: number };
 
-type PrivacyStatus = {
-	microphone: number;
-	screen_and_system_audio: number;
-};
+function localInput(timestamp: number): string {
+	const d = new Date(timestamp);
+	return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}T${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+function errorText(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}
 
 function App() {
+	const [page, setPage] = useState<Page>("timeline");
+	const [date, setDate] = useState(() => new Date());
+	const [items, setItems] = useState<TimelineItem[]>([]);
+	const [gaps, setGaps] = useState<TimeGap[]>([]);
+	const [dayMoments, setDayMoments] = useState<Moment[]>([]);
+	const [loading, setLoading] = useState(true);
 	const [state, setState] = useState<ServiceState | null>(null);
-	const [error, setError] = useState<string | null>(null);
-	const [loginItemStatus, setLoginItemStatus] = useState<number | null>(null);
-	const [loginItemBusy, setLoginItemBusy] = useState(false);
 	const [privacy, setPrivacy] = useState<PrivacyStatus | null>(null);
-	const [permissionBusy, setPermissionBusy] = useState<
-		"microphone" | "system" | null
-	>(null);
-	const [permissionError, setPermissionError] = useState<string | null>(null);
+	const [loginStatus, setLoginStatus] = useState<number | null>(null);
+	const [queues, setQueues] = useState<CloudQueue[]>([]);
+	const [tasks, setTasks] = useState<CloudTask[]>([]);
+	const [reviews, setReviews] = useState<ReviewItem[]>([]);
+	const [people, setPeople] = useState<Person[]>([]);
+	const [models, setModels] = useState<{
+		phase: string;
+		speaker_phase: string;
+		progress_percent: number;
+	} | null>(null);
+	const [selected, setSelected] = useState<TimelineItem | null>(null);
+	const [form, setForm] = useState<EventForm | null>(null);
+	const [tool, setTool] = useState<EventTool | null>(null);
+	const [splitAt, setSplitAt] = useState("");
+	const [leftTitle, setLeftTitle] = useState("");
+	const [rightTitle, setRightTitle] = useState("");
+	const [mergeTarget, setMergeTarget] = useState("");
+	const [mergeTitle, setMergeTitle] = useState("");
+	const [title, setTitle] = useState("");
+	const [from, setFrom] = useState("");
+	const [to, setTo] = useState("");
+	const [sources, setSources] = useState<Sources>("both");
+	const [toast, setToast] = useState<string | null>(null);
+	const [error, setError] = useState<string | null>(null);
+	const [busy, setBusy] = useState(false);
+	const [commentOpen, setCommentOpen] = useState(false);
+	const [dataAction, setDataAction] = useState<DataAction | null>(null);
+	const [commentDraft, setCommentDraft] = useState("");
+	const [commentAnchor, setCommentAnchor] = useState(0);
+	const [momentVersion, setMomentVersion] = useState(0);
 
-	const refresh = useCallback(async () => {
+	const message = (text: string) => {
+		setToast(text);
+		window.setTimeout(
+			() => setToast((current) => (current === text ? null : current)),
+			4500,
+		);
+	};
+
+	const refreshStatus = useCallback(async () => {
 		try {
-			const next = await invoke<ServiceState>("core_status");
-			setState(next);
+			const response = await core<{
+				type: "status";
+				id: string;
+				state: ServiceState;
+			}>({ type: "status" });
+			setState(response.state);
 			setError(null);
-		} catch {
-			setState(null);
-			setError("暂时无法连接后台服务，请稍后重试。");
+		} catch (cause) {
+			setError(errorText(cause));
 		}
 	}, []);
 
-	const refreshLoginItem = useCallback(async () => {
+	const refreshTimeline = useCallback(async () => {
+		setLoading(true);
 		try {
-			setLoginItemStatus(await invoke<number>("login_item_status"));
-		} catch {
-			setLoginItemStatus(null);
-		}
-	}, []);
-
-	const refreshPrivacy = useCallback(async () => {
-		try {
-			setPrivacy(await invoke<PrivacyStatus>("privacy_status"));
-		} catch {
-			setPrivacy(null);
-		}
-	}, []);
-
-	const requestPermission = async (source: "microphone" | "system") => {
-		setPermissionBusy(source);
-		setPermissionError(null);
-		try {
-			const result = await invoke<number>(
-				source === "microphone"
-					? "request_microphone_permission"
-					: "request_system_audio_permission",
-			);
-			if (result < 0) {
-				setPermissionError("系统授权请求未完成，请稍后重试。");
-			} else if (result !== (source === "microphone" ? 3 : 1)) {
-				setPermissionError("请在系统设置中允许 hear 使用这项声音来源。");
+			const [from_ms, to_ms] = dayBounds(date);
+			const response = await core<{
+				type: "timeline";
+				id: string;
+				items: TimelineItem[];
+				gaps: TimeGap[];
+			}>({ type: "timeline", from_ms, to_ms });
+			setItems(response.items);
+			setGaps(response.gaps);
+			const all: Moment[] = [];
+			while (true) {
+				const page = await core<{
+					type: "moments";
+					id: string;
+					moments: Moment[];
+				}>({
+					type: "moments",
+					from_ms,
+					to_ms,
+					offset: all.length,
+					limit: 200,
+				});
+				all.push(...page.moments);
+				if (page.moments.length < 200) break;
 			}
-			await refreshPrivacy();
-		} catch {
-			setPermissionError("暂时无法请求系统权限，请稍后重试。");
-		} finally {
-			setPermissionBusy(null);
-		}
-	};
-
-	const changeLoginItem = async () => {
-		setLoginItemBusy(true);
-		try {
-			const command =
-				loginItemStatus === 1 ? "unregister_login_item" : "register_login_item";
-			setLoginItemStatus(await invoke<number>(command));
+			setDayMoments(all);
 			setError(null);
-		} catch {
-			setError("无法更改登录启动设置，请检查系统设置后重试。");
-			await refreshLoginItem();
+		} catch (cause) {
+			setItems([]);
+			setGaps([]);
+			setDayMoments([]);
+			setError(errorText(cause));
 		} finally {
-			setLoginItemBusy(false);
+			setLoading(false);
 		}
-	};
+	}, [date]);
+
+	const refreshContext = useCallback(async () => {
+		const results = await Promise.allSettled([
+			core<{ type: "cloud_status"; id: string; queues: CloudQueue[] }>({
+				type: "cloud_status",
+			}),
+			core<{ type: "people"; id: string; people: Person[] }>({
+				type: "people",
+			}),
+			core<{
+				type: "models";
+				id: string;
+				state: {
+					phase: string;
+					speaker_phase: string;
+					progress_percent: number;
+				};
+			}>({ type: "models" }),
+			invoke<PrivacyStatus>("privacy_status"),
+			invoke<number>("login_item_status"),
+		]);
+		if (results[0].status === "fulfilled") setQueues(results[0].value.queues);
+		if (results[1].status === "fulfilled") setPeople(results[1].value.people);
+		if (results[2].status === "fulfilled") setModels(results[2].value.state);
+		if (results[3].status === "fulfilled") setPrivacy(results[3].value);
+		if (results[4].status === "fulfilled") setLoginStatus(results[4].value);
+	}, []);
+
+	const refreshTasks = useCallback(async () => {
+		const results = await Promise.allSettled([
+			core<{ type: "cloud_tasks"; id: string; tasks: CloudTask[] }>({
+				type: "cloud_tasks",
+				provider: "llm",
+				limit: 50,
+			}),
+			core<{ type: "cloud_tasks"; id: string; tasks: CloudTask[] }>({
+				type: "cloud_tasks",
+				provider: "asr",
+				limit: 50,
+			}),
+			core<{ type: "review_items"; id: string; items: ReviewItem[] }>({
+				type: "review_items",
+			}),
+		]);
+		const llmTasks =
+			results[0].status === "fulfilled" ? results[0].value.tasks : [];
+		const asrTasks =
+			results[1].status === "fulfilled" ? results[1].value.tasks : [];
+		setTasks(
+			[...llmTasks, ...asrTasks].sort((a, b) => b.started_ms - a.started_ms),
+		);
+		if (results[2].status === "fulfilled") setReviews(results[2].value.items);
+	}, []);
 
 	useEffect(() => {
 		void invoke("gui_ready");
-		void refresh();
-		void refreshLoginItem();
-		void refreshPrivacy();
-		const timer = window.setInterval(() => void refresh(), 5000);
+		void refreshStatus();
+		void refreshContext();
+		const timer = window.setInterval(() => {
+			void refreshStatus();
+			void refreshContext();
+		}, 5000);
 		return () => window.clearInterval(timer);
-	}, [refresh, refreshLoginItem, refreshPrivacy]);
+	}, [refreshStatus, refreshContext]);
+	useEffect(() => {
+		void refreshTimeline();
+	}, [refreshTimeline]);
+	useEffect(() => {
+		if (page === "queue") void refreshTasks();
+	}, [page, refreshTasks]);
+	useEffect(() => {
+		if (!isTauri()) return;
+		let disposed = false;
+		const unsubscribers: Array<() => void> = [];
+		void Promise.all([
+			listen("hear-moment-changed", () => {
+				setMomentVersion((value) => value + 1);
+				void refreshTimeline();
+			}),
+			listen<{ anchor_ms: number }>("hear-open-comment", (event) => {
+				setCommentAnchor(event.payload.anchor_ms);
+				setCommentDraft("");
+				setCommentOpen(true);
+			}),
+		]).then((callbacks) => {
+			if (disposed)
+				callbacks.forEach((callback) => {
+					callback();
+				});
+			else unsubscribers.push(...callbacks);
+		});
+		return () => {
+			disposed = true;
+			unsubscribers.forEach((callback) => {
+				callback();
+			});
+		};
+	}, [refreshTimeline]);
 
-	const loginItemDescription =
-		loginItemStatus === 1
-			? "已开启"
-			: loginItemStatus === 2
-				? "需要在系统设置中批准"
-				: loginItemStatus === 0 || loginItemStatus === 3
-					? "未开启"
-					: "状态未知";
+	const mutate = async (
+		request: { type: string; [key: string]: unknown },
+		success: string,
+	) => {
+		setBusy(true);
+		try {
+			await core(request);
+			message(success);
+			await Promise.all([refreshStatus(), refreshTimeline(), refreshContext()]);
+			return true;
+		} catch (cause) {
+			message(errorText(cause));
+			return false;
+		} finally {
+			setBusy(false);
+		}
+	};
 
-	const description = error
-		? "服务暂时不可用"
-		: state?.capture_state === "recording"
-			? `正在记录 · ${[
-				state.microphone_recording ? "麦克风" : null,
-				state.system_recording ? "电脑声音" : null,
-			].filter(Boolean).join("、")}`
-			: state?.capture_state === "starting"
-				? "正在启动"
-				: state?.capture_state === "stopping"
-					? "正在暂停"
-			: state?.capture_state === "not_ready"
-				? "尚未就绪"
-				: state?.paused_intent
-					? "已暂停"
-					: "尚未开始";
+	const openForm = (next: EventForm) => {
+		const [day] = dayBounds(date);
+		setForm(next);
+		setTitle(next.item?.title ?? "");
+		setFrom(localInput(next.item?.started_ms ?? day + 9 * 3_600_000));
+		setTo(localInput(next.item?.ended_ms ?? day + 10 * 3_600_000));
+		setSources(next.item?.sources ?? "both");
+	};
+
+	const saveEvent = async () => {
+		const started_ms =
+			form?.item && from === localInput(form.item.started_ms)
+				? form.item.started_ms
+				: new Date(from).getTime();
+		const ended_ms =
+			form?.item && to === localInput(form.item.ended_ms)
+				? form.item.ended_ms
+				: new Date(to).getTime();
+		if (
+			!title.trim() ||
+			!Number.isFinite(started_ms) ||
+			ended_ms <= started_ms
+		) {
+			message("请填写标题和有效的时间范围");
+			return;
+		}
+		const request =
+			form?.mode === "edit" && form.item?.id
+				? {
+						type: "edit_event",
+						event_id: form.item.id,
+						expected_revision: form.item.revision,
+						started_ms,
+						ended_ms,
+						title: title.trim(),
+						sources,
+					}
+				: {
+						type: "create_event",
+						started_ms,
+						ended_ms,
+						title: title.trim(),
+						sources,
+					};
+		if (await mutate(request, "事件已保存")) {
+			setSelected(null);
+			setForm(null);
+		}
+	};
+
+	const openTools = (item: TimelineItem) => {
+		setTool({ item, mode: "split" });
+		setSplitAt(localInput((item.started_ms + item.ended_ms) / 2));
+		setLeftTitle(item.title || "前半段");
+		setRightTitle(item.title || "后半段");
+		setMergeTarget("");
+		setMergeTitle(item.title || "合并事件");
+	};
+
+	const saveTool = async () => {
+		if (!tool?.item.id || tool.item.revision == null) return;
+		let request: { type: string; [key: string]: unknown };
+		if (tool.mode === "split") {
+			const at_ms = new Date(splitAt).getTime();
+			if (
+				!(at_ms > tool.item.started_ms && at_ms < tool.item.ended_ms) ||
+				!leftTitle.trim() ||
+				!rightTitle.trim()
+			) {
+				message("请选择事件内部的分割时刻并填写标题");
+				return;
+			}
+			request = {
+				type: "split_event",
+				event_id: tool.item.id,
+				expected_revision: tool.item.revision,
+				at_ms,
+				left_title: leftTitle.trim(),
+				right_title: rightTitle.trim(),
+			};
+		} else if (tool.mode === "merge") {
+			const target = items.find((item) => item.id === mergeTarget);
+			if (!target?.id || target.revision == null || !mergeTitle.trim()) {
+				message("请选择要合并的事件");
+				return;
+			}
+			request = {
+				type: "merge_events",
+				left_id: tool.item.id,
+				left_revision: tool.item.revision,
+				right_id: target.id,
+				right_revision: target.revision,
+				title: mergeTitle.trim(),
+			};
+		} else {
+			request = {
+				type: "delete_event",
+				event_id: tool.item.id,
+				expected_revision: tool.item.revision,
+			};
+		}
+		if (
+			await mutate(
+				request,
+				tool.mode === "delete" ? "事件标注已取消" : "事件已更新",
+			)
+		) {
+			setTool(null);
+			setSelected(null);
+		}
+	};
+
+	const addMoment = async (
+		kind: "mark" | "comment" | "screenshot",
+		anchor: number,
+		text?: string,
+	) => {
+		setBusy(true);
+		try {
+			await core(
+				kind === "screenshot"
+					? { type: "capture_screenshot" }
+					: { type: "add_moment", kind, anchor_ms: anchor, text: text ?? null },
+			);
+			setMomentVersion((value) => value + 1);
+			await refreshTimeline();
+			message(
+				kind === "mark"
+					? "已标记重点"
+					: kind === "screenshot"
+						? "截屏已保存"
+						: "评论已保存",
+			);
+			setCommentOpen(false);
+			setCommentDraft("");
+		} catch (cause) {
+			message(errorText(cause));
+		} finally {
+			setBusy(false);
+		}
+	};
+
+	const recording = state?.capture_state === "recording";
+	const captureLabel = state?.storage_paused
+		? "存储已满 · 已暂停"
+		: recording
+			? "正在记录"
+			: state?.paused_intent
+				? "已暂停"
+				: state?.capture_state === "not_ready"
+					? "尚未就绪"
+					: "未开始";
 
 	return (
-		<main className="shell">
-			<header className="topbar">
-				<span className="brand-mark">h.</span>
-				<span className="brand-name">hear</span>
-				<span className="topbar-status">
-					<span
-						className={`status-dot ${state?.capture_state === "recording" ? "is-live" : ""}`}
-					/>
-					{description}
-				</span>
-			</header>
-			<section className="content">
-				<div className="date-line">今天</div>
-				<h1>你的时间线</h1>
-				<div className="empty-state">
-					<div className="empty-icon" aria-hidden="true">
-						◌
-					</div>
-					<h2>{description}</h2>
-					<p>{error ?? "完成首次设置后，记录会出现在这里。"}</p>
-					<button type="button" onClick={() => void refresh()}>
-						刷新状态
-					</button>
+		<div className="app-shell">
+			<aside className="sidebar">
+				<div className="brand">
+					<span className="brand-symbol">h.</span>
+					<strong>hear</strong>
 				</div>
-				<div className="setup-row">
-					<div>
-						<strong>登录时启动</strong>
-						<span>{loginItemDescription}</span>
-					</div>
-					<button
-						type="button"
-						disabled={loginItemBusy || loginItemStatus === null}
-						onClick={() => void changeLoginItem()}
-					>
-						{loginItemStatus === 1 ? "关闭" : "开启"}
-					</button>
+				<nav aria-label="主导航">
+					{(
+						[
+							["timeline", "时间线", "▥"],
+							["queue", "处理队列", "◴"],
+							["people", "人物库", "♙"],
+							["settings", "设置", "⚙"],
+						] as const
+					).map(([id, label, icon]) => (
+						<button
+							key={id}
+							type="button"
+							className={`nav-button ${page === id ? "active" : ""}`}
+							onClick={() => {
+								setPage(id);
+								setDataAction(null);
+								setSelected(null);
+							}}
+						>
+							<span className="nav-icon">{icon}</span>
+							<span>{label}</span>
+							{id === "queue" && queues.some((queue) => queue.failed > 0) && (
+								<i />
+							)}
+						</button>
+					))}
+				</nav>
+				<div className="sidebar-bottom">
+					<span className={`live-dot ${recording ? "active" : ""}`} />
+					{captureLabel}
 				</div>
-				<div className="setup-row">
-					<div>
-						<strong>麦克风</strong>
-						<span>{privacy?.microphone !== 3 ? "未授权" : state?.microphone_recording
-							? "录制中" : !state?.microphone_enabled ? "已关闭" : state?.paused_intent || state?.storage_paused
-								? "已暂停" : state?.microphone_reason ? "连接中断 · 等待重试" : "等待声音来源"}</span>
+			</aside>
+			<main className="main-area">
+				{error && (
+					<div className="connection-banner">
+						后台暂不可用 · {error}
+						<button type="button" onClick={() => void refreshStatus()}>
+							重试
+						</button>
 					</div>
-					<button
-						type="button"
-						disabled={permissionBusy !== null || privacy?.microphone === 3}
-						onClick={() => void requestPermission("microphone")}
-					>
-						{permissionBusy === "microphone" ? "等待系统授权…" : "允许访问"}
-					</button>
-				</div>
-				<div className="setup-row">
-					<div>
-						<strong>电脑声音</strong>
-						<span>
-							{privacy?.screen_and_system_audio !== 1 ? "未授权" : state?.system_recording
-								? "录制中" : !state?.system_enabled ? "已关闭" : state?.paused_intent || state?.storage_paused
-									? "已暂停" : state?.system_reason ? "连接中断 · 等待重试" : "等待声音来源"}
-						</span>
-					</div>
-					<button
-						type="button"
-						disabled={
-							permissionBusy !== null || privacy?.screen_and_system_audio === 1
-						}
-						onClick={() => void requestPermission("system")}
-					>
-						{permissionBusy === "system" ? "等待系统授权…" : "允许访问"}
-					</button>
-				</div>
-				{permissionError && (
-					<p className="permission-error">{permissionError}</p>
 				)}
-			</section>
-		</main>
+				{state?.storage_warning && !state.storage_paused && (
+					<div className="connection-banner storage-banner">
+						音频空间即将不足 · 已用{" "}
+						{(state.audio_used_bytes / 1_073_741_824).toFixed(2)} GB
+						<button type="button" onClick={() => setPage("settings")}>
+							查看
+						</button>
+					</div>
+				)}
+				{page === "timeline" && (
+					<TimelineView
+						date={date}
+						items={items}
+						gaps={gaps}
+						moments={dayMoments}
+						loading={loading}
+						onDate={setDate}
+						onSelect={setSelected}
+						onCreate={() => openForm({ mode: "create" })}
+					/>
+				)}
+				{page === "queue" && (
+					<QueueView
+						queues={queues}
+						tasks={tasks}
+						reviews={reviews}
+						busy={busy}
+						onRefresh={refreshTasks}
+						onMutate={mutate}
+					/>
+				)}
+				{page === "people" && (
+					<PeopleView people={people} busy={busy} onMutate={mutate} />
+				)}
+				{page === "settings" && (
+					<SettingsView
+						date={date}
+						state={state}
+						selection={dataAction}
+						privacy={privacy}
+						loginStatus={loginStatus}
+						models={models}
+						busy={busy}
+						onStatus={refreshStatus}
+						onContext={refreshContext}
+						onTimeline={refreshTimeline}
+						onMutate={mutate}
+						onMessage={message}
+					/>
+				)}
+			</main>
+			{!isTauri() && (
+				<div className="float-wrap">
+					<div className="float-menu">
+						<button
+							type="button"
+							onClick={() =>
+								void mutate(
+									{
+										type: recording
+											? "pause"
+											: state?.enabled_intent
+												? "resume"
+												: "start",
+										expected_revision: state?.revision,
+									},
+									recording ? "已暂停" : "正在启动录音",
+								)
+							}
+						>
+							{recording ? "暂停" : state?.enabled_intent ? "继续" : "开始"}
+						</button>
+						<button
+							type="button"
+							onClick={() => {
+								setCommentAnchor(Date.now());
+								setCommentOpen(true);
+							}}
+						>
+							评论
+						</button>
+						<button
+							type="button"
+							disabled={busy}
+							onClick={() => void addMoment("screenshot", Date.now())}
+						>
+							截屏
+						</button>
+					</div>
+					<button
+						type="button"
+						className={`float-main ${recording ? "recording" : ""}`}
+						title="重点"
+						aria-label="标记重点"
+						onClick={() => void addMoment("mark", Date.now())}
+					>
+						◉
+					</button>
+				</div>
+			)}
+			{selected && (
+				<DetailDrawer
+					key={`${selected.id ?? "range"}-${selected.started_ms}-${selected.ended_ms}-${selected.sources}`}
+					item={selected}
+					people={people}
+					onClose={() => setSelected(null)}
+					onEdit={(item) => openForm({ mode: "edit", item })}
+					onTools={openTools}
+					onDataAction={(kind, item) => {
+						setDataAction({ kind, item });
+						setSelected(null);
+						setPage("settings");
+					}}
+					onChanged={() => {
+						void refreshTimeline();
+						void refreshContext();
+					}}
+					onMessage={message}
+					refreshToken={momentVersion}
+				/>
+			)}
+			{commentOpen && (
+				<div className="modal-layer">
+					<button
+						type="button"
+						className="modal-scrim"
+						aria-label="关闭评论"
+						onClick={() => setCommentOpen(false)}
+					/>
+					<div className="modal">
+						<div className="modal-title">
+							<h2>评论</h2>
+							<button
+								type="button"
+								className="icon-button"
+								onClick={() => setCommentOpen(false)}
+							>
+								×
+							</button>
+						</div>
+						<p className="comment-context">
+							{new Date(commentAnchor).toLocaleString("zh-CN")}
+						</p>
+						<textarea
+							aria-label="评论内容"
+							className="comment-input"
+							value={commentDraft}
+							onChange={(event) => setCommentDraft(event.target.value)}
+							placeholder="写下这一刻的想法…"
+						/>
+						<div className="modal-actions">
+							<button
+								type="button"
+								className="quiet-button"
+								onClick={() => setCommentOpen(false)}
+							>
+								取消
+							</button>
+							<button
+								type="button"
+								className="primary-button"
+								disabled={busy || !commentDraft.trim()}
+								onClick={() =>
+									void addMoment("comment", commentAnchor, commentDraft.trim())
+								}
+							>
+								发送
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
+			{form && (
+				<div className="modal-layer">
+					<button
+						type="button"
+						className="modal-scrim"
+						aria-label="关闭"
+						onClick={() => setForm(null)}
+					/>
+					<div className="modal">
+						<div className="modal-title">
+							<h2>{form.mode === "create" ? "新建事件" : "编辑事件"}</h2>
+							<button
+								type="button"
+								className="icon-button"
+								onClick={() => setForm(null)}
+							>
+								×
+							</button>
+						</div>
+						<label>
+							名称
+							<input
+								value={title}
+								onChange={(event) => setTitle(event.target.value)}
+								placeholder="例如，产品周会"
+							/>
+						</label>
+						<div className="field-grid">
+							<label>
+								开始
+								<input
+									type="datetime-local"
+									value={from}
+									onChange={(event) => setFrom(event.target.value)}
+								/>
+							</label>
+							<label>
+								结束
+								<input
+									type="datetime-local"
+									value={to}
+									onChange={(event) => setTo(event.target.value)}
+								/>
+							</label>
+						</div>
+						<label>
+							声音来源
+							<select
+								value={sources}
+								onChange={(event) => setSources(event.target.value as Sources)}
+							>
+								<option value="both">双路声音</option>
+								<option value="microphone">麦克风</option>
+								<option value="system">电脑声音</option>
+							</select>
+						</label>
+						<div className="modal-actions">
+							<button
+								type="button"
+								className="quiet-button"
+								onClick={() => setForm(null)}
+							>
+								取消
+							</button>
+							<button
+								type="button"
+								className="primary-button"
+								disabled={busy}
+								onClick={() => void saveEvent()}
+							>
+								保存
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
+			{tool && (
+				<div className="modal-layer">
+					<button
+						type="button"
+						className="modal-scrim"
+						aria-label="关闭事件操作"
+						onClick={() => setTool(null)}
+					/>
+					<div className="modal">
+						<div className="modal-title">
+							<h2>管理事件</h2>
+							<button
+								type="button"
+								className="icon-button"
+								onClick={() => setTool(null)}
+							>
+								×
+							</button>
+						</div>
+						<div className="tool-tabs">
+							{(["split", "merge", "delete"] as const).map((mode) => (
+								<button
+									key={mode}
+									type="button"
+									className={tool.mode === mode ? "active" : ""}
+									onClick={() => setTool({ ...tool, mode })}
+								>
+									{mode === "split"
+										? "拆分"
+										: mode === "merge"
+											? "合并"
+											: "取消标注"}
+								</button>
+							))}
+						</div>
+						{tool.mode === "split" && (
+							<>
+								<label>
+									分割时刻
+									<input
+										type="datetime-local"
+										value={splitAt}
+										onChange={(event) => setSplitAt(event.target.value)}
+									/>
+								</label>
+								<div className="field-grid">
+									<label>
+										前半段名称
+										<input
+											value={leftTitle}
+											onChange={(event) => setLeftTitle(event.target.value)}
+										/>
+									</label>
+									<label>
+										后半段名称
+										<input
+											value={rightTitle}
+											onChange={(event) => setRightTitle(event.target.value)}
+										/>
+									</label>
+								</div>
+							</>
+						)}
+						{tool.mode === "merge" && (
+							<>
+								<label>
+									合并到
+									<select
+										value={mergeTarget}
+										onChange={(event) => setMergeTarget(event.target.value)}
+									>
+										<option value="">选择事件</option>
+										{items
+											.filter((item) => item.id && item.id !== tool.item.id)
+											.map((item) => (
+												<option key={item.id} value={item.id || ""}>
+													{time(item.started_ms)} · {item.title}
+												</option>
+											))}
+									</select>
+								</label>
+								<label>
+									合并后名称
+									<input
+										value={mergeTitle}
+										onChange={(event) => setMergeTitle(event.target.value)}
+									/>
+								</label>
+							</>
+						)}
+						{tool.mode === "delete" && (
+							<p>
+								这会取消当前事件的命名和边界。声音、转录、截图与笔记会留在原来的时间位置。
+							</p>
+						)}
+						<div className="modal-actions">
+							<button
+								type="button"
+								className="quiet-button"
+								onClick={() => setTool(null)}
+							>
+								返回
+							</button>
+							<button
+								type="button"
+								className={
+									tool.mode === "delete" ? "danger-button" : "primary-button"
+								}
+								disabled={busy}
+								onClick={() => void saveTool()}
+							>
+								{tool.mode === "delete" ? "取消标注" : "保存"}
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
+			{toast && (
+				<div className="toast" role="status">
+					{toast}
+				</div>
+			)}
+		</div>
 	);
 }
 
