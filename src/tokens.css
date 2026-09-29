@@ -102,6 +102,8 @@
 	--shadow-modal: 0 26px 70px #1027153d;
 	--ring-focus: 0 0 0 3px var(--color-focus-ring);
 	--ring-recording: 0 0 0 4px var(--color-positive-soft);
+	--ring-storage-warning: 0 0 0 2px var(--color-warning);
+	--ring-storage-paused: 0 0 0 2px var(--color-danger);
 
 	--motion-fast: 120ms;
 	--motion-standard: 180ms;
@@ -118,4 +120,5 @@
 	--layout-drawer-width: min(80vw, 1420px);
 	--layout-modal-width: min(92vw, 505px);
 	--layout-floating-safe-area: 160px;
+	--layout-floating-bottom-safe-area: 84px;
 }

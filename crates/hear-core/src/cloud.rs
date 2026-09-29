@@ -190,14 +190,28 @@ fn volc_request(
     Ok((status, message, value))
 }
 
-pub fn submit_audio(key: &str, request_id: Uuid, wav: &[u8]) -> Result<(), String> {
-    if wav.len() > 12_000_000 || wav.len() < 44 {
+pub enum AsrAudioFormat {
+    Wav,
+    Ogg,
+}
+
+pub fn submit_audio(
+    key: &str,
+    request_id: Uuid,
+    audio: &[u8],
+    format: AsrAudioFormat,
+) -> Result<(), String> {
+    let (name, maximum, minimum) = match format {
+        AsrAudioFormat::Wav => ("wav", 12_000_000, 44),
+        AsrAudioFormat::Ogg => ("ogg", 10_000_000, 64),
+    };
+    if audio.len() > maximum || audio.len() < minimum {
         return Err("asr_audio_size".to_owned());
     }
     let body = json!({
         "user": {"uid":"hear-local"},
-        "audio": {"data":base64::engine::general_purpose::STANDARD.encode(wav),"format":"wav"},
-        "request": {"model_name":"bigmodel","enable_speaker_info":true,"show_utterances":true}
+        "audio": {"data":base64::engine::general_purpose::STANDARD.encode(audio),"format":name},
+        "request": {"model_name":"bigmodel","enable_speaker_info":true,"show_utterances":true,"ssd_version":"300"}
     });
     let (status, _, _) = volc_request(VOLC_SUBMIT, key, request_id, body)?;
     if status == "20000000" {
@@ -287,7 +301,7 @@ pub fn verify_asr(key: &str) -> Result<(), String> {
         wav.extend_from_slice(&((phase.sin() * 3_000.0) as i16).to_le_bytes());
     }
     let request_id = Uuid::new_v4();
-    submit_audio(key, request_id, &wav)?;
+    submit_audio(key, request_id, &wav, AsrAudioFormat::Wav)?;
     let deadline = Instant::now() + Duration::from_secs(30);
     loop {
         match query_audio(key, request_id)? {

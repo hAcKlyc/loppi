@@ -20,8 +20,13 @@ pub fn decode_block(path: &Path, expected_frames: usize) -> Result<Vec<f32>, Str
     if expected_frames == 0 || expected_frames > RATE as usize * 11 {
         return Err("invalid block sample count".to_owned());
     }
-    let file = File::open(path).map_err(|error| error.to_string())?;
-    if file.metadata().map_err(|error| error.to_string())?.len() > 10_000_000 {
+    let file = File::open(path).map_err(|error| format!("audio block unavailable: {error}"))?;
+    if file
+        .metadata()
+        .map_err(|error| format!("audio block unavailable: {error}"))?
+        .len()
+        > 10_000_000
+    {
         return Err("audio block exceeded size limit".to_owned());
     }
     let mut reader = ogg::PacketReader::new(file);

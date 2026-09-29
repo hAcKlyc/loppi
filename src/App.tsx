@@ -1,11 +1,12 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	type CloudQueue,
 	type CloudTask,
 	core,
 	dayBounds,
+	isEventStale,
 	type Moment,
 	type Person,
 	type ReviewItem,
@@ -14,6 +15,7 @@ import {
 	type TimeGap,
 	type TimelineItem,
 	time,
+	userError,
 } from "./api";
 import { DetailDrawer } from "./DetailDrawer";
 import { TimelineView } from "./TimelineView";
@@ -24,7 +26,12 @@ type Page = "timeline" | "queue" | "people" | "settings";
 type EventForm = { mode: "create" | "edit"; item?: TimelineItem };
 type EventTool = { item: TimelineItem; mode: "split" | "merge" | "delete" };
 type DataAction = { kind: "export" | "cleanup"; item: TimelineItem };
-type PrivacyStatus = { microphone: number; screen_and_system_audio: number };
+type PrivacyStatus = {
+	microphone: number;
+	screen_and_system_audio: number;
+	tap_required: boolean;
+	tap_ready: boolean;
+};
 
 function localInput(timestamp: number): string {
 	const d = new Date(timestamp);
@@ -32,12 +39,13 @@ function localInput(timestamp: number): string {
 }
 
 function errorText(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
+	return userError(error);
 }
 
 function App() {
 	const [page, setPage] = useState<Page>("timeline");
 	const [date, setDate] = useState(() => new Date());
+	const [hideCoarse, setHideCoarse] = useState(false);
 	const [items, setItems] = useState<TimelineItem[]>([]);
 	const [gaps, setGaps] = useState<TimeGap[]>([]);
 	const [dayMoments, setDayMoments] = useState<Moment[]>([]);
@@ -74,6 +82,8 @@ function App() {
 	const [commentDraft, setCommentDraft] = useState("");
 	const [commentAnchor, setCommentAnchor] = useState(0);
 	const [momentVersion, setMomentVersion] = useState(0);
+	const timelineRequest = useRef(0);
+	const manualSelection = useRef<string | null>(null);
 
 	const message = (text: string) => {
 		setToast(text);
@@ -97,45 +107,98 @@ function App() {
 		}
 	}, []);
 
-	const refreshTimeline = useCallback(async () => {
-		setLoading(true);
-		try {
-			const [from_ms, to_ms] = dayBounds(date);
-			const response = await core<{
-				type: "timeline";
-				id: string;
-				items: TimelineItem[];
-				gaps: TimeGap[];
-			}>({ type: "timeline", from_ms, to_ms });
-			setItems(response.items);
-			setGaps(response.gaps);
-			const all: Moment[] = [];
-			while (true) {
-				const page = await core<{
-					type: "moments";
+	const refreshTimeline = useCallback(
+		async (showLoading = false) => {
+			const request = ++timelineRequest.current;
+			if (showLoading) setLoading(true);
+			try {
+				const [from_ms, to_ms] = dayBounds(date);
+				const response = await core<{
+					type: "timeline";
 					id: string;
-					moments: Moment[];
-				}>({
-					type: "moments",
-					from_ms,
-					to_ms,
-					offset: all.length,
-					limit: 200,
-				});
-				all.push(...page.moments);
-				if (page.moments.length < 200) break;
+					items: TimelineItem[];
+					gaps: TimeGap[];
+				}>({ type: "timeline", from_ms, to_ms });
+				const all: Moment[] = [];
+				while (true) {
+					const page = await core<{
+						type: "moments";
+						id: string;
+						moments: Moment[];
+					}>({
+						type: "moments",
+						from_ms,
+						to_ms,
+						offset: all.length,
+						limit: 200,
+					});
+					all.push(...page.moments);
+					if (page.moments.length < 200) break;
+				}
+				if (request === timelineRequest.current) {
+					setItems(response.items);
+					setGaps(response.gaps);
+					setDayMoments(all);
+					setSelected((current) => {
+						if (manualSelection.current) {
+							const preferred = response.items.find(
+								(next) => next.manual_range_id === manualSelection.current,
+							);
+							manualSelection.current = null;
+							if (preferred) return preferred;
+						}
+						if (!current) return null;
+						if (current.id) {
+							return (
+								response.items.find((next) => next.id === current.id) ?? null
+							);
+						}
+						if (current.manual_range_id) {
+							return (
+								response.items.find(
+									(next) =>
+										next.manual_range_id === current.manual_range_id &&
+										next.started_ms <=
+											(current.started_ms + current.ended_ms) / 2 &&
+										next.ended_ms > (current.started_ms + current.ended_ms) / 2,
+								) ?? null
+							);
+						}
+						const remaining = response.items.find(
+							(next) =>
+								!next.id &&
+								next.sources === current.sources &&
+								next.started_ms <= current.started_ms &&
+								next.ended_ms >= current.ended_ms,
+						);
+						if (remaining) return remaining;
+						const midpoint = (current.started_ms + current.ended_ms) / 2;
+						return (
+							response.items.find(
+								(next) =>
+									next.started_ms <= midpoint &&
+									next.ended_ms > midpoint &&
+									next.sources === current.sources,
+							) ?? null
+						);
+					});
+					setError(null);
+				}
+			} catch (cause) {
+				if (request === timelineRequest.current) {
+					if (showLoading) {
+						setItems([]);
+						setGaps([]);
+						setDayMoments([]);
+					}
+					setError(errorText(cause));
+				}
+			} finally {
+				if (request === timelineRequest.current) setLoading(false);
 			}
-			setDayMoments(all);
-			setError(null);
-		} catch (cause) {
-			setItems([]);
-			setGaps([]);
-			setDayMoments([]);
-			setError(errorText(cause));
-		} finally {
-			setLoading(false);
-		}
-	}, [date]);
+		},
+		[date],
+	);
 
 	const refreshContext = useCallback(async () => {
 		const results = await Promise.allSettled([
@@ -180,13 +243,22 @@ function App() {
 				type: "review_items",
 			}),
 		]);
-		const llmTasks =
-			results[0].status === "fulfilled" ? results[0].value.tasks : [];
-		const asrTasks =
-			results[1].status === "fulfilled" ? results[1].value.tasks : [];
-		setTasks(
-			[...llmTasks, ...asrTasks].sort((a, b) => b.started_ms - a.started_ms),
-		);
+		if (
+			results[0].status === "fulfilled" &&
+			results[1].status === "fulfilled"
+		) {
+			setTasks(
+				[...results[0].value.tasks, ...results[1].value.tasks].sort((a, b) => {
+					const rank = (state: string) =>
+						state === "failed"
+							? 0
+							: ["pending", "processing", "submitted"].includes(state)
+								? 1
+								: 2;
+					return rank(a.state) - rank(b.state) || b.started_ms - a.started_ms;
+				}),
+			);
+		}
 		if (results[2].status === "fulfilled") setReviews(results[2].value.items);
 	}, []);
 
@@ -201,11 +273,44 @@ function App() {
 		return () => window.clearInterval(timer);
 	}, [refreshStatus, refreshContext]);
 	useEffect(() => {
-		void refreshTimeline();
+		void refreshTimeline(true);
 	}, [refreshTimeline]);
 	useEffect(() => {
 		if (page === "queue") void refreshTasks();
 	}, [page, refreshTasks]);
+	useEffect(() => {
+		if (page !== "timeline" && page !== "queue") return;
+		const timer = window.setInterval(() => {
+			if (document.visibilityState !== "visible" || !document.hasFocus())
+				return;
+			if (page === "timeline") {
+				void refreshTimeline();
+				setMomentVersion((value) => value + 1);
+			} else void refreshTasks();
+		}, 15_000);
+		return () => window.clearInterval(timer);
+	}, [page, refreshTimeline, refreshTasks]);
+	useEffect(() => {
+		let lastRefresh = 0;
+		const refreshForeground = () => {
+			if (Date.now() - lastRefresh < 250) return;
+			lastRefresh = Date.now();
+			void refreshStatus();
+			void refreshContext();
+			if (page === "timeline") void refreshTimeline();
+			if (page === "queue") void refreshTasks();
+			setMomentVersion((value) => value + 1);
+		};
+		const onVisibility = () => {
+			if (document.visibilityState === "visible") refreshForeground();
+		};
+		window.addEventListener("focus", refreshForeground);
+		document.addEventListener("visibilitychange", onVisibility);
+		return () => {
+			window.removeEventListener("focus", refreshForeground);
+			document.removeEventListener("visibilitychange", onVisibility);
+		};
+	}, [page, refreshStatus, refreshContext, refreshTimeline, refreshTasks]);
 	useEffect(() => {
 		if (!isTauri()) return;
 		let disposed = false;
@@ -246,6 +351,12 @@ function App() {
 			await Promise.all([refreshStatus(), refreshTimeline(), refreshContext()]);
 			return true;
 		} catch (cause) {
+			if (isEventStale(cause)) {
+				setForm(null);
+				setTool(null);
+				setSelected(null);
+				await refreshTimeline();
+			}
 			message(errorText(cause));
 			return false;
 		} finally {
@@ -470,6 +581,8 @@ function App() {
 						gaps={gaps}
 						moments={dayMoments}
 						loading={loading}
+						hideCoarse={hideCoarse}
+						onHideCoarse={setHideCoarse}
 						onDate={setDate}
 						onSelect={setSelected}
 						onCreate={() => openForm({ mode: "create" })}
@@ -492,6 +605,7 @@ function App() {
 					<SettingsView
 						date={date}
 						state={state}
+						queues={queues}
 						selection={dataAction}
 						privacy={privacy}
 						loginStatus={loginStatus}
@@ -556,18 +670,23 @@ function App() {
 			)}
 			{selected && (
 				<DetailDrawer
-					key={`${selected.id ?? "range"}-${selected.started_ms}-${selected.ended_ms}-${selected.sources}`}
+					key={`${selected.id ?? selected.manual_range_id ?? "range"}-${selected.started_ms}-${selected.sources}`}
 					item={selected}
 					people={people}
 					onClose={() => setSelected(null)}
 					onEdit={(item) => openForm({ mode: "edit", item })}
 					onTools={openTools}
+					onQueue={() => {
+						setSelected(null);
+						setPage("queue");
+					}}
 					onDataAction={(kind, item) => {
 						setDataAction({ kind, item });
 						setSelected(null);
 						setPage("settings");
 					}}
-					onChanged={() => {
+					onChanged={(rangeId) => {
+						if (rangeId) manualSelection.current = rangeId;
 						void refreshTimeline();
 						void refreshContext();
 					}}

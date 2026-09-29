@@ -30,3 +30,7 @@ int hear_screen_authorization_status(void) {
 int hear_request_screen_authorization(void) {
   return CGRequestScreenCaptureAccess() ? 1 : 0;
 }
+
+int hear_tap_required(void) {
+  return [[NSProcessInfo processInfo] operatingSystemVersion].majorVersion >= 26;
+}

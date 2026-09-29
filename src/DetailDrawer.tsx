@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	type CoarseSegment,
+	type CoreResponse,
 	core,
 	type Moment,
 	manualAsrSummary,
@@ -10,6 +11,7 @@ import {
 	type Sources,
 	type TimelineItem,
 	time,
+	userError,
 } from "./api";
 
 type Props = {
@@ -18,8 +20,9 @@ type Props = {
 	onClose: () => void;
 	onEdit: (item: TimelineItem) => void;
 	onTools: (item: TimelineItem) => void;
+	onQueue: () => void;
 	onDataAction: (kind: "export" | "cleanup", item: TimelineItem) => void;
-	onChanged: () => void;
+	onChanged: (manualRangeId?: string) => void;
 	onMessage: (message: string) => void;
 	refreshToken: number;
 };
@@ -31,6 +34,36 @@ function vttTime(milliseconds: number): string {
 	const seconds = Math.floor((whole % 60_000) / 1_000);
 	const fraction = whole % 1_000;
 	return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${String(fraction).padStart(3, "0")}`;
+}
+
+function sameLocalDay(first: number, second: number): boolean {
+	const a = new Date(first);
+	const b = new Date(second);
+	return (
+		a.getFullYear() === b.getFullYear() &&
+		a.getMonth() === b.getMonth() &&
+		a.getDate() === b.getDate()
+	);
+}
+
+function wallClock(
+	timestamp: number,
+	seconds: boolean,
+	showDate: boolean,
+): string {
+	const value = new Date(timestamp);
+	const clock = seconds
+		? `${time(timestamp)}:${String(value.getSeconds()).padStart(2, "0")}`
+		: time(timestamp);
+	return showDate
+		? `${value.getMonth() + 1}/${value.getDate()} ${clock}`
+		: clock;
+}
+
+function uniqueSegments<T extends { id: string }>(segments: T[]): T[] {
+	return [
+		...new Map(segments.map((segment) => [segment.id, segment])).values(),
+	];
 }
 
 function localDateTime(timestamp: number): string {
@@ -64,6 +97,14 @@ function coveredByPrecise(
 function bestSegments(
 	detail: TimelineItem,
 ): (CoarseSegment | PreciseSegment)[] {
+	if (
+		(detail.id || detail.manual_range_id) &&
+		detail.precise_segments.length > 0
+	) {
+		return [...detail.precise_segments].sort(
+			(a, b) => a.started_ms - b.started_ms,
+		);
+	}
 	return [
 		...detail.precise_segments,
 		...detail.coarse_segments.filter(
@@ -97,6 +138,7 @@ export function DetailDrawer({
 	onClose,
 	onEdit,
 	onTools,
+	onQueue,
 	onDataAction,
 	onChanged,
 	onMessage,
@@ -141,46 +183,77 @@ export function DetailDrawer({
 	const chunkEndRef = useRef(item.started_ms);
 	const sourceRef = useRef<Sources>(item.sources);
 	const momentsRequest = useRef(0);
+	const detailRequest = useRef(0);
+	const asrDefaults = useRef({
+		from: localDateTime(Math.ceil(item.started_ms / 1000) * 1000),
+		to: localDateTime(Math.floor(item.ended_ms / 1000) * 1000),
+		sources: item.sources,
+	});
 
 	const load = useCallback(
 		async (page: number) => {
+			const token = ++detailRequest.current;
 			try {
-				const request = item.id
-					? {
-							type: "event_detail",
-							event_id: item.id,
-							offset: page,
-							limit: 100,
-						}
-					: {
-							type: "range_detail",
-							started_ms: item.started_ms,
-							ended_ms: item.ended_ms,
-							sources: item.sources,
-							offset: page,
-							limit: 100,
-						};
-				const response = await core<{
+				const allCoarse: CoarseSegment[] = [];
+				const allPrecise: PreciseSegment[] = [];
+				let response: {
 					type: "event";
 					id: string;
 					event: TimelineItem;
-				}>(request);
-				if (page === 0) {
-					setDetail(response.event);
-					setDetailReady(true);
-				} else
-					setDetail((current) => ({
-						...response.event,
-						coarse_segments: [
-							...current.coarse_segments,
-							...response.event.coarse_segments,
-						],
-						precise_segments: [
-							...current.precise_segments,
-							...response.event.precise_segments,
-						],
-					}));
-				setOffset(page);
+				} | null = null;
+				for (let attempt = 0; attempt < 2; attempt++) {
+					allCoarse.length = 0;
+					allPrecise.length = 0;
+					for (let offset = 0; offset <= page; offset += 100) {
+						const request = item.id
+							? {
+									type: "event_detail",
+									event_id: item.id,
+									offset,
+									limit: 100,
+								}
+							: {
+									type: "range_detail",
+									started_ms: item.started_ms,
+									ended_ms: item.ended_ms,
+									sources: item.sources,
+									offset,
+									limit: 100,
+								};
+						response = await core<{
+							type: "event";
+							id: string;
+							event: TimelineItem;
+						}>(request);
+						if (token !== detailRequest.current) return;
+						allCoarse.push(...response.event.coarse_segments);
+						allPrecise.push(...response.event.precise_segments);
+					}
+					if (
+						uniqueSegments(allCoarse).length === allCoarse.length &&
+						uniqueSegments(allPrecise).length === allPrecise.length
+					)
+						break;
+				}
+				if (!response) return;
+				setPlayhead((current) =>
+					Math.max(
+						response.event.started_ms,
+						Math.min(current, response.event.ended_ms),
+					),
+				);
+				setAnchor((current) =>
+					Math.max(
+						response.event.started_ms,
+						Math.min(current, response.event.ended_ms - 1),
+					),
+				);
+				setDetail({
+					...response.event,
+					coarse_segments: uniqueSegments(allCoarse),
+					precise_segments: uniqueSegments(allPrecise),
+				});
+				setDetailReady(true);
 				setHasMore(
 					response.event.coarse_segments.length +
 						response.event.precise_segments.length >=
@@ -188,20 +261,32 @@ export function DetailDrawer({
 				);
 				setInfoError(null);
 			} catch (error) {
-				setInfoError(String(error));
+				if (token === detailRequest.current) setInfoError(userError(error));
 			}
 		},
 		[item.id, item.started_ms, item.ended_ms, item.sources],
 	);
 
 	useEffect(() => {
-		void load(0);
-	}, [load]);
-
+		if (refreshToken >= 0 && editing === null && assigning === null)
+			void load(offset);
+	}, [load, refreshToken, offset, editing, assigning]);
 	useEffect(() => {
-		setAsrFrom(localDateTime(Math.ceil(item.started_ms / 1000) * 1000));
-		setAsrTo(localDateTime(Math.floor(item.ended_ms / 1000) * 1000));
-		setAsrSources(item.sources);
+		const next = {
+			from: localDateTime(Math.ceil(item.started_ms / 1000) * 1000),
+			to: localDateTime(Math.floor(item.ended_ms / 1000) * 1000),
+			sources: item.sources,
+		};
+		setAsrFrom((current) =>
+			current === asrDefaults.current.from ? next.from : current,
+		);
+		setAsrTo((current) =>
+			current === asrDefaults.current.to ? next.to : current,
+		);
+		setAsrSources((current) =>
+			current === asrDefaults.current.sources ? next.sources : current,
+		);
+		asrDefaults.current = next;
 	}, [item.started_ms, item.ended_ms, item.sources]);
 
 	const loadMoments = useCallback(async () => {
@@ -225,7 +310,7 @@ export function DetailDrawer({
 			}
 			if (request === momentsRequest.current) setMoments(all);
 		} catch (error) {
-			if (request === momentsRequest.current) setInfoError(String(error));
+			if (request === momentsRequest.current) setInfoError(userError(error));
 		}
 	}, [detail.started_ms, detail.ended_ms]);
 
@@ -251,6 +336,17 @@ export function DetailDrawer({
 		setPlaying(false);
 		audioRef.current?.pause();
 	};
+
+	useEffect(() => {
+		playingRef.current = false;
+		playbackEpoch.current += 1;
+		setPlaying(false);
+		audioRef.current?.pause();
+		cursorRef.current = Math.max(
+			detail.started_ms,
+			Math.min(cursorRef.current, detail.ended_ms),
+		);
+	}, [detail.started_ms, detail.ended_ms]);
 
 	const playChunk = useCallback(
 		async (at: number, epoch: number) => {
@@ -317,13 +413,14 @@ export function DetailDrawer({
 				if (epoch !== playbackEpoch.current) return;
 				playingRef.current = false;
 				setPlaying(false);
-				onMessage(String(error));
+				onMessage(userError(error));
 			}
 		},
 		[detail, onMessage],
 	);
 
 	const playFrom = (at: number) => {
+		at = Math.max(detail.started_ms, Math.min(at, detail.ended_ms - 1));
 		stopAudio();
 		cursorRef.current = at;
 		setPlayhead(at);
@@ -340,14 +437,17 @@ export function DetailDrawer({
 			await core({
 				type: "add_moment",
 				kind: "comment",
-				anchor_ms: anchor,
+				anchor_ms: Math.max(
+					detail.started_ms,
+					Math.min(anchor, detail.ended_ms - 1),
+				),
 				text: note.trim(),
 			});
 			setNote("");
 			await loadMoments();
 			onChanged();
 		} catch (error) {
-			onMessage(String(error));
+			onMessage(userError(error));
 		} finally {
 			setBusy(false);
 		}
@@ -366,7 +466,7 @@ export function DetailDrawer({
 			});
 			setShownImage(`data:image/png;base64,${response.png_base64}`);
 		} catch (error) {
-			onMessage(String(error));
+			onMessage(userError(error));
 		} finally {
 			setImageBusy(false);
 		}
@@ -374,18 +474,24 @@ export function DetailDrawer({
 
 	const mutate = async (
 		request: { type: string; [key: string]: unknown },
-		success: string,
+		success: string | ((response: CoreResponse) => string),
 	) => {
 		setBusy(true);
 		try {
-			await core(request);
-			await load(0);
-			onChanged();
-			onMessage(success);
+			const response = await core(request);
+			await load(offset);
+			onChanged(
+				request.type === "transcribe_range" &&
+					!detail.id &&
+					typeof response.range_id === "string"
+					? response.range_id
+					: undefined,
+			);
+			onMessage(typeof success === "string" ? success : success(response));
 			setEditing(null);
 			setAssigning(null);
 		} catch (error) {
-			onMessage(String(error));
+			onMessage(userError(error));
 		} finally {
 			setBusy(false);
 		}
@@ -393,16 +499,14 @@ export function DetailDrawer({
 
 	const transcribe = async () => {
 		const started_ms =
-			detail.id ||
 			asrFrom === localDateTime(Math.ceil(detail.started_ms / 1000) * 1000)
 				? detail.started_ms
 				: new Date(asrFrom).getTime();
 		const ended_ms =
-			detail.id ||
 			asrTo === localDateTime(Math.floor(detail.ended_ms / 1000) * 1000)
 				? detail.ended_ms
 				: new Date(asrTo).getTime();
-		const sources = detail.id ? detail.sources : asrSources;
+		const sources = asrSources;
 		if (
 			!Number.isFinite(started_ms) ||
 			!Number.isFinite(ended_ms) ||
@@ -422,7 +526,27 @@ export function DetailDrawer({
 				ended_ms,
 				sources,
 			},
-			"已加入精转队列",
+			(response) => {
+				const tasks = response.tasks as { state: string }[] | undefined;
+				if (response.type !== "transcription_queued" || !tasks?.length) {
+					return "精转请求未返回任务，请检查处理队列";
+				}
+				if (tasks.every((task) => task.state === "no_transcript")) {
+					return "这段声音未识别出文字";
+				}
+				if (tasks.every((task) => task.state === "complete")) {
+					return "这段声音已完成精转";
+				}
+				if (
+					tasks.every(
+						(task) =>
+							task.state === "complete" || task.state === "no_transcript",
+					)
+				) {
+					return "精转已结束 · 部分声音未识别出文字";
+				}
+				return `精转任务已保存 · ${tasks.length} 段`;
+			},
 		);
 	};
 
@@ -451,17 +575,17 @@ export function DetailDrawer({
 						: segment.revision,
 				});
 			}
-			await load(0);
+			await load(offset);
 			onChanged();
 			onMessage("说话人已更新");
 			setAssigning(null);
 			setNewPersonName("");
 		} catch (error) {
 			if (String(error).includes("revision_conflict")) {
-				await load(0);
+				await load(offset);
 				onMessage("内容已更新，请重新确认说话人");
 			} else {
-				onMessage(String(error));
+				onMessage(userError(error));
 			}
 		} finally {
 			setBusy(false);
@@ -474,6 +598,15 @@ export function DetailDrawer({
 			: bestSegments(detail);
 	const labels = speakerLabels(detail.precise_segments);
 	const manualStatus = manualAsrSummary(detail);
+	const queueRelevant =
+		(detail.id || detail.manual_range_id) &&
+		[
+			"pending_asr",
+			"transcribing",
+			"asr_failed",
+			"no_transcript",
+			"partial_transcript",
+		].includes(detail.processing_state);
 	const sourceText =
 		detail.processing_state === "moment_only"
 			? "时刻记录"
@@ -482,6 +615,8 @@ export function DetailDrawer({
 				: detail.sources === "microphone"
 					? "麦克风"
 					: "电脑声音";
+	const shortEvent = detail.ended_ms - detail.started_ms < 60_000;
+	const crossesDay = !sameLocalDay(detail.started_ms, detail.ended_ms);
 
 	return (
 		<div className="drawer-layer">
@@ -495,9 +630,13 @@ export function DetailDrawer({
 				<header className="detail-header">
 					<div>
 						<span className="eyebrow">
-							{time(detail.started_ms)} — {time(detail.ended_ms)}
+							{wallClock(detail.started_ms, shortEvent, crossesDay)} —{" "}
+							{wallClock(detail.ended_ms, shortEvent, crossesDay)}
 						</span>
-						<h2>{detail.title || "未整理"}</h2>
+						<h2>
+							{detail.title ||
+								(detail.manual_range_id ? "未命名事件" : "未整理")}
+						</h2>
 					</div>
 					<div className="detail-header-actions">
 						<button
@@ -596,6 +735,7 @@ export function DetailDrawer({
 									max={detail.ended_ms}
 									value={Math.min(playhead, detail.ended_ms)}
 									aria-label="定位录音"
+									aria-valuetext={wallClock(playhead, true, crossesDay)}
 									onChange={(event) => {
 										const at = Number(event.target.value);
 										setPlayhead(at);
@@ -604,7 +744,8 @@ export function DetailDrawer({
 									}}
 								/>
 								<span>
-									{time(playhead)} / {time(detail.ended_ms)}
+									{wallClock(playhead, true, crossesDay)} /{" "}
+									{wallClock(detail.ended_ms, true, crossesDay)}
 								</span>
 							</div>
 							<select
@@ -643,7 +784,9 @@ export function DetailDrawer({
 							</button>
 						</div>
 						{tab === "transcript" ? (
-							<div className="transcript-list">
+							<div
+								className={`transcript-list${crossesDay ? " crosses-day" : ""}`}
+							>
 								{detail.coarse_segments.length > 0 &&
 									detail.precise_segments.length > 0 && (
 										<div className="transcript-toolbar">
@@ -663,6 +806,7 @@ export function DetailDrawer({
 										</div>
 									)}
 								{!detail.id &&
+									!detail.manual_range_id &&
 									detail.processing_state !== "moment_only" &&
 									segments.length > 0 && (
 										<div className="transcript-toolbar">
@@ -678,17 +822,20 @@ export function DetailDrawer({
 								{segments.length === 0 && (
 									<div className="detail-empty">
 										<strong>还没有转录文字</strong>
-										{detail.processing_state !== "moment_only" && (
-											<button
-												type="button"
-												className="secondary-button"
-												onClick={() =>
-													detail.id ? void transcribe() : setTab("info")
-												}
-											>
-												{detail.id ? "开始精转" : "选择范围精转"}
-											</button>
+										{(detail.id || detail.manual_range_id) && (
+											<span>{processingLabel(detail.processing_state)}</span>
 										)}
+										{!detail.id &&
+											!detail.manual_range_id &&
+											detail.processing_state !== "moment_only" && (
+												<button
+													type="button"
+													className="secondary-button"
+													onClick={() => setTab("info")}
+												>
+													选择范围精转
+												</button>
+											)}
 									</div>
 								)}
 								{segments.map((segment) => {
@@ -702,7 +849,7 @@ export function DetailDrawer({
 												title="定位音频"
 												onClick={() => playFrom(segment.started_ms)}
 											>
-												{time(segment.started_ms)}
+												{wallClock(segment.started_ms, true, crossesDay)}
 											</button>
 											<div className="transcript-content">
 												<div className="transcript-meta">
@@ -912,7 +1059,7 @@ export function DetailDrawer({
 									<button
 										type="button"
 										className="load-more"
-										onClick={() => void load(offset + 100)}
+										onClick={() => setOffset((current) => current + 100)}
 									>
 										显示更多文字
 									</button>
@@ -924,7 +1071,7 @@ export function DetailDrawer({
 									<span>时间范围</span>
 									<strong>
 										{new Date(detail.started_ms).toLocaleString("zh-CN")} —{" "}
-										{time(detail.ended_ms)}
+										{new Date(detail.ended_ms).toLocaleString("zh-CN")}
 									</strong>
 								</div>
 								<div>
@@ -952,55 +1099,87 @@ export function DetailDrawer({
 									</strong>
 								</div>
 								{infoError && <p className="inline-error">{infoError}</p>}
-								{!detail.id && detail.processing_state !== "moment_only" && (
-									<div className="asr-range-form">
-										<label>
-											开始时间
-											<input
-												type="datetime-local"
-												step="1"
-												value={asrFrom}
-												onChange={(event) => setAsrFrom(event.target.value)}
-											/>
-										</label>
-										<label>
-											结束时间
-											<input
-												type="datetime-local"
-												step="1"
-												value={asrTo}
-												onChange={(event) => setAsrTo(event.target.value)}
-											/>
-										</label>
-										{detail.sources === "both" && (
+								{!detail.id &&
+									!detail.manual_range_id &&
+									detail.processing_state !== "moment_only" && (
+										<div className="asr-range-form">
 											<label>
-												声音来源
-												<select
-													value={asrSources}
-													onChange={(event) =>
-														setAsrSources(event.target.value as Sources)
-													}
-												>
-													<option value="both">双路声音</option>
-													<option value="microphone">麦克风</option>
-													<option value="system">电脑声音</option>
-												</select>
+												开始时间
+												<input
+													type="datetime-local"
+													step="1"
+													value={asrFrom}
+													onChange={(event) => setAsrFrom(event.target.value)}
+												/>
 											</label>
-										)}
-									</div>
-								)}
-								{detail.processing_state !== "moment_only" && (
+											<label>
+												结束时间
+												<input
+													type="datetime-local"
+													step="1"
+													value={asrTo}
+													onChange={(event) => setAsrTo(event.target.value)}
+												/>
+											</label>
+											{detail.sources === "both" && (
+												<label>
+													声音来源
+													<select
+														value={asrSources}
+														onChange={(event) =>
+															setAsrSources(event.target.value as Sources)
+														}
+													>
+														<option value="both">双路声音</option>
+														<option value="microphone">麦克风</option>
+														<option value="system">电脑声音</option>
+													</select>
+												</label>
+											)}
+										</div>
+									)}
+								{queueRelevant && (
 									<button
 										type="button"
 										className="secondary-button"
-										onClick={() => void transcribe()}
-										disabled={busy}
+										onClick={onQueue}
 									>
-										{manualStatus || detail.precise_segments.length > 0
-											? "重新精转"
-											: "开始精转"}
+										查看处理队列
 									</button>
 								)}
+								{detail.id && (
+									<button
+										type="button"
+										className="secondary-button"
+										disabled={busy}
+										onClick={() =>
+											void mutate(
+												{
+													type: "retranscribe_event",
+													event_id: detail.id,
+													expected_revision: detail.revision,
+												},
+												"已加入精转队列",
+											)
+										}
+									>
+										重新精转
+									</button>
+								)}
+								{!detail.id &&
+									!detail.manual_range_id &&
+									detail.processing_state !== "moment_only" && (
+										<button
+											type="button"
+											className="secondary-button"
+											onClick={() => void transcribe()}
+											disabled={busy}
+										>
+											{manualStatus || detail.precise_segments.length > 0
+												? "重新精转"
+												: "开始精转"}
+										</button>
+									)}
 							</div>
 						)}
 					</div>
@@ -1017,7 +1196,7 @@ export function DetailDrawer({
 										type="button"
 										onClick={() => playFrom(moment.anchor_ms)}
 									>
-										{time(moment.anchor_ms)}
+										{wallClock(moment.anchor_ms, true, crossesDay)}
 									</button>
 									{moment.kind === "mark" && <p>◆ 重点</p>}
 									{moment.kind === "comment" && <p>{moment.text}</p>}
@@ -1043,7 +1222,9 @@ export function DetailDrawer({
 							))}
 						</div>
 						<div className="note-composer">
-							<div className="note-anchor">关联 {time(anchor)} 的录音</div>
+							<div className="note-anchor">
+								关联 {wallClock(anchor, true, crossesDay)} 的录音
+							</div>
 							<textarea
 								aria-label="写一条笔记"
 								placeholder="写一条笔记…"

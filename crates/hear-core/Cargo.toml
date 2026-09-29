@@ -22,9 +22,9 @@ tar = "0.4"
 bzip2 = "0.5"
 base64 = "0.22"
 security-framework = "3.7.0"
+tempfile = "3"
 
 [dev-dependencies]
-tempfile = "3"
 
 [build-dependencies]
 cc = "1"

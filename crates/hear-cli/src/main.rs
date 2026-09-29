@@ -213,6 +213,10 @@ enum EventCommand {
         #[arg(long)]
         sources: Option<Sources>,
     },
+    Retranscribe {
+        event_id: Uuid,
+        revision: i64,
+    },
     Delete {
         event_id: Uuid,
         revision: i64,
@@ -557,6 +561,10 @@ fn main() {
                 title,
                 sources: sources.map(Into::into),
             },
+            EventCommand::Retranscribe { event_id, revision } => Request::RetranscribeEvent {
+                event_id,
+                expected_revision: revision,
+            },
             EventCommand::Delete { event_id, revision } => Request::DeleteEvent {
                 event_id,
                 expected_revision: revision,
@@ -768,6 +776,7 @@ fn main() {
             | Response::Timeline { .. }
             | Response::Event { .. }
             | Response::Accepted { .. }
+            | Response::TranscriptionQueued { .. }
             | Response::EventsChanged { .. }
             | Response::TextChanged { .. }
             | Response::People { .. }

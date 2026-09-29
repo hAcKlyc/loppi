@@ -93,7 +93,7 @@ static void hear_disable_callback(HearSystemSession *session) {
 
 // The caller holds the returned session until stop completes. A queue barrier
 // ensures no callback can use its Rust context after this function returns.
-void *hear_system_audio_start(void *context, HearAudioCallback callback, int *stage) {
+void *hear_legacy_system_audio_start(void *context, HearAudioCallback callback, int *stage) {
   if (stage) *stage = 0;
   if (!context || !callback || !CGPreflightScreenCaptureAccess()) {
     if (stage) *stage = 7;
@@ -171,13 +171,13 @@ void *hear_system_audio_start(void *context, HearAudioCallback callback, int *st
   return (void *)CFBridgingRetain(session);
 }
 
-int hear_system_audio_error(void *handle) {
+int hear_legacy_system_audio_error(void *handle) {
   if (!handle) return -1;
   HearSystemSession *session = (__bridge HearSystemSession *)handle;
   return atomic_load(&session.output->stopped_with_error);
 }
 
-int hear_system_audio_stop(void *handle) {
+int hear_legacy_system_audio_stop(void *handle) {
   if (!handle) return -1;
   HearSystemSession *session = CFBridgingRelease(handle);
   dispatch_semaphore_t stopped = dispatch_semaphore_create(0);
@@ -198,7 +198,7 @@ int hear_system_audio_stop(void *handle) {
 
 // Returns captured audio frames, or a negative stage code. This short diagnostic
 // uses the same signed helper identity as production capture and never saves audio.
-int64_t hear_system_audio_probe(uint32_t seconds, uint64_t *peak_millionths_out) {
+int64_t hear_legacy_system_audio_probe(uint32_t seconds, uint64_t *peak_millionths_out) {
   if (!CGPreflightScreenCaptureAccess()) {
     return -7;
   }

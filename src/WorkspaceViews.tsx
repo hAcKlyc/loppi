@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
 	type CleanupPreview,
 	type CloudProvider,
@@ -17,6 +17,7 @@ import {
 	type Sources,
 	type TimelineItem,
 	time,
+	userError,
 	type VoiceSample,
 } from "./api";
 
@@ -36,6 +37,7 @@ function taskStatus(task: CloudTask): string {
 		processing: "处理中",
 		submitted: "等待识别结果",
 		complete: "已完成",
+		no_transcript: "无可识别文字",
 		failed: "处理失败",
 		superseded: "已由新范围替代",
 	};
@@ -50,6 +52,23 @@ function taskStatus(task: CloudTask): string {
 		return `${state} · 服务繁忙，请稍后重试`;
 	if (reason.startsWith("provider_")) return `${state} · 云端服务异常`;
 	return state;
+}
+
+function taskRange(task: CloudTask): string {
+	const started = new Date(task.started_ms);
+	const ended = new Date(task.ended_ms);
+	const date = `${started.getMonth() + 1}/${started.getDate()}`;
+	const endDate =
+		started.toDateString() === ended.toDateString()
+			? ""
+			: `${ended.getMonth() + 1}/${ended.getDate()} `;
+	const source =
+		task.source === "microphone"
+			? " · 麦克风"
+			: task.source === "system"
+				? " · 电脑声音"
+				: "";
+	return `${date} ${time(task.started_ms)}—${endDate}${time(task.ended_ms)}${source}`;
 }
 
 export function QueueView({
@@ -142,7 +161,7 @@ export function QueueView({
 				].sort((a, b) => a.started_ms - b.started_ms),
 			);
 		} catch (error) {
-			setReviewError(String(error));
+			setReviewError(userError(error));
 		} finally {
 			setFinding(false);
 		}
@@ -235,7 +254,7 @@ export function QueueView({
 							<div>
 								<strong>
 									{task.provider === "llm" ? "事件整理" : "精确转录"} ·{" "}
-									{time(task.started_ms)}
+									{taskRange(task)}
 								</strong>
 								<p title={task.error_code ?? undefined}>{taskStatus(task)}</p>
 							</div>
@@ -555,6 +574,7 @@ export function PeopleView({
 export function SettingsView({
 	date,
 	state,
+	queues,
 	selection,
 	privacy,
 	loginStatus,
@@ -568,8 +588,14 @@ export function SettingsView({
 }: {
 	date: Date;
 	state: ServiceState | null;
+	queues: CloudQueue[];
 	selection: { kind: "export" | "cleanup"; item: TimelineItem } | null;
-	privacy: { microphone: number; screen_and_system_audio: number } | null;
+	privacy: {
+		microphone: number;
+		screen_and_system_audio: number;
+		tap_required: boolean;
+		tap_ready: boolean;
+	} | null;
 	loginStatus: number | null;
 	models: {
 		phase: string;
@@ -584,8 +610,24 @@ export function SettingsView({
 	onMessage: (message: string) => void;
 }) {
 	const [provider, setProvider] = useState<CloudProvider>("llm");
-	const [apiKey, setApiKey] = useState("");
-	const [model, setModel] = useState("");
+	const [apiKeys, setApiKeys] = useState<Record<CloudProvider, string>>({
+		llm: "",
+		asr: "",
+	});
+	const [savingProvider, setSavingProvider] = useState<CloudProvider | null>(
+		null,
+	);
+	const [failedProviders, setFailedProviders] = useState<
+		Record<CloudProvider, boolean>
+	>({ llm: false, asr: false });
+	const savingCloud = useRef(false);
+	const cloudConfigured = queues.find(
+		(queue) => queue.provider === provider,
+	)?.configured;
+	const selectProvider = (next: CloudProvider) => {
+		if (next === provider) return;
+		setProvider(next);
+	};
 	const [cleanupOpen, setCleanupOpen] = useState(selection?.kind === "cleanup");
 	const [cleanupPreview, setCleanupPreview] = useState<CleanupPreview | null>(
 		null,
@@ -599,6 +641,7 @@ export function SettingsView({
 	const [exportAudio, setExportAudio] = useState(false);
 	const [exportScreenshots, setExportScreenshots] = useState(false);
 	const [working, setWorking] = useState(false);
+	const [authorizingAudio, setAuthorizingAudio] = useState(false);
 	const [audioLimitGiB, setAudioLimitGiB] = useState("");
 	useEffect(() => {
 		if (state?.audio_limit_bytes)
@@ -642,21 +685,38 @@ export function SettingsView({
 		return { from_ms, to_ms, sources };
 	};
 
-	const configureCloud = async () => {
-		if (!apiKey.trim()) {
-			onMessage("请输入 API Key");
+	const configureCloud = async (
+		selected: CloudProvider,
+		enteredKey: string,
+	) => {
+		const key = enteredKey.trim();
+		if (!key) {
+			setApiKeys((current) => ({ ...current, [selected]: "" }));
 			return;
 		}
-		const saved = await onMutate(
-			{
-				type: "configure_cloud",
-				provider,
-				api_key: apiKey.trim(),
-				model: model.trim() || null,
-			},
-			"云端能力已配置",
-		);
-		if (saved) setApiKey("");
+		if (savingCloud.current) return;
+		savingCloud.current = true;
+		setSavingProvider(selected);
+		setFailedProviders((current) => ({ ...current, [selected]: false }));
+		try {
+			const saved = await onMutate(
+				{
+					type: "configure_cloud",
+					provider: selected,
+					api_key: key,
+					model: selected === "llm" ? "deepseek-flash" : null,
+				},
+				selected === "llm" ? "DeepSeek 已配置" : "火山引擎已配置",
+			);
+			if (saved) {
+				setApiKeys((current) => ({ ...current, [selected]: "" }));
+			} else {
+				setFailedProviders((current) => ({ ...current, [selected]: true }));
+			}
+		} finally {
+			savingCloud.current = false;
+			setSavingProvider(null);
+		}
 	};
 
 	const preview = async () => {
@@ -689,7 +749,7 @@ export function SettingsView({
 			setAffectedTitles(names);
 			setCleanupPreview(response.preview);
 		} catch (error) {
-			onMessage(String(error));
+			onMessage(userError(error));
 		} finally {
 			setWorking(false);
 		}
@@ -708,7 +768,7 @@ export function SettingsView({
 			setCleanupPreview(null);
 			await Promise.all([onStatus(), onTimeline(), onContext()]);
 		} catch (error) {
-			onMessage(String(error));
+			onMessage(userError(error));
 		} finally {
 			setWorking(false);
 		}
@@ -728,7 +788,7 @@ export function SettingsView({
 			onMessage("导出已完成");
 			setExportOpen(false);
 		} catch (error) {
-			onMessage(String(error));
+			onMessage(userError(error));
 		} finally {
 			setWorking(false);
 		}
@@ -742,10 +802,24 @@ export function SettingsView({
 			});
 			if (path) setExportPath(path);
 		} catch (error) {
-			onMessage(String(error));
+			onMessage(userError(error));
 		}
 	};
 
+	const systemAudioReady = privacy?.tap_required
+		? privacy.tap_ready
+		: privacy?.screen_and_system_audio === 1;
+	const authorizeSystemAudio = async () => {
+		setAuthorizingAudio(true);
+		try {
+			await invoke("request_system_audio_permission");
+		} catch (error) {
+			onMessage(userError(error));
+		} finally {
+			await Promise.allSettled([onContext(), onStatus()]);
+			setAuthorizingAudio(false);
+		}
+	};
 	return (
 		<section className="page-container settings-page">
 			<div className="page-heading">
@@ -776,7 +850,7 @@ export function SettingsView({
 								);
 								await onContext();
 							} catch (error) {
-								onMessage(String(error));
+								onMessage(userError(error));
 							}
 						}}
 					>
@@ -830,44 +904,63 @@ export function SettingsView({
 					<div>
 						<strong>电脑声音</strong>
 						<p>
-							{privacy?.screen_and_system_audio === 1
-								? state?.system_recording
-									? "录制中"
-									: "已授权"
-								: "需要系统授权"}
+							{state?.system_recording
+								? privacy?.tap_required && !privacy.tap_ready
+									? "录制中 · 待完成后台授权"
+									: "录制中"
+								: systemAudioReady
+									? privacy?.tap_required
+										? "已完成设置"
+										: "已授权"
+									: "需要系统授权"}
 						</p>
 					</div>
-					{privacy?.screen_and_system_audio === 1 ? (
-						<button
-							type="button"
-							className="quiet-button"
-							disabled={busy}
-							onClick={() =>
-								void onMutate(
-									{
-										type: "set_source",
-										source: "system",
-										enabled: !state?.system_enabled,
-										expected_revision: state?.revision,
-									},
-									"声音来源已更新",
-								)
-							}
-						>
-							{state?.system_enabled ? "关闭" : "开启"}
-						</button>
-					) : (
-						<button
-							type="button"
-							className="quiet-button"
-							onClick={async () => {
-								await invoke("request_system_audio_permission");
-								await onContext();
-							}}
-						>
-							允许访问
-						</button>
-					)}
+					<div className="setting-actions">
+						{privacy?.tap_required && (
+							<button
+								type="button"
+								className="quiet-button"
+								disabled={authorizingAudio}
+								onClick={() => void authorizeSystemAudio()}
+							>
+								{authorizingAudio
+									? "等待授权…"
+									: privacy.tap_ready
+										? "重新验证"
+										: "完成授权"}
+							</button>
+						)}
+						{state && (
+							<button
+								type="button"
+								className="quiet-button"
+								disabled={busy}
+								onClick={() =>
+									void onMutate(
+										{
+											type: "set_source",
+											source: "system",
+											enabled: !state?.system_enabled,
+											expected_revision: state?.revision,
+										},
+										"声音来源已更新",
+									)
+								}
+							>
+								{state?.system_enabled ? "关闭" : "开启"}
+							</button>
+						)}
+						{!privacy?.tap_required && !systemAudioReady && (
+							<button
+								type="button"
+								className="quiet-button"
+								disabled={authorizingAudio}
+								onClick={() => void authorizeSystemAudio()}
+							>
+								{authorizingAudio ? "等待系统授权…" : "允许访问"}
+							</button>
+						)}
+					</div>
 				</div>
 				<div className="setting-row">
 					<div>
@@ -952,46 +1045,83 @@ export function SettingsView({
 					<button
 						type="button"
 						className={provider === "llm" ? "active" : ""}
-						onClick={() => setProvider("llm")}
+						aria-pressed={provider === "llm"}
+						onClick={() => selectProvider("llm")}
 					>
 						LLM
 					</button>
 					<button
 						type="button"
 						className={provider === "asr" ? "active" : ""}
-						onClick={() => setProvider("asr")}
+						aria-pressed={provider === "asr"}
+						onClick={() => selectProvider("asr")}
 					>
 						ASR
 					</button>
 				</div>
-				<label>
-					API Key
-					<input
-						type="password"
-						autoComplete="off"
-						value={apiKey}
-						onChange={(event) => setApiKey(event.target.value)}
-						placeholder="输入密钥"
-					/>
-				</label>
-				<label>
-					模型或资源标识
-					<input
-						value={model}
-						onChange={(event) => setModel(event.target.value)}
-						placeholder={
-							provider === "llm" ? "使用默认模型" : "volc.seedasr.auc"
-						}
-					/>
-				</label>
-				<button
-					type="button"
-					className="primary-button"
-					disabled={busy}
-					onClick={() => void configureCloud()}
-				>
-					保存并验证
-				</button>
+				<div className="cloud-provider-row">
+					<div className="cloud-provider-info">
+						<div className="cloud-provider-heading">
+							<strong>{provider === "llm" ? "DeepSeek" : "火山引擎"}</strong>
+							{cloudConfigured !== undefined && (
+								<span
+									className={`cloud-key-status${cloudConfigured ? " configured" : ""}`}
+								>
+									{cloudConfigured ? "已配置" : "未配置"}
+								</span>
+							)}
+						</div>
+						<span className="cloud-provider-meta">
+							{provider === "llm"
+								? "deepseek-flash"
+								: "语音识别 · volc.seedasr.auc"}
+						</span>
+					</div>
+					<label className="cloud-provider-key">
+						API Key
+						<input
+							type="password"
+							autoComplete="off"
+							value={apiKeys[provider]}
+							disabled={busy}
+							aria-invalid={failedProviders[provider]}
+							aria-describedby="cloud-key-feedback"
+							onChange={(event) => {
+								setApiKeys((current) => ({
+									...current,
+									[provider]: event.target.value,
+								}));
+								setFailedProviders((current) => ({
+									...current,
+									[provider]: false,
+								}));
+							}}
+							onKeyDown={(event) => {
+								if (event.key === "Enter") {
+									event.preventDefault();
+									event.currentTarget.blur();
+								}
+							}}
+							onBlur={(event) =>
+								void configureCloud(provider, event.currentTarget.value)
+							}
+							placeholder={cloudConfigured ? "输入新密钥以更换" : "输入密钥"}
+						/>
+						<span
+							id="cloud-key-feedback"
+							className={`cloud-key-feedback${failedProviders[provider] ? " error" : ""}`}
+							aria-live="polite"
+						>
+							{savingProvider === provider
+								? "正在验证…"
+								: failedProviders[provider]
+									? cloudConfigured
+										? "新密钥未保存，原配置仍有效"
+										: "验证未通过，密钥未保存"
+									: "按回车或离开输入框后验证"}
+						</span>
+					</label>
+				</div>
 			</div>
 			<h2>数据</h2>
 			<div className="panel-card setting-panel">

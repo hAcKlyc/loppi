@@ -13,7 +13,7 @@ use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
-const RATE: usize = 48_000;
+pub(crate) const RATE: usize = 48_000;
 const BLOCK_FRAMES: usize = RATE * 5;
 
 pub struct BlockRecord {
@@ -162,8 +162,8 @@ impl<F: FnMut(RecordEvent) -> Result<(), String>> Assembler<'_, F> {
         let sample_start = self.frames;
         let ended_ms = started_ms + frames as i64 * 1000 / RATE as i64;
         let id = Uuid::new_v4();
-        // Exact digital silence can be omitted without VAD/ASR deciding data
-        // deletion. Any weak or ambiguous input is kept, even if ASR is empty.
+        // Digital silence needs no model. Other sound is sealed durably so the
+        // independent retention policy can resolve it after local VAD.
         let retention = retention::classify(&self.samples);
         let digital_silence = retention == Retention::DiscardDigitalSilence;
         if !digital_silence {

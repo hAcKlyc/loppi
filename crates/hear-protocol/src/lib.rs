@@ -9,7 +9,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
-pub const PROTOCOL_VERSION: u32 = 11;
+pub const PROTOCOL_VERSION: u32 = 14;
 const MAX_RESPONSE_BYTES: u64 = 48 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -113,6 +113,10 @@ pub enum Request {
         ended_ms: i64,
         title: String,
         sources: Option<EventSources>,
+    },
+    RetranscribeEvent {
+        event_id: Uuid,
+        expected_revision: i64,
     },
     DeleteEvent {
         event_id: Uuid,
@@ -273,6 +277,7 @@ impl Request {
             Self::PlaybackChunk { .. } => "playback_chunk",
             Self::CreateEvent { .. } => "create_event",
             Self::EditEvent { .. } => "edit_event",
+            Self::RetranscribeEvent { .. } => "retranscribe_event",
             Self::DeleteEvent { .. } => "delete_event",
             Self::SplitEvent { .. } => "split_event",
             Self::MergeEvents { .. } => "merge_events",
@@ -467,6 +472,7 @@ pub struct CloudTaskView {
     pub provider: CloudProvider,
     pub target_kind: String,
     pub target_id: String,
+    pub source: Option<AudioSource>,
     pub started_ms: i64,
     pub ended_ms: i64,
     pub state: String,
@@ -477,6 +483,7 @@ pub struct CloudTaskView {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimelineItem {
     pub id: Option<Uuid>,
+    pub manual_range_id: Option<Uuid>,
     pub started_ms: i64,
     pub ended_ms: i64,
     pub title: Option<String>,
@@ -610,7 +617,12 @@ pub enum Response {
     },
     Accepted {
         id: Uuid,
-        task_id: Uuid,
+        object_id: Uuid,
+    },
+    TranscriptionQueued {
+        id: Uuid,
+        range_id: Uuid,
+        tasks: Vec<CloudTaskView>,
     },
     EventsChanged {
         id: Uuid,
@@ -862,6 +874,7 @@ fn send_with_policy(
         | Response::Timeline { id, .. }
         | Response::Event { id, .. }
         | Response::Accepted { id, .. }
+        | Response::TranscriptionQueued { id, .. }
         | Response::EventsChanged { id, .. }
         | Response::TextChanged { id, .. }
         | Response::People { id, .. }
@@ -953,5 +966,33 @@ mod tests {
         assert_eq!(event.correlation_id, Some(id));
         let encoded = serde_json::to_string(&event).unwrap();
         assert!(!encoded.contains("null"));
+    }
+
+    #[test]
+    fn transcription_receipt_serializes_physical_task_ids_and_sources() {
+        let range_id = Uuid::new_v4();
+        let task_id = Uuid::new_v4();
+        let value = serde_json::to_value(Response::TranscriptionQueued {
+            id: Uuid::new_v4(),
+            range_id,
+            tasks: vec![CloudTaskView {
+                id: task_id,
+                provider: CloudProvider::Asr,
+                target_kind: "range".to_owned(),
+                target_id: range_id.to_string(),
+                source: Some(AudioSource::System),
+                started_ms: 1_000,
+                ended_ms: 6_000,
+                state: "pending".to_owned(),
+                error_code: None,
+                manual: true,
+            }],
+        })
+        .unwrap();
+        assert_eq!(value["type"], "transcription_queued");
+        assert_eq!(value["range_id"], range_id.to_string());
+        assert_eq!(value["tasks"][0]["id"], task_id.to_string());
+        assert_eq!(value["tasks"][0]["source"], "system");
+        assert_eq!(value["tasks"][0]["state"], "pending");
     }
 }

@@ -62,7 +62,7 @@ fn run() -> Result<(), String> {
         }
         println!(
             "{}",
-            serde_json::to_string_pretty(&probe(AudioSource::Microphone, seconds as u8)?)
+            serde_json::to_string_pretty(&probe(AudioSource::Microphone, seconds as u8, true)?)
                 .map_err(|error| error.to_string())?
         );
         return Ok(());
@@ -72,12 +72,36 @@ fn run() -> Result<(), String> {
             .get(1)
             .and_then(|value| value.parse::<u64>().ok())
             .unwrap_or(3);
-        if !(1..=20).contains(&seconds) || args.len() > 2 {
+        let parent_pid = if args.len() == 4 && args[2] == "--parent-pid" {
+            Some(
+                args[3]
+                    .parse::<i32>()
+                    .map_err(|_| "invalid probe parent pid")?,
+            )
+        } else if args.len() <= 2 {
+            None
+        } else {
             return Err("usage: hear-core probe-system [1..20 seconds]".to_owned());
+        };
+        if !(1..=20).contains(&seconds) || parent_pid.is_some_and(|pid| pid <= 1) {
+            return Err("usage: hear-core probe-system [1..20 seconds]".to_owned());
+        }
+        if let Some(parent_pid) = parent_pid {
+            if unsafe { libc::getppid() } != parent_pid {
+                std::process::exit(70);
+            }
+            thread::spawn(move || {
+                while unsafe { libc::getppid() } == parent_pid {
+                    thread::sleep(Duration::from_millis(200));
+                }
+                // HAL can remain blocked after the caller exits. The child
+                // must not survive its authorization/probe owner.
+                std::process::exit(70);
+            });
         }
         println!(
             "{}",
-            serde_json::to_string_pretty(&probe(AudioSource::System, seconds as u8)?)
+            serde_json::to_string_pretty(&probe(AudioSource::System, seconds as u8, true)?)
                 .map_err(|error| error.to_string())?
         );
         return Ok(());
@@ -109,6 +133,7 @@ fn run() -> Result<(), String> {
     let connection =
         Connection::open(directory.join("hear.sqlite")).map_err(|error| error.to_string())?;
     let mut store = Store::new(connection)?;
+    events::recover_asr_staging(&directory);
     archive::recover(&store.db)?;
     archive::cleanup_spool(&directory)?;
     cleanup::drain_deletions(&store.db, &directory, now_ms()?)?;
@@ -321,15 +346,19 @@ fn analysis_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
                 .unwrap()
                 .analyze(&block.source, block.sample_start, &pcm, block.flush)
         })();
-        let success = result
-            .and_then(|result| {
-                shared
-                    .store
-                    .lock()
-                    .map_err(|error| error.to_string())?
-                    .publish_analysis(&block, result)
-            })
-            .is_ok();
+        let published = result.and_then(|result| {
+            shared
+                .store
+                .lock()
+                .map_err(|error| error.to_string())?
+                .publish_analysis(&block, result)
+        });
+        let success = published.is_ok();
+        if published.is_ok_and(|deleted| deleted) {
+            if let (Ok(store), Ok(now)) = (shared.store.lock(), now_ms()) {
+                let _ = cleanup::drain_deletions(&store.db, &shared.directory, now);
+            }
+        }
         if !success {
             worker = None;
             if let Ok(mut store) = shared.store.lock() {
@@ -502,8 +531,37 @@ fn run_voice_worker_with_timeout(
     serde_json::from_slice(&output.stdout).map_err(|_| "model_invalid".to_owned())
 }
 
+fn voice_error_code(error: &str) -> &'static str {
+    if error.starts_with("audio block unavailable: ") {
+        return "audio_unavailable";
+    }
+    match error {
+        "speaker audio unavailable" | "ASR source audio unavailable" => "audio_unavailable",
+        "speaker audio range unsuitable" | "speaker audio level unsuitable" => "audio_quality",
+        "worker_timeout" => "worker_timeout",
+        "model_invalid" => "model_invalid",
+        _ => "worker_failed",
+    }
+}
+
 fn voice_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
     while !stop.load(Ordering::Acquire) {
+        // Matching saved vectors is a database operation. An unavailable
+        // model must not hide identities after an upgrade or sample change.
+        let now = now_ms().unwrap_or(0);
+        let matched = shared
+            .store
+            .lock()
+            .map_err(|error| error.to_string())
+            .and_then(|mut store| knowledge::match_one_ready(&mut store.db, now));
+        match matched {
+            Ok(true) => continue,
+            Err(_) => {
+                thread::sleep(Duration::from_secs(2));
+                continue;
+            }
+            Ok(false) => {}
+        }
         let ready = shared
             .models
             .lock()
@@ -515,7 +573,6 @@ fn voice_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
         let Ok(_voice_gate) = shared.voice_outbound.lock() else {
             break;
         };
-        let now = now_ms().unwrap_or(0);
         let work = shared
             .store
             .lock()
@@ -562,13 +619,7 @@ fn voice_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
                         }
                     }
                     Err(error) => {
-                        let code = if error.contains("audio") {
-                            "audio_unavailable"
-                        } else if error == "worker_timeout" {
-                            "worker_timeout"
-                        } else {
-                            "worker_failed"
-                        };
+                        let code = voice_error_code(&error);
                         if let Ok(store) = shared.store.lock() {
                             let _ = knowledge::fail_voice(&store.db, work.segment_id, code, now);
                         }
@@ -578,16 +629,7 @@ fn voice_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
                 }
                 shared.logs.emit(ClientKind::Worker, work.segment_id, event);
             }
-            Ok(None) => {
-                let matched = shared
-                    .store
-                    .lock()
-                    .map_err(|error| error.to_string())
-                    .and_then(|mut store| knowledge::match_one_ready(&mut store.db, now));
-                if !matches!(matched, Ok(true)) {
-                    thread::sleep(Duration::from_secs(1));
-                }
-            }
+            Ok(None) => thread::sleep(Duration::from_secs(1)),
             Err(_) => thread::sleep(Duration::from_secs(2)),
         }
     }
@@ -704,7 +746,7 @@ fn process_cloud_task(
                         let store = shared.store.lock().map_err(|e| e.to_string())?;
                         events::audio_manifest(&store.db, task)?
                     };
-                    let wav = events::assemble_wav(&shared.directory, task, &parts)?;
+                    let ogg = events::assemble_ogg(&shared.directory, task, &parts)?;
                     let _outbound = shared.asr_outbound.lock().map_err(|e| e.to_string())?;
                     // Recheck after audio decoding: a boundary edit or cleanup
                     // may have superseded the task before any upload.
@@ -727,7 +769,7 @@ fn process_cloud_task(
                         events::mark_submit_intent(&store.db, task, now_ms()?)?;
                     }
                     let key = active_cloud_credential(shared, task.provider)?;
-                    cloud::submit_audio(&key, task.remote_id, &wav)?;
+                    cloud::submit_audio(&key, task.remote_id, &ogg, cloud::AsrAudioFormat::Ogg)?;
                     let store = shared.store.lock().map_err(|e| e.to_string())?;
                     events::asr_wait(&store.db, task, now_ms()?)
                 }
@@ -776,16 +818,38 @@ fn decode_saved_block(directory: &Path, block: &PendingBlock) -> Result<Vec<f32>
 
 struct SourceSlot {
     session_id: uuid::Uuid,
+    recorded_frames: Arc<AtomicU64>,
     stop: Arc<AtomicBool>,
     join: thread::JoinHandle<()>,
 }
 
 fn start_source(shared: &Arc<CoreState>, source: AudioSource) -> SourceSlot {
     let session_id = uuid::Uuid::new_v4();
+    let recorded_frames = Arc::new(AtomicU64::new(0));
+    let source_frames = Arc::clone(&recorded_frames);
     let stop = Arc::new(AtomicBool::new(false));
     let source_stop = Arc::clone(&stop);
     let source_shared = Arc::clone(shared);
     let join = thread::spawn(move || {
+        let status = microphone::allow_idle_sleep();
+        let mut event = LogEvent::simple(
+            "capture",
+            if status == 0 {
+                LogLevel::Info
+            } else {
+                LogLevel::Warn
+            },
+            if status == 0 {
+                "idle_sleep_allowed"
+            } else {
+                "idle_sleep_policy_failed"
+            },
+        );
+        event.capture_span_id = Some(session_id);
+        if status != 0 {
+            event.error_code = Some("coreaudio_sleep_policy_failed".to_owned());
+        }
+        source_shared.logs.emit(ClientKind::Core, session_id, event);
         let clock = match record::ClockAnchor::now() {
             Ok(clock) => clock,
             Err(error) => {
@@ -824,11 +888,19 @@ fn start_source(shared: &Arc<CoreState>, source: AudioSource) -> SourceSlot {
                 &media_dir,
                 clock,
                 |event| {
+                    let finalized_frames = match &event {
+                        record::RecordEvent::Block(block) if !block.preparing => {
+                            block.frames as u64
+                        }
+                        _ => 0,
+                    };
                     source_shared
                         .store
                         .lock()
                         .map_err(|error| error.to_string())?
-                        .insert_record_event(&source_shared.directory, session_id, event)
+                        .insert_record_event(&source_shared.directory, session_id, event)?;
+                    source_frames.fetch_add(finalized_frames, Ordering::Relaxed);
+                    Ok(())
                 },
                 || {
                     if let Ok(mut capture) = source_shared.capture.lock() {
@@ -860,6 +932,12 @@ fn start_source(shared: &Arc<CoreState>, source: AudioSource) -> SourceSlot {
         if let Ok(mut capture) = source_shared.capture.lock() {
             let reason = if completed && close_result.is_ok() {
                 None
+            } else if source == AudioSource::System
+                && result
+                    .as_ref()
+                    .is_err_and(|error| error.contains("permission probe"))
+            {
+                Some("电脑声音录制授权需要重新验证".to_owned())
             } else {
                 Some("audio source stopped; retrying when available".to_owned())
             };
@@ -895,7 +973,18 @@ fn start_source(shared: &Arc<CoreState>, source: AudioSource) -> SourceSlot {
         );
         event.capture_span_id = Some(session_id);
         if !completed {
-            event.error_code = Some("capture_source_failed".to_owned());
+            event.error_code = Some(
+                if source == AudioSource::System
+                    && result
+                        .as_ref()
+                        .is_err_and(|error| error.contains("permission probe"))
+                {
+                    "system_audio_permission_probe_failed"
+                } else {
+                    "capture_source_failed"
+                }
+                .to_owned(),
+            );
         }
         source_shared
             .logs
@@ -903,9 +992,26 @@ fn start_source(shared: &Arc<CoreState>, source: AudioSource) -> SourceSlot {
     });
     SourceSlot {
         session_id,
+        recorded_frames,
         stop,
         join,
     }
+}
+
+fn capture_retry_delay(previous: Duration, recorded_frames: u64) -> Duration {
+    const BASE: Duration = Duration::from_secs(2);
+    const MAX: Duration = Duration::from_secs(30);
+    const STABLE_FRAMES: u64 = record::RATE as u64 * 60;
+    if recorded_frames >= STABLE_FRAMES || previous < BASE {
+        BASE
+    } else {
+        (previous * 2).min(MAX)
+    }
+}
+
+fn reset_capture_retry(retry_at: &mut Instant, retry_delay: &mut Duration) {
+    *retry_delay = Duration::ZERO;
+    *retry_at = Instant::now();
 }
 
 fn capture_supervisor(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
@@ -913,6 +1019,8 @@ fn capture_supervisor(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
     let mut system: Option<SourceSlot> = None;
     let mut microphone_retry_at = Instant::now();
     let mut system_retry_at = Instant::now();
+    let mut microphone_retry_delay = Duration::ZERO;
+    let mut system_retry_delay = Duration::ZERO;
     let mut microphone_was_wanted = false;
     let mut system_was_wanted = false;
     let mut previous_wall = SystemTime::now();
@@ -953,13 +1061,14 @@ fn capture_supervisor(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
             Err(_) => (false, false),
         };
 
-        for (source, slot, wanted, was_wanted, retry_at, busy) in [
+        for (source, slot, wanted, was_wanted, retry_at, retry_delay, busy) in [
             (
                 AudioSource::Microphone,
                 &mut microphone,
                 want_microphone,
                 &mut microphone_was_wanted,
                 &mut microphone_retry_at,
+                &mut microphone_retry_delay,
                 &shared.microphone_busy,
             ),
             (
@@ -968,9 +1077,13 @@ fn capture_supervisor(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
                 want_system,
                 &mut system_was_wanted,
                 &mut system_retry_at,
+                &mut system_retry_delay,
                 &shared.system_busy,
             ),
         ] {
+            if slept {
+                reset_capture_retry(retry_at, retry_delay);
+            }
             let should_stop = slept || !wanted;
             if slot
                 .as_ref()
@@ -987,12 +1100,26 @@ fn capture_supervisor(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
                     }
                 }
                 if ended_unexpectedly {
-                    *retry_at = Instant::now() + Duration::from_secs(30);
+                    *retry_delay = capture_retry_delay(
+                        *retry_delay,
+                        current.recorded_frames.load(Ordering::Relaxed),
+                    );
+                    *retry_at = Instant::now() + *retry_delay;
+                    let mut event =
+                        LogEvent::simple("capture", LogLevel::Info, "source_retry_scheduled");
+                    event.capture_span_id = Some(current.session_id);
+                    event.duration_ms = Some(retry_delay.as_millis() as u64);
+                    shared
+                        .logs
+                        .emit(ClientKind::Core, current.session_id, event);
+                } else {
+                    reset_capture_retry(retry_at, retry_delay);
                 }
             }
             // Close after join: a failing source can open a gap while its
             // thread is winding down, even after pause was requested.
             if !wanted && *was_wanted {
+                reset_capture_retry(retry_at, retry_delay);
                 if let Ok(mut store) = shared.store.lock() {
                     let _ = store.close_open_gaps(source);
                 }
@@ -1259,13 +1386,19 @@ impl LogWorker {
     }
 }
 
-fn probe(source: AudioSource, seconds: u8) -> Result<ProbeStats, String> {
+fn probe(source: AudioSource, seconds: u8, direct: bool) -> Result<ProbeStats, String> {
     if !(1..=20).contains(&seconds) {
         return Err("audio source test duration must be 1 to 20 seconds".to_owned());
     }
     match source {
         AudioSource::Microphone => microphone::Microphone::probe(seconds),
         AudioSource::System => {
+            if !direct && system_audio::tap_available() {
+                if !system_audio::tap_ready() {
+                    return Err("system audio Tap requires foreground authorization".to_owned());
+                }
+                return system_audio::probe_child(seconds, Duration::from_secs(seconds as u64 + 8));
+            }
             unsafe extern "C" {
                 fn hear_system_audio_probe(seconds: u32, peak_millionths_out: *mut u64) -> i64;
             }
@@ -1276,6 +1409,9 @@ fn probe(source: AudioSource, seconds: u8) -> Result<ProbeStats, String> {
             }
             if frames < 0 {
                 return Err(format!("system audio capture failed at stage {}", -frames));
+            }
+            if frames == 0 {
+                return Err("system audio probe received no frames".to_owned());
             }
             Ok(ProbeStats {
                 source,
@@ -1529,7 +1665,7 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                     events::retry_task_in(tx, task_id, now_ms()?)?;
                     Ok(Response::Accepted {
                         id: envelope.id,
-                        task_id,
+                        object_id: task_id,
                     })
                 }) {
                     Ok(response) => response,
@@ -1622,7 +1758,7 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                 let result = {
                     let mut store = shared.store.lock().map_err(|e| e.to_string())?;
                     store.mutate_response(envelope.id, &mutation_fingerprint, |tx| {
-                        let task_id = events::create_event_in(
+                        let object_id = events::create_event_in(
                             tx,
                             started_ms,
                             ended_ms,
@@ -1632,7 +1768,7 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                         )?;
                         Ok(Response::Accepted {
                             id: envelope.id,
-                            task_id,
+                            object_id,
                         })
                     })
                 };
@@ -1669,7 +1805,31 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                         )?;
                         Ok(Response::Accepted {
                             id: envelope.id,
-                            task_id: event_id,
+                            object_id: event_id,
+                        })
+                    })
+                };
+                match result {
+                    Ok(response) => response,
+                    Err(error) => Response::Error {
+                        id: envelope.id,
+                        code: "event_invalid".to_owned(),
+                        message: error,
+                    },
+                }
+            }
+            Request::RetranscribeEvent {
+                event_id,
+                expected_revision,
+            } => {
+                let _outbound = shared.asr_outbound.lock().map_err(|e| e.to_string())?;
+                let result = {
+                    let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                    store.mutate_response(envelope.id, &mutation_fingerprint, |tx| {
+                        events::retranscribe_event_in(tx, event_id, expected_revision, now_ms()?)?;
+                        Ok(Response::Accepted {
+                            id: envelope.id,
+                            object_id: event_id,
                         })
                     })
                 };
@@ -1784,16 +1944,17 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                 let result = {
                     let mut store = shared.store.lock().map_err(|e| e.to_string())?;
                     store.mutate_response(envelope.id, &mutation_fingerprint, |tx| {
-                        let task_id = events::transcribe_range_in(
+                        let (range_id, tasks) = events::transcribe_range_in(
                             tx,
                             started_ms,
                             ended_ms,
                             sources,
                             now_ms()?,
                         )?;
-                        Ok(Response::Accepted {
+                        Ok(Response::TranscriptionQueued {
                             id: envelope.id,
-                            task_id,
+                            range_id,
+                            tasks,
                         })
                     })
                 };
@@ -1801,7 +1962,12 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                     Ok(response) => response,
                     Err(error) => Response::Error {
                         id: envelope.id,
-                        code: "range_invalid".to_owned(),
+                        code: if error == "no retained audio in selected range" {
+                            "range_no_audio"
+                        } else {
+                            "range_invalid"
+                        }
+                        .to_owned(),
                         message: error,
                     },
                 }
@@ -2573,7 +2739,7 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                     state: state.clone(),
                 }
             }
-            Request::Probe { source, seconds } => match probe(source, seconds) {
+            Request::Probe { source, seconds } => match probe(source, seconds, false) {
                 Ok(stats) => Response::ProbeResult {
                     id: envelope.id,
                     stats,
@@ -3453,7 +3619,7 @@ impl Store {
         &mut self,
         block: &PendingBlock,
         result: analysis::WorkResult,
-    ) -> Result<(), String> {
+    ) -> Result<bool, String> {
         if result.error.is_some() {
             return Err("local speech worker rejected audio".to_owned());
         }
@@ -3467,7 +3633,7 @@ impl Store {
             )
             .map_err(|error| error.to_string())?;
         if !still_current {
-            return Ok(());
+            return Ok(false);
         }
         for segment in result.segments {
             if segment.end_sample <= segment.start_sample {
@@ -3497,8 +3663,20 @@ impl Store {
             params![block.id, result.speech_active],
         )
         .map_err(|error| error.to_string())?;
+        let retention = retention::resolve_analysis(
+            &tx,
+            &block.session_id,
+            block.sample_start,
+            &block.id,
+            block.flush,
+            now_ms()?,
+        )?;
+        for previous_id in retention.newly_speech {
+            events::note_analysis(&tx, &previous_id)?;
+        }
         events::note_analysis(&tx, &block.id)?;
-        tx.commit().map_err(|error| error.to_string())
+        tx.commit().map_err(|error| error.to_string())?;
+        Ok(retention.deleted_media)
     }
 
     fn handle(&mut self, id: uuid::Uuid, request: Request) -> Result<Response, String> {
@@ -3630,6 +3808,7 @@ impl Store {
             | Request::RangeDetail { .. }
             | Request::CreateEvent { .. }
             | Request::EditEvent { .. }
+            | Request::RetranscribeEvent { .. }
             | Request::DeleteEvent { .. }
             | Request::SplitEvent { .. }
             | Request::MergeEvents { .. }
@@ -3833,6 +4012,63 @@ mod tests {
     use uuid::Uuid;
 
     #[test]
+    fn speaker_input_quality_is_not_reported_as_missing_audio() {
+        assert_eq!(
+            voice_error_code("speaker audio range unsuitable"),
+            "audio_quality"
+        );
+        assert_eq!(
+            voice_error_code("speaker audio level unsuitable"),
+            "audio_quality"
+        );
+        assert_eq!(
+            voice_error_code("speaker audio unavailable"),
+            "audio_unavailable"
+        );
+        assert_eq!(
+            voice_error_code("speaker audio decoder failed"),
+            "worker_failed"
+        );
+    }
+
+    #[test]
+    fn speaker_input_classification_uses_retained_audio_and_actual_file() {
+        let directory = tempfile::tempdir().unwrap();
+        let db = Store::new(Connection::open_in_memory().unwrap())
+            .unwrap()
+            .db;
+        assert_eq!(
+            voice_error_code(&events::voice_manifest(&db, "microphone", 0, 3_000).unwrap_err()),
+            "audio_unavailable"
+        );
+        assert_eq!(
+            voice_error_code(&events::voice_manifest(&db, "microphone", 0, 1_000).unwrap_err()),
+            "audio_quality"
+        );
+
+        let id = Uuid::new_v4();
+        let relative = format!("media/microphone/{id}.opus");
+        db.execute(
+            "INSERT INTO audio_blocks(id,session_id,source,started_ms,ended_ms,sample_start,
+             frames,bytes,media_path,retention_decision,analysis_state,speech_active)
+             VALUES (?1,'session','microphone',0,3000,0,144000,100,?2,'retain','complete',0)",
+            rusqlite::params![id.to_string(), relative],
+        )
+        .unwrap();
+        let (task, parts) = events::voice_manifest(&db, "microphone", 0, 3_000).unwrap();
+        let missing = events::voice_pcm_16k(directory.path(), &task, &parts).unwrap_err();
+        assert_eq!(voice_error_code(&missing), "audio_unavailable");
+
+        let media_directory = directory.path().join("media/microphone");
+        fs::create_dir_all(&media_directory).unwrap();
+        let mut block = media::OpusBlock::create(&media_directory, id).unwrap();
+        block.push(&vec![0.0; 144_000]).unwrap();
+        block.seal().unwrap();
+        let quiet = events::voice_pcm_16k(directory.path(), &task, &parts).unwrap_err();
+        assert_eq!(voice_error_code(&quiet), "audio_quality");
+    }
+
+    #[test]
     fn stalled_voice_worker_cannot_hold_the_core_forever_while_stdin_is_full() {
         let directory = tempfile::tempdir().unwrap();
         let worker = directory.path().join("stalled-worker");
@@ -3989,6 +4225,38 @@ mod tests {
             .unwrap();
         assert!(!store.storage_available(directory.path()).unwrap());
         assert!(media_dir.join(orphan).is_file());
+    }
+
+    #[test]
+    fn capture_retry_is_fast_after_a_stable_run_and_bounded_when_unavailable() {
+        let mut delay = Duration::ZERO;
+        for expected in [2, 4, 8, 16, 30, 30] {
+            delay = capture_retry_delay(delay, record::RATE as u64 * 3);
+            assert_eq!(delay, Duration::from_secs(expected));
+        }
+        assert_eq!(
+            capture_retry_delay(delay, record::RATE as u64 * 59),
+            Duration::from_secs(30)
+        );
+        assert_eq!(
+            capture_retry_delay(delay, record::RATE as u64 * 60),
+            Duration::from_secs(2)
+        );
+    }
+
+    #[test]
+    fn sleep_clears_retry_even_when_no_source_slot_is_running() {
+        let mut delay = Duration::from_secs(30);
+        let mut retry_at = Instant::now() + delay;
+        let before = Instant::now();
+        reset_capture_retry(&mut retry_at, &mut delay);
+        let after = Instant::now();
+        assert_eq!(delay, Duration::ZERO);
+        assert!(retry_at >= before && retry_at <= after);
+        assert_eq!(
+            capture_retry_delay(delay, record::RATE as u64 * 3),
+            Duration::from_secs(2)
+        );
     }
 
     #[test]
@@ -4350,12 +4618,13 @@ mod tests {
                 )?;
                 Ok(Response::Accepted {
                     id: create_request,
-                    task_id,
+                    object_id: task_id,
                 })
             })
             .unwrap();
         let Response::Accepted {
-            task_id: original, ..
+            object_id: original,
+            ..
         } = created
         else {
             panic!("expected event")
@@ -4368,7 +4637,7 @@ mod tests {
                 panic!("a duplicate request must not create another event")
             })
             .unwrap();
-        assert!(matches!(replay,Response::Accepted {task_id,..} if task_id==original));
+        assert!(matches!(replay,Response::Accepted {object_id,..} if object_id==original));
         let split = reopened
             .mutate_response(split_request, "sha256:split", |tx| {
                 let (left, right) =
@@ -4473,7 +4742,7 @@ mod tests {
                 )?;
                 Ok(Response::Accepted {
                     id: contested,
-                    task_id,
+                    object_id: task_id,
                 })
             })
             .unwrap();

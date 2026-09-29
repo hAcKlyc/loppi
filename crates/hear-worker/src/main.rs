@@ -10,6 +10,9 @@ use std::path::Path;
 
 const RATE: u32 = 16_000;
 const MAX_SAMPLES: usize = RATE as usize * 30;
+// Sherpa's max_speech_duration only raises its VAD threshold. Continuous
+// speech can still grow beyond it, so bound the utterance before ASR.
+const MAX_ACTIVE_SAMPLES: u64 = RATE as u64 * 20;
 
 #[derive(Deserialize)]
 struct WorkHeader {
@@ -37,6 +40,7 @@ struct SourceSession {
     vad: VoiceActivityDetector,
     base_sample: u64,
     next_sample: u64,
+    speech_started_sample: Option<u64>,
 }
 
 struct Worker {
@@ -116,6 +120,7 @@ impl Worker {
                     vad,
                     base_sample: header.start_sample,
                     next_sample: header.start_sample,
+                    speech_started_sample: None,
                 },
             );
         }
@@ -123,16 +128,41 @@ impl Worker {
         let mut segments = vec![];
         // The VAD consumes fixed short windows. Feeding a whole sealed block
         // in one call can silently miss speech at its beginning.
+        let mut chunk_end = header.start_sample;
         for chunk in samples.chunks(512) {
             session.vad.accept_waveform(chunk);
+            chunk_end = chunk_end.saturating_add(chunk.len() as u64);
+            let before = segments.len();
             Self::drain(&self.recognizer, session, &mut segments);
+            if session.vad.detected() {
+                if segments.len() != before || session.speech_started_sample.is_none() {
+                    session.speech_started_sample = Some(chunk_end);
+                } else if session
+                    .speech_started_sample
+                    .is_some_and(|start| chunk_end.saturating_sub(start) >= MAX_ACTIVE_SAMPLES)
+                {
+                    session.vad.flush();
+                    Self::drain(&self.recognizer, session, &mut segments);
+                    session.speech_started_sample = None;
+                }
+            } else {
+                session.speech_started_sample = None;
+            }
         }
         session.next_sample += samples.len() as u64;
         if header.flush {
             session.vad.flush();
             Self::drain(&self.recognizer, session, &mut segments);
         }
-        let speech_active = session.vad.detected();
+        // `detected` describes the VAD state at the end of this block. An
+        // utterance can already have been drained by then. Count only drained
+        // segments that overlap this block: its trailing silence may finalize
+        // speech that happened entirely in the preceding block.
+        let block_end = header.start_sample.saturating_add(samples.len() as u64);
+        let speech_active = session.vad.detected()
+            || segments.iter().any(|segment| {
+                segment.start_sample < block_end && segment.end_sample > header.start_sample
+            });
         if header.flush {
             self.sessions.remove(&source);
         }

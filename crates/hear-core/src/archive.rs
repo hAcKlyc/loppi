@@ -486,10 +486,10 @@ pub fn export(
             "SELECT p.id,p.source,p.started_ms,p.ended_ms,p.text,
              (SELECT c.text FROM text_corrections c WHERE c.current_segment_id=p.id
                 AND c.state='active' ORDER BY c.updated_ms DESC LIMIT 1),
-             p.speaker_label,b.person_id,person.display_name,b.origin,t.target_kind,t.target_id
+             identity.speaker,identity.person_id,identity.person_name,
+             identity.person_origin,t.target_kind,t.target_id
            FROM precise_segments p JOIN cloud_tasks t ON t.id=p.task_id
-           LEFT JOIN speaker_bindings b ON b.current_segment_id=p.id AND b.state='active'
-           LEFT JOIN people person ON person.id=b.person_id
+           JOIN precise_identity_projection identity ON identity.segment_id=p.id
            LEFT JOIN named_events e ON t.target_kind='event' AND e.id=t.target_id
            LEFT JOIN manual_ranges r ON t.target_kind='range' AND r.id=t.target_id
            WHERE t.state='complete' AND p.started_ms<?2 AND p.ended_ms>?1

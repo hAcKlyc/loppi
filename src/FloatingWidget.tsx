@@ -3,7 +3,7 @@ import { LogicalSize, PhysicalPosition } from "@tauri-apps/api/dpi";
 import { emit } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect, useRef, useState } from "react";
-import { core, type ServiceState } from "./api";
+import { core, type ServiceState, userError } from "./api";
 import "./App.css";
 
 export function FloatingWidget() {
@@ -16,6 +16,9 @@ export function FloatingWidget() {
 	const desiredExpanded = useRef(false);
 	const windowExpanded = useRef(false);
 	const resizeQueue = useRef(Promise.resolve());
+	const collapseTimer = useRef<number | null>(null);
+	const pointerInside = useRef(false);
+	const focusInside = useRef(false);
 
 	const changeMenu = (next: boolean) => {
 		if (desiredExpanded.current === next) return;
@@ -46,8 +49,21 @@ export function FloatingWidget() {
 			})
 			.catch((error) => {
 				setExpanded(windowExpanded.current);
-				setMessage(String(error));
+				setMessage(userError(error));
 			});
+	};
+	const cancelCollapse = () => {
+		if (collapseTimer.current !== null) {
+			window.clearTimeout(collapseTimer.current);
+			collapseTimer.current = null;
+		}
+	};
+	const scheduleCollapse = () => {
+		cancelCollapse();
+		collapseTimer.current = window.setTimeout(() => {
+			collapseTimer.current = null;
+			if (!pointerInside.current && !focusInside.current) changeMenu(false);
+		}, 200);
 	};
 
 	useEffect(() => {
@@ -61,13 +77,15 @@ export function FloatingWidget() {
 				}>({ type: "status" });
 				setState(response.state);
 			} catch (error) {
-				setMessage(String(error));
+				setMessage(userError(error));
 			}
 		};
 		void refresh();
 		const timer = window.setInterval(() => void refresh(), 5000);
 		return () => {
 			window.clearInterval(timer);
+			if (collapseTimer.current !== null)
+				window.clearTimeout(collapseTimer.current);
 			document.body.classList.remove("floating-body");
 		};
 	}, []);
@@ -109,7 +127,7 @@ export function FloatingWidget() {
 				setMessage(kind === "mark" ? "已标记" : "截屏已保存");
 			}
 		} catch (error) {
-			setMessage(String(error));
+			setMessage(userError(error));
 		} finally {
 			setBusy(false);
 			window.setTimeout(() => setMessage(""), 4500);
@@ -122,22 +140,44 @@ export function FloatingWidget() {
 			await invoke("show_main");
 			await emit("hear-open-comment", { anchor_ms });
 		} catch (error) {
-			setMessage(String(error));
+			setMessage(userError(error));
 		}
 	};
 
 	const recording = state?.capture_state === "recording";
+	const storageStatus = state?.storage_paused
+		? "storage-paused"
+		: state?.storage_warning
+			? "storage-warning"
+			: "";
+	const mainHint = state?.storage_paused
+		? "曾因容量限制暂停；清理空间或提高上限后手动继续"
+		: state?.storage_warning
+			? "音频空间即将不足"
+			: "重点";
 	return (
 		<div
 			className="floating-shell"
 			role="toolbar"
 			aria-label="快速操作"
-			onMouseEnter={() => changeMenu(true)}
-			onMouseLeave={() => changeMenu(false)}
-			onFocusCapture={() => changeMenu(true)}
+			onMouseEnter={() => {
+				pointerInside.current = true;
+				cancelCollapse();
+				changeMenu(true);
+			}}
+			onMouseLeave={() => {
+				pointerInside.current = false;
+				scheduleCollapse();
+			}}
+			onFocusCapture={() => {
+				focusInside.current = true;
+				cancelCollapse();
+				changeMenu(true);
+			}}
 			onBlurCapture={(event) => {
 				if (!event.currentTarget.contains(event.relatedTarget)) {
-					changeMenu(false);
+					focusInside.current = false;
+					scheduleCollapse();
 				}
 			}}
 		>
@@ -168,9 +208,9 @@ export function FloatingWidget() {
 				</div>
 				<button
 					type="button"
-					className={`float-main ${recording ? "recording" : ""}`}
-					aria-label="标记重点；拖动以移动悬浮球"
-					title="重点"
+					className={`float-main ${recording ? "recording" : ""} ${storageStatus}`}
+					aria-label={`${mainHint}；点击标记重点；拖动以移动悬浮球`}
+					title={mainHint}
 					onPointerDown={(event) => {
 						pointer.current = { x: event.screenX, y: event.screenY };
 						dragged.current = false;

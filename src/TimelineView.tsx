@@ -17,6 +17,8 @@ type Props = {
 	gaps: TimeGap[];
 	moments: Moment[];
 	loading: boolean;
+	hideCoarse: boolean;
+	onHideCoarse: (hide: boolean) => void;
 	onDate: (date: Date) => void;
 	onSelect: (item: TimelineItem) => void;
 	onCreate: () => void;
@@ -56,6 +58,8 @@ export function TimelineView({
 	gaps,
 	moments,
 	loading,
+	hideCoarse,
+	onHideCoarse,
 	onDate,
 	onSelect,
 	onCreate,
@@ -72,6 +76,17 @@ export function TimelineView({
 	const position = (ms: number) =>
 		`${Math.max(0, Math.min(100, ((ms - from) / (to - from)) * 100))}%`;
 	const sorted = [...items].sort((a, b) => b.started_ms - a.started_ms);
+	const visible = sorted.filter(
+		(item) =>
+			!hideCoarse ||
+			item.id !== null ||
+			item.manual_range_id !== null ||
+			moments.some(
+				(moment) =>
+					moment.anchor_ms >= item.started_ms &&
+					moment.anchor_ms < item.ended_ms,
+			),
+	);
 	const statusGaps = gaps.filter((gap) => gap.ended_ms > gap.started_ms);
 
 	return (
@@ -159,13 +174,13 @@ export function TimelineView({
 						/>
 					))}
 					{items
-						.filter((item) => item.id)
+						.filter((item) => item.id || item.manual_range_id)
 						.map((item) => (
 							<button
-								key={item.id}
+								key={`${item.id ?? item.manual_range_id}-${item.started_ms}-${item.sources}`}
 								type="button"
-								className="day-map-event"
-								title={`${time(item.started_ms)}—${time(item.ended_ms)} ${item.title ?? "事件"}`}
+								className={`day-map-event ${item.manual_range_id ? "manual" : ""}`}
+								title={`${time(item.started_ms)}—${time(item.ended_ms)} ${item.title ?? "未命名事件"}`}
 								style={{
 									left: position(item.started_ms),
 									width: `${Math.max(1.1, ((Math.min(item.ended_ms, to) - Math.max(item.started_ms, from)) / (to - from)) * 100)}%`,
@@ -182,51 +197,70 @@ export function TimelineView({
 					<span>24:00</span>
 				</div>
 				{statusGaps.length > 0 && (
-					<div className="day-map-gap-list">
-						{statusGaps.map((gap) => (
-							<span key={`${gap.source}-${gap.started_ms}-${gap.reason}`}>
-								<i />
-								{time(gap.started_ms)}—{time(gap.ended_ms)}{" "}
-								{gapReason(gap.reason)} ·{" "}
-								{gap.source === "microphone" ? "麦克风" : "电脑声音"}
-							</span>
-						))}
-					</div>
+					<details className="day-map-gap-details">
+						<summary>
+							未记录时段 <em>{statusGaps.length}</em>
+						</summary>
+						<div className="day-map-gap-list">
+							{statusGaps.map((gap) => (
+								<span key={`${gap.source}-${gap.started_ms}-${gap.reason}`}>
+									<i />
+									{time(gap.started_ms)}—{time(gap.ended_ms)}{" "}
+									{gapReason(gap.reason)} ·{" "}
+									{gap.source === "microphone" ? "麦克风" : "电脑声音"}
+								</span>
+							))}
+						</div>
+					</details>
 				)}
 			</section>
 
 			<div className="section-heading">
 				<h2>日程</h2>
-				<button type="button" className="quiet-button" onClick={onCreate}>
-					＋ 新建事件
-				</button>
+				<div className="section-actions">
+					<button
+						type="button"
+						className={`quiet-button ${hideCoarse ? "active" : ""}`}
+						aria-pressed={hideCoarse}
+						onClick={() => onHideCoarse(!hideCoarse)}
+					>
+						{hideCoarse ? "显示粗转" : "隐藏粗转"}
+					</button>
+					<button type="button" className="quiet-button" onClick={onCreate}>
+						＋ 新建事件
+					</button>
+				</div>
 			</div>
 			<div className="event-list">
 				{loading ? (
 					<div className="list-empty">正在加载…</div>
-				) : sorted.length === 0 ? (
-					<div className="list-empty">这一天还没有记录</div>
+				) : visible.length === 0 ? (
+					<div className="list-empty">
+						{sorted.length > 0 ? "粗转内容已隐藏" : "这一天还没有记录"}
+					</div>
 				) : (
-					sorted.map((item) => {
+					visible.map((item) => {
 						const count = moments.filter(
 							(moment) =>
 								moment.anchor_ms >= item.started_ms &&
 								moment.anchor_ms < item.ended_ms,
 						).length;
 						const excerpt =
-							item.precise_segments[0]?.text ??
-							item.coarse_segments[0]?.text ??
-							"";
+							hideCoarse && !item.id && !item.manual_range_id
+								? ""
+								: (item.precise_segments[0]?.text ??
+									item.coarse_segments[0]?.text ??
+									"");
 						const manualStatus = manualAsrSummary(item);
 						return (
 							<div
 								className="event-line"
-								key={`${item.id ?? "unorganized"}-${item.started_ms}-${item.ended_ms}-${item.sources}`}
+								key={`${item.id ?? item.manual_range_id ?? "unorganized"}-${item.started_ms}-${item.ended_ms}-${item.sources}`}
 							>
 								<time>{time(item.started_ms)}</time>
 								<button
 									type="button"
-									className={`event-card ${item.id ? "named" : ""}`}
+									className={`event-card ${item.id || item.manual_range_id ? "named" : ""}`}
 									onClick={() => onSelect(item)}
 								>
 									<div className="event-card-meta">
@@ -239,7 +273,14 @@ export function TimelineView({
 										</span>
 										<span>{processingLabel(item.processing_state)}</span>
 									</div>
-									<h3>{item.title || "未整理"}</h3>
+									<h3>
+										{item.title ||
+											(item.manual_range_id
+												? "未命名事件"
+												: hideCoarse
+													? "现场记录"
+													: "未整理")}
+									</h3>
 									{excerpt && <p>{excerpt}</p>}
 									<div className="event-card-foot">
 										<span>

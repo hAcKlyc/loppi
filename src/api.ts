@@ -4,8 +4,65 @@ export type Source = "microphone" | "system";
 export type Sources = Source | "both";
 export type CloudProvider = "llm" | "asr";
 
+const errorLabels: Record<string, string> = {
+	range_no_audio: "所选时间没有可精转的原声",
+	range_invalid: "请选择有效的精转时间和声音来源",
+	invalid_time_range: "请选择有效的时间范围",
+	revision_conflict: "内容已更新，请重新确认后再试",
+	setup_incomplete: "请先完成云端服务设置",
+	model_not_ready: "本地语音模型尚未准备好",
+	storage_limit: "录音空间已满，请在设置中清理或调整上限",
+	source_disabled: "这个声音来源尚未开启",
+	source_busy: "声音来源正在切换，请稍后再试",
+	playback_unavailable: "原声读取失败，请检查素材或稍后重试",
+	event_detail_unavailable: "事件已变化，请返回时间线重新选择",
+	range_detail_unavailable: "这段素材已变化，请重新选择",
+	cleanup_preview_invalid: "清理预览已过期，请重新查看影响范围",
+	cleanup_invalid: "清理范围已变化，请重新确认",
+	cleanup_failed: "清理未完成，请稍后重试",
+	export_failed: "导出未完成，请检查目标位置后重试",
+	screenshot_unavailable: "暂时无法读取这张截图",
+	screenshot_failed: "截屏未完成，请重试",
+	protocol_version: "应用组件版本不一致，请重新打开 hear",
+	provider_transport: "无法连接云端服务，请检查网络后重试",
+	provider_verification_failed: "密钥验证未通过，请检查后重试",
+	provider_verification_timeout: "云端验证超时，请稍后重试",
+};
+
+export function isEventStale(error: unknown): boolean {
+	const message = error instanceof Error ? error.message : String(error);
+	return (
+		message.startsWith("event_invalid:") &&
+		(message.includes("event revision conflict") ||
+			message.includes("event not found"))
+	);
+}
+
+export function userError(error: unknown): string {
+	const message = error instanceof Error ? error.message : String(error);
+	const code = /^([a-z_0-9]+):/.exec(message)?.[1];
+	if (code === "provider_http_401") return "API Key 无效或已失效";
+	if (code === "provider_http_403") return "API Key 无权使用这项服务";
+	if (code === "provider_http_429") return "云端服务请求过多，请稍后重试";
+	if (code?.startsWith("provider_http_"))
+		return "云端服务暂时无法验证，请稍后重试";
+	if (message.startsWith("keychain_save_"))
+		return "无法将密钥保存到系统钥匙串，请稍后重试";
+	if (code === "event_invalid") {
+		if (isEventStale(error)) {
+			return "事件已更新，请在时间线查看最新内容后再试";
+		}
+		return message.includes("overlaps another named event")
+			? "时间与已有事件重叠，请调整边界或先编辑已有事件"
+			: "事件操作未完成，请检查时间和声音来源";
+	}
+	return (code && errorLabels[code]) || message.replace(/^Error:\s*/, "");
+}
+
 export function processingLabel(value: string): string {
 	switch (value) {
+		case "raw_audio":
+			return "原声已保留";
 		case "moment_only":
 			return "时刻记录";
 		case "unorganized":
@@ -101,6 +158,7 @@ export interface PreciseSegment extends CoarseSegment {
 
 export interface TimelineItem {
 	id: string | null;
+	manual_range_id: string | null;
 	started_ms: number;
 	ended_ms: number;
 	title: string | null;
@@ -182,6 +240,7 @@ export interface CloudTask {
 	provider: CloudProvider;
 	target_kind: string;
 	target_id: string;
+	source: Source | null;
 	started_ms: number;
 	ended_ms: number;
 	state: string;

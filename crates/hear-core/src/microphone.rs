@@ -15,6 +15,13 @@ pub struct Microphone {
     pub stream_failed: Arc<AtomicBool>,
 }
 
+pub fn allow_idle_sleep() -> i32 {
+    unsafe extern "C" {
+        fn hear_allow_audio_idle_sleep() -> i32;
+    }
+    unsafe { hear_allow_audio_idle_sleep() }
+}
+
 impl Microphone {
     pub fn start() -> Result<Self, String> {
         unsafe extern "C" {

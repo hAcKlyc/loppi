@@ -1,3 +1,6 @@
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 use tauri::Manager;
 
 #[tauri::command]
@@ -87,19 +90,27 @@ unsafe extern "C" {
     fn hear_request_microphone_authorization() -> i32;
     fn hear_screen_authorization_status() -> i32;
     fn hear_request_screen_authorization() -> i32;
+    fn hear_tap_required() -> i32;
 }
 
 #[derive(serde::Serialize)]
 struct PrivacyStatus {
     microphone: i32,
     screen_and_system_audio: i32,
+    tap_required: bool,
+    tap_ready: bool,
 }
 
 #[tauri::command]
 fn privacy_status() -> PrivacyStatus {
+    let tap_required = unsafe { hear_tap_required() != 0 };
     PrivacyStatus {
         microphone: unsafe { hear_microphone_authorization_status() },
         screen_and_system_audio: unsafe { hear_screen_authorization_status() },
+        tap_required,
+        tap_ready: tap_required
+            && hear_protocol::data_dir()
+                .is_ok_and(|directory| directory.join("tap-ready-v1").is_file()),
     }
 }
 
@@ -112,9 +123,87 @@ async fn request_microphone_permission() -> Result<i32, String> {
 
 #[tauri::command]
 async fn request_system_audio_permission() -> Result<i32, String> {
-    tauri::async_runtime::spawn_blocking(|| unsafe { hear_request_screen_authorization() })
-        .await
-        .map_err(|error| error.to_string())
+    tauri::async_runtime::spawn_blocking(|| {
+        if unsafe { hear_tap_required() } == 0 {
+            return Ok(unsafe { hear_request_screen_authorization() });
+        }
+        let directory = hear_protocol::data_dir()?;
+        std::fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))
+            .map_err(|error| error.to_string())?;
+        let marker = directory.join("tap-ready-v1");
+        // A previous successful setup is historical evidence, not a live TCC
+        // grant. Revalidation must clear it before making another attempt.
+        match std::fs::remove_file(&marker) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.to_string()),
+        }
+        // Apple's first Tap read prompts for AudioCapture permission. Run it
+        // from the visible app, not the login item, and never persist readiness
+        // until the signed helper has actually returned audio frames.
+        let binary = std::env::current_exe().map_err(|error| error.to_string())?;
+        let contents = binary
+            .parent()
+            .and_then(|path| path.parent())
+            .ok_or("cannot locate hear application contents")?;
+        let helper = contents.join("Library/LoginItems/HearCore.app/Contents/MacOS/hear-core");
+        let mut child = Command::new(&helper)
+            .args([
+                "probe-system",
+                "1",
+                "--parent-pid",
+                &std::process::id().to_string(),
+            ])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|error| format!("cannot start system audio authorization: {error}"))?;
+        let deadline = Instant::now() + Duration::from_secs(75);
+        loop {
+            match child.try_wait() {
+                Ok(Some(status)) if status.success() => break,
+                Ok(Some(status)) => {
+                    return Err(format!("电脑声音授权未完成（{status}）"));
+                }
+                Ok(None) if Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(100));
+                }
+                Ok(None) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err("电脑声音授权等待超时；请在系统设置中允许后重试".to_owned());
+                }
+                Err(error) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(format!("电脑声音授权检查失败：{error}"));
+                }
+            }
+        }
+        let pending = directory.join(format!("tap-ready-v1.{}.tmp", std::process::id()));
+        let result = (|| {
+            use std::io::Write;
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .mode(0o600)
+                .open(&pending)
+                .map_err(|error| error.to_string())?;
+            file.write_all(b"foreground Tap probe succeeded\n")
+                .and_then(|_| file.sync_all())
+                .map_err(|error| error.to_string())?;
+            std::fs::rename(&pending, &marker).map_err(|error| error.to_string())
+        })();
+        if result.is_err() {
+            let _ = std::fs::remove_file(pending);
+        }
+        result.map(|()| 1)
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
