@@ -20,6 +20,7 @@ import {
 	userError,
 	type VoiceSample,
 } from "./api";
+import { taskStatus } from "./cloud-task-status";
 
 type Mutation = (
 	request: { type: string; [key: string]: unknown },
@@ -29,29 +30,6 @@ type Mutation = (
 function localInput(timestamp: number): string {
 	const d = new Date(timestamp);
 	return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}T${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-}
-
-function taskStatus(task: CloudTask): string {
-	const states: Record<string, string> = {
-		pending: "等待处理",
-		processing: "处理中",
-		submitted: "等待识别结果",
-		complete: "已完成",
-		no_transcript: "无可识别文字",
-		failed: "处理失败",
-		superseded: "已由新范围替代",
-	};
-	const state = states[task.state] ?? "状态待确认";
-	if (task.state !== "failed" || !task.error_code) return state;
-	const reason = task.error_code;
-	if (reason === "credential_missing" || reason === "provider_not_configured")
-		return `${state} · 请检查云端配置`;
-	if (reason === "audio_unavailable" || reason === "partial_audio")
-		return `${state} · 原声不可用`;
-	if (reason.startsWith("provider_http_429"))
-		return `${state} · 服务繁忙，请稍后重试`;
-	if (reason.startsWith("provider_")) return `${state} · 云端服务异常`;
-	return state;
 }
 
 function taskRange(task: CloudTask): string {

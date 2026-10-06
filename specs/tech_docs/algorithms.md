@@ -67,9 +67,9 @@ LLM 收到粗文字、真实时间、来源、人声但无文字的标记，以�
 
 LLM/ASR 各有配置、暂停开关和持久 `cloud_tasks`，可单独继续。取任务时手动任务优先；任务绑定 `target_kind + target_id + target_version`，发布前再次确认仍指向当前事件/范围。[`take_task` / `task_current`](../../crates/hear-core/src/events.rs)。暂停队列不影响采集和粗转；已经外发的请求可以完成并经版本校验保存。
 
-ASR 默认由 LLM 命名且判断值得精转的事件创建；人工建事件、改需精转范围、明确“重新精转”或“选择范围精转”可直接建 ASR 待办。当前同一来源按最长约 15 分钟的真实范围建物理任务，两路分别建任务；一个虚拟事件可关联多个物理请求。整段输入由已保存 Opus 块按真实时间重组，间隙编码为静音；以有界 10 秒 slab 拼 Ogg/Opus，避免一次把整场 PCM 留在内存。临时文件在正常/崩溃恢复时清理，单请求有大小上限。[`queue_asr_with_processor` / `assemble_ogg`](../../crates/hear-core/src/events.rs)。
+ASR 默认由 LLM 命名且判断值得精转的事件创建；人工建事件、改需精转范围、明确“重新精转”或“选择范围精转”可直接建 ASR 待办。当前同一来源在保留原声之间超过 3 秒的静音处分开物理任务，连续范围仍以最长约 15 分钟为上限，两路分别建任务；一个虚拟事件可关联多个物理请求。整段输入由已保存 Opus 块按真实时间重组，间隙编码为静音；以有界 10 秒 slab 拼 Ogg/Opus，避免一次把整场 PCM 留在内存。临时文件在正常/崩溃恢复时清理，单请求有大小上限。[`queue_asr_with_processor` / `assemble_ogg`](../../crates/hear-core/src/events.rs)。
 
-火山标准版使用 `submit/query`、固定资源 `volc.seedasr.auc`，请求 `enable_speaker_info`、`show_utterances` 与当前 `ssd_version=300`。物理任务 ID 也是远端请求去重 ID；未知提交结果应先查询而非直接付费重送。[`cloud.rs`](../../crates/hear-core/src/cloud.rs)。供应商 `utterances` 的相对毫秒通过任务真实起点映射，并核验区间确有对应编码输入后，作为精转事实存入 `precise_segments`；speaker 标签的作用域是物理任务 ID。[`publish_asr`](../../crates/hear-core/src/events.rs)。空结果可为已完成但“无可识别文字”，不冒充配置失败。
+火山标准版使用 `submit/query`、固定资源 `volc.seedasr.auc`，请求 `enable_speaker_info`、`show_utterances` 与当前 `ssd_version=300`。物理任务 ID 也是远端请求去重 ID；未知提交结果应先查询而非直接付费重送。[`cloud.rs`](../../crates/hear-core/src/cloud.rs)。若供应商把长停顿合为一句，适配器仅在词列表完整、文字可顺序对齐且时刻有效时按超过 3 秒的词间停顿拆句，保留原文、标点和 speaker；不完整/无效的词元数据保持原句交由严格覆盖校验，零时长重复句仍拒绝。供应商 `utterances` 的相对毫秒通过任务真实起点映射，并核验区间确有对应编码输入后，作为精转事实存入 `precise_segments`；speaker 标签的作用域是物理任务 ID。[`publish_asr`](../../crates/hear-core/src/events.rs)。空结果可为已完成但“无可识别文字”，不冒充配置失败。
 
 云 ASR 完成之后才进入本机说话人观察和人物匹配。精转重跑创建新运行版本；旧任务与句段保留作纠错锚点、退出当前投影。人工逐句文字修正独立保存；来源与时间能唯一对应时迁移到新句段，否则进入待核对，不能由新结果静默覆盖。[`retranscribe_event_in`](../../crates/hear-core/src/events.rs)、[`reconcile_corrections`](../../crates/hear-core/src/knowledge.rs)。
 

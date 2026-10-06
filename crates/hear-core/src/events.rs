@@ -21,8 +21,9 @@ const CANDIDATE_POLICY: CandidatePolicy = CandidatePolicy {
     version: "candidate-v1",
 };
 const FIT_POLICY_VERSION: &str = "fit-v3";
-const ASR_ADAPTER_VERSION: &str = "volc-standard-v3-ogg-ssd300-v2";
+const ASR_ADAPTER_VERSION: &str = "volc-standard-v3-ogg-ssd300-v3";
 const ASR_WINDOW_MS: i64 = 15 * 60 * 1000;
+pub(crate) const MAX_ASR_INTERIOR_SILENCE_MS: i64 = 3_000;
 
 pub fn init(db: &Connection) -> Result<(), String> {
     db.execute_batch(
@@ -1189,7 +1190,10 @@ fn queue_asr_with_processor(
             let block_start = block_start.max(start);
             let block_end = block_end.min(end);
             if let Some((a, b)) = window {
-                if block_end - a > ASR_WINDOW_MS {
+                // A missing retained block is encoded as silence. Do not
+                // merge long silent holes into a paid recognition request:
+                // seedasr can stretch its first word across that silence.
+                if block_start - b > MAX_ASR_INTERIOR_SILENCE_MS || block_end - a > ASR_WINDOW_MS {
                     insert_task(
                         tx,
                         "asr",
@@ -2898,7 +2902,6 @@ fn utterance_has_encoded_audio(
     // The cloud input places silence in ordinary holes between retained
     // blocks. A provider sentence may span a short pause, while a sentence
     // over a capture failure, a long hole, or mostly silence is not grounded.
-    const MAX_INTERIOR_SILENCE_MS: i64 = 3_000;
     let explicit_gap: bool = db
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM media_gaps WHERE source=?1
@@ -2931,7 +2934,7 @@ fn utterance_has_encoded_audio(
             return Ok(false);
         }
         let hole = block_start - covered;
-        if seen && hole > MAX_INTERIOR_SILENCE_MS {
+        if seen && hole > MAX_ASR_INTERIOR_SILENCE_MS {
             return Ok(false);
         }
         let from = block_start.max(covered).max(start);
@@ -3426,6 +3429,128 @@ mod tests {
         assert_eq!(
             detail.precise_segments[4].person_name.as_deref(),
             Some("小林")
+        );
+    }
+
+    #[test]
+    fn normalized_response_keeps_original_bounds_and_publication_atomic() {
+        let mut db = db();
+        media(&db, "saved", 1_000, 11_000);
+        set_configured(&db, CloudProvider::Asr, "bigmodel").unwrap();
+        create_event(
+            &mut db,
+            1_000,
+            11_000,
+            "对话",
+            EventSources::Microphone,
+            12_000,
+        )
+        .unwrap();
+        let task = take_task(&mut db, CloudProvider::Asr, 12_001)
+            .unwrap()
+            .unwrap();
+        let response = serde_json::json!({"result":{"utterances":[{
+            "start_time":0,"end_time":20_000,"text":"开始后来",
+            "words":[{"start_time":100,"end_time":500,"text":"开始"},
+                {"start_time":9500,"end_time":9900,"text":"后来"}]
+        }]}});
+        let items = crate::cloud::parse_asr_result(&response).unwrap();
+        assert_eq!(items.len(), 2);
+        assert_eq!((items[0].start_ms, items[1].end_ms), (0, 20_000));
+        assert_eq!(
+            publish_asr(&mut db, &task, &items, 12_002).unwrap_err(),
+            "provider_invalid_timing"
+        );
+        assert_eq!(
+            db.query_row::<i64, _, _>("SELECT count(*) FROM precise_segments", [], |r| r.get(0))
+                .unwrap(),
+            0
+        );
+        db.execute(
+            "INSERT INTO media_gaps VALUES ('gap','microphone',1000,1050,'source_failure')",
+            [],
+        )
+        .unwrap();
+        let mut valid = response;
+        valid["result"]["utterances"][0]["end_time"] = serde_json::json!(10_000);
+        let items = crate::cloud::parse_asr_result(&valid).unwrap();
+        assert_eq!(
+            publish_asr(&mut db, &task, &items, 12_003).unwrap_err(),
+            "provider_unmapped_timing"
+        );
+        assert_eq!(
+            db.query_row::<i64, _, _>("SELECT count(*) FROM precise_segments", [], |r| r.get(0))
+                .unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn asr_windows_cut_long_silence_but_keep_short_pauses_and_real_origins() {
+        let mut db = db();
+        media(&db, "first", 1_000, 6_000);
+        media(&db, "short", 9_000, 14_000);
+        media(&db, "long", 17_001, 22_001);
+        set_configured(&db, CloudProvider::Asr, "bigmodel").unwrap();
+        let event = create_event(
+            &mut db,
+            1_000,
+            22_001,
+            "对话",
+            EventSources::Microphone,
+            23_000,
+        )
+        .unwrap();
+        let spans = {
+            let mut statement=db.prepare("SELECT started_ms,ended_ms FROM cloud_tasks WHERE target_id=?1 ORDER BY started_ms").unwrap();
+            statement
+                .query_map([event.to_string()], |r| {
+                    Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?))
+                })
+                .unwrap()
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap()
+        };
+        assert_eq!(spans, [(1_000, 14_000), (17_001, 22_001)]);
+        let first = take_task(&mut db, CloudProvider::Asr, 23_001)
+            .unwrap()
+            .unwrap();
+        publish_asr(
+            &mut db,
+            &first,
+            &[crate::cloud::AsrUtterance {
+                start_ms: 1_000,
+                end_ms: 2_000,
+                text: "第一句".into(),
+                speaker: None,
+            }],
+            23_002,
+        )
+        .unwrap();
+        let second = take_task(&mut db, CloudProvider::Asr, 23_003)
+            .unwrap()
+            .unwrap();
+        publish_asr(
+            &mut db,
+            &second,
+            &[crate::cloud::AsrUtterance {
+                start_ms: 500,
+                end_ms: 1_000,
+                text: "第二句".into(),
+                speaker: None,
+            }],
+            23_004,
+        )
+        .unwrap();
+        let detail = event_detail(&db, event, 0, 100).unwrap();
+        assert_eq!(detail.processing_state, "transcribed");
+        assert_eq!(
+            detail
+                .precise_segments
+                .iter()
+                .map(|p| (p.started_ms, p.ended_ms))
+                .collect::<Vec<_>>(),
+            [(2_000, 3_000), (17_501, 18_001)]
         );
     }
 

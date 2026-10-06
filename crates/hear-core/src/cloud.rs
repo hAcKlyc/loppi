@@ -242,44 +242,120 @@ pub fn query_audio(key: &str, request_id: Uuid) -> Result<AsrQuery, String> {
         "20000001" | "20000002" => Ok(AsrQuery::Processing),
         "20000003" => Ok(AsrQuery::Complete(Vec::new())),
         "45000000" if message.contains("cannot find task") => Ok(AsrQuery::Missing),
-        "20000000" => {
-            let array = response
-                .pointer("/result/utterances")
-                .and_then(Value::as_array)
-                .ok_or_else(|| "provider_missing_utterances".to_owned())?;
-            let mut utterances = Vec::with_capacity(array.len());
-            for item in array {
-                let start_ms = item
-                    .get("start_time")
-                    .and_then(Value::as_i64)
-                    .ok_or_else(|| "provider_invalid_timing".to_owned())?;
-                let end_ms = item
-                    .get("end_time")
-                    .and_then(Value::as_i64)
-                    .ok_or_else(|| "provider_invalid_timing".to_owned())?;
-                let text = item
-                    .get("text")
-                    .and_then(Value::as_str)
-                    .ok_or_else(|| "provider_invalid_utterance".to_owned())?;
-                if start_ms < 0 || end_ms <= start_ms || text.len() > 20_000 {
-                    return Err("provider_invalid_utterance".to_owned());
-                }
-                let speaker = item.pointer("/additions/speaker").and_then(|v| {
-                    v.as_str()
-                        .map(str::to_owned)
-                        .or_else(|| v.as_i64().map(|n| n.to_string()))
-                });
-                utterances.push(AsrUtterance {
-                    start_ms,
-                    end_ms,
-                    text: text.to_owned(),
-                    speaker,
-                });
-            }
-            Ok(AsrQuery::Complete(utterances))
-        }
+        "20000000" => parse_asr_result(&response).map(AsrQuery::Complete),
         _ => Err(format!("provider_status_{status}")),
     }
+}
+
+pub(crate) fn parse_asr_result(response: &Value) -> Result<Vec<AsrUtterance>, String> {
+    let array = response
+        .pointer("/result/utterances")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "provider_missing_utterances".to_owned())?;
+    let mut utterances = Vec::with_capacity(array.len());
+    for item in array {
+        let start_ms = item
+            .get("start_time")
+            .and_then(Value::as_i64)
+            .ok_or_else(|| "provider_invalid_timing".to_owned())?;
+        let end_ms = item
+            .get("end_time")
+            .and_then(Value::as_i64)
+            .ok_or_else(|| "provider_invalid_timing".to_owned())?;
+        let text = item
+            .get("text")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "provider_invalid_utterance".to_owned())?;
+        if start_ms < 0 || end_ms <= start_ms || text.len() > 20_000 {
+            return Err("provider_invalid_utterance".to_owned());
+        }
+        let speaker = item.pointer("/additions/speaker").and_then(|v| {
+            v.as_str()
+                .map(str::to_owned)
+                .or_else(|| v.as_i64().map(|n| n.to_string()))
+        });
+        let utterance = AsrUtterance {
+            start_ms,
+            end_ms,
+            text: text.to_owned(),
+            speaker,
+        };
+        // Some successful seedasr responses join speech separated by
+        // minutes of silence. Use complete, aligned word metadata to
+        // split those pauses before the core checks audio coverage.
+        utterances
+            .extend(split_long_asr_pauses(&utterance, item).unwrap_or_else(|| vec![utterance]));
+    }
+    Ok(utterances)
+}
+
+fn split_long_asr_pauses(utterance: &AsrUtterance, item: &Value) -> Option<Vec<AsrUtterance>> {
+    let words = item.get("words")?.as_array()?;
+    let mut timed = Vec::new();
+    let mut cursor = 0;
+    for word in words {
+        let text = word.get("text")?.as_str()?;
+        if text.is_empty() {
+            return None;
+        }
+        let offset = utterance.text[cursor..].find(text)? + cursor;
+        // Preserve the original wording, punctuation and spaces. Never use
+        // an incomplete word list to invent timing for unaligned speech.
+        if utterance.text[cursor..offset]
+            .chars()
+            .any(char::is_alphanumeric)
+        {
+            return None;
+        }
+        cursor = offset + text.len();
+        let start = word.get("start_time")?.as_i64()?;
+        let end = word.get("end_time")?.as_i64()?;
+        if start == -1 && end == -1 && !text.chars().any(char::is_alphanumeric) {
+            continue;
+        }
+        if start < utterance.start_ms || end > utterance.end_ms || end <= start {
+            return None;
+        }
+        if timed
+            .last()
+            .is_some_and(|&(previous_start, _, _)| start < previous_start)
+        {
+            return None;
+        }
+        timed.push((start, end, offset));
+    }
+    if utterance.text[cursor..].chars().any(char::is_alphanumeric) {
+        return None;
+    }
+    let &(_, mut end, _) = timed.first()?;
+    // Preserve the supplier envelope so publication still sees any original
+    // out-of-task bound or unsupported leading/trailing audio interval.
+    let mut start = utterance.start_ms;
+    let mut text_start = 0;
+    let mut split = Vec::new();
+    for &(next_start, next_end, offset) in &timed[1..] {
+        if next_start - end > crate::events::MAX_ASR_INTERIOR_SILENCE_MS {
+            split.push(AsrUtterance {
+                start_ms: start,
+                end_ms: end,
+                text: utterance.text[text_start..offset].to_owned(),
+                speaker: utterance.speaker.clone(),
+            });
+            start = next_start;
+            text_start = offset;
+        }
+        end = end.max(next_end);
+    }
+    if split.is_empty() {
+        return None;
+    }
+    split.push(AsrUtterance {
+        start_ms: start,
+        end_ms: utterance.end_ms,
+        text: utterance.text[text_start..].to_owned(),
+        speaker: utterance.speaker.clone(),
+    });
+    Some(split)
 }
 
 pub fn verify_asr(key: &str) -> Result<(), String> {
@@ -311,6 +387,119 @@ pub fn verify_asr(key: &str) -> Result<(), String> {
                 thread::sleep(Duration::from_secs(1))
             }
             AsrQuery::Processing => return Err("provider_verification_timeout".to_owned()),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn word(start: i64, end: i64, text: &str) -> Value {
+        json!({"start_time":start,"end_time":end,"text":text})
+    }
+    fn result(start: i64, end: i64, text: &str, words: Value) -> Value {
+        json!({"result":{"utterances":[{"start_time":start,"end_time":end,
+            "text":text,"words":words,"additions":{"speaker":1}}]}})
+    }
+
+    #[test]
+    fn long_pauses_split_without_losing_punctuation_words_or_speaker() {
+        // Real failing timing topology, synthetic transcript only.
+        let response = result(
+            26_180,
+            370_755,
+            "开始，继续。后来，结束！",
+            json!([
+                word(26_180, 26_780, "开始"),
+                word(27_540, 29_795, "继续"),
+                word(97_720, 99_160, "后来"),
+                word(370_635, 370_755, "结束")
+            ]),
+        );
+        let items = parse_asr_result(&response).unwrap();
+        assert_eq!(
+            items
+                .iter()
+                .map(|u| (u.start_ms, u.end_ms))
+                .collect::<Vec<_>>(),
+            [(26_180, 29_795), (97_720, 99_160), (370_635, 370_755)]
+        );
+        assert_eq!(
+            items.iter().map(|u| u.text.as_str()).collect::<String>(),
+            "开始，继续。后来，结束！"
+        );
+        assert!(items.iter().all(|u| u.speaker.as_deref() == Some("1")));
+    }
+
+    #[test]
+    fn short_pauses_and_optional_words_preserve_the_provider_sentence() {
+        for words in [
+            Value::Null,
+            json!([]),
+            json!([word(200, 500, "hello"), word(3500, 3800, "world")]),
+        ] {
+            let items = parse_asr_result(&result(100, 4000, "hello world.", words)).unwrap();
+            assert_eq!(items.len(), 1);
+            assert_eq!((items[0].start_ms, items[0].end_ms), (100, 4000));
+            assert_eq!(items[0].text, "hello world.");
+        }
+    }
+
+    #[test]
+    fn untimed_punctuation_keeps_original_spacing_when_splitting() {
+        let items = parse_asr_result(&result(
+            0,
+            10_300,
+            "Hello, world!",
+            json!([
+                word(0, 300, "Hello"),
+                word(-1, -1, ","),
+                word(-1, -1, " "),
+                word(10_000, 10_300, "world"),
+                word(-1, -1, "!")
+            ]),
+        ))
+        .unwrap();
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].text, "Hello, ");
+        assert_eq!(items[1].text, "world!");
+    }
+
+    #[test]
+    fn incomplete_or_invalid_word_metadata_never_guesses_a_split() {
+        for words in [
+            json!([word(0, 300, "开始"), word(10_000, 10_300, "后来")]),
+            json!([
+                word(0, 300, "开始"),
+                word(10_000, 10_000, "遗漏"),
+                word(10_000, 10_300, "后来")
+            ]),
+            json!([
+                word(0, 300, "开始"),
+                word(-1, -1, "遗漏"),
+                word(10_000, 10_300, "后来")
+            ]),
+            json!([
+                word(0, 300, "开始"),
+                word(10_000, 10_300, "遗漏"),
+                word(9000, 10_300, "后来")
+            ]),
+        ] {
+            let items = parse_asr_result(&result(0, 10_300, "开始遗漏后来", words)).unwrap();
+            assert_eq!(items.len(), 1);
+            assert_eq!(items[0].text, "开始遗漏后来");
+            assert_eq!((items[0].start_ms, items[0].end_ms), (0, 10_300));
+        }
+    }
+
+    #[test]
+    fn malformed_utterances_still_fail_the_whole_response() {
+        for (start, end) in [(-1, 300), (300, 300), (400, 300)] {
+            assert_eq!(
+                parse_asr_result(&result(start, end, "无效", Value::Null)).unwrap_err(),
+                "provider_invalid_utterance"
+            );
         }
     }
 }
