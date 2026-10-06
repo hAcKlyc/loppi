@@ -58,3 +58,5 @@ updated: 2026-10-07
 - 提交前从index导出独立快照，TS/lint/队列copy2均PASS；WorkspaceViews仅暂存本次映射函数提取，未纳入此前rabbit/settings/入口改动。core/cloud/events/algorithms基线均确认与HEAD相同。
 - 整体门禁：根因证据、输入/输出回归、严格拒绝与事务测试、类型/lint/build、native copy/状态、三路审查全部覆盖。没有新状态/存储/重试机制；无必做未完成验收。旧供应商首字拉长或零时长重复响应属于明确保留的拒绝边界，需要用户在事件内显式重新精转，新分窗策略才会重建付费请求。
 - 普通观察项advisory：下次用户正常录制时观察新的短窗口识别质量与请求数；本次没有为测试重新上传个人音频。供应商返回词级字段事实参考官方查询文档：https://docs.volcengine.com/docs/DoubaoVoice/result-query-http-1?lang=zh
+
+- 修复提交：54c00fb（仅本次ASR修复）；最终台账证据另作收尾提交。
