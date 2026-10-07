@@ -1,12 +1,17 @@
 fn main() {
     println!("cargo:rerun-if-changed=native/agent.m");
     println!("cargo:rerun-if-changed=native/privacy.m");
+    println!("cargo:rerun-if-changed=native/entry.m");
     cc::Build::new()
         .file("native/agent.m")
         .file("native/privacy.m")
+        .file("native/entry.m")
+        .flag("-fblocks")
+        .flag("-mmacosx-version-min=13.0")
         .flag("-fobjc-arc")
         .compile("hear_agent");
     println!("cargo:rustc-link-lib=framework=Foundation");
+    println!("cargo:rustc-link-lib=framework=AppKit");
     println!("cargo:rustc-link-lib=framework=ServiceManagement");
     println!("cargo:rustc-link-lib=framework=AVFoundation");
     println!("cargo:rustc-link-lib=framework=CoreGraphics");

@@ -125,6 +125,30 @@ export interface ServiceState {
 	system_enabled: boolean;
 	microphone_recording: boolean;
 	system_recording: boolean;
+	microphone_phase:
+		| "disabled"
+		| "idle"
+		| "starting"
+		| "recording"
+		| "stopping"
+		| "unavailable";
+	system_phase:
+		| "disabled"
+		| "idle"
+		| "starting"
+		| "recording"
+		| "stopping"
+		| "unavailable";
+	capture_blocker:
+		| "none"
+		| "sources_disabled"
+		| "model_not_ready"
+		| "setup_incomplete"
+		| "query_only"
+		| "session_stopped"
+		| "maintenance"
+		| "storage_limit"
+		| "source_unavailable";
 	microphone_reason: string | null;
 	system_reason: string | null;
 	capture_state:

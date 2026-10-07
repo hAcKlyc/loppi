@@ -4,6 +4,9 @@ set -euo pipefail
 hear_root=${0:A:h:h}
 cd "$hear_root"
 
+# Native dependencies must target the same minimum OS as the app bundle.
+export MACOSX_DEPLOYMENT_TARGET=13.0
+
 hear_sign_identity=${APPLE_SIGNING_IDENTITY:-$(security find-identity -v -p codesigning | sed -n 's/.*"\(Developer ID Application:.*\)".*/\1/p' | head -1)}
 if [[ -z "$hear_sign_identity" ]]; then
   print -u2 'A Developer ID Application signing identity is required.'

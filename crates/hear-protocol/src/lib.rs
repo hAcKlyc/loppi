@@ -9,7 +9,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
-pub const PROTOCOL_VERSION: u32 = 14;
+pub const PROTOCOL_VERSION: u32 = 15;
 const MAX_RESPONSE_BYTES: u64 = 48 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -220,7 +220,12 @@ pub enum Request {
         anchor_ms: i64,
         text: Option<String>,
     },
-    CaptureScreenshot,
+    CaptureScreenshot {
+        #[serde(default)]
+        excluded_window_ids: Vec<u32>,
+        #[serde(default)]
+        anchor_ms: Option<i64>,
+    },
     ScreenshotData {
         moment_id: Uuid,
     },
@@ -300,7 +305,7 @@ impl Request {
             Self::Search { .. } => "search",
             Self::Moments { .. } => "moments",
             Self::AddMoment { .. } => "add_moment",
-            Self::CaptureScreenshot => "capture_screenshot",
+            Self::CaptureScreenshot { .. } => "capture_screenshot",
             Self::ScreenshotData { .. } => "screenshot_data",
             Self::PreviewCleanup { .. } => "preview_cleanup",
             Self::ExecuteCleanup { .. } => "execute_cleanup",
@@ -735,6 +740,31 @@ pub enum ModelPhase {
     Failed,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SourcePhase {
+    Disabled,
+    Idle,
+    Starting,
+    Recording,
+    Stopping,
+    Unavailable,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CaptureBlocker {
+    None,
+    SourcesDisabled,
+    ModelNotReady,
+    SetupIncomplete,
+    QueryOnly,
+    SessionStopped,
+    Maintenance,
+    StorageLimit,
+    SourceUnavailable,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServiceState {
     pub revision: i64,
@@ -755,6 +785,9 @@ pub struct ServiceState {
     pub reason: Option<String>,
     pub microphone_recording: bool,
     pub system_recording: bool,
+    pub microphone_phase: SourcePhase,
+    pub system_phase: SourcePhase,
+    pub capture_blocker: CaptureBlocker,
     pub microphone_reason: Option<String>,
     pub system_reason: Option<String>,
 }
@@ -952,6 +985,33 @@ fn core_binary_path() -> Result<PathBuf, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn screenshot_gui_roundtrip_and_cli_defaults_preserve_shape() {
+        let request = Request::CaptureScreenshot {
+            excluded_window_ids: vec![123],
+            anchor_ms: Some(1000),
+        };
+        let encoded = serde_json::to_value(&request).unwrap();
+        assert_eq!(encoded["type"], "capture_screenshot");
+        assert!(
+            matches!(serde_json::from_value::<Request>(encoded).unwrap(), Request::CaptureScreenshot { excluded_window_ids, anchor_ms: Some(1000) } if excluded_window_ids == vec![123])
+        );
+        assert!(
+            matches!(serde_json::from_value::<Request>(serde_json::json!({"type":"capture_screenshot"})).unwrap(), Request::CaptureScreenshot { excluded_window_ids, anchor_ms: None } if excluded_window_ids.is_empty())
+        );
+    }
+    #[test]
+    fn source_diagnostics_have_stable_structured_wire_values() {
+        let state: ServiceState=serde_json::from_value(serde_json::json!({"revision":1,"enabled_intent":true,"paused_intent":false,"storage_paused":false,"microphone_enabled":true,"system_enabled":true,"capture_state":"stopped","reason":null,"microphone_recording":false,"system_recording":false,"microphone_reason":null,"system_reason":null,"microphone_phase":"starting","system_phase":"unavailable","capture_blocker":"source_unavailable"})).unwrap();
+        let encoded = serde_json::to_value(&state).unwrap();
+        assert_eq!(encoded["microphone_phase"], "starting");
+        assert_eq!(encoded["system_phase"], "unavailable");
+        assert_eq!(encoded["capture_blocker"], "source_unavailable");
+        let decoded: ServiceState = serde_json::from_value(encoded).unwrap();
+        assert_eq!(decoded.system_phase, SourcePhase::Unavailable);
+        assert_eq!(decoded.capture_blocker, CaptureBlocker::SourceUnavailable);
+    }
 
     #[test]
     fn logging_request_inherits_ipc_correlation() {

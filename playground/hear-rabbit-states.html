@@ -1,0 +1,320 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>hear · 兔子五种状态预览</title><style>:root {
+	/* Surfaces and text */
+	--color-canvas: #fbfcfa;
+	--color-surface: #fff;
+	--color-sidebar: #f2f5f1;
+	--color-surface-subtle: #f6faf5;
+	--color-surface-hover: #edf5ed;
+	--color-surface-selected: #e3f0e5;
+	--color-text: #25352e;
+	--color-text-strong: #304b38;
+	--color-text-secondary: #556b5d;
+	--color-text-muted: #64786a;
+	--color-text-faint: #819286;
+	--color-border: #e4eae3;
+	--color-border-subtle: #edf1eb;
+	--color-border-strong: #d6e4d8;
+	--color-border-active: #9fc8a8;
+
+	/* Meaning and interaction */
+	--color-brand: #215d50;
+	--color-brand-hover: #174a40;
+	--color-brand-accent: #2b7161;
+	--color-brand-soft: #eff5f0;
+	--color-brand-border: #c8ddcd;
+	--color-positive: #51b98a;
+	--color-positive-soft: #dbefe3;
+	--color-mark: #bf874f;
+	--color-screenshot: #a96d4d;
+	--color-comment: #749e8b;
+	--color-warning: #a96d4d;
+	--color-warning-strong: #775633;
+	--color-warning-soft: #f4f0e7;
+	--color-warning-surface: #fff8e9;
+	--color-warning-border: #e8ddc9;
+	--color-danger: #a85e58;
+	--color-danger-hover: #8c4843;
+	--color-danger-surface: #fff4ed;
+	--color-audio: #242b27;
+	--color-overlay: #17271d79;
+	--color-overlay-strong: #111b14e6;
+	--color-focus: #81aa8f;
+	--color-focus-ring: #d7eadb80;
+	--color-recording-light: #64d494;
+
+	/* Quiet entry surfaces; sprite colors belong to the approved artwork. */
+	--entry-surface: #050605;
+	--entry-menu: #14221bf2;
+	--entry-action: #1c2921;
+	--entry-action-hover: #2e4536;
+	--entry-text: #edf3ec;
+	--entry-text-secondary: #91a798;
+	--entry-accent: #b4dfb8;
+	--entry-warning: #eab677;
+	--entry-warning-ink: #543b1d;
+	--entry-control-overlay: #0b130faa;
+	--entry-control-ink: #fff7df;
+	--entry-rabbit-shadow: #0e25194d;
+	--entry-rabbit-hover-shadow: #9acfac55;
+	--entry-surface-border: #b4dfb810;
+	--entry-action-border: #b4dfb814;
+	--entry-feedback: #18261e;
+	--entry-feedback-ink: #e6efdf;
+	--entry-feedback-border: #b4dfb817;
+	--entry-menu-border: #b4dfb820;
+	--entry-menu-shadow: #0e251933;
+	--entry-comment-border: #b4dfb824;
+	--entry-comment-focus-border: #b4dfb852;
+
+	/* Typography: native macOS fonts with a compact, readable hierarchy. */
+	--font-ui:
+		-apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC",
+		sans-serif;
+	--type-micro: 11px;
+	--type-caption: 12px;
+	--type-meta: 13px;
+	--type-body: 14px;
+	--type-control: 14px;
+	--type-lead: 16px;
+	--type-icon: 18px;
+	--type-heading-sm: 20px;
+	--type-heading: 22px;
+	--type-title: 26px;
+	--type-display-sm: 38px;
+	--type-display: 42px;
+	--weight-regular: 400;
+	--weight-semibold: 600;
+	--weight-strong: 650;
+	--weight-bold: 700;
+	--tracking-tight: -0.055em;
+	--tracking-heading: -0.035em;
+	--leading-none: 1;
+	--leading-tight: 1.1;
+	--leading-body: 1.6;
+	--leading-relaxed: 1.75;
+
+	/* Spacing uses a four-point rhythm with small optical half-steps. */
+	--space-1: 2px;
+	--space-2: 4px;
+	--space-3: 6px;
+	--space-4: 8px;
+	--space-5: 10px;
+	--space-6: 12px;
+	--space-7: 16px;
+	--space-8: 20px;
+	--space-9: 24px;
+	--space-10: 32px;
+	--space-11: 40px;
+	--space-12: 48px;
+	--space-13: 60px;
+	--space-14: 64px;
+
+	--radius-xs: 4px;
+	--radius-sm: 8px;
+	--radius-control: 10px;
+	--radius-md: 12px;
+	--radius-lg: 16px;
+	--radius-xl: 20px;
+	--radius-pill: 999px;
+
+	--shadow-nav: 0 3px 17px #1a38200b;
+	--shadow-card: 0 4px 20px #18342206;
+	--shadow-card-hover: 0 10px 25px #1a442112;
+	--shadow-popover: 0 14px 48px #1a37241c;
+	--shadow-control: 0 1px 3px #192e1730;
+	--shadow-drawer: -16px 0 45px #13261525;
+	--shadow-floating: 0 9px 28px #17402c47;
+	--shadow-modal: 0 26px 70px #1027153d;
+	--ring-focus: 0 0 0 3px var(--color-focus-ring);
+	--ring-recording: 0 0 0 4px var(--color-positive-soft);
+	--ring-storage-warning: 0 0 0 2px var(--color-warning);
+	--ring-storage-paused: 0 0 0 2px var(--color-danger);
+
+	--motion-fast: 120ms;
+	--motion-standard: 180ms;
+	--motion-rabbit-rest: 9600ms;
+	--ease-standard: cubic-bezier(0.2, 0.7, 0.2, 1);
+	--layer-map-marker: 2;
+	--layer-calendar: 15;
+	--layer-floating-menu: 20;
+	--layer-drawer: 30;
+	--layer-toast: 50;
+	--layer-image-preview: 100;
+
+	--layout-sidebar-width: 208px;
+	--layout-sidebar-compact-width: 104px;
+	--layout-content-max: 1170px;
+	--layout-drawer-width: min(80vw, 1420px);
+	--layout-modal-width: min(92vw, 505px);
+	--layout-floating-safe-area: 160px;
+	--layout-floating-bottom-safe-area: 84px;
+}
+
+.capture-status-wrap {
+	position: relative;
+	flex: 0 0 auto;
+}
+.capture-status {
+	--capture-ink: var(--color-text-secondary);
+	--capture-wash: var(--color-sidebar);
+	display: flex;
+	align-items: center;
+	gap: var(--space-7);
+}
+.capture-status.recording {
+	--capture-ink: var(--color-brand);
+	--capture-wash: var(--color-positive-soft);
+}
+.capture-status.warning {
+	--capture-ink: var(--color-warning-strong);
+	--capture-wash: var(--color-warning-soft);
+}
+.capture-status-rabbit {
+	position: relative;
+	display: block;
+	width: 96px;
+	height: 96px;
+	flex: 0 0 96px;
+	padding: 0;
+	border: 0;
+	border-radius: var(--radius-xl);
+	background: transparent;
+}
+.capture-status-rabbit:disabled {
+	opacity: 1;
+}
+.capture-status-rabbit:before {
+	content: "";
+	position: absolute;
+	left: 14px;
+	right: 14px;
+	bottom: 6px;
+	height: 8px;
+	border-radius: 50%;
+	background: var(--capture-wash);
+}
+.capture-status-rabbit .rabbit-art,
+.capture-status-rabbit .rabbit-pixels,
+.capture-status-rabbit .rabbit-fallback,
+.capture-status-rabbit .rabbit-fallback img,
+.capture-resting-rabbit {
+	position: relative;
+	display: block;
+	width: 100%;
+	height: 100%;
+	object-fit: contain;
+	image-rendering: pixelated;
+}
+.capture-status-rabbit .rabbit-warning {
+	position: absolute;
+	right: 4px;
+	top: 4px;
+	width: 18px;
+	height: 18px;
+	border-radius: 50%;
+	background: var(--color-warning-soft);
+	color: var(--color-warning-strong);
+	font-size: var(--type-meta);
+	text-align: center;
+}
+.capture-status-copy {
+	display: grid;
+	justify-items: start;
+	gap: var(--space-2);
+	min-width: 122px;
+}
+.capture-status-copy strong {
+	font-size: var(--type-lead);
+	font-weight: var(--weight-semibold);
+	color: var(--capture-ink);
+	line-height: var(--leading-tight);
+}
+.capture-status-copy > span {
+	color: var(--color-text-muted);
+	font-size: var(--type-caption);
+	line-height: var(--leading-body);
+}
+.capture-rabbit-overlay {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: inherit;
+	background: var(--entry-control-overlay);
+	color: var(--entry-control-ink);
+	font-size: var(--type-meta);
+	font-weight: var(--weight-semibold);
+	opacity: 0;
+	transition: opacity 120ms;
+}
+.capture-status-rabbit:hover .capture-rabbit-overlay,
+.capture-status-rabbit:focus-visible .capture-rabbit-overlay,
+.capture-rabbit-overlay[data-persistent="true"] {
+	opacity: 1;
+}
+.capture-rabbit-overlay svg {
+	width: 28px;
+	height: 28px;
+}
+.capture-status-feedback {
+	position: absolute;
+	right: 0;
+	top: calc(100% + var(--space-4));
+	z-index: var(--layer-floating-menu);
+	width: 300px;
+	padding: var(--space-6) var(--space-7);
+	border: 1px solid var(--color-warning-border);
+	border-radius: var(--radius-md);
+	background: var(--color-warning-surface);
+	color: var(--color-warning-strong);
+	font-size: var(--type-meta);
+	line-height: var(--leading-body);
+	box-shadow: var(--shadow-popover);
+	overflow-wrap: anywhere;
+}
+.capture-resting-body {
+	animation: rabbit-rest-breathe var(--motion-rabbit-rest) steps(1, end)
+		infinite;
+}
+@keyframes rabbit-rest-breathe {
+	0%,
+	100% {
+		transform: translateY(0);
+	}
+	50% {
+		transform: translateY(-1px);
+	}
+}
+.capture-status[data-animate="false"] .capture-resting-body {
+	animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+	.capture-resting-body {
+		animation: none;
+	}
+	.capture-rabbit-overlay {
+		transition: none;
+	}
+}
+
+*{box-sizing:border-box}body{margin:0;background:var(--color-canvas);color:var(--color-text);font-family:var(--font-ui)}button{font:inherit;cursor:pointer}button:focus-visible{outline:2px solid var(--color-focus);outline-offset:4px}button:disabled{cursor:wait}.preview-shell{max-width:1280px;padding:44px 40px 50px;margin:auto}.eyebrow{color:var(--color-text-muted);font-size:12px;letter-spacing:.12em}h1{font-size:32px;letter-spacing:-.04em;margin:12px 0}p{color:var(--color-text-muted);font-size:14px;line-height:1.8}.intro{display:flex;align-items:center;justify-content:space-between;gap:24px}.size-toggle{border:1px solid var(--color-border-strong);background:var(--color-surface);color:var(--color-brand);border-radius:10px;padding:10px 16px;white-space:nowrap}.spotlight{padding:32px 38px;margin:26px 0 18px;border:1px solid var(--color-border);border-radius:24px;background:white;display:flex;justify-content:space-between;align-items:center;gap:24px;min-height:178px}.date strong{font-size:42px;letter-spacing:-.05em}.date p{margin:8px 0 0}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:24px}.state-card{border:1px solid var(--color-border);border-radius:20px;padding:22px;background:white;display:flex;flex-direction:column;min-width:0}.state-card.selected{border-color:var(--color-border-active);box-shadow:0 0 0 2px var(--color-positive-soft)}.card-top{display:flex;justify-content:space-between;gap:16px;align-items:center}.card-number{font-size:12px;color:var(--color-text-faint);font-variant-numeric:tabular-nums}.chip{font-size:11px;color:var(--color-text-secondary);border-radius:99px;padding:5px 10px;background:var(--color-sidebar)}.state-card .capture-status{justify-content:center;margin:28px 0 22px;gap:12px;min-height:120px}.state-card .capture-status-copy{min-width:0}.state-card .capture-status-copy strong{font-size:16px}.state-card .capture-status-copy>span{font-size:11px;white-space:nowrap}.state-card p{font-size:12px;line-height:1.8;margin:0;min-height:44px}.select-state{margin-top:18px;padding:9px 0;border:0;border-top:1px solid var(--color-border);background:none;text-align:left;color:var(--color-brand);font-size:12px}.footer-note{padding:0 4px;margin-top:22px;font-size:12px}.capture-status-rabbit{width:var(--preview-rabbit,96px);height:var(--preview-rabbit,96px);flex-basis:var(--preview-rabbit,96px)}body.enlarged{--preview-rabbit:144px}.notice{min-height:22px;margin:0;color:var(--color-text-muted);font-size:12px}.state-card .capture-status-rabbit{pointer-events:none}.capture-status-copy strong{display:block}.capture-status-copy>span{display:block}.rabbit-art{display:block}.capture-rabbit-overlay{pointer-events:none}@media(max-width:1100px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.state-card:last-child{grid-column:1/-1}.state-card:last-child .capture-status{justify-content:flex-start}}@media(max-width:650px){.preview-shell{padding:26px 18px}.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.state-card{padding:16px}.state-card .capture-status{flex-direction:column;gap:10px;margin:20px 0 16px;align-items:center;text-align:center}.state-card .capture-status-copy{justify-items:center}.state-card .capture-status-copy>span{white-space:normal}.state-card:last-child{grid-column:auto}.card-top{gap:4px}.chip{font-size:10px;padding:4px 6px}.intro{align-items:flex-start}.spotlight{padding:24px 18px;flex-wrap:wrap}.date strong{font-size:32px}h1{font-size:26px}.state-card:last-child .capture-status{justify-content:center}}@media(prefers-reduced-motion:reduce){*{transition:none!important}}</style></head><body><main class="preview-shell"><div class="intro"><div><div class="eyebrow">HEAR · 当前版本</div><h1>一只兔子，五种记录状态</h1><p>并排看实际姿态。上方模拟首页，点击兔子可切换录音与暂停。</p></div><button class="size-toggle" id="size" aria-pressed="false">放大查看</button></div><section class="spotlight" aria-label="首页状态演示"><div class="date"><strong>10月7日</strong><p>周三 · 今天</p></div><div id="hero"></div></section><p class="notice" id="notice" role="status">当前展示：正在记录。鼠标移到兔子上查看开关。</p><section class="grid" id="grid" aria-label="五种状态对比"></section><p class="footer-note">当前实现：录音和趴睡有循环动画；等待、部分记录、中断主要靠静态姿态、提示和文案区分。</p></main><script>
+const manifest={"version": 1, "character": "B4 好奇折耳", "icon": "I4 折耳近景", "cell": {"width": 48, "height": 48, "footBaseline": 45}, "palette": ["#103e2f", "#386a4e", "#76ad89", "#9acfac", "#b4dfb8", "#fff7df", "#e9dec1", "#ffbc94", "#f89a72"], "atlas": "sprite-atlas.png", "frames": {"listening": {"x": 0, "y": 0, "width": 48, "height": 48}, "blink": {"x": 48, "y": 0, "width": 48, "height": 48}, "sleeping": {"x": 96, "y": 0, "width": 48, "height": 48}, "curious": {"x": 144, "y": 0, "width": 48, "height": 48}, "nod": {"x": 0, "y": 48, "width": 48, "height": 48}, "stretch": {"x": 48, "y": 48, "width": 48, "height": 48}, "wave": {"x": 96, "y": 48, "width": 48, "height": 48}, "waiting": {"x": 144, "y": 48, "width": 48, "height": 48}, "partial": {"x": 0, "y": 96, "width": 48, "height": 48}, "listening-breath": {"x": 48, "y": 96, "width": 48, "height": 48}, "sleeping-breath": {"x": 96, "y": 96, "width": 48, "height": 48}, "sleeping-nod": {"x": 144, "y": 96, "width": 48, "height": 48}}, "clips": {"listening": {"label": "倾听呼吸", "loop": true, "frames": [["listening", 2000], ["listening-breath", 1600], ["listening", 2800], ["listening", 2000], ["listening-breath", 1600], ["blink", 110], ["listening", 2690]]}, "sleeping": {"label": "睡眠待机", "loop": true, "frames": [["sleeping", 3200], ["sleeping-breath", 3200], ["sleeping", 3200]]}, "curious": {"label": "歪头看你", "loop": false, "frames": [["listening", 100], ["curious", 360], ["listening", 160]]}, "nod": {"label": "点头确认", "loop": false, "frames": [["listening", 80], ["blink", 90], ["nod", 160], ["blink", 70], ["listening", 120]]}, "stretch": {"label": "唤醒伸展", "loop": false, "frames": [["sleeping", 120], ["waiting", 120], ["stretch", 200], ["listening", 160]]}, "wave": {"label": "抬爪回应", "loop": false, "frames": [["listening", 120], ["wave", 260], ["listening", 90], ["wave", 180], ["listening", 150]]}, "pause": {"label": "合眼入睡", "loop": false, "frames": [["listening", 120], ["blink", 140], ["sleeping", 300]]}, "sleeping-response": {"label": "睡眠轻回应", "loop": false, "frames": [["sleeping", 120], ["sleeping-nod", 200], ["sleeping", 180]]}, "waiting": {"label": "等待", "loop": false, "frames": [["waiting", 1000]]}, "partial": {"label": "部分来源异常", "loop": false, "frames": [["partial", 1000]]}, "interrupted": {"label": "异常停止", "loop": false, "frames": [["waiting", 1000]], "badge": true}}, "behavior": {"idle": "listening", "paused": "sleeping", "sleepingResponse": "sleeping-response", "reducedMotion": "state pose only", "hidden": "stop timers; resume saved state", "actions": "play once then return to current state"}, "status": "视觉素材首版；供实际尺寸和动作验收，未连接核心采集状态"}, resting="<svg\n\t\t\tclass=\"capture-resting-rabbit\"\n\t\t\tviewBox=\"0 0 48 48\"\n\t\t\tshape-rendering=\"crispEdges\"\n\t\t\taria-hidden=\"true\"\n\t\t>\n\t\t\t<g class=\"capture-resting-body\">\n\t\t\t\t<path\n\t\t\t\t\tfill=\"#103e2f\"\n\t\t\t\t\td=\"M20 26h15v2h5v3h3v5h3v6h-3v2H14v-3h-4V30h4v-2h6Z\"\n\t\t\t\t/>\n\t\t\t\t<path fill=\"#9acfac\" d=\"M22 28h12v2h5v3h2v7h-3v2H16v-3h-4v-7h5v-2h5Z\" />\n\t\t\t\t<path fill=\"#b4dfb8\" d=\"M24 29h9v2h5v8h-6v2H21v-4h-3v-5h6Z\" />\n\t\t\t\t<path fill=\"#fff7df\" d=\"M25 35h10v5H23v-3h2Z\" />\n\t\t\t\t<path fill=\"#b4dfb8\" d=\"M42 37h2v4h-3v-2h1Z\" />\n\t\t\t\t<path fill=\"#386a4e\" d=\"M32 40h6v2H28v-2Z\" />\n\t\t\t</g>\n\t\t\t<path fill=\"#103e2f\" d=\"M9 25v-5h4v-4h7v-2h12v2h7v3h3v5H23v3Z\" />\n\t\t\t<path fill=\"#9acfac\" d=\"M12 23v-2h4v-3h7v-2h8v2h7v3H23v3Z\" />\n\t\t\t<path fill=\"#ffbc94\" d=\"M20 18h12v2H20Z\" />\n\t\t\t<path fill=\"#103e2f\" d=\"M18 23h17v2h7v5H21v2h-5Z\" />\n\t\t\t<path fill=\"#b4dfb8\" d=\"M19 25h15v2h6v1H22v2h-3Z\" />\n\t\t\t<path fill=\"#103e2f\" d=\"M8 24h12v2h5v4h2v8h-3v3H7v-2H3V29h3v-3h2Z\" />\n\t\t\t<path fill=\"#b4dfb8\" d=\"M9 26h10v2h4v4h2v5h-3v2H8v-2H5v-6h3v-3h1Z\" />\n\t\t\t<path fill=\"#fff7df\" d=\"M8 32h13v2h3v4h-4v1H9v-2H6v-3h2Z\" />\n\t\t\t<path fill=\"#386a4e\" d=\"M9 30h2v1h3v-1h2v3H9Zm10 0h2v1h3v2h-5Z\" />\n\t\t\t<path fill=\"#f89a72\" d=\"M16 34h3v2h-3Z\" />\n\t\t\t<path fill=\"#ffbc94\" d=\"M6 33h3v2H6Zm15 2h3v2h-3Z\" />\n\t\t\t<path fill=\"#103e2f\" d=\"M5 39h16v3h-3v2H5v-2H3v-2h2Z\" />\n\t\t\t<path fill=\"#fff7df\" d=\"M6 40h13v2H5v-1h1Z\" />\n\t\t</svg>", atlas="data:image/png;base64,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";
+const states=[
+{id:'listening',label:'正在记录',subtitle:'麦克风 · 电脑声音',tone:'recording',tag:'呼吸 + 眨眼',desc:'醒着抬耳，缓慢呼吸，偶尔眨眼。',action:'暂停'},
+{id:'sleeping',label:'已暂停',subtitle:'声音记录已暂停',tone:'paused',tag:'趴睡呼吸',desc:'趴下闭眼，身体每 9.6 秒轻轻起伏。',action:'继续'},
+{id:'waiting',label:'正在连接',subtitle:'等待声音来源就绪',tone:'waiting',tag:'静态等待',desc:'保持清醒等待；连接与启停时显示相应文案。',action:'请稍候'},
+{id:'partial',label:'部分记录',subtitle:'麦克风仍在记录',tone:'warning',tag:'静态提示',desc:'一部分声音来源不可用，仍在记录的来源写在旁边。',action:'暂停'},
+{id:'interrupted',label:'记录中断',subtitle:'检查权限或声音设备',tone:'warning',tag:'静态 + 异常标记',desc:'等待姿态加「!」标记，提示检查设备或权限。',action:'设置'}
+];
+let selected='listening'; const image=new Image(); image.src=atlas; const players=new Set(); const reduced=matchMedia('(prefers-reduced-motion: reduce)');
+const icon=pause=>`<svg viewBox="0 0 20 20" fill="none" aria-hidden="true">${pause?'<path d="M7 5v10M13 5v10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>':'<path d="m7 4 9 6-9 6Z" fill="currentColor"/>'}</svg>`;
+function module(s,hero=false){return `<section class="capture-status ${s.tone}" aria-label="声音记录状态"><button type="button" class="capture-status-rabbit" ${s.id==='waiting'?'disabled':''} aria-label="${hero?s.action+(['listening','sleeping','partial'].includes(s.id)?'记录':''):'查看'+s.label}">${s.id==='sleeping'?resting:`<span class="rabbit-art"><canvas class="rabbit-pixels" data-state="${s.id}"></canvas>${s.id==='interrupted'?'<span class="rabbit-warning">!</span>':''}</span>`}${hero?`<span class="capture-rabbit-overlay" aria-hidden="true">${['listening','partial','sleeping'].includes(s.id)?icon(s.id!=='sleeping'):s.action}</span>`:''}</button><div class="capture-status-copy"><strong>${s.label}</strong><span>${s.subtitle}</span></div></section>`}
+function draw(canvas,frame){const f=manifest.frames[frame],size=canvas.getBoundingClientRect().width,dpr=devicePixelRatio||1;const px=Math.round(size*dpr);if(canvas.width!==px){canvas.width=px;canvas.height=px}const c=canvas.getContext('2d');c.imageSmoothingEnabled=false;c.clearRect(0,0,px,px);c.drawImage(image,f.x,f.y,48,48,0,0,px,px)}
+function start(canvas){const clip=manifest.clips[canvas.dataset.state];let timer;let index=0;const p={stop:()=>clearTimeout(timer),restart:()=>{clearTimeout(timer);index=0;tick()}};function tick(){if(!canvas.isConnected){players.delete(p);return}const [frame,delay]=clip.frames[index];draw(canvas,frame);if(document.hidden||reduced.matches)return;if(index+1<clip.frames.length){index++;timer=setTimeout(tick,delay)}else if(clip.loop){index=0;timer=setTimeout(tick,delay)}}players.add(p);tick()}
+function mount(scope){if(image.complete&&image.naturalWidth)scope.querySelectorAll('canvas').forEach(start);else image.addEventListener('load',()=>scope.querySelectorAll('canvas').forEach(start),{once:true})}
+function choose(id){selected=id;const s=states.find(s=>s.id===id);document.getElementById('hero').innerHTML=module(s,true);mount(document.getElementById('hero'));document.querySelectorAll('.state-card').forEach(c=>c.classList.toggle('selected',c.dataset.state===id));document.querySelectorAll('.select-state').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.state===id)));document.getElementById('notice').textContent='当前展示：'+s.label+'。'+(id==='interrupted'?'检查设备或权限后恢复记录。':id==='waiting'?'等待来源就绪，暂不可切换。':'鼠标移到兔子上查看开关。');document.querySelector('#hero button').addEventListener('click',()=>{if(id==='interrupted'){document.getElementById('notice').textContent='演示：此处会打开设置，检查声音设备与权限。';return}choose(id==='sleeping'?'listening':'sleeping')})}
+document.getElementById('grid').innerHTML=states.map((s,i)=>`<article class="state-card" data-state="${s.id}"><div class="card-top"><span class="card-number">0${i+1}</span><span class="chip">${s.tag}</span></div>${module(s)}<p>${s.desc}</p><button class="select-state" data-state="${s.id}" aria-pressed="false">在首页预览 ↗</button></article>`).join('');document.querySelectorAll('.select-state').forEach(b=>b.addEventListener('click',()=>choose(b.dataset.state)));mount(document.getElementById('grid'));choose(selected);
+document.getElementById('size').addEventListener('click',e=>{const large=document.body.classList.toggle('enlarged');e.currentTarget.setAttribute('aria-pressed',String(large));e.currentTarget.textContent=large?'实际尺寸':'放大查看';players.forEach(p=>p.restart())});
+function visibility(){document.querySelectorAll('.capture-status').forEach(s=>s.dataset.animate=String(!document.hidden));players.forEach(p=>document.hidden?p.stop():p.restart())}document.addEventListener('visibilitychange',visibility);reduced.addEventListener('change',()=>players.forEach(p=>p.restart()));
+</script></body></html>

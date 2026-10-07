@@ -2,14 +2,44 @@ use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 use tauri::Manager;
+mod entry;
+use entry::{
+    EntryRuntime, entry_action, entry_drag, entry_focus, entry_layout, entry_mode, entry_snapshot,
+};
+use std::sync::Arc;
 
 #[tauri::command]
-async fn core_request(request: hear_protocol::Request) -> Result<hear_protocol::Response, String> {
+async fn core_request(
+    app: tauri::AppHandle,
+    mut request: hear_protocol::Request,
+) -> Result<hear_protocol::Response, String> {
+    if let hear_protocol::Request::CaptureScreenshot {
+        excluded_window_ids,
+        ..
+    } = &mut request
+    {
+        *excluded_window_ids = vec![entry::screenshot_window(app.clone()).await?];
+    }
     if matches!(request, hear_protocol::Request::ExecuteCleanup { .. }) {
         return Err("use the cleanup confirmation flow".into());
     }
+    let runtime = Arc::clone(&app.state::<Arc<EntryRuntime>>());
+    let status = matches!(request, hear_protocol::Request::Status);
     tauri::async_runtime::spawn_blocking(move || {
-        hear_protocol::send_from(hear_protocol::ClientKind::Gui, request)
+        if status {
+            runtime.refresh(&app);
+            let snapshot = runtime.snapshot();
+            return snapshot
+                .state
+                .map(|state| hear_protocol::Response::Status {
+                    id: uuid::Uuid::new_v4(),
+                    state,
+                })
+                .ok_or_else(|| snapshot.error.unwrap_or("status unavailable".into()));
+        }
+        let result = hear_protocol::send_from(hear_protocol::ClientKind::Gui, request);
+        runtime.request_refresh();
+        result
     })
     .await
     .map_err(|error| error.to_string())?
@@ -43,24 +73,6 @@ async fn cleanup_request(
     })
     .await
     .map_err(|error| error.to_string())?
-}
-
-#[tauri::command]
-fn core_status() -> Result<hear_protocol::ServiceState, String> {
-    match hear_protocol::send_from(
-        hear_protocol::ClientKind::Gui,
-        hear_protocol::Request::Status,
-    )? {
-        hear_protocol::Response::Status { state, .. } => Ok(state),
-        hear_protocol::Response::Models { .. } => Err("unexpected model response".to_owned()),
-        hear_protocol::Response::ProbeResult { .. } => Err("unexpected probe response".to_owned()),
-        hear_protocol::Response::RecordTestResult { .. } => {
-            Err("unexpected recording test response".to_owned())
-        }
-        hear_protocol::Response::Logs { .. } => Err("unexpected log response".to_owned()),
-        hear_protocol::Response::Error { code, message, .. } => Err(format!("{code}: {message}")),
-        _ => Err("unexpected core response".to_owned()),
-    }
 }
 
 #[tauri::command]
@@ -207,6 +219,13 @@ async fn request_system_audio_permission() -> Result<i32, String> {
 }
 
 #[tauri::command]
+async fn request_screenshot_permission() -> Result<i32, String> {
+    tauri::async_runtime::spawn_blocking(|| unsafe { hear_request_screen_authorization() })
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn login_item_status() -> i32 {
     unsafe { hear_agent_status() }
 }
@@ -240,44 +259,42 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            let monitor = app
-                .primary_monitor()?
-                .ok_or("primary display unavailable")?;
-            let scale = monitor.scale_factor();
-            let width = 68.0;
-            let height = 68.0;
-            let x =
-                (monitor.position().x as f64 + monitor.size().width as f64) / scale - width - 20.0;
-            let y = (monitor.position().y as f64 + monitor.size().height as f64) / scale
-                - height
-                - 20.0;
-            tauri::WebviewWindowBuilder::new(
+            let runtime = EntryRuntime::new(
+                std::env::var_os("HEAR_DATA_DIR")
+                    .map(|p| std::path::PathBuf::from(p).join("gui"))
+                    .unwrap_or(app.path().app_config_dir()?)
+                    .join("entry-preferences.json"),
+            );
+            app.manage(Arc::clone(&runtime));
+            let window = tauri::WebviewWindowBuilder::new(
                 app,
                 "float",
                 tauri::WebviewUrl::App("index.html".into()),
             )
-            .title("hear")
-            .inner_size(width, height)
-            .position(x, y)
+            .title("hear · 快速操作")
+            .inner_size(68.0, 68.0)
             .decorations(false)
             .resizable(false)
-            .always_on_top(true)
-            .visible_on_all_workspaces(true)
             .transparent(true)
             .shadow(false)
+            .focused(false)
+            .visible(false)
             .build()?;
+            entry::install(app.handle(), &window, &runtime)?;
+            runtime.start(app.handle().clone());
             Ok(())
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
-                let _ = window.hide();
+                if window.label() == "main" {
+                    let _ = window.hide();
+                }
             }
         })
         .invoke_handler(tauri::generate_handler![
             core_request,
             cleanup_request,
-            core_status,
             gui_ready,
             show_main,
             login_item_status,
@@ -285,21 +302,27 @@ pub fn run() {
             unregister_login_item,
             privacy_status,
             request_microphone_permission,
-            request_system_audio_permission
+            request_system_audio_permission,
+            request_screenshot_permission,
+            entry_snapshot,
+            entry_mode,
+            entry_layout,
+            entry_focus,
+            entry_drag,
+            entry_action
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| match event {
             tauri::RunEvent::ExitRequested { .. } => {
+                app.state::<Arc<EntryRuntime>>().stop();
+                entry::dispose(app);
                 let _ = hear_protocol::send_from(
                     hear_protocol::ClientKind::Gui,
                     hear_protocol::Request::Quit,
                 );
             }
-            tauri::RunEvent::Reopen {
-                has_visible_windows: false,
-                ..
-            } => {
+            tauri::RunEvent::Reopen { .. } => {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.show();
                     let _ = window.set_focus();

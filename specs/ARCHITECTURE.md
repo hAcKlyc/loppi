@@ -1,6 +1,6 @@
 # hear 0.1 整体架构
 
-> 口径：2026-09-30 工作树当前实现，Batch 6 尚未验收/提交。产品目标见 [PRD](prd/prd_0.1.md)，算法与具体阈值见 [核心处理算法](tech_docs/algorithms.md)和[说话人和全局人物](tech_docs/speaker-identity.md)。本机已安装 `.app` 的能力须以安装版实测区分，不能由本文件推定。
+> 口径：2026-10-01 工作树当前实现，Batch 6 尚未验收/提交。产品目标见 [PRD](prd/prd_0.1.md)，算法与具体阈值见 [核心处理算法](tech_docs/algorithms.md)和[说话人和全局人物](tech_docs/speaker-identity.md)。本机已安装 `.app` 的能力须以安装版实测区分，不能由本文件推定。
 
 ## 1. 系统边界与进程
 
@@ -22,11 +22,11 @@ flowchart LR
 
 | 组件 | 代码入口 | 职责与边界 |
 | --- | --- | --- |
-| GUI | [`src/App.tsx`](../src/App.tsx)、[`src-tauri/src/lib.rs`](../src-tauri/src/lib.rs) | 时间线、详情、队列、人物、设置、悬浮操作；通过 Tauri command 调用核心，不直接改数据库。主窗口关闭可隐藏，悬浮窗同进程。 |
+| GUI | [`src/App.tsx`](../src/App.tsx)、[`src-tauri/src/lib.rs`](../src-tauri/src/lib.rs) | 时间线、详情、队列、人物、设置、顶部/悬浮兔子入口；通过 Tauri command 调用核心，不直接改数据库。主窗口关闭可隐藏，悬浮窗同进程。 |
 | CLI | [`crates/hear-cli/src/main.rs`](../crates/hear-cli/src/main.rs) | 查询、控制、修订、搜索、导出与清理的完整命令入口；与 GUI 共用请求协议。 |
 | 核心 | [`crates/hear-core/src/main.rs`](../crates/hear-core/src/main.rs) | 唯一 SQLite 写入者；持有采集监督、时间映射、媒体、两条云队列、声纹任务和权限/容量状态。登录项与按需服务争同一个 owner 锁。 |
 | 本地推理 | [`crates/hear-worker/src/main.rs`](../crates/hear-worker/src/main.rs) | 常驻 Silero VAD + SenseVoice 粗转；另以受控 `embed` 子进程提取 CampPlus 声纹。只返回计算结果，不拥有数据库。 |
-| IPC 协议 | [`crates/hear-protocol/src/lib.rs`](../crates/hear-protocol/src/lib.rs) | 请求/响应、稳定 ID、预期修订、重复提交标识和协议版本。当前工作树版本为 14。 |
+| IPC 协议 | [`crates/hear-protocol/src/lib.rs`](../crates/hear-protocol/src/lib.rs) | 请求/响应、稳定 ID、预期修订、重复提交标识和协议版本。当前工作树版本为 15。 |
 | macOS 桥接 | [`src-tauri/native/`](../src-tauri/native/privacy.m)、[`crates/hear-core/native/`](../crates/hear-core/native/system_audio.m) | 登录项、权限、截图/OCR、系统声 API 等原生操作；业务数据仍由核心裁决。 |
 
 没有长期运行的 Node 服务，也没有局域网/HTTP 管理接口。模型权重按哈希安装在本机数据目录；`.env` 仅供开发，不打进客户端。正式凭据由设置页交给核心验证并存在 Keychain。[模型包实现](../crates/hear-core/src/model_pack.rs)；[云端凭据和请求](../crates/hear-core/src/cloud.rs)。
@@ -97,6 +97,17 @@ flowchart TD
 所有回放、搜索与导出只读取当前有效投影。导出在核心生成受限归档，不把媒体目录路径交给 UI/CLI；搜索索引仅是派生数据，不作为内容存在性的裁判。[`playback.rs`](../crates/hear-core/src/playback.rs)、[`knowledge.rs`](../crates/hear-core/src/knowledge.rs)、[`archive.rs`](../crates/hear-core/src/archive.rs)。
 
 ## 6. 构建与分发形态
+
+常驻入口复用同一个 `float` WebView / NSWindow。[`EntryRuntime`](../src-tauri/src/entry.rs)每 5 秒单飞查询 core 状态，主窗口和入口订阅同一快照；动作唤醒刷新，动画不查询核心。[结构化来源诊断](../crates/hear-core/src/diagnostics.rs)从实际采集、意图、启动/停止和阻断条件推导，UI 不解析原因文本。异常全部停止只在会话内轻提醒一次，完整正常恢复后重新启用提醒。
+
+时间线日期右侧 [`CaptureStatus`](../src/CaptureStatus.tsx)复用该快照的 appearance/control 与 `EntryRequests`/`entry_action` 控制路径，不另建查询或录音 owner。App 保存完整快照，按 sequence 接受事件/初始读取/显式刷新；[`capture-status`](../src/capture-status.ts)仅映射文案与展示，不从错误文字推断原因。`useCaptureControl`仍在App会话中保存原请求/反馈，时间线切页卸载角色展示不丢待确认ID；真实启停由后续快照裁决。三处录音/暂停/等待/部分/中断都使用entryAppearance与同一个Rabbit，不再保留首页私有睡眠分支；本地桥接请求失败只显示错误，不伪造宿主快照。展示随页面卸载停动画，不测音量。控件不在其它页面显示。
+
+[`entry.m`](../src-tauri/native/entry.m)附着现有窗口，负责主屏安全区、顶部/悬浮几何、原生命中、评论焦点和屏幕/工作区通知，不替换类或 delegate。顶部展开黑色表面从屏幕顶边延伸，原兔子的 hover 点也在展开命中区域中；圆角和悬浮空白由系统点击穿透。[React 入口](../src/FloatingWidget.tsx)只管理展开、会话草稿、反馈和交互；宿主用 presentation generation 拒绝迟到的布局/焦点请求。评论的用户焦点 intent 固定为首次打开 token，背景重布局不生成新激活意图；应用切走/评论关闭/模式变更取消旧 token。模式变更递增共享快照序号，旧布局还须匹配当前模式。入口创建时隐藏，接受 GUI 模式快照并准备布局后才首次显示。只有评论获取并释放前台输入焦点。模式与显示器归一化悬浮锚点保存到 GUI 配置，测试随 `HEAR_DATA_DIR/gui` 隔离，业务库不保存这些偏好。
+
+入口动作各保留一个稳定 UUID 与原负载；宿主还保留该槽的最后已确认响应，直到新 UUID 替换，避免 WebView 丢失回复后用新修订重建控制请求。保存与暂停槽独立，草稿仅在真实确认后清空。截图由 core 的 ScreenCaptureKit 单次获取过滤当前 GUI 窗口，以 socket 同 UID 和实际 peer PID 校验排除目标；macOS 13 使用短 SCStream，14+ 使用 SCScreenshotManager。`anchor_ms` 保留触发时刻，CLI 默认为当前时刻且无窗口排除；PNG/OCR/回执仍走原 moments 路径。
+
+[`Rabbit`](../src/Rabbit.tsx)读取统一v2 atlas，以低频计时播放；96px清单格子由用户确认的双竖耳/趴睡生图素材及派生呼吸/眨眼/回应帧组成，主窗/notch/悬浮共用素材与clip。尺寸由清单定义，不硬编码旧48px裁切；隐藏/减少动态效果停计时，canvas 后备尺寸跟随显示大小与像素比，加载失败显示当前状态的静态素材。I4 方形源图与平台图标分别保存。生产代码已修改，真实系统验收尚未全部完成；证据见[安静兔子执行台账](prd/prd_0.1_quiet-rabbit-entry.md)。
+
 
 前端是 React/TypeScript/Vite，Tauri 2 使用 macOS WebView；主窗口与透明悬浮窗共用样式 token，产品视觉规则见 [DESIGN.md](DESIGN.md) 与 [`src/tokens.css`](../src/tokens.css)。`src-tauri/tauri.conf.json` 将签名登录项与 CLI 放入 `.app`；本机核心和推理 worker 不应因 GUI 关闭而丢失采集状态。[`build_macos.sh`](../scripts/build_macos.sh) 构建并签名各组件；[`package_macos.sh`](../scripts/package_macos.sh) 生成 `.dmg`、送公证、装订并检查 Gatekeeper。
 

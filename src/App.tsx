@@ -17,7 +17,10 @@ import {
 	time,
 	userError,
 } from "./api";
+import appIcon from "./assets/rabbit/app-icon-square.png";
+import { CaptureStatus, useCaptureControl } from "./CaptureStatus";
 import { DetailDrawer } from "./DetailDrawer";
+import { type EntrySnapshot, getEntrySnapshot } from "./entry-api";
 import { TimelineView } from "./TimelineView";
 import { PeopleView, QueueView, SettingsView } from "./WorkspaceViews";
 import "./App.css";
@@ -50,7 +53,8 @@ function App() {
 	const [gaps, setGaps] = useState<TimeGap[]>([]);
 	const [dayMoments, setDayMoments] = useState<Moment[]>([]);
 	const [loading, setLoading] = useState(true);
-	const [state, setState] = useState<ServiceState | null>(null);
+	const [snapshot, setSnapshot] = useState<EntrySnapshot | null>(null);
+	const state = snapshot?.state ?? null;
 	const [privacy, setPrivacy] = useState<PrivacyStatus | null>(null);
 	const [loginStatus, setLoginStatus] = useState<number | null>(null);
 	const [queues, setQueues] = useState<CloudQueue[]>([]);
@@ -93,19 +97,29 @@ function App() {
 		);
 	};
 
+	const acceptSnapshot = useCallback((next: EntrySnapshot) => {
+		setSnapshot((current) =>
+			!current || next.sequence >= current.sequence ? next : current,
+		);
+	}, []);
 	const refreshStatus = useCallback(async () => {
 		try {
-			const response = await core<{
-				type: "status";
-				id: string;
-				state: ServiceState;
-			}>({ type: "status" });
-			setState(response.state);
+			if (isTauri()) {
+				acceptSnapshot(await getEntrySnapshot(true));
+			} else {
+				await core<{
+					type: "status";
+					id: string;
+					state: ServiceState;
+				}>({ type: "status" });
+			}
 			setError(null);
 		} catch (cause) {
 			setError(errorText(cause));
+			// A local bridge failure is not a new host observation. Preserve the
+			// shared snapshot so main and entry cannot invent different states.
 		}
-	}, []);
+	}, [acceptSnapshot]);
 
 	const refreshTimeline = useCallback(
 		async (showLoading = false) => {
@@ -263,11 +277,41 @@ function App() {
 	}, []);
 
 	useEffect(() => {
+		if (!isTauri()) return;
+		const subscription = listen("hear-open-settings", () =>
+			setPage("settings"),
+		);
+		return () => {
+			void subscription.then((unlisten) => unlisten());
+		};
+	}, []);
+	useEffect(() => {
+		if (!isTauri()) return;
+		let disposed = false;
+		const subscription = listen<EntrySnapshot>(
+			"hear-entry-snapshot",
+			(event) => {
+				if (!disposed) acceptSnapshot(event.payload);
+			},
+		);
+		void subscription
+			.then(() => getEntrySnapshot())
+			.then((next) => {
+				if (!disposed) acceptSnapshot(next);
+			})
+			.catch((cause) => {
+				if (!disposed) setError(errorText(cause));
+			});
+		return () => {
+			disposed = true;
+			void subscription.then((unlisten) => unlisten());
+		};
+	}, [acceptSnapshot]);
+	useEffect(() => {
 		void invoke("gui_ready");
 		void refreshStatus();
 		void refreshContext();
 		const timer = window.setInterval(() => {
-			void refreshStatus();
 			void refreshContext();
 		}, 5000);
 		return () => window.clearInterval(timer);
@@ -506,22 +550,21 @@ function App() {
 		}
 	};
 
-	const recording = state?.capture_state === "recording";
-	const captureLabel = state?.storage_paused
-		? "存储已满 · 已暂停"
-		: recording
-			? "正在记录"
-			: state?.paused_intent
-				? "已暂停"
-				: state?.capture_state === "not_ready"
-					? "尚未就绪"
-					: "未开始";
-
+	const captureControl = useCaptureControl({
+		snapshot,
+		onRefresh: refreshStatus,
+		onSettings: () => setPage("settings"),
+	});
 	return (
 		<div className="app-shell">
+			<div
+				className="app-window-drag"
+				data-tauri-drag-region
+				aria-hidden="true"
+			/>
 			<aside className="sidebar">
 				<div className="brand">
-					<span className="brand-symbol">h.</span>
+					<img className="brand-symbol" src={appIcon} alt="" />
 					<strong>hear</strong>
 				</div>
 				<nav aria-label="主导航">
@@ -551,10 +594,6 @@ function App() {
 						</button>
 					))}
 				</nav>
-				<div className="sidebar-bottom">
-					<span className={`live-dot ${recording ? "active" : ""}`} />
-					{captureLabel}
-				</div>
 			</aside>
 			<main className="main-area">
 				{error && (
@@ -576,6 +615,9 @@ function App() {
 				)}
 				{page === "timeline" && (
 					<TimelineView
+						captureStatus={
+							<CaptureStatus snapshot={snapshot} control={captureControl} />
+						}
 						date={date}
 						items={items}
 						gaps={gaps}
@@ -619,55 +661,7 @@ function App() {
 					/>
 				)}
 			</main>
-			{!isTauri() && (
-				<div className="float-wrap">
-					<div className="float-menu">
-						<button
-							type="button"
-							onClick={() =>
-								void mutate(
-									{
-										type: recording
-											? "pause"
-											: state?.enabled_intent
-												? "resume"
-												: "start",
-										expected_revision: state?.revision,
-									},
-									recording ? "已暂停" : "正在启动录音",
-								)
-							}
-						>
-							{recording ? "暂停" : state?.enabled_intent ? "继续" : "开始"}
-						</button>
-						<button
-							type="button"
-							onClick={() => {
-								setCommentAnchor(Date.now());
-								setCommentOpen(true);
-							}}
-						>
-							评论
-						</button>
-						<button
-							type="button"
-							disabled={busy}
-							onClick={() => void addMoment("screenshot", Date.now())}
-						>
-							截屏
-						</button>
-					</div>
-					<button
-						type="button"
-						className={`float-main ${recording ? "recording" : ""}`}
-						title="重点"
-						aria-label="标记重点"
-						onClick={() => void addMoment("mark", Date.now())}
-					>
-						◉
-					</button>
-				</div>
-			)}
+
 			{selected && (
 				<DetailDrawer
 					key={`${selected.id ?? selected.manual_range_id ?? "range"}-${selected.started_ms}-${selected.sources}`}

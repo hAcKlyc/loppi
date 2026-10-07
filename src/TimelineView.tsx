@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import {
 	addDays,
 	dateTitle,
@@ -12,6 +12,7 @@ import {
 } from "./api";
 
 type Props = {
+	captureStatus: ReactNode;
 	date: Date;
 	items: TimelineItem[];
 	gaps: TimeGap[];
@@ -53,6 +54,7 @@ function gapReason(reason: string): string {
 }
 
 export function TimelineView({
+	captureStatus,
 	date,
 	items,
 	gaps,
@@ -91,66 +93,69 @@ export function TimelineView({
 
 	return (
 		<div className="timeline-page">
-			<div className="date-header">
-				<div className="calendar-anchor">
-					<button
-						className="calendar-button"
-						type="button"
-						title="选择日期"
-						aria-label="选择日期"
-						onClick={() => setCalendarOpen(!calendarOpen)}
-					>
-						<svg viewBox="0 0 24 24" aria-hidden="true">
-							<rect x="3" y="5" width="18" height="16" rx="2" />
-							<path d="M7 3v4M17 3v4M3 10h18" />
-						</svg>
-					</button>
-					{calendarOpen && (
-						<div className="calendar-popover">
-							<label htmlFor="jump-date">跳转日期</label>
-							<input
-								id="jump-date"
-								type="date"
-								max={todayKey}
-								value={selectedKey}
-								onChange={(event) => {
-									const [year, month, day] = event.target.value
-										.split("-")
-										.map(Number);
-									if (year && month && day)
-										onDate(new Date(year, month - 1, day));
-									setCalendarOpen(false);
-								}}
-							/>
-						</div>
-					)}
-				</div>
-				<nav className="date-track" aria-label="按日期浏览">
-					{dates.map((day) => {
-						const key = dateInput(day);
-						const selected = key === selectedKey;
-						return selected ? (
-							<div key={key} className="date-current" aria-current="date">
-								<strong>{dateTitle(day)}</strong>
-								<span>
-									{weekdays[day.getDay()]}
-									{key === todayKey ? " · 今天" : ""}
-								</span>
+			<header className="timeline-header">
+				<div className="date-header">
+					<div className="calendar-anchor">
+						<button
+							className="calendar-button"
+							type="button"
+							title="选择日期"
+							aria-label="选择日期"
+							onClick={() => setCalendarOpen(!calendarOpen)}
+						>
+							<svg viewBox="0 0 24 24" aria-hidden="true">
+								<rect x="3" y="5" width="18" height="16" rx="2" />
+								<path d="M7 3v4M17 3v4M3 10h18" />
+							</svg>
+						</button>
+						{calendarOpen && (
+							<div className="calendar-popover">
+								<label htmlFor="jump-date">跳转日期</label>
+								<input
+									id="jump-date"
+									type="date"
+									max={todayKey}
+									value={selectedKey}
+									onChange={(event) => {
+										const [year, month, day] = event.target.value
+											.split("-")
+											.map(Number);
+										if (year && month && day)
+											onDate(new Date(year, month - 1, day));
+										setCalendarOpen(false);
+									}}
+								/>
 							</div>
-						) : (
-							<button
-								key={key}
-								type="button"
-								className="date-neighbor"
-								onClick={() => onDate(day)}
-								disabled={key > todayKey}
-							>
-								{dateTitle(day)}
-							</button>
-						);
-					})}
-				</nav>
-			</div>
+						)}
+					</div>
+					<nav className="date-track" aria-label="按日期浏览">
+						{dates.map((day) => {
+							const key = dateInput(day);
+							const selected = key === selectedKey;
+							return selected ? (
+								<div key={key} className="date-current" aria-current="date">
+									<strong>{dateTitle(day)}</strong>
+									<span>
+										{weekdays[day.getDay()]}
+										{key === todayKey ? " · 今天" : ""}
+									</span>
+								</div>
+							) : (
+								<button
+									key={key}
+									type="button"
+									className="date-neighbor"
+									onClick={() => onDate(day)}
+									disabled={key > todayKey}
+								>
+									{dateTitle(day)}
+								</button>
+							);
+						})}
+					</nav>
+				</div>
+				{captureStatus}
+			</header>
 
 			<section className="day-map" aria-label="这一天的事件分布">
 				<div className="day-map-track">

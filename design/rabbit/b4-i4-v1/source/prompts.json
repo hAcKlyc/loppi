@@ -1,0 +1,40 @@
+{
+  "date": "2026-10-01",
+  "generator": "built-in image_gen",
+  "character": "B4 好奇折耳",
+  "icon": "I4 折耳近景",
+  "userSelection": "B4 和 I4  这个作为基准可以诶，然后你再看应该准备的素材或者动画有哪些，可以继续搞呢",
+  "generations": [
+    {
+      "key": "poses",
+      "refs": [
+        "/Users/ethan/Projects/hear/design/rabbit/mint-v2/refinements.png"
+      ],
+      "transparent": true,
+      "prompt": "Use case: stylized-concept. Asset type: aligned transparent pixel mascot pose atlas for a desktop app. Reference role: identity reference. Use ONLY B4 '好奇折耳' in the LOWER RIGHT of the reference board, not B1, B2 or B3. Preserve B4 exactly: mint-green broad stepped-square face, compact seated body, ivory broad muzzle and heartlike chest, peach nose and inner ears, two tiny dark forest-green eyes, one short upright ear on viewer-left and one short folded outward ear on viewer-right. Original chosen mascot for hear.\nMake ONE clean true-transparent sprite atlas with 9 rabbits arranged in a STRICT 3-column by 3-row equal-cell grid. No labels, board, grid lines, decorative effects, shadows, outlines around cells or ground bars. Every rabbit same scale, palette, body proportions, foot baseline within its cell, centered with generous empty padding; every complete ear and foot uncropped. Crisp flat pixel art with a consistent 32x40 logical square-pixel grid per rabbit and only about eight flat colors, no fur texture or gradients. Thick deep-green contours. Avoid white fringe/halo, stray pixels, checkerboard-painted background. Same rabbit in EVERY cell, no costume, props, hearts, headphones or microphone.\nExact order left-to-right, top-to-bottom:\nRow 1: (1) neutral LISTENING upright with signature folded ear; (2) BLINK, exactly the same as 1 except closed eyes, do not droop ears; (3) SLEEP, closed eyes, ears relaxed down and body gently settled, same planted feet.\nRow 2: (4) HOVER curiosity, very slightly tilt head towards viewer, retain exact face and fold-ear identity; (5) CONFIRM nod, tiny head dip and softly closed eyes, same body and ears; (6) WAKE small seated stretch with paws a little outward, not a jump and not both arms over head.\nRow 3: (7) ACKNOWLEDGE one-paw restrained wave, seated feet stay planted; (8) WAITING awake calm with ears a little lower, eyes OPEN, not asleep or sad; (9) PARTIAL unavailable awake calm with upright ear lower than usual and one ear folded, not crying, eyes OPEN.\nPose 1/2 differ ONLY in eyes. All variations should be minimal and suitable for animation keys, zero size drift, stable face design. The surface is clean solid-color pixel squares, NOT simulated textured craft pixels. TRUE alpha around nine isolated sprites.",
+      "source": "/Users/ethan/.codex/generated_images/01a0f003-ac07-7432-9efe-63359a915e59/exec-78a8b069-c45c-4855-a39e-42f8a80a1926.png"
+    },
+    {
+      "key": "icon",
+      "refs": [
+        "/Users/ethan/Projects/hear/design/rabbit/mint-v2/icons.png"
+      ],
+      "transparent": true,
+      "prompt": "Use case: logo-brand / product-mockup. Asset type: one final-direction high-resolution app icon master. Reference role: identity/composition reference ONLY. Use ONLY I4 '折耳近景' at LOWER LEFT of the reference sheet. Generate one square app icon with the EXACT same curious mint pixel rabbit head and folded ear, gently tilted about 10 degrees, dark forest-green squared contour, cream muzzle, peach inner ears and tiny nose, small calm square eyes. Preserve charming broad face, short ears, the viewer-right ear folded outward. No other candidate icon, no fullbody mascot.\nComposition: a single warm ivory rounded-square macOS-style tile filling roughly 86% of square canvas, centered with generous TRUE TRANSPARENT margin around the rounded tile. The rabbit face/head fills the tile with the ears fully included and face approaching bottom edge like I4, no clipped ears. Tiny hint of shoulder is allowed at lower boundary. Pixel blocks remain crisp and deliberate; the character is flat pixel art, not shiny 3D fur. Tile has very restrained warm satin shading with a fine soft-edge bevel and subtle contact shadow, NOT bulky thick plastic. Clean corners and clean alpha outside silhouette; avoid busy glow. No text, letters, numbers, badges, multiple icons, interface or scene. This is the icon mother image for later size export, make centered and balanced with clean edges at high resolution.",
+      "source": "/Users/ethan/.codex/generated_images/01a0f003-ac07-7432-9efe-63359a915e59/exec-5c26c120-d75c-4cfe-bb27-a4cea76d8c3e.png",
+      "status": "superseded: rounded tile study, not icon master"
+    },
+    {
+      "key": "icon-square",
+      "refs": [
+        "design/rabbit/mint-v2/icons.png",
+        "design/rabbit/b4-i4-v1/source/icon-generated.png"
+      ],
+      "transparent": false,
+      "prompt": "Use case: logo-brand. Asset type: RAW APP ICON ARTWORK MASTER, not a mockup.\nReference image is the selected I4 rabbit illustration at the LOWER LEFT of the icon exploration sheet. Preserve exactly the character identity and curious head tilt: mint-green broad rounded-square pixel rabbit face, one upright ear on viewer-left and one folded ear on viewer-right, cream muzzle and chest hint, dark forest-green square-pixel outline and calm small eyes, tiny peach nose and peach inner ears.\nGenerate a SQUARE 1:1 image with a warm cream SOLID BACKGROUND extending FULL BLEED to ALL FOUR perfectly square corners. OPAQUE background. NO border, NO rounded corners, NO rounded tile, NO inset card, NO padding outside a tile, NO shadow, NO bevel, NO 3D plastic material, NO framing. The ENTIRE image is the artwork. It will be masked into various shapes later, so do not bake any icon silhouette into it.\nOne large pixel rabbit head in a gentle about 8 degree curious tilt, character occupies roughly 75–82 percent of the square canvas, balanced and centered, both ears fully included with an 8 percent safety margin near the top; cream muzzle and tiny chest approach bottom but keep face features intact. Preserve the folded-ear signature and original friendly facial proportions. Six-to-eight flat pixel colors, crisply placed square pixels, no grain/fur texture, no gradients in the mascot. Background warm cream and uniform. No text, letters, labels, multiple icons, screenshot or display scene. Strict raw square borderless master suitable for high resolution image resizing and subsequent platform masks.",
+      "source": "source/icon-square-generated.png",
+      "status": "selected square master"
+    }
+  ],
+  "iconMasterContract": "正方形、满幅背景、无边框；母图不含圆角、外边距、阴影或底座。按用途另行裁切。"
+}

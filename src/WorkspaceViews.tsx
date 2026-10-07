@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -21,6 +22,11 @@ import {
 	type VoiceSample,
 } from "./api";
 import { taskStatus } from "./cloud-task-status";
+import {
+	type EntryMode,
+	type EntrySnapshot,
+	getEntrySnapshot,
+} from "./entry-api";
 
 type Mutation = (
 	request: { type: string; [key: string]: unknown },
@@ -587,6 +593,37 @@ export function SettingsView({
 	onMutate: Mutation;
 	onMessage: (message: string) => void;
 }) {
+	const [entryMode, setEntryMode] = useState<EntryMode>("top");
+	const [switchingEntry, setSwitchingEntry] = useState(false);
+	useEffect(() => {
+		let disposed = false;
+		const subscription = listen<EntrySnapshot>(
+			"hear-entry-snapshot",
+			(event) => {
+				if (!disposed) setEntryMode(event.payload.mode);
+			},
+		);
+		void getEntrySnapshot()
+			.then((snapshot) => {
+				if (!disposed) setEntryMode(snapshot.mode);
+			})
+			.catch(() => {});
+		return () => {
+			disposed = true;
+			void subscription.then((unlisten) => unlisten());
+		};
+	}, []);
+	const changeEntryMode = async (mode: EntryMode) => {
+		setSwitchingEntry(true);
+		try {
+			await invoke("entry_mode", { mode });
+			setEntryMode(mode);
+		} catch (error) {
+			onMessage(userError(error));
+		} finally {
+			setSwitchingEntry(false);
+		}
+	};
 	const [provider, setProvider] = useState<CloudProvider>("llm");
 	const [apiKeys, setApiKeys] = useState<Record<CloudProvider, string>>({
 		llm: "",
@@ -802,6 +839,41 @@ export function SettingsView({
 		<section className="page-container settings-page">
 			<div className="page-heading">
 				<h1>设置</h1>
+			</div>
+			<h2>常驻入口</h2>
+			<div className="panel-card setting-panel">
+				<div className="setting-row">
+					<div>
+						<strong>兔子的位置</strong>
+						<p>切换入口，保留当前倾听状态</p>
+					</div>
+					<fieldset className="entry-mode-options" aria-label="常驻入口模式">
+						<button
+							type="button"
+							className={
+								entryMode === "top" ? "quiet-button active" : "quiet-button"
+							}
+							aria-pressed={entryMode === "top"}
+							disabled={switchingEntry}
+							onClick={() => void changeEntryMode("top")}
+						>
+							顶部
+						</button>
+						<button
+							type="button"
+							className={
+								entryMode === "floating"
+									? "quiet-button active"
+									: "quiet-button"
+							}
+							aria-pressed={entryMode === "floating"}
+							disabled={switchingEntry}
+							onClick={() => void changeEntryMode("floating")}
+						>
+							悬浮兔子
+						</button>
+					</fieldset>
+				</div>
 			</div>
 			<h2>记录</h2>
 			<div className="panel-card setting-panel">

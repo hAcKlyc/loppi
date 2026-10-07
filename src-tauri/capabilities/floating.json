@@ -1,10 +1,9 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "floating",
-  "description": "Resize the floating control to its visible hit area",
+  "description": "Allow the floating rabbit to be dragged",
   "windows": ["float"],
   "permissions": [
-    "core:window:allow-set-size",
-    "core:window:allow-set-position"
+    "core:window:allow-start-dragging"
   ]
 }

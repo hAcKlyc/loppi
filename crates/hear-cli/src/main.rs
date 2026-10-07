@@ -511,7 +511,10 @@ fn main() {
             anchor_ms: at_ms.unwrap_or_else(current_ms),
             text: Some(text),
         },
-        Command::Screenshot => Request::CaptureScreenshot,
+        Command::Screenshot => Request::CaptureScreenshot {
+            excluded_window_ids: vec![],
+            anchor_ms: None,
+        },
         Command::RangeDetail {
             started_ms,
             ended_ms,

@@ -31,6 +31,7 @@
 	--color-warning-strong: #775633;
 	--color-warning-soft: #f4f0e7;
 	--color-warning-surface: #fff8e9;
+	--color-warning-border: #e8ddc9;
 	--color-danger: #a85e58;
 	--color-danger-hover: #8c4843;
 	--color-danger-surface: #fff4ed;
@@ -40,6 +41,30 @@
 	--color-focus: #81aa8f;
 	--color-focus-ring: #d7eadb80;
 	--color-recording-light: #64d494;
+
+	/* Quiet entry surfaces; sprite colors belong to the approved artwork. */
+	--entry-surface: #050605;
+	--entry-menu: #14221bf2;
+	--entry-action: #1c2921;
+	--entry-action-hover: #2e4536;
+	--entry-text: #edf3ec;
+	--entry-text-secondary: #91a798;
+	--entry-accent: #b4dfb8;
+	--entry-warning: #eab677;
+	--entry-warning-ink: #543b1d;
+	--entry-control-overlay: #0b130faa;
+	--entry-control-ink: #fff7df;
+	--entry-rabbit-shadow: #0e25194d;
+	--entry-rabbit-hover-shadow: #9acfac55;
+	--entry-surface-border: #b4dfb810;
+	--entry-action-border: #b4dfb814;
+	--entry-feedback: #18261e;
+	--entry-feedback-ink: #e6efdf;
+	--entry-feedback-border: #b4dfb817;
+	--entry-menu-border: #b4dfb820;
+	--entry-menu-shadow: #0e251933;
+	--entry-comment-border: #b4dfb824;
+	--entry-comment-focus-border: #b4dfb852;
 
 	/* Typography: native macOS fonts with a compact, readable hierarchy. */
 	--font-ui:
@@ -116,6 +141,7 @@
 	--layer-image-preview: 100;
 
 	--layout-sidebar-width: 208px;
+	--layout-sidebar-compact-width: 104px;
 	--layout-content-max: 1170px;
 	--layout-drawer-width: min(80vw, 1420px);
 	--layout-modal-width: min(92vw, 505px);

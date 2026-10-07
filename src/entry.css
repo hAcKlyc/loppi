@@ -1,0 +1,320 @@
+.entry-root {
+	width: 100vw;
+	height: 100vh;
+	position: relative;
+	overflow: hidden;
+	user-select: none;
+	color: var(--entry-text);
+	font-family: var(--font-ui);
+	font-size: 13px;
+}
+.entry-root button {
+	border: 0;
+	outline-offset: -2px;
+}
+.entry-root button:focus-visible {
+	outline: 2px solid var(--entry-accent);
+}
+.entry-root button:disabled {
+	cursor: default;
+	opacity: 0.5;
+}
+.rabbit-pixels,
+.rabbit-fallback,
+.rabbit-fallback img {
+	display: block;
+	width: 100%;
+	height: 100%;
+	image-rendering: pixelated;
+	pointer-events: none;
+}
+.rabbit-fallback {
+	position: relative;
+}
+.rabbit-art {
+	display: block;
+	position: relative;
+	width: 100%;
+	height: 100%;
+	pointer-events: none;
+}
+/* The shared 96px atlas renders at 48px, keeping integer pixels at 1x/2x.
+   Keep the existing 52px interaction target around the artwork. */
+.entry-floating .rabbit-art {
+	width: 48px;
+	height: 48px;
+	margin: 2px;
+}
+.rabbit-fallback img {
+	object-fit: contain;
+}
+.rabbit-warning {
+	position: absolute;
+	right: 4%;
+	bottom: 5%;
+	background: var(--entry-warning);
+	color: var(--entry-warning-ink);
+	line-height: 1;
+	padding: 0 2px;
+}
+.entry-rabbit {
+	position: absolute;
+	padding: 0;
+	background: transparent;
+	display: block;
+	border-radius: 50%;
+	touch-action: none;
+}
+.entry-floating .entry-rabbit {
+	filter: drop-shadow(0 2px 3px var(--entry-rabbit-shadow));
+}
+.entry-rabbit:hover {
+	filter: drop-shadow(0 2px 4px var(--entry-rabbit-hover-shadow));
+}
+.notch-surface {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background: var(--entry-surface);
+	border-radius: 0 0 26px 26px;
+	box-shadow: inset 0 0 0 1px var(--entry-surface-border);
+	display: flex;
+	align-items: flex-start;
+	padding: calc(var(--entry-band) + 24px) 18px 26px 20px;
+	gap: 22px;
+}
+.notch-rabbit-control {
+	flex: 0 0 72px;
+	width: 72px;
+	height: 72px;
+	padding: 0;
+	position: relative;
+	background: transparent;
+	border-radius: 20px;
+}
+.rabbit-control-overlay {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 18px;
+	background: var(--entry-control-overlay);
+	color: var(--entry-control-ink);
+	opacity: 0;
+	transition: opacity 120ms;
+}
+.notch-rabbit-control:hover .rabbit-control-overlay,
+.notch-rabbit-control:focus-visible .rabbit-control-overlay {
+	opacity: 1;
+}
+.notch-actions {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	margin-top: 0;
+	flex: 0 0 280px;
+}
+.notch-surface:not(.comment-surface) > .notch-rabbit-control,
+.notch-surface:not(.comment-surface) > .notch-actions {
+	animation: notch-content-in 220ms ease-out both;
+}
+@keyframes notch-content-in {
+	0%,
+	20% {
+		opacity: 0;
+	}
+	100% {
+		opacity: 1;
+	}
+}
+.notch-actions button {
+	display: flex;
+	flex: 1;
+	min-width: 0;
+	height: 76px;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 9px;
+	border-radius: 18px;
+	color: var(--entry-text);
+	background: var(--entry-action);
+	box-shadow: inset 0 0 0 1px var(--entry-action-border);
+	transition: background 120ms;
+}
+.notch-actions button:hover,
+.rabbit-menu button:hover {
+	background: var(--entry-action-hover);
+	color: var(--entry-control-ink);
+}
+.notch-actions button:nth-child(2) {
+	color: var(--entry-accent);
+}
+.entry-detail {
+	position: absolute;
+	left: 20px;
+	right: 20px;
+	bottom: 18px;
+	display: flex;
+	justify-content: space-between;
+	text-align: left;
+	background: transparent;
+	color: var(--entry-warning);
+	font-size: 12px;
+	line-height: 18px;
+	padding: 0;
+}
+.comment-surface {
+	padding: calc(var(--entry-band) + 18px) 20px 16px;
+}
+.notch-composer {
+	width: 100%;
+}
+.entry-root .notch-composer textarea {
+	display: block;
+	resize: none;
+	width: 100%;
+	height: 86px;
+	min-height: 86px;
+	max-height: 86px;
+	overflow-y: auto;
+	border: 1px solid var(--entry-comment-border);
+	border-radius: 14px;
+	padding: 10px 12px;
+	background: var(--entry-action);
+	color: var(--entry-text);
+	outline: none;
+	box-shadow: none;
+	line-height: 21px;
+	font-size: 14px;
+	user-select: text;
+}
+.entry-root .notch-composer textarea:focus {
+	border-color: var(--entry-comment-focus-border);
+	box-shadow: none;
+}
+.notch-composer textarea::placeholder {
+	color: var(--entry-text-secondary);
+}
+.comment-footer {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-top: 7px;
+	color: var(--entry-text-secondary);
+	font-size: 11px;
+	min-height: 24px;
+}
+.comment-footer button {
+	background: var(--entry-action);
+	color: var(--entry-accent);
+	border-radius: 8px;
+	height: 24px;
+	padding: 0 12px;
+	font-size: 12px;
+}
+.comment-footer button:hover:not(:disabled) {
+	background: var(--entry-action-hover);
+}
+.comment-footer-actions {
+	display: flex;
+	align-items: center;
+	gap: var(--space-4);
+}
+.comment-footer .comment-cancel {
+	background: transparent;
+	color: var(--entry-text-secondary);
+}
+.entry-feedback {
+	position: absolute;
+	top: calc(var(--entry-band) + 4px);
+	left: 8px;
+	right: 8px;
+	background: var(--entry-feedback);
+	color: var(--entry-feedback-ink);
+	border: 1px solid var(--entry-feedback-border);
+	border-radius: 12px;
+	padding: 8px 10px;
+	text-align: center;
+	font-size: 12px;
+	line-height: 17px;
+	pointer-events: none;
+}
+.entry-floating .entry-feedback {
+	top: auto;
+	bottom: 76px;
+	left: 5px;
+	right: 5px;
+}
+.entry-top:has(.notch-surface) .entry-feedback {
+	top: auto;
+	bottom: 6px;
+	left: 110px;
+	right: 18px;
+	padding: 4px 8px;
+	font-size: 11px;
+}
+.entry-floating .menu-feedback {
+	bottom: 68px;
+	z-index: 2;
+}
+.rabbit-menu {
+	position: absolute;
+	top: 8px;
+	left: 8px;
+	right: 8px;
+	height: 167px;
+	padding: 5px;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	background: var(--entry-menu);
+	border: 1px solid var(--entry-menu-border);
+	border-radius: 20px;
+	box-shadow: 0 4px 12px var(--entry-menu-shadow);
+}
+.rabbit-menu button {
+	display: flex;
+	align-items: center;
+	gap: 13px;
+	height: 49px;
+	padding: 0 13px;
+	background: transparent;
+	border-radius: 13px;
+	color: var(--entry-text);
+	font-size: 15px;
+}
+.rabbit-menu svg {
+	width: 20px;
+	height: 20px;
+}
+.floating-detail {
+	position: absolute;
+	left: 8px;
+	bottom: 18px;
+	width: 23px;
+	height: 23px;
+	border-radius: 8px;
+	background: var(--entry-warning-ink);
+	color: var(--entry-warning);
+}
+@media (prefers-reduced-motion: reduce) {
+	.entry-root.entry-root * {
+		transition: none;
+	}
+	.entry-root .notch-surface > .notch-rabbit-control,
+	.entry-root .notch-surface > .notch-actions {
+		animation: none;
+	}
+}
+.entry-top .entry-rabbit {
+	left: calc(50% - 14px);
+	top: calc((var(--entry-band) - 28px) / 2);
+}
+.entry-floating .entry-rabbit {
+	right: 8px;
+	bottom: 8px;
+}

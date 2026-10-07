@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><title>hear · 三处共用动画实测</title>
+<style>
+body{margin:0;padding:32px;background:#fbfcfa;color:#25352e;font:14px -apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif}h1{font-size:24px}p{color:#64786a;line-height:1.8}.surfaces{display:flex;gap:24px;flex-wrap:wrap;margin:30px 0}.surface{min-width:180px;padding:24px;border:1px solid #d6e4d8;border-radius:16px;background:white}.stage{width:96px;height:96px;position:relative}.stage.notch{width:72px;height:72px;background:#050605}.stage.floating{width:48px;height:48px;background:#14221b}button{margin:4px;padding:8px 14px;border:1px solid #d6e4d8;border-radius:8px;background:white;color:#215d50;cursor:pointer}button[aria-pressed=true]{background:#dbefe3}nav{margin:20px 0}.rabbit-art,.rabbit-pixels,.rabbit-fallback,.rabbit-fallback img{width:100%;height:100%;display:block;image-rendering:pixelated}.rabbit-art{position:relative}.rabbit-warning{position:absolute;right:0;top:0;background:#f4f0e7;color:#775633}
+</style></head><body><div id="root"></div><script type="module">
+import React, {useState} from 'react';
+import {createRoot} from 'react-dom/client';
+import {Rabbit} from '../src/Rabbit.tsx';
+const h=React.createElement;
+// Test harness only: model a system reduced-motion preference before mounting
+// the unmodified production Rabbit. No desktop preference is changed.
+if(new URLSearchParams(location.search).has('reduced')) {
+  const original=window.matchMedia.bind(window);
+  window.matchMedia=query=>query==='(prefers-reduced-motion: reduce)'
+    ? {matches:true,media:query,addEventListener(){},removeEventListener(){}}
+    : original(query);
+}
+const labels={listening:'正在记录',sleeping:'已暂停',waiting:'等待',partial:'部分记录',interrupted:'记录中断'};
+function Preview(){
+  const [state,setState]=useState('listening'),[visible,setVisible]=useState(true);
+  return h('main',null,
+    h('h1',null,'三处共用一份真实动画'),
+    h('p',null,'正常态逐帧呼吸、偶尔眨眼；暂停后趴睡。这里直接使用应用里的Rabbit、动画清单和素材。'),
+    h('nav',null,Object.entries(labels).map(([key,label])=>h('button',{key,onClick:()=>setState(key),'aria-pressed':key===state},label)),
+      h('button',{onClick:()=>setVisible(!visible)},visible?'暂停播放':'继续播放')),
+    h('div',{className:'surfaces'},[['首页','main'],['Notch','notch'],['悬浮球','floating']].map(([name,kind])=>h('section',{className:'surface',key:kind,'data-state':state},
+      h('h2',null,name),h('div',{className:'stage '+kind},h(Rabbit,{state,action:null,visible})),h('p',null,labels[state])))),
+    h('p',null,new URLSearchParams(location.search).has('reduced')?'减少动态效果测试：三处只显示状态姿态。':'像素帧直接切换，正常每约3秒呼吸，睡觉每4.8秒呼吸。'));
+}
+createRoot(document.getElementById('root')).render(h(Preview));
+</script></body></html>

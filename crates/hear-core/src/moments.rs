@@ -7,12 +7,16 @@ use std::io::Read;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+
 use uuid::Uuid;
 
 unsafe extern "C" {
-    fn hear_active_display_rect(x: *mut i32, y: *mut i32, width: *mut i32, height: *mut i32)
-    -> i32;
+    fn hear_capture_png(
+        path: *const libc::c_char,
+        ids: *const u32,
+        count: usize,
+        peer_pid: i32,
+    ) -> i32;
     fn hear_ocr_png(path: *const libc::c_char, output: *mut *mut libc::c_char) -> i32;
 }
 
@@ -169,7 +173,16 @@ pub struct CaptureResult {
     pub ocr_state: &'static str,
 }
 
-pub fn capture(directory: &Path, now: i64) -> Result<CaptureResult, String> {
+pub fn capture(
+    directory: &Path,
+    now: i64,
+    received_ms: i64,
+    excluded: &[u32],
+    peer_pid: i32,
+) -> Result<CaptureResult, String> {
+    if now <= 0 || now > received_ms + 5_000 || excluded.len() > 8 || excluded.contains(&0) {
+        return Err("invalid screenshot anchor or window exclusions".into());
+    }
     const DISK_RESERVE: u64 = 1_073_741_824;
     const MAX_SCREENSHOT: u64 = 32_000_000;
     if fs2::available_space(directory).map_err(|error| error.to_string())?
@@ -185,22 +198,23 @@ pub fn capture(directory: &Path, now: i64) -> Result<CaptureResult, String> {
     let pending = target_dir.join(format!("{id}.pending"));
     let relative = PathBuf::from("screenshots").join(format!("{id}.png"));
     let final_path = directory.join(&relative);
-    let mut x = 0;
-    let mut y = 0;
-    let mut width = 0;
-    let mut height = 0;
-    if unsafe { hear_active_display_rect(&mut x, &mut y, &mut width, &mut height) } == 0 {
-        return Err("cannot find the active display".into());
-    }
-    let region = format!("-R{x},{y},{width},{height}");
-    let status = Command::new("/usr/sbin/screencapture")
-        .args(["-x", "-t", "png", &region])
-        .arg(&pending)
-        .status()
-        .map_err(|error| error.to_string())?;
-    if !status.success() {
+    let c_pending = CString::new(pending.as_os_str().as_bytes()).map_err(|e| e.to_string())?;
+    let status = unsafe {
+        hear_capture_png(
+            c_pending.as_ptr(),
+            excluded.as_ptr(),
+            excluded.len(),
+            peer_pid,
+        )
+    };
+    if status != 1 {
         let _ = fs::remove_file(&pending);
-        return Err("screen capture failed or screen recording permission is missing".into());
+        return Err(match status {
+            -2 => "cannot verify excluded windows belong to caller",
+            -3 => "screen capture timed out",
+            _ => "screen capture failed or screen recording permission is missing",
+        }
+        .into());
     }
     let captured_ms = crate::now_ms()?;
     let result = (|| {

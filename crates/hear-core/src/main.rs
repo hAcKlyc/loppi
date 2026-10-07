@@ -25,6 +25,7 @@ mod archive;
 mod capture;
 mod cleanup;
 mod cloud;
+mod diagnostics;
 mod events;
 mod knowledge;
 mod media;
@@ -1302,6 +1303,16 @@ impl CoreState {
             state.capture_state = CaptureState::Stopped;
             state.reason = None;
         }
+        diagnostics::apply(
+            &mut state,
+            models_ready,
+            cloud_ready,
+            self.allow_capture.load(Ordering::Acquire),
+            self.launch_mode == LaunchMode::Login,
+            self.maintenance_pause.load(Ordering::Acquire),
+            self.microphone_busy.load(Ordering::Acquire),
+            self.system_busy.load(Ordering::Acquire),
+        );
         Ok(state)
     }
 }
@@ -1483,6 +1494,25 @@ fn verify_peer(stream: &UnixStream) -> Result<(), String> {
         return Err("client user differs from hear-core user".to_owned());
     }
     Ok(())
+}
+
+fn peer_pid(stream: &UnixStream) -> Result<i32, String> {
+    use std::os::fd::AsRawFd;
+    let mut pid: libc::pid_t = 0;
+    let mut length = std::mem::size_of_val(&pid) as libc::socklen_t;
+    let result = unsafe {
+        libc::getsockopt(
+            stream.as_raw_fd(),
+            libc::SOL_LOCAL,
+            libc::LOCAL_PEERPID,
+            (&mut pid as *mut libc::pid_t).cast(),
+            &mut length,
+        )
+    };
+    if result != 0 || pid <= 0 {
+        return Err("cannot verify screenshot caller".into());
+    }
+    Ok(pid)
 }
 
 #[repr(C)]
@@ -2154,8 +2184,12 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                     },
                 }
             }
-            Request::CaptureScreenshot => {
-                let trigger_ms = now_ms()?;
+            Request::CaptureScreenshot {
+                excluded_window_ids,
+                anchor_ms,
+            } => {
+                let received_ms = now_ms()?;
+                let trigger_ms = anchor_ms.unwrap_or(received_ms);
                 let _gate = shared.cleanup_gate.lock().map_err(|e| e.to_string())?;
                 let prior = {
                     let store = shared.store.lock().map_err(|e| e.to_string())?;
@@ -2164,7 +2198,13 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                 if let Some(prior) = prior {
                     prior
                 } else {
-                    match moments::capture(&shared.directory, trigger_ms) {
+                    match moments::capture(
+                        &shared.directory,
+                        trigger_ms,
+                        received_ms,
+                        &excluded_window_ids,
+                        peer_pid(stream)?,
+                    ) {
                         Ok(captured) => {
                             let mut store = shared.store.lock().map_err(|e| e.to_string())?;
                             let saved =
@@ -3833,7 +3873,7 @@ impl Store {
             | Request::Search { .. }
             | Request::Moments { .. }
             | Request::AddMoment { .. }
-            | Request::CaptureScreenshot
+            | Request::CaptureScreenshot { .. }
             | Request::ScreenshotData { .. }
             | Request::PlaybackChunk { .. }
             | Request::PreviewCleanup { .. }
@@ -3979,6 +4019,9 @@ fn read_state(db: &Connection) -> Result<ServiceState, String> {
                 reason: Some("local speech models and both cloud providers must be configured before recording".to_owned()),
                 microphone_recording: false,
                 system_recording: false,
+                microphone_phase: hear_protocol::SourcePhase::Idle,
+                system_phase: hear_protocol::SourcePhase::Idle,
+                capture_blocker: hear_protocol::CaptureBlocker::None,
                 microphone_reason: None,
                 system_reason: None,
             })

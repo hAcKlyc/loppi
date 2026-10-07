@@ -32,6 +32,9 @@ def main() -> None:
             initial = json.loads(command("status"))["state"]
             assert initial["enabled_intent"] is False
             assert initial["capture_state"] == "not_ready"
+            assert initial["capture_blocker"] == "model_not_ready"
+            assert initial["microphone_phase"] == "idle"
+            assert initial["system_phase"] == "idle"
             source_id = str(uuid.uuid4())
             command("source", "microphone", "off", "--request-id", source_id, "--if-revision", "0")
             paused = json.loads(command("pause"))["state"]
@@ -56,7 +59,9 @@ def main() -> None:
             finally:
                 archive_fifo.unlink()
             replay = json.loads(command("source", "microphone", "off", "--request-id", source_id, "--if-revision", "0"))["state"]
-            assert replay["revision"] == 1
+            # Status replies project current runtime; replay must not apply a second mutation.
+            assert replay["revision"] == paused["revision"]
+            assert replay["microphone_enabled"] is False
             assert json.loads(command("status"))["state"]["revision"] == 2
             resumed = json.loads(command("resume"))["state"]
             assert resumed["revision"] == 3 and resumed["paused_intent"] is False
