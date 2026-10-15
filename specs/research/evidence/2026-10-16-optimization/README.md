@@ -21,3 +21,12 @@ Batch C：`batch-c-review.md` 记录修复与最终三视角门禁；`batch-c-qu
 - `batch-d-gui.json`: real signed WKWebView with public 20-second audio: continuation, seek, pause/resume, source switch, close; repaired prefetch error waits for current valid chunk boundary.
 - `batch-d-fixture-coverage.json`: explicit 20-second fixture manifest, retained media, per-file decode frame integrity. Empty system source is intentional; no speech-recall claim.
 - 191 workspace Rust tests (178 core + 9 desktop + 4 protocol); four isolated CLI smoke groups, 21 frontend tests, 3 sampler/coverage tests; Rust/TS/lint, signed release and deep/strict signature checks passed. Global long-run/minimum-system/low-memory/real holdout release gates remain separate and unresolved.
+
+## Final integration
+
+- `final-review.md`: complete baseline-to-candidate contract and adjudicated cross-batch fixes; review status is recorded separately from release acceptance.
+- `final-integration.json`: 199 Rust /24 frontend /4 native-resource-and-sampler /4 CLI groups; public eight-case exact comparison, dual-source restart and delayed-import onset regression, final signed SCK/Tap short capture and writer-lock/core-crash recovery. Contains source/binary hashes, build limits, and unresolved mandatory gates.
+- `final-history-1m.txt`: repaired candidate production claim path on bundled SQLite; actual empty/tail claims 0.105/0.187ms (single observations), capacity query median0.00125ms vs legacy full scan31.884ms (21 warm repeats). Larger unchanged read paths retain Batch D 30/90/365-day evidence.
+- `scripts/verify_ingestion_quality.py` can repeat the actual-model onset case with explicit `--core --cli --models --wav --output`; it writes only isolated temporary data and does not start capture or cloud work. The public zh fixture has voiced material at1.0–1.5s; arbitrary silent WAVs are not equivalent fixtures.
+
+- `preliminary-ambient.json`: superseded candidate ambient observation requested2h, explicitly stopped at~3614s after F06 native child-footprint undercount was found. Not a passed2h run; neither budget nor quality/final-candidate evidence. Independent sampled resource peak, sample continuity and retained-file decode counts preserved without audio/transcript content.

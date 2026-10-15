@@ -100,6 +100,12 @@ pub enum Request {
         to_ms: i64,
         sources: EventSources,
     },
+    PlaybackValid {
+        from_ms: i64,
+        to_ms: i64,
+        sources: EventSources,
+        generation: i64,
+    },
     CreateEvent {
         started_ms: i64,
         ended_ms: i64,
@@ -280,6 +286,7 @@ impl Request {
             Self::EventDetail { .. } => "event_detail",
             Self::RangeDetail { .. } => "range_detail",
             Self::PlaybackChunk { .. } => "playback_chunk",
+            Self::PlaybackValid { .. } => "playback_valid",
             Self::CreateEvent { .. } => "create_event",
             Self::EditEvent { .. } => "edit_event",
             Self::RetranscribeEvent { .. } => "retranscribe_event",
@@ -690,6 +697,12 @@ pub enum Response {
         wav_base64: String,
         has_audio: bool,
         next_audio_ms: Option<i64>,
+        #[serde(default)]
+        generation: Option<i64>,
+    },
+    PlaybackValid {
+        id: Uuid,
+        valid: bool,
     },
     CleanupPreview {
         id: Uuid,
@@ -921,6 +934,7 @@ fn send_with_policy(
         | Response::MomentSaved { id, .. }
         | Response::ScreenshotData { id, .. }
         | Response::PlaybackChunk { id, .. }
+        | Response::PlaybackValid { id, .. }
         | Response::CleanupPreview { id, .. }
         | Response::CleanupComplete { id, .. }
         | Response::ExportComplete { id, .. }
@@ -985,6 +999,39 @@ fn core_binary_path() -> Result<PathBuf, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn playback_generation_is_additive_to_the_existing_chunk_response() {
+        let id = Uuid::new_v4();
+        let old = serde_json::json!({"type":"playback_chunk","id":id,"from_ms":0,"to_ms":5000,"wav_base64":"","has_audio":false,"next_audio_ms":null});
+        assert!(matches!(
+            serde_json::from_value::<Response>(old.clone()).unwrap(),
+            Response::PlaybackChunk {
+                generation: None,
+                ..
+            }
+        ));
+        let mut current = old;
+        current["generation"] = serde_json::json!(7);
+        assert!(matches!(
+            serde_json::from_value::<Response>(current).unwrap(),
+            Response::PlaybackChunk {
+                generation: Some(7),
+                ..
+            }
+        ));
+        let request = Request::PlaybackValid {
+            from_ms: 0,
+            to_ms: 10000,
+            sources: EventSources::Both,
+            generation: 7,
+        };
+        assert_eq!(request.name(), "playback_valid");
+        assert!(matches!(
+            serde_json::from_value::<Request>(serde_json::to_value(request).unwrap()).unwrap(),
+            Request::PlaybackValid { generation: 7, .. }
+        ));
+    }
 
     #[test]
     fn screenshot_gui_roundtrip_and_cli_defaults_preserve_shape() {

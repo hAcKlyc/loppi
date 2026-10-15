@@ -17,7 +17,12 @@ pub struct SpeechRegion {
 pub struct VadResult {
     pub segments: Vec<SpeechRegion>,
     pub speech_active: bool,
+    #[serde(default = "unknown_speech_pending")]
+    pub speech_pending: bool,
     pub error: Option<String>,
+}
+fn unknown_speech_pending() -> bool {
+    true
 }
 
 struct OwnedChild(Child);

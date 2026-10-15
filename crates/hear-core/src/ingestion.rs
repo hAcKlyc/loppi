@@ -8,6 +8,7 @@ use sha2::{Digest, Sha256};
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 const MAX_ENTRY_BYTES: u64 = 16_384;
@@ -66,7 +67,17 @@ pub fn init(db: &Connection) -> Result<(), String> {
       ALTER TABLE media_gaps ADD COLUMN tail_session_id TEXT;
       CREATE INDEX media_gaps_tail_session ON media_gaps(tail_session_id) WHERE tail_session_id IS NOT NULL;
       UPDATE media_gaps SET tail_session_id=id WHERE reason IN ('source_failure','interrupted_tail')
-        AND EXISTS(SELECT 1 FROM recording_sessions WHERE id=media_gaps.id);")
+        AND EXISTS(SELECT 1 FROM recording_sessions WHERE id=media_gaps.id);")?;
+    crate::storage::migrate(
+        db,
+        "ingested_gap_owner_v1",
+        "
+      ALTER TABLE media_gaps ADD COLUMN source_session_id TEXT;
+      CREATE INDEX media_gaps_source_session ON media_gaps(source_session_id,started_ms)
+        WHERE source_session_id IS NOT NULL;
+      CREATE INDEX audio_blocks_session_pending ON audio_blocks(session_id,sample_start)
+        WHERE analysis_state='pending' AND analysis_attempts<3 AND media_path IS NOT NULL;",
+    )
 }
 
 /// Lifecycle gaps belong to the session, including after cleanup splits them.
@@ -235,6 +246,24 @@ impl Journal {
             }
         };
         entry.validate()?;
+        // The core's directory snapshot must be a publication prefix, not a
+        // live read_dir view that can omit A while seeing later B/C. This lock
+        // covers only the bounded journal namespace, never DB/model work. It
+        // is on the directory inode (no extra journal file) and dies with its
+        // owning descriptor/process. Capture callbacks never acquire it.
+        let publication = File::open(&self.root).map_err(|e| e.to_string())?;
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            match fs2::FileExt::try_lock_exclusive(&publication) {
+                Ok(()) => break,
+                Err(e)
+                    if e.kind() == std::io::ErrorKind::WouldBlock && Instant::now() < deadline =>
+                {
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+                Err(e) => return Err(format!("journal publication lock: {e}")),
+            }
+        }
         let name = entry.id.to_string();
         // Count logical entries, not publication files. Finishing a prepared
         // block must remain possible at capacity; otherwise the last admitted
@@ -390,6 +419,15 @@ pub fn pending(
     include_prepared: bool,
 ) -> Result<Vec<PathBuf>, String> {
     let root = directory.join("ingestion").join(session_id.to_string());
+    let snapshot = match File::open(&root) {
+        Ok(file) => file,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
+        Err(e) => return Err(e.to_string()),
+    };
+    // Yield if a source is publishing; do not wait on its filesystem sync.
+    // Only enumerate names under this guard, then release before file reads,
+    // decoding, commits and acknowledgement. Each session has one publisher.
+    fs2::FileExt::try_lock_shared(&snapshot).map_err(|e| e.to_string())?;
     let entries = match fs::read_dir(&root) {
         Ok(entries) => entries,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
@@ -514,13 +552,14 @@ fn insert_gap(db: &Connection, entry: &Entry, reason: &str) -> Result<(), String
     }
     for (i, (from, to)) in ranges.into_iter().enumerate() {
         db.execute(
-            "INSERT INTO media_gaps(id,source,started_ms,ended_ms,reason) VALUES(?1,?2,?3,?4,?5)",
+            "INSERT INTO media_gaps(id,source,started_ms,ended_ms,reason,source_session_id) VALUES(?1,?2,?3,?4,?5,?6)",
             params![
                 format!("{}:{i}", entry.id),
                 source_name(entry.session.source),
                 from,
                 to,
-                reason
+                reason,
+                entry.session.id.to_string()
             ],
         )
         .map_err(|e| e.to_string())?;
@@ -920,6 +959,248 @@ mod tests {
             .db
             .query_row("SELECT count(*) FROM audio_blocks", [], |r| r.get(0))
             .unwrap()
+    }
+
+    fn import_one(dir: &Path, store: &Mutex<Store>, session: &Session, id: Uuid) {
+        let entry = load(&dir.join(format!("ingestion/{}/{id}.ready", session.id))).unwrap();
+        let ranges = surviving_samples(&store.lock().unwrap().db, &entry).unwrap();
+        let prepared = prepare(dir, &entry, &ranges).unwrap();
+        commit(&mut store.lock().unwrap().db, &entry, &prepared).unwrap();
+    }
+
+    #[test]
+    fn delayed_journal_tail_is_not_vad_eof_after_close_or_crash() {
+        for crashed in [false, true] {
+            let (dir, store, session) = setup();
+            let a = publish(dir.path(), &session, 0, true);
+            let b = publish(dir.path(), &session, 1000, true);
+            if crashed {
+                store.lock().unwrap().recover(dir.path()).unwrap();
+            } else {
+                store
+                    .lock()
+                    .unwrap()
+                    .end_recording_session(session.id, true)
+                    .unwrap();
+            }
+            import_one(dir.path(), &store, &session, a);
+            assert!(
+                store
+                    .lock()
+                    .unwrap()
+                    .take_pending_block()
+                    .unwrap()
+                    .is_none()
+            );
+            import_one(dir.path(), &store, &session, b);
+            let mut s = store.lock().unwrap();
+            let first = s.take_pending_block().unwrap().unwrap();
+            assert_eq!(first.id, a.to_string());
+            assert!(!first.flush);
+            s.publish_analysis(
+                &first,
+                crate::analysis::VadResult {
+                    segments: vec![],
+                    speech_active: false,
+                    speech_pending: false,
+                    error: None,
+                },
+            )
+            .unwrap();
+            let retained:bool=s.db.query_row("SELECT media_path IS NOT NULL AND retention_decision='pending_vad_v2' FROM audio_blocks WHERE id=?1",[a.to_string()],|r|r.get(0)).unwrap();
+            assert!(retained); // Unconfirmed onset still has its original audio.
+            let next = crate::PendingBlock {
+                id: b.to_string(),
+                session_id: session.id.to_string(),
+                source: "microphone".into(),
+                sample_start: 48_000,
+                frames: 48_000,
+                media_path: format!("media/microphone/{b}.opus"),
+                flush: true,
+            };
+            assert_eq!(s.replay_context(&next).unwrap()[0].id, a.to_string());
+            assert!(s.take_pending_block().unwrap().is_none());
+            drop(s);
+            crate::ingest_session_locked(&store, dir.path(), session.id, true).unwrap();
+            let mut s = store.lock().unwrap();
+            let last = s.take_pending_block().unwrap().unwrap();
+            assert_eq!(last.id, b.to_string());
+            assert!(last.flush);
+            s.publish_analysis(
+                &last,
+                crate::analysis::VadResult {
+                    segments: vec![crate::analysis::SpeechRegion {
+                        start_sample: 15_900,
+                        end_sample: 24_000,
+                    }],
+                    speech_active: true,
+                    speech_pending: false,
+                    error: None,
+                },
+            )
+            .unwrap();
+            let retained:bool=s.db.query_row("SELECT media_path IS NOT NULL AND retention_decision='retain_speech_v2' FROM audio_blocks WHERE id=?1",[a.to_string()],|r|r.get(0)).unwrap();
+            assert!(retained);
+        }
+    }
+
+    #[test]
+    fn active_journal_waits_for_boundary_proof_and_preserves_pending_order() {
+        let (dir, store, mut session) = setup();
+        session.wall_anchor_ms -= 60_000;
+        store
+            .lock()
+            .unwrap()
+            .db
+            .execute(
+                "UPDATE session_clock SET wall_anchor_ms=?2 WHERE session_id=?1",
+                params![session.id.to_string(), session.wall_anchor_ms],
+            )
+            .unwrap();
+        let a = publish(dir.path(), &session, 0, true);
+        let b = publish(dir.path(), &session, 1000, true);
+        let c = publish(dir.path(), &session, 2000, true);
+        import_one(dir.path(), &store, &session, a);
+        assert!(
+            store
+                .lock()
+                .unwrap()
+                .take_pending_block()
+                .unwrap()
+                .is_none()
+        ); // >8s is not EOF.
+        // Even a later eligible row cannot jump over an unresolved prefix.
+        import_one(dir.path(), &store, &session, c);
+        store.lock().unwrap().db.execute("INSERT INTO media_gaps(id,source,started_ms,ended_ms,reason,source_session_id) VALUES('known','microphone',?1,?2,'callback_gap',?3)",params![session.wall_anchor_ms+3000,session.wall_anchor_ms+4000,session.id.to_string()]).unwrap();
+        assert!(
+            store
+                .lock()
+                .unwrap()
+                .take_pending_block()
+                .unwrap()
+                .is_none()
+        );
+        import_one(dir.path(), &store, &session, b);
+        let first = store.lock().unwrap().take_pending_block().unwrap().unwrap();
+        assert_eq!(first.id, a.to_string());
+        assert!(!first.flush);
+        store
+            .lock()
+            .unwrap()
+            .db
+            .execute(
+                "UPDATE audio_blocks SET analysis_state='complete' WHERE id IN (?1,?2)",
+                params![a.to_string(), b.to_string()],
+            )
+            .unwrap();
+        let last = store.lock().unwrap().take_pending_block().unwrap().unwrap();
+        assert_eq!(last.id, c.to_string());
+        assert!(last.flush); // Same-session real gap proves end.
+    }
+
+    #[test]
+    fn journal_snapshot_yields_to_publisher_without_holding_store_or_waiting() {
+        let (dir, _store, session) = setup();
+        let id = publish(dir.path(), &session, 0, true);
+        let guard = File::open(dir.path().join(format!("ingestion/{}", session.id))).unwrap();
+        fs2::FileExt::lock_exclusive(&guard).unwrap();
+        let started = Instant::now();
+        assert!(pending(dir.path(), session.id, false).is_err());
+        assert!(started.elapsed() < Duration::from_secs(1));
+        drop(guard);
+        assert_eq!(
+            pending(dir.path(), session.id, false).unwrap(),
+            vec![
+                dir.path()
+                    .join(format!("ingestion/{}/{id}.ready", session.id))
+            ]
+        );
+    }
+
+    #[test]
+    fn journal_tail_uses_digital_silence_and_selected_cleanup_as_boundaries() {
+        for boundary in ["digital", "cleanup", "other_source", "future_clear"] {
+            let (dir, store, mut session) = setup();
+            session.wall_anchor_ms -= 60_000;
+            store
+                .lock()
+                .unwrap()
+                .db
+                .execute(
+                    "UPDATE session_clock SET wall_anchor_ms=?2 WHERE session_id=?1",
+                    params![session.id.to_string(), session.wall_anchor_ms],
+                )
+                .unwrap();
+            let a = publish(dir.path(), &session, 0, true);
+            import_one(dir.path(), &store, &session, a);
+            if boundary == "digital" {
+                let mut b = block(&session, Uuid::new_v4(), 1000, false, None);
+                b.decision = "discard_digital_silence_v1";
+                Journal::new(dir.path(), session.clone())
+                    .unwrap()
+                    .persist(RecordEvent::Block(b))
+                    .unwrap();
+                crate::ingest_session_locked(&store, dir.path(), session.id, false).unwrap();
+            } else if boundary == "future_clear" {
+                store
+                    .lock()
+                    .unwrap()
+                    .db
+                    .execute(
+                        "INSERT INTO clear_ranges VALUES('future',?1,?2,1,'raw_audio',?1)",
+                        params![session.wall_anchor_ms, session.wall_anchor_ms + 2000],
+                    )
+                    .unwrap();
+            } else {
+                clear(
+                    &store,
+                    &session,
+                    1000,
+                    2000,
+                    if boundary == "cleanup" { 1 } else { 2 },
+                    "raw_audio",
+                );
+            }
+            let claimed = store.lock().unwrap().take_pending_block().unwrap();
+            if matches!(boundary, "digital" | "cleanup") {
+                assert!(claimed.unwrap().flush);
+            } else {
+                assert!(claimed.is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn publication_cannot_change_a_live_journal_snapshot() {
+        let (dir, _store, session) = setup();
+        let a = publish(dir.path(), &session, 0, true);
+        let snapshot = File::open(dir.path().join(format!("ingestion/{}", session.id))).unwrap();
+        fs2::FileExt::lock_shared(&snapshot).unwrap();
+        let directory = dir.path().to_owned();
+        let source = session.clone();
+        let (done, completion) = std::sync::mpsc::channel();
+        let writer = std::thread::spawn(move || {
+            let b = publish(&directory, &source, 1000, true);
+            done.send(b).unwrap();
+        });
+        assert!(completion.recv_timeout(Duration::from_millis(30)).is_err());
+        assert_eq!(
+            pending(dir.path(), session.id, false).unwrap(),
+            vec![
+                dir.path()
+                    .join(format!("ingestion/{}/{a}.ready", session.id))
+            ]
+        );
+        drop(snapshot);
+        let b = completion.recv_timeout(Duration::from_secs(2)).unwrap();
+        writer.join().unwrap();
+        let paths = pending(dir.path(), session.id, false).unwrap();
+        assert_eq!(paths.len(), 2);
+        assert!(
+            paths
+                .iter()
+                .any(|p| p.file_stem().unwrap() == b.to_string().as_str())
+        );
     }
 
     #[test]

@@ -323,6 +323,17 @@ export function DetailDrawer({
 			setPlayhead,
 			() => setPlaying(false),
 			(cause) => messageRef.current(userError(cause)),
+			undefined,
+			async (from, to, source, generation) => {
+				const response = await core<CoreResponse & { valid: boolean }>({
+					type: "playback_valid",
+					from_ms: from,
+					to_ms: to,
+					sources: source as Sources,
+					generation,
+				});
+				return response.valid;
+			},
 		);
 		player.current = playback;
 		return () => {

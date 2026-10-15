@@ -2700,16 +2700,39 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
             } => {
                 let _gate = shared.cleanup_gate.lock().map_err(|e| e.to_string())?;
                 let result = shared.readers.snapshot().and_then(|db| {
-                    playback::chunk(&db, &shared.directory, from_ms, to_ms, sources)
+                    let chunk = playback::chunk(&db, &shared.directory, from_ms, to_ms, sources)?;
+                    Ok((chunk, playback::generation(&db)?))
                 });
                 match result {
-                    Ok((wav_base64, has_audio, next_audio_ms)) => Response::PlaybackChunk {
+                    Ok(((wav_base64, has_audio, next_audio_ms), generation)) => {
+                        Response::PlaybackChunk {
+                            id: envelope.id,
+                            from_ms,
+                            to_ms,
+                            wav_base64,
+                            has_audio,
+                            next_audio_ms,
+                            generation: Some(generation),
+                        }
+                    }
+                    Err(message) => Response::Error {
                         id: envelope.id,
-                        from_ms,
-                        to_ms,
-                        wav_base64,
-                        has_audio,
-                        next_audio_ms,
+                        code: "playback_unavailable".into(),
+                        message,
+                    },
+                }
+            }
+            Request::PlaybackValid {
+                from_ms,
+                to_ms,
+                sources,
+                generation,
+            } => {
+                let reader = shared.readers.snapshot()?;
+                match playback::valid(&reader, from_ms, to_ms, sources, generation) {
+                    Ok(valid) => Response::PlaybackValid {
+                        id: envelope.id,
+                        valid,
                     },
                     Err(message) => Response::Error {
                         id: envelope.id,
@@ -3387,7 +3410,7 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
         },
         response => response,
     };
-    if !matches!(request_name, "status" | "logs" | "log") {
+    if !matches!(request_name, "status" | "logs" | "log" | "playback_valid") {
         let mut received = LogEvent::simple("ipc", LogLevel::Info, "request_received");
         received.correlation_id = Some(envelope.id);
         shared.logs.emit(envelope.client, envelope.id, received);
@@ -3927,12 +3950,17 @@ impl Store {
     }
 
     fn take_pending_block(&mut self) -> Result<Option<PendingBlock>, String> {
+        // A closed session or old wall time is not end-of-stream while the
+        // durable journal is still importing. Require an adjacent manifest or
+        // a committed discontinuity; the final tail waits for journal drain.
+        // Do not skip a waiting prefix and feed a later block from that stream.
         let idle_before_ms = now_ms()?.saturating_sub(8_000);
         let block = self
             .db
             .query_row(
                 "SELECT b.id, b.session_id, b.source, b.sample_start, b.frames, b.media_path,
-                    (s.state != 'open' OR b.ended_ms <= ?1 OR EXISTS (
+                    (EXISTS(SELECT 1 FROM ingestion_pending_sessions p WHERE p.session_id=b.session_id)
+                    OR s.state != 'open' OR b.ended_ms <= ?1 OR EXISTS (
                       SELECT 1 FROM audio_blocks later
                       WHERE later.session_id = b.session_id
                         AND later.sample_start > b.sample_start
@@ -3950,6 +3978,19 @@ impl Store {
                      SELECT 1 FROM audio_blocks later
                      WHERE later.session_id = b.session_id AND later.sample_start > b.sample_start
                    ))
+                   AND NOT EXISTS(SELECT 1 FROM audio_blocks earlier
+                     WHERE earlier.session_id=b.session_id AND earlier.sample_start<b.sample_start
+                     AND earlier.analysis_state='pending' AND earlier.analysis_attempts<3 AND earlier.media_path IS NOT NULL)
+                   AND (NOT EXISTS(SELECT 1 FROM ingestion_pending_sessions p WHERE p.session_id=b.session_id)
+                     OR EXISTS(SELECT 1 FROM audio_blocks adjacent WHERE adjacent.session_id=b.session_id
+                       AND adjacent.sample_start=b.sample_start+b.frames)
+                     OR EXISTS(SELECT 1 FROM media_gaps g WHERE g.source_session_id=b.session_id
+                       AND g.started_ms<=b.ended_ms+1 AND g.ended_ms>b.ended_ms)
+                     OR EXISTS(SELECT 1 FROM ingestion_clears g JOIN clear_ranges c ON c.id=g.clear_id
+                       JOIN session_generation sg ON sg.session_id=b.session_id
+                       WHERE g.generation>=sg.generation AND c.from_ms<=b.ended_ms
+                       AND min(c.to_ms,c.committed_ms)>b.ended_ms
+                       AND c.source_mask&(CASE b.source WHEN 'microphone' THEN 1 ELSE 2 END)!=0))
              ORDER BY b.started_ms, b.id LIMIT 1",
                 params![idle_before_ms],
                 |row| {
@@ -3983,7 +4024,7 @@ impl Store {
             .db
             .prepare(
                 "SELECT id, session_id, source, sample_start, frames, media_path,
-                    coalesce(speech_active, 0)
+                    (coalesce(speech_active, 0) OR retention_decision='pending_vad_v2')
              FROM audio_blocks
              WHERE session_id = ?1 AND sample_start < ?2
                AND analysis_state = 'complete' AND media_path IS NOT NULL
@@ -4069,6 +4110,7 @@ impl Store {
             block.sample_start,
             &block.id,
             block.flush,
+            result.speech_pending,
             now_ms()?,
         )?;
         for previous_id in retention.newly_speech {
@@ -4235,6 +4277,7 @@ impl Store {
             | Request::CaptureScreenshot { .. }
             | Request::ScreenshotData { .. }
             | Request::PlaybackChunk { .. }
+            | Request::PlaybackValid { .. }
             | Request::PreviewCleanup { .. }
             | Request::ExecuteCleanup { .. }
             | Request::ExportRange { .. } => {

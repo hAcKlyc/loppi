@@ -276,6 +276,7 @@ mod tests {
                 end_sample: 79_840,
             }],
             speech_active: false,
+            speech_pending: false,
             error: None,
         }
     }

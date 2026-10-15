@@ -5,6 +5,80 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
+pub fn generation(db: &Connection) -> Result<i64, String> {
+    db.query_row(
+        "SELECT generation FROM ingestion_state WHERE id=1",
+        [],
+        |r| r.get(0),
+    )
+    .map_err(|e| e.to_string())
+}
+
+/// Reuse the core's committed cleanup generations. No audio is decoded and no
+/// writer/cleanup lock is held; only clears since the fetched chunk matter.
+pub fn valid(
+    db: &Connection,
+    from: i64,
+    to: i64,
+    sources: EventSources,
+    generation: i64,
+) -> Result<bool, String> {
+    if from < 0 || to <= from || generation < 0 {
+        return Err("invalid playback validity range".into());
+    }
+    let mask = match sources {
+        EventSources::Microphone => 1,
+        EventSources::System => 2,
+        EventSources::Both => 3,
+    };
+    db.query_row("SELECT ?1<=(SELECT generation FROM ingestion_state WHERE id=1) AND NOT EXISTS(SELECT 1 FROM ingestion_clears g JOIN clear_ranges c ON c.id=g.clear_id
+      WHERE g.generation>=?1 AND c.source_mask&?2!=0 AND c.from_ms<?4 AND min(c.to_ms,c.committed_ms)>?3)",
+      params![generation,mask,from,to], |r| r.get(0)).map_err(|e|e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn committed_cleanup_revokes_only_matching_source_range_and_generation() {
+        let mut store = crate::Store::new(Connection::open_in_memory().unwrap()).unwrap();
+        let baseline = generation(&store.db).unwrap();
+        assert!(valid(&store.db, 0, 15_000, EventSources::Both, baseline).unwrap());
+        // Preview and rolled-back cleanup cannot invalidate a fetched buffer.
+        {
+            let tx = store.db.transaction().unwrap();
+            tx.execute(
+                "INSERT INTO clear_ranges VALUES('rolled_back',5000,10000,1,'raw_audio',20000)",
+                [],
+            )
+            .unwrap();
+        }
+        assert_eq!(generation(&store.db).unwrap(), baseline);
+        store
+            .db
+            .execute(
+                "INSERT INTO clear_ranges VALUES('committed',5000,10000,1,'raw_audio',20000)",
+                [],
+            )
+            .unwrap();
+        assert!(!valid(&store.db, 0, 15_000, EventSources::Microphone, baseline).unwrap());
+        assert!(!valid(&store.db, 0, 15_000, EventSources::Both, baseline).unwrap());
+        assert!(valid(&store.db, 0, 15_000, EventSources::System, baseline).unwrap());
+        assert!(valid(&store.db, 10_000, 15_000, EventSources::Both, baseline).unwrap());
+        assert!(
+            valid(
+                &store.db,
+                0,
+                15_000,
+                EventSources::Both,
+                generation(&store.db).unwrap()
+            )
+            .unwrap()
+        );
+        assert!(!valid(&store.db, 0, 15_000, EventSources::Both, 99).unwrap());
+    }
+}
+
 pub fn chunk(
     db: &Connection,
     directory: &Path,

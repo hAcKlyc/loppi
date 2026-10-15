@@ -787,6 +787,7 @@ fn main() {
             | Response::ReviewItems { .. }
             | Response::ReviewResolved { .. }
             | Response::ObjectRevision { .. }
+            | Response::PlaybackValid { .. }
             | Response::PersonChanged { .. }
             | Response::Search { .. }
             | Response::Moments { .. }

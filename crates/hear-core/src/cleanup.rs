@@ -722,7 +722,7 @@ pub fn apply(
         let gaps = {
             let mut statement = tx
                 .prepare(
-                    "SELECT id,source,started_ms,ended_ms,reason,tail_session_id FROM media_gaps
+                    "SELECT id,source,started_ms,ended_ms,reason,tail_session_id,source_session_id FROM media_gaps
 			 WHERE started_ms<?2 AND coalesce(ended_ms,9223372036854775807)>?1
 			 AND ((source='microphone' AND ?3&1!=0) OR (source='system' AND ?3&2!=0))",
                 )
@@ -736,26 +736,28 @@ pub fn apply(
                         row.get::<_, Option<i64>>(3)?,
                         row.get::<_, String>(4)?,
                         row.get::<_, Option<String>>(5)?,
+                        row.get::<_, Option<String>>(6)?,
                     ))
                 })
                 .map_err(|error| error.to_string())?
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|error| error.to_string())?
         };
-        for (id, source, start, maybe_end, reason, tail_session_id) in gaps {
+        for (id, source, start, maybe_end, reason, tail_session_id, source_session_id) in gaps {
             let end = maybe_end.unwrap_or(i64::MAX);
             tx.execute("DELETE FROM media_gaps WHERE id=?1", params![id])
                 .map_err(|error| error.to_string())?;
             if start < scope.start {
                 tx.execute(
-                    "INSERT INTO media_gaps(id,source,started_ms,ended_ms,reason,tail_session_id) VALUES (?1,?2,?3,?4,?5,?6)",
+                    "INSERT INTO media_gaps(id,source,started_ms,ended_ms,reason,tail_session_id,source_session_id) VALUES (?1,?2,?3,?4,?5,?6,?7)",
                     params![
                         Uuid::new_v4().to_string(),
                         source,
                         start,
                         scope.start,
                         reason,
-                        tail_session_id
+                        tail_session_id,
+                        source_session_id
                     ],
                 )
                 .map_err(|error| error.to_string())?;
@@ -767,14 +769,15 @@ pub fn apply(
                     scope.end
                 };
                 tx.execute(
-                    "INSERT INTO media_gaps(id,source,started_ms,ended_ms,reason,tail_session_id) VALUES (?1,?2,?3,?4,?5,?6)",
+                    "INSERT INTO media_gaps(id,source,started_ms,ended_ms,reason,tail_session_id,source_session_id) VALUES (?1,?2,?3,?4,?5,?6,?7)",
                     params![
                         Uuid::new_v4().to_string(),
                         source,
                         tail_start,
                         maybe_end,
                         reason,
-                        tail_session_id
+                        tail_session_id,
+                        source_session_id
                     ],
                 )
                 .map_err(|error| error.to_string())?;

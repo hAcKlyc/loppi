@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { ContinuousPlayback } from '../src/playback.ts';
-const settle = async () => { for (let n=0;n<12;n++) await Promise.resolve(); };
+const settle = () => new Promise(resolve => setImmediate(resolve));
 function audio() {
  const nodes=[];
  const context={currentTime:0,destination:{},resume:async()=>{},suspend:async()=>{},close:async()=>{},
@@ -9,7 +9,7 @@ function audio() {
  createBufferSource(){const node={buffer:null,onended:null,when:null,stopped:false,connect(){},disconnect(){},start(t){this.when=t;},stop(){this.stopped=true;}};nodes.push(node);return node;}};
  return {nodes,context,end(index){const n=nodes[index];context.currentTime=n.when+5;n.onended?.();}};
 }
-const chunk={wav_base64:'AA==',has_audio:true,next_audio_ms:null};
+const chunk={wav_base64:'AA==',has_audio:true,next_audio_ms:null,generation:0};
 test('audio-clock continuation prefetches only one ahead, releases buffers, and completes',async()=>{
  const a=audio();const requests=[];const positions=[];let done=0;
  const player=new ContinuousPlayback(async(from,to)=>{requests.push([from,to]);return chunk;},p=>positions.push(p),()=>done++,e=>{throw e;},()=>a.context);
@@ -57,4 +57,29 @@ test('seek cancels deferred prefetch error and first-chunk failures still stop i
   a.end(1);await settle();assert.equal(done,1);assert.equal(errors.length,0);
   player.start(20000,25000,'both');await settle();assert.equal(done,2);assert.equal(errors.length,1);
  } finally {player.dispose();}
+});
+
+test('external committed cleanup cancels both scheduled buffers without changing event boundaries',async()=>{
+ const a=audio();let valid=true;let done=0;const checks=[];
+ const player=new ContinuousPlayback(async()=>chunk,()=>{},()=>done++,e=>{throw e;},()=>a.context,async(...scope)=>{checks.push(scope);return valid;});
+ try {
+  player.start(0,15000,'microphone');await settle();await settle();
+  assert.equal(a.nodes.length,2);assert.deepEqual(checks[0],[0,15000,'microphone',0]);
+  valid=false;await new Promise(r=>setTimeout(r,350));
+  assert.equal(done,1);assert.ok(a.nodes.every(n=>n.stopped&&n.buffer===null));
+ } finally {player.dispose();}
+});
+test('legacy chunks without a cleanup generation never prefetch stale future media',async()=>{
+ const a=audio();const calls=[];
+ const player=new ContinuousPlayback(async(from)=>{calls.push(from);return {...chunk,generation:undefined};},()=>{},()=>{},e=>{throw e;},()=>a.context);
+ try {player.start(0,15000,'both');await settle();assert.deepEqual(calls,[0]);a.end(0);await settle();assert.deepEqual(calls,[0,5000]);}finally{player.dispose();}
+});
+test('late validity responses cannot cancel a new seek/source or resurrect closed playback',async()=>{
+ const a=audio();let resolve;let calls=0;let done=0;
+ const player=new ContinuousPlayback(async()=>chunk,()=>{},()=>done++,e=>{throw e;},()=>a.context,()=>{calls++;return new Promise(r=>{resolve=r;});});
+ player.start(0,15000,'microphone');await settle();assert.equal(calls,1);
+ player.start(10000,15000,'system');resolve(false);await settle();await settle();
+ assert.equal(done,0);assert.equal(calls,2);assert.equal(a.nodes.length,0);
+ resolve(true);await settle();await settle();assert.equal(a.nodes.length,1);
+ player.dispose();assert.ok(a.nodes[0].stopped);
 });

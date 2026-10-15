@@ -33,17 +33,17 @@
 [`retention.rs`](../../crates/hear-core/src/retention.rs) 是单独策略边界，不读取 LLM 事件价值或粗转文本质量。**当前工作树含尚未安装版验收的 `pending_vad_v2` 候选：**
 
 1. 全零数字静音直接记 `discard_digital_silence_v1`，不编码原声；非零音频先封口持久化，记 `pending_vad_v2`。
-2. 本地分析回写该封块的 `speech_active` 和粗转句段后，策略查看当前块以及相邻上一块的时间关系。有人声检测或有时间重叠的粗转句段则转为 `retain_speech_v2`。
-3. 确认无人声时先在数据库撤销媒体引用、持久登记 `media_deletion_jobs`，再由后台删物理文件，状态为 `discard_no_speech_v2`。靠近当前分析边界的一块暂缓决定，避免晚到的 VAD 句段丢失句首。
+2. VAD 回写该封块的 `speech_active` 并先提交区间 `coarse_jobs`，策略在同一事务查看当前块与最多 6 个连续已完成且保留媒体的前块。有人声检测、重叠粗转任务或已发表句段则转为 `retain_speech_v2`，不等待识别文字。
+3. 确认无人声时先在数据库撤销媒体引用、持久登记 `media_deletion_jobs`，再由后台删物理文件，状态为 `discard_no_speech_v2`。worker 的 `speech_pending` 表示仍有未结束话语；此时前块即使尚未检测到人声也延后负判断，完整区间发布后再裁决。当前边界块在未 flush 时仍暂缓决定，避免跨块句首被提前回收。
 4. 分析尚未完成、工作进程异常或判定仍待定时，原声保持可追踪的待判定状态。策略升级不回溯删除旧版已保留原声。
 
 这段代码回应了“不保留无说话环境噪音”的产品选择，但**实际误删/误留率、弱语音和安装版落盘效果尚未验收**。不能仅凭单元测试宣布全天声音保留正确。
 
 ## 4. VAD 与本地粗转录
 
-[`analysis_loop`](../../crates/hear-core/src/main.rs) 从已封口待分析块读取音频，经 [`AnalysisClient`](../../crates/hear-core/src/analysis.rs) 逐块重采样到 16 kHz，按来源、session 与采样号送给轻量 `hear-worker vad`。**Silero VAD** 模型与阈值不变，仍以 512 样本小窗输入、约 20 秒主动 flush。非连续坐标或新 session 重建对应状态；核心分别为两条来源回放最近连续人声尾部，不能用“进程已重启”替代另一条流的恢复。
+[`analysis_loop`](../../crates/hear-core/src/main.rs) 从已封口待分析块读取音频，经 [`AnalysisClient`](../../crates/hear-core/src/analysis.rs) 逐块重采样到 16 kHz，按来源、session 与采样号送给轻量 `hear-worker vad`。**Silero VAD** 模型与阈值不变，仍以 512 样本小窗输入、约 20 秒主动 flush。非连续坐标或新 session 重建对应状态；核心分别为两条来源回放最近最多 6 个连续已完成、仍保留媒体的人声或 `pending_vad_v2` 尾块，不能用“进程已重启”替代另一条流的恢复。
 
-VAD 返回样本区间与 `speech_active`，核心在同一事务写入 `coarse_jobs` 并完成原有保留判定。未处理/失败保守保留，句尾晚到时区间先保护上一封块，无人声回收不等待重型识别。粗转由独立 `coarse_loop` 调度 `hear-worker recognize`：从已有 Opus 封块按原逐块重采样重建完全相同的输入，使用 **SenseVoice INT8**，发布到原 `coarse_segments`，模型/阈值未替换。
+VAD 返回样本区间、`speech_active` 与未结束话语标志 `speech_pending`，核心在同一事务写入 `coarse_jobs` 并完成原有保留判定。未处理/失败保守保留，句尾晚到时由已提交任务保护所有相交封块；仍在话语内的未确认起点暂不回收，无人声回收不等待重型识别。粗转由独立 `coarse_loop` 调度 `hear-worker recognize`：从已有 Opus 封块按原逐块重采样重建完全相同的输入，使用 **SenseVoice INT8**，发布到原 `coarse_segments`，模型/阈值未替换。
 
 `coarse_jobs` 持有稳定任务身份；重复回放不重复发布已确认前缀。来源交替且定期服务最老待办，资源延期不消耗错误次数，异常失败有上限退避。清理使任务失效，迟到 VAD 与识别结果重新校验墓碑或任务状态。空文字/粗转失败不改变已确立的人声事实，worker 永不直接写数据库。进程与 IPC 有输入上限、统一请求截止时间、取消及父进程生命周期绑定。
 

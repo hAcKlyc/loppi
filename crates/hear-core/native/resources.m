@@ -45,7 +45,8 @@ uint64_t hear_background_footprint(void) {
   uint64_t total = hear_process_footprint(getpid());
   // Core has bounded direct children (two sources and three model roles).
   int pids[64] = {0};
-  int bytes = proc_listchildpids(getpid(), pids, sizeof(pids));
-  for (int i=0;i<bytes/(int)sizeof(int) && i<64;i++) total += hear_process_footprint(pids[i]);
+  // Unlike proc_listpids, this convenience API already returns a PID count.
+  int count = proc_listchildpids(getpid(), pids, sizeof(pids));
+  for (int i=0;i<count && i<64;i++) total += hear_process_footprint(pids[i]);
   return total;
 }

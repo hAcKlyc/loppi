@@ -50,13 +50,14 @@ scope: "落实稳定性与性能研究方案的全部 P0/P1；保持现有交互
 - Batch D：读取/播放/队列效率与整体验收。
   - [x] 读连接与快照、前台刷新、连续播放预取/取消。
   - [x] 云调度公平、重试/限流与真实任务身份。
-  - [ ] 组合态、GUI/CLI、2h/8h/24h/72h、长期规模、资源及质量证据。
-  - [ ] 更新架构文档、最终跨批 review、完整验收与状态收尾。
+  - [x] 组合态、GUI/CLI、30/90/365天规模、原生资源及公开固定输入/恢复证据。
+  - [x] 架构/算法文档、最终跨批 review 与受影响修复复验；内部代码提交门禁通过。
+  - [ ] 最终版本2h/8h/24h/72h已知参考、最低系统/8GiB、真实留出集与完整设备矩阵；未满足前不得发布。
 
 ### 当前批次 Review 基线
 
-- 批次：D。
-- Batch base：`1ba00e6dbfa990d440a85fe9bce0ec5ed46ccb15`。
+- 批次：Final integration。
+- Final review base：`2c81ebd49601c85d89aa3529555aeddaa98d63f5`；四批已提交候选：`ba7e90e7bac25dc9cce649e612f327794561d105`。
 - 预期范围：有界只读快照/查询效率、播放预取/取消、GUI刷新、云公平/限流、启动非关键IO后台恢复、资源与媒体观测及规模/组合态验证；其他未跟踪资料不属代码提交范围。
 
 ### 待用户决策
@@ -94,3 +95,13 @@ scope: "落实稳定性与性能研究方案的全部 P0/P1；保持现有交互
 - 2026-10-16：D 最终365天规模通过（12,614,400块）；时间线median1.873ms/max6.580ms、详情median29.640ms、全历史FTS median141.525ms；保留原超时失败记录及实际SQL计划。签名原生/WK修复验证闭环，进入本批最终architecture，之后整体cross-review。2h隔离观察继续运行，尚不计为通过。
 
 - 2026-10-16：D最终architecture发现并修复跨session/PID指标错归属；architecture与adversarial定向PASS，requirements证据复核PASS。191 workspace Rust tests/check、TS/lint、21前端、3采样、最终签名独立包及SCK/Tap短链通过。本批内部提交门禁完成，进入四批组合态review。旧SHA隔离2h观察仍在跑；最终修复包另存hear-verified.app，不混用构建证据。
+
+- 2026-10-16：D已提交 `ba7e90e7bac25dc9cce649e612f327794561d105`。进入Final Integration：从原始基线2c81ebd审查A/B/C/D组合态，当前生产代码冻结；191workspace tests/check与前端静态/21测试/3采样、CLI四组通过。最终包core SHA999f41ae…，观察中的旧SHA fc27be0e…仅作初步持续录制证据，不能替代最终版本24h验收。
+
+- 2026-10-16：Final Phase 1确认两项跨批阻塞：外部清理未撤回已预取音频、journal迟到入库被误判为VAD流结束。均进入根因修复；播放复用清理generation的只读失效校验，journal目录快照保证发布前缀，分析等待相邻/真实缺口/清理/完成导入证据。尚未通过最终定向复核与architecture，不标记完成。
+
+- 2026-10-16：最终组合态强化夹具发现并修复跨块话语开头提前回收：worker 明确未结束话语，保留 owner 延后负判断，重放包含待确认起点。公开实际模型三种入库/恢复路径文本、时间及保留完全一致；199 workspace /24前端/3采样、CLI四组及8组固定输入通过。最终签名包另存 hear-final.app，长时旧包观察单独记录；整体仍 in-progress。
+
+- 2026-10-16：最终architecture确认F06原生枚举返回值单位错误（3个孩子漏计），主Agent在原适配层按PID数量修复；真实驻留子进程测试先红后绿，签名包独立计量中位比0.994/0.996。199workspace/24前端/4Python资源与采样、双路原生/锁库/强杀、实际模型恢复复验通过。旧候选环境声观察于约3614s主动结束，未完成2h，不作为最终资源门槛。算法文档已同步保留/重放语义，等待最终定向复核。
+
+- 2026-10-16：最终architecture完整候选+F06定向PASS，adversarial F06定向PASS，requirements R1与adversarial A1/onset保持PASS；三方代码门禁闭环。最终签名CLI四组通过，数据/代码哈希一致；实际资源采样标准median已校准0.994/0.996。工程实现形成内部稳定点，全部mandatory实机/长时门槛仍未通过；报告见 research/2026-10-16-hear-optimization-delivery.md，状态继续in-progress，不可发布。

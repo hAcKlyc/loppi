@@ -2,8 +2,8 @@ use rusqlite::{OptionalExtension, Transaction, params};
 
 /// Audio is sealed before local analysis so a slow or failed worker cannot
 /// create a capture gap. The current policy discards non-speech after VAD has
-/// analyzed it; one adjacent block is kept temporarily because VAD can return
-/// an utterance that began near the previous block's end.
+/// analyzed it; the adjacent onset is kept until an open VAD utterance closes,
+/// because its completed region can begin near a prior block's end.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Retention {
     DiscardDigitalSilence,
@@ -44,21 +44,39 @@ pub fn resolve_analysis(
     sample_start: u64,
     current_id: &str,
     current_flush: bool,
+    speech_pending: bool,
     now_ms: i64,
 ) -> Result<Resolution, String> {
     let mut result = Resolution::default();
-    let previous = tx
-        .query_row(
-            "SELECT id FROM audio_blocks WHERE session_id=?1
-             AND sample_start+frames=?2 AND retention_decision=?3
-             AND analysis_state='complete' AND media_path IS NOT NULL LIMIT 1",
-            params![session_id, sample_start as i64, PENDING],
-            |row| row.get::<_, String>(0),
+    let mut statement = tx
+        .prepare(
+            "SELECT id,sample_start,frames,analysis_state,media_path IS NOT NULL
+      FROM audio_blocks WHERE session_id=?1 AND sample_start<?2 ORDER BY sample_start DESC LIMIT 6",
         )
-        .optional()
-        .map_err(|error| error.to_string())?;
-    if let Some(previous_id) = previous {
-        resolve_block(tx, &previous_id, true, now_ms, &mut result)?;
+        .map_err(|e| e.to_string())?;
+    let previous = statement
+        .query_map(params![session_id, sample_start as i64], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, i64>(1)?,
+                r.get::<_, i64>(2)?,
+                r.get::<_, String>(3)?,
+                r.get::<_, bool>(4)?,
+            ))
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    let mut cursor = sample_start as i64;
+    for (id, start, frames, state, retained) in previous {
+        if start + frames != cursor || state != "complete" || !retained {
+            break;
+        }
+        cursor = start;
+        // A confirmed, still-open utterance can start in a prior block whose
+        // own final VAD flag was false. Keep its onset until the segment closes.
+        // Six contiguous blocks cover the worker's 20s active limit + lookback.
+        resolve_block(tx, &id, !speech_pending, now_ms, &mut result)?;
     }
     resolve_block(tx, current_id, current_flush, now_ms, &mut result)?;
     Ok(result)
@@ -176,7 +194,8 @@ mod tests {
         block(&store, "a", 0, PENDING, 0);
         block(&store, "b", 240_000, PENDING, 0);
         let tx = store.db.transaction().unwrap();
-        let resolved = resolve_analysis(&tx, "session", 240_000, "b", false, 10_000).unwrap();
+        let resolved =
+            resolve_analysis(&tx, "session", 240_000, "b", false, false, 10_000).unwrap();
         assert!(resolved.deleted_media);
         assert!(resolved.newly_speech.is_empty());
         tx.commit().unwrap();
@@ -223,7 +242,7 @@ mod tests {
             )
             .unwrap();
         let tx = store.db.transaction().unwrap();
-        let resolved = resolve_analysis(&tx, "session", 240_000, "b", true, 10_000).unwrap();
+        let resolved = resolve_analysis(&tx, "session", 240_000, "b", true, false, 10_000).unwrap();
         assert_eq!(resolved.newly_speech, vec!["a"]);
         assert!(resolved.deleted_media);
         tx.commit().unwrap();
@@ -248,12 +267,56 @@ mod tests {
     }
 
     #[test]
+    fn unfinished_speech_preserves_its_unconfirmed_onset_until_region_publication() {
+        for has_region in [false, true] {
+            let mut store = store();
+            block(&store, "onset", 0, PENDING, 0);
+            block(&store, "active", 240_000, PENDING, 1);
+            let tx = store.db.transaction().unwrap();
+            let early =
+                resolve_analysis(&tx, "session", 240_000, "active", false, true, 10_000).unwrap();
+            assert!(!early.deleted_media);
+            tx.commit().unwrap();
+            assert_eq!(
+                store
+                    .db
+                    .query_row(
+                        "SELECT retention_decision FROM audio_blocks WHERE id='onset'",
+                        [],
+                        |r| r.get::<_, String>(0)
+                    )
+                    .unwrap(),
+                PENDING
+            );
+            block(&store, "end", 480_000, PENDING, 0);
+            if has_region {
+                store.db.execute("INSERT INTO coarse_segments VALUES('closed','end','session','system',4800,11000,'speech','model')",[]).unwrap();
+            }
+            let tx = store.db.transaction().unwrap();
+            resolve_analysis(&tx, "session", 480_000, "end", true, false, 15_000).unwrap();
+            tx.commit().unwrap();
+            assert_eq!(
+                store
+                    .db
+                    .query_row(
+                        "SELECT media_path IS NOT NULL FROM audio_blocks WHERE id='onset'",
+                        [],
+                        |r| r.get::<_, bool>(0)
+                    )
+                    .unwrap(),
+                has_region
+            );
+        }
+    }
+
+    #[test]
     fn speech_without_text_stays_and_old_policy_is_not_reclassified() {
         let mut store = store();
         block(&store, "old", 0, "pending_conservative_v1", 0);
         block(&store, "speech", 240_000, PENDING, 1);
         let tx = store.db.transaction().unwrap();
-        let resolved = resolve_analysis(&tx, "session", 240_000, "speech", true, 10_000).unwrap();
+        let resolved =
+            resolve_analysis(&tx, "session", 240_000, "speech", true, false, 10_000).unwrap();
         assert!(!resolved.deleted_media);
         tx.commit().unwrap();
         let decisions: Vec<String> = store

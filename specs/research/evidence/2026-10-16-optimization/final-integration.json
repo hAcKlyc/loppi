@@ -1,0 +1,1936 @@
+{
+  "baseline": "2c81ebd49601c85d89aa3529555aeddaa98d63f5",
+  "candidate": "ba7e90e plus final integration repairs; source hashes below",
+  "scope": "isolated data only; fixed public speech fixtures; no personal content or live cloud requests",
+  "source_sha256": {
+    "crates/hear-cli/src/main.rs": "24b219be988902e22678282a647d0a6ca0cf5f40145e59b4c59aea1942d59f35",
+    "crates/hear-core/Cargo.toml": "73614acf0dc9c36ba26d54ad5f8b77328ddbbc3aa0ca2ecb93aa8a9e83c2cc72",
+    "crates/hear-core/build.rs": "0fc7ba238e762bc9b288acf381a3877b60c0a6c41469e1b862779b4da17445a8",
+    "crates/hear-core/native/resources.m": "d76f2f33b4e452c065f758581e9b2e06a901c443c8d91112bca6cf0954301d71",
+    "crates/hear-core/native/system_audio.m": "84e11d1dbd7327a55147715a13d64fc415e7d0a37612bcda9d0f201fd25a1b64",
+    "crates/hear-core/native/system_audio_tap.m": "c537a1713d6a4eb2e43db7669b2a3311918db02560d31e2a6bdc117e94436bbd",
+    "crates/hear-core/src/analysis.rs": "85c9b313f773f2f2bcdcbfff04f7e9e9d56a89d48daf203680615249d9dadd90",
+    "crates/hear-core/src/archive.rs": "276bef691c5bb1d42b87f6da7f74b35900dcba71b8ca309060630db2cc81bd8a",
+    "crates/hear-core/src/capture.rs": "e26a619ad3e15ef9a2dcdfa1072c9fa3cd19736501818adf05bbd460e2c358ae",
+    "crates/hear-core/src/cleanup.rs": "9b1683d01ca3a1a118647b5a2cd1c923b1bcbe19b8390dbed35b17d6b13b30f4",
+    "crates/hear-core/src/cloud.rs": "dcbba61775d5207eacee009ec94cb01f7c6694d7cd608cc3664f2fab8e99488d",
+    "crates/hear-core/src/coarse.rs": "32cda79b9c4234c1d3a2bad0d404463868fac4b4ffae4fd6f0619329a934ca7e",
+    "crates/hear-core/src/events.rs": "5973dd1cebc3753fe7d6c4139628bf5c621857c7c0215ce1dad20107b3ca55f7",
+    "crates/hear-core/src/ingestion.rs": "3dc5d4e62c5537be26fe25d9863099bcaa8ef832fba07c41ac127c2e0816dd1b",
+    "crates/hear-core/src/inventory.rs": "02b525ea6088d673419f512deb49db50d959dc22e21758816f304eb849176b83",
+    "crates/hear-core/src/knowledge.rs": "0bb3d2c05e05ce5957d47d8ea040da219c82f1e5009e8221e1ed2caab940c549",
+    "crates/hear-core/src/main.rs": "5309c6ff89db5902ae66e3b5c59ce226fd764c5d8ca8c9113be06613926e06bb",
+    "crates/hear-core/src/media.rs": "28cafabd68704de94b8e70dcd1adf0dcba31d475ba82348fbda5a438cbc7f5c8",
+    "crates/hear-core/src/microphone.rs": "ec7cba801180263ce3032e146eb5af13a46763659a960184e4df14ed578c98c6",
+    "crates/hear-core/src/moments.rs": "6804832135d06dde1c72871206243bc23a9a2735dcca61ebc291235b56cb199f",
+    "crates/hear-core/src/playback.rs": "b4dd5df3f5d7908df3774535d9a581b45a421e348988b241557c396e5c3732b2",
+    "crates/hear-core/src/reads.rs": "2b38a18e61a29c78ed2e502f227109dc2f1813f2668ebbb921383e31120a5dbb",
+    "crates/hear-core/src/record.rs": "322671d600d2bba0f26e57817336b6176b59263d1d619e4a5a8278ed6a478b0b",
+    "crates/hear-core/src/recovery.rs": "2519855f25e05cc1817b068bb3b78a80480251bc98336c56326d39632408facb",
+    "crates/hear-core/src/resources.rs": "e4fcbe78207f1eaa95bbafa6bc3a9dc945609c03a82e8b3552e53eaf382ced4d",
+    "crates/hear-core/src/retention.rs": "90db70b6ae87f12257772355aa83ecef7811a5d25b568b39c22452435d13dce5",
+    "crates/hear-core/src/source_process.rs": "d5b51d87c9255360ff49f1fa2d0a8e87fa1b70a0394eb743bc8a7de86fe64698",
+    "crates/hear-core/src/storage.rs": "9e80f1c7aab677d685e90d5d32b8cc90111f07e380b9a2f276004f0d3b9682ae",
+    "crates/hear-core/src/system_audio.rs": "2a9edafa4dfd16edcf476c8193bb965a586c818464e338117fd26f14f4ee3dd0",
+    "crates/hear-protocol/src/lib.rs": "397024d47fea5c52a96e438ccb2b6a23c572811b1ad7141fa695d30ab79c79af",
+    "crates/hear-worker/Cargo.toml": "c99101222d43851b06ef4cf93ba4c2cab0ada6d3061cc5a167d764e674a11e7d",
+    "crates/hear-worker/src/main.rs": "14112b837bee92231897f628d01a8b68f31c8cffdf2a6886630f8055b4148204",
+    "scripts/audit_recording_coverage.py": "03e582c0219db325debe76460096f5a13acc87ae32adedcd37be9135428964c3",
+    "scripts/macos_rusage.c": "85220343c0e16be1cef82491d4d747b768bfaa2b7087933c9c1df1dc80904982",
+    "scripts/measure_macos.sh": "ac78cd0c5b94dbbaf1825ff24ffc37d2680c1e72ddaab050fa68e0a73b69fe9f",
+    "scripts/report_macos_resources.py": "e096fa337543e68426706dfab5f30948524acaccf51d58a4f95a975a94c6e718",
+    "scripts/sample_macos_resources.py": "d6b81b67c54cfd1fd1cca6ea7362b2648f11670f3260f672fd89d962183d550d",
+    "scripts/test_playback.mjs": "a3b59280bb63326238705f648c6b0029728468926ecbbf07b389dcf72a5a549d",
+    "scripts/test_resource_sampler.py": "372a26f36246e18b971aaaa4333801ea4aeb2e88462946c4c12b32649cbe6d55",
+    "src/App.tsx": "ea3aa54acd3ecd583c6bbf7cc78ac89caf44fd6e0b0e3952ad53104f3de40852",
+    "src/DetailDrawer.tsx": "b10a0b04dd094d106fd8a45270b1362849745b87ebe9db0cfcccd8ac97330153",
+    "src/playback.ts": "edbdcc5839f5cd01436952acc677ad03fc9e88add9f0c4545fd14118e81a1c38",
+    "scripts/verify_ingestion_quality.py": "0f71295e7441ecf4af87290b831b2a6ede3ecf21e0086de2ea64a926bd1037f2",
+    "scripts/test_native_resources.py": "4157b3992e1bbb6a09988fcf7ed095ec975c7d09faa72230dd08953a2db29f46"
+  },
+  "build": {
+    "app": "target/release/bundle/macos/hear-final.app",
+    "core_sha256": "c341c02d9853b35df566929959932104cd5cd58eeca32741a26c5600d629b756",
+    "worker_sha256": "f58bd020ef89ce3f3b2c2fda7d9b5d186b22ac2051d98a24b328f02eb5ce657d",
+    "desktop_sha256": "3d34e6d49b50056f2000f946f7820ebd36dcafbeab6eab7dee7df0db24df71e7",
+    "codesign_deep_strict": "PASS",
+    "deployment_target": "13.0"
+  },
+  "checks": {
+    "workspace": {
+      "passed": 199,
+      "core": 185,
+      "desktop": 9,
+      "protocol": 5,
+      "ignored_scale": 1
+    },
+    "frontend_passed": 24,
+    "sampler_passed": 3,
+    "cli_smoke_groups_passed": 4,
+    "fmt_check": "PASS",
+    "cargo_check_workspace": "PASS",
+    "ts_build": "PASS",
+    "lint": "PASS",
+    "native_resource_test_passed": 1,
+    "python_total_passed": 4,
+    "native_resource_test_before_fix": "FAIL (required total 135431728 bytes vs observed14582144 bytes)",
+    "cli_core": "final signed core c341c02d… (four smoke groups)"
+  },
+  "public_fixture_source": "https://github.com/k2-fsa/sherpa-onnx/blob/master/scripts/sense-voice/run.sh",
+  "fixed_input_baseline": "27f9c2788be40376b201b14c4b01b7a7b270b941 worker",
+  "fixed_input_comparison": "all old VAD flags, segment boundaries and text exact; additive speech_pending excluded from old response object comparison and tested through retention + actual pipeline",
+  "fixed_input": {
+    "zh": {
+      "exact_match": true,
+      "vad_seconds": 0.02375008352100849,
+      "asr_seconds": 0.5720104593783617,
+      "frames": 89472
+    },
+    "en": {
+      "exact_match": true,
+      "vad_seconds": 0.017326958011835814,
+      "asr_seconds": 0.3151272921822965,
+      "frames": 114432
+    },
+    "ja": {
+      "exact_match": true,
+      "vad_seconds": 0.018339707050472498,
+      "asr_seconds": 0.5024737501516938,
+      "frames": 115200
+    },
+    "ko": {
+      "exact_match": true,
+      "vad_seconds": 0.013016582932323217,
+      "asr_seconds": 0.21620812499895692,
+      "frames": 73728
+    },
+    "yue": {
+      "exact_match": true,
+      "vad_seconds": 0.014981457497924566,
+      "asr_seconds": 0.23832079209387302,
+      "frames": 82368
+    },
+    "zh_weak": {
+      "exact_match": true,
+      "vad_seconds": 0.017331124749034643,
+      "asr_seconds": 0.30085891718044877,
+      "frames": 89472
+    },
+    "zh_boundaries": {
+      "exact_match": true,
+      "vad_seconds": 0.08559099957346916,
+      "asr_seconds": 1.6284474171698093,
+      "frames": 628832
+    },
+    "silence": {
+      "exact_match": true,
+      "vad_seconds": 0.023389542009681463,
+      "asr_seconds": 0,
+      "frames": 160000
+    }
+  },
+  "delayed_ingestion": {
+    "scope": "Public voiced inner phrase onset at 4.8s; two sources; actual models; delayed journal import held 3s after model-ready; no real holdout or native capture claim",
+    "core_sha256": "39ddbf975e8fe8857c8fc4a35411bfc1e11f09465d765295ddf5f62136d1bd96",
+    "worker_sha256": "5a3f4362329376e626a49c92852ade76910c670e1474d90e9818e97a553215b3",
+    "fixture_sha256": "b77f1794fe374a0ba1ee1dc458bfaf9349496cbbfc32780c50ba3c5a7ad8e373",
+    "cases": {
+      "uninterrupted": {
+        "seconds": 2.1468953327275813,
+        "audio_seconds_per_source": 15,
+        "onset_ms": 4800,
+        "held_before_next_import": [],
+        "blocks": [
+          [
+            "complete",
+            6
+          ]
+        ],
+        "jobs": [
+          [
+            "complete",
+            2
+          ]
+        ],
+        "segments_per_source": {
+          "microphone": 1,
+          "system": 1
+        },
+        "retention": [
+          [
+            "microphone",
+            0,
+            "retain_speech_v2",
+            1
+          ],
+          [
+            "microphone",
+            240000,
+            "retain_speech_v2",
+            1
+          ],
+          [
+            "microphone",
+            480000,
+            "retain_speech_v2",
+            1
+          ],
+          [
+            "system",
+            0,
+            "retain_speech_v2",
+            1
+          ],
+          [
+            "system",
+            240000,
+            "retain_speech_v2",
+            1
+          ],
+          [
+            "system",
+            480000,
+            "retain_speech_v2",
+            1
+          ]
+        ],
+        "same_as_uninterrupted": true
+      },
+      "delayed_close": {
+        "seconds": 5.69576737517491,
+        "audio_seconds_per_source": 15,
+        "onset_ms": 4800,
+        "held_before_next_import": [
+          [
+            "microphone",
+            "pending",
+            "pending_vad_v2",
+            1,
+            0
+          ],
+          [
+            "system",
+            "pending",
+            "pending_vad_v2",
+            1,
+            0
+          ]
+        ],
+        "blocks": [
+          [
+            "complete",
+            6
+          ]
+        ],
+        "jobs": [
+          [
+            "complete",
+            2
+          ]
+        ],
+        "segments_per_source": {
+          "microphone": 1,
+          "system": 1
+        },
+        "retention": [
+          [
+            "microphone",
+            0,
+            "retain_speech_v2",
+            1
+          ],
+          [
+            "microphone",
+            240000,
+            "retain_speech_v2",
+            1
+          ],
+          [
+            "microphone",
+            480000,
+            "retain_speech_v2",
+            1
+          ],
+          [
+            "system",
+            0,
+            "retain_speech_v2",
+            1
+          ],
+          [
+            "system",
+            240000,
+            "retain_speech_v2",
+            1
+          ],
+          [
+            "system",
+            480000,
+            "retain_speech_v2",
+            1
+          ]
+        ],
+        "same_as_uninterrupted": true
+      },
+      "delayed_crash": {
+        "seconds": 5.700181333348155,
+        "audio_seconds_per_source": 15,
+        "onset_ms": 4800,
+        "held_before_next_import": [
+          [
+            "microphone",
+            "pending",
+            "pending_vad_v2",
+            1,
+            0
+          ],
+          [
+            "system",
+            "pending",
+            "pending_vad_v2",
+            1,
+            0
+          ]
+        ],
+        "blocks": [
+          [
+            "complete",
+            6
+          ]
+        ],
+        "jobs": [
+          [
+            "complete",
+            2
+          ]
+        ],
+        "segments_per_source": {
+          "microphone": 1,
+          "system": 1
+        },
+        "retention": [
+          [
+            "microphone",
+            0,
+            "retain_speech_v2",
+            1
+          ],
+          [
+            "microphone",
+            240000,
+            "retain_speech_v2",
+            1
+          ],
+          [
+            "microphone",
+            480000,
+            "retain_speech_v2",
+            1
+          ],
+          [
+            "system",
+            0,
+            "retain_speech_v2",
+            1
+          ],
+          [
+            "system",
+            240000,
+            "retain_speech_v2",
+            1
+          ],
+          [
+            "system",
+            480000,
+            "retain_speech_v2",
+            1
+          ]
+        ],
+        "same_as_uninterrupted": true
+      }
+    }
+  },
+  "dual_source_pipeline": {
+    "normal": {
+      "elapsed_seconds": 16.70929229212925,
+      "source_audio_seconds": 335.52,
+      "blocks": [
+        [
+          "microphone",
+          "complete",
+          34
+        ],
+        [
+          "system",
+          "complete",
+          34
+        ]
+      ],
+      "jobs": [
+        [
+          "complete",
+          60
+        ]
+      ],
+      "vad_killed": false,
+      "sources_exact_equal": true,
+      "segment_count": {
+        "microphone": 30,
+        "system": 30
+      },
+      "failures": 0
+    },
+    "vad_crash": {
+      "elapsed_seconds": 16.325543833430856,
+      "source_audio_seconds": 335.52,
+      "blocks": [
+        [
+          "microphone",
+          "complete",
+          34
+        ],
+        [
+          "system",
+          "complete",
+          34
+        ]
+      ],
+      "jobs": [
+        [
+          "complete",
+          60
+        ]
+      ],
+      "vad_killed": true,
+      "sources_exact_equal": true,
+      "segment_count": {
+        "microphone": 30,
+        "system": 30
+      },
+      "failures": 0,
+      "same_as_uninterrupted": {
+        "microphone": true,
+        "system": true
+      }
+    }
+  },
+  "continuous_recovery": {
+    "jobs_restart": {
+      "sources": {
+        "microphone": {
+          "spans_ms": [
+            [
+              152,
+              20416
+            ],
+            [
+              20416,
+              30416
+            ],
+            [
+              30416,
+              50448
+            ],
+            [
+              50448,
+              59984
+            ]
+          ],
+          "no_holes_or_overlap": true
+        },
+        "system": {
+          "spans_ms": [
+            [
+              152,
+              20416
+            ],
+            [
+              20416,
+              30416
+            ],
+            [
+              30416,
+              50448
+            ],
+            [
+              50448,
+              59984
+            ]
+          ],
+          "no_holes_or_overlap": true
+        }
+      },
+      "elapsed_seconds": 5.761851749848574,
+      "jobs": [
+        [
+          "complete",
+          8
+        ]
+      ]
+    },
+    "legacy_upgrade": {
+      "sources": {
+        "microphone": {
+          "spans_ms": [
+            [
+              152,
+              20416
+            ],
+            [
+              20416,
+              30416
+            ],
+            [
+              30416,
+              50448
+            ],
+            [
+              50448,
+              59984
+            ]
+          ],
+          "no_holes_or_overlap": true
+        },
+        "system": {
+          "spans_ms": [
+            [
+              152,
+              20416
+            ],
+            [
+              20416,
+              30416
+            ],
+            [
+              30416,
+              50448
+            ],
+            [
+              50448,
+              59984
+            ]
+          ],
+          "no_holes_or_overlap": true
+        }
+      },
+      "elapsed_seconds": 5.868233415763825,
+      "jobs": [
+        [
+          "complete",
+          6
+        ]
+      ]
+    }
+  },
+  "signed_native": {
+    "core_sha256": "c341c02d9853b35df566929959932104cd5cd58eeca32741a26c5600d629b756",
+    "scope": "isolated signed app, simultaneous 12 second microphone/system for SCK and Tap; not a long-run result",
+    "sck": {
+      "independent_total_comparison": [
+        {
+          "direct_processes": 3,
+          "independent_bytes": 27100888,
+          "reported_bytes": 27051736,
+          "ratio": 0.9981863324921308
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 27150040,
+          "reported_bytes": 27051736,
+          "ratio": 0.9963792318538021
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 27215576,
+          "reported_bytes": 27051736,
+          "ratio": 0.9939799179705033
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 27313880,
+          "reported_bytes": 27051736,
+          "ratio": 0.9904025352677832
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 27444952,
+          "reported_bytes": 27363032,
+          "ratio": 0.9970151159309734
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 27543256,
+          "reported_bytes": 27363032,
+          "ratio": 0.9934566922661576
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 27641560,
+          "reported_bytes": 27363032,
+          "ratio": 0.9899235788428729
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 27739864,
+          "reported_bytes": 27363032,
+          "ratio": 0.986415506579268
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 27838168,
+          "reported_bytes": 27756248,
+          "ratio": 0.9970572776197054
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 27920088,
+          "reported_bytes": 27756248,
+          "ratio": 0.9941318236532779
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 28018392,
+          "reported_bytes": 27756248,
+          "ratio": 0.9906438599331467
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 28116696,
+          "reported_bytes": 27756248,
+          "ratio": 0.9871802860478344
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 28231384,
+          "reported_bytes": 28149464,
+          "ratio": 0.9970982648247071
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 28329688,
+          "reported_bytes": 28149464,
+          "ratio": 0.993638334456772
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 28427992,
+          "reported_bytes": 28149464,
+          "ratio": 0.9902023329681534
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 28526296,
+          "reported_bytes": 28149464,
+          "ratio": 0.9867900129760976
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 28624600,
+          "reported_bytes": 28526296,
+          "ratio": 0.9965657511371337
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 28690136,
+          "reported_bytes": 28526296,
+          "ratio": 0.9942893264779226
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 28722904,
+          "reported_bytes": 28526296,
+          "ratio": 0.9931550096745092
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 28722904,
+          "reported_bytes": 28526296,
+          "ratio": 0.9931550096745092
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 28722904,
+          "reported_bytes": 28722904,
+          "ratio": 1.0
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 28722904,
+          "reported_bytes": 28722904,
+          "ratio": 1.0
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 28772056,
+          "reported_bytes": 28722904,
+          "ratio": 0.9982916757843097
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 28772056,
+          "reported_bytes": 28772056,
+          "ratio": 1.0
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 28690112,
+          "reported_bytes": 28772056,
+          "ratio": 1.0028561756747412
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 17564704,
+          "reported_bytes": 28772056,
+          "ratio": 1.6380609659007064
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 17531936,
+          "reported_bytes": 28772056,
+          "ratio": 1.6411225776776734
+        }
+      ],
+      "results": {
+        "microphone": {
+          "type": "record_test_result",
+          "id": "ae925a39-9938-49d2-81b0-ee1058de3d95",
+          "source": "microphone",
+          "blocks": 3,
+          "frames": 576000,
+          "dropped_packets": 0
+        },
+        "system": {
+          "type": "record_test_result",
+          "id": "518efeb5-af28-4328-a92a-2cdaa8ac53df",
+          "source": "system",
+          "blocks": 3,
+          "frames": 578880,
+          "dropped_packets": 0
+        }
+      },
+      "diagnostics": {
+        "observed_ms": 1792103662991,
+        "pid": 61277,
+        "resources": {
+          "backlog_lower_bound": {
+            "coarse_seconds": 0,
+            "disk_free": 284765188096,
+            "oldest_coarse_ms": 0,
+            "oldest_vad_ms": 13820,
+            "store_wait_ms": 0,
+            "vad_seconds": 12
+          },
+          "capture": [
+            {
+              "active": false,
+              "frames": 576000,
+              "metrics": {
+                "callback_age_ms": 297,
+                "callback_deadline_misses": 0,
+                "callback_frames": 576000,
+                "callback_histogram_us": [
+                  1123,
+                  2,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "callback_max_ns": 14500,
+                "consumed_age_ms": 297,
+                "dropped_frames": 0,
+                "durable_age_ms": 248,
+                "input_rate": 48000,
+                "queued_ms": 0,
+                "ring_high_water_ms": 10,
+                "seal_histogram": [
+                  0,
+                  0,
+                  0,
+                  1,
+                  2,
+                  0,
+                  0,
+                  0
+                ]
+              },
+              "pid": 61291,
+              "session": "b15fe8b8-a9b1-476e-b863-8af0d510611a"
+            },
+            {
+              "active": false,
+              "frames": 578880,
+              "metrics": {
+                "callback_age_ms": 214,
+                "callback_deadline_misses": 0,
+                "callback_frames": 578880,
+                "callback_histogram_us": [
+                  602,
+                  1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "callback_max_ns": 14042,
+                "consumed_age_ms": 213,
+                "dropped_frames": 0,
+                "durable_age_ms": 205,
+                "input_rate": 48000,
+                "queued_ms": 0,
+                "ring_high_water_ms": 60,
+                "seal_histogram": [
+                  0,
+                  0,
+                  3,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              },
+              "pid": 61290,
+              "session": "a3d476a4-9b9d-493e-8c52-478a4290d53a"
+            }
+          ],
+          "capture_lag_ms": 0,
+          "footprint_bytes": 7094728,
+          "hard_bytes": 1610612736,
+          "mode": "Normal",
+          "model_pids": [
+            null,
+            null
+          ],
+          "os": {
+            "low_power": 0,
+            "memory_pressure": 0,
+            "on_battery": 0,
+            "physical_memory": 25769803776,
+            "thermal": 0
+          },
+          "peak_footprint_bytes": 28772056,
+          "request_histogram_ms": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ],
+          "request_max_ms": 0,
+          "reserved_bytes": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "scope": "core_and_direct_children",
+          "soft_bytes": 1073741824,
+          "transitions": 0
+        },
+        "run_id": "3a30a760-e924-4a2b-930d-588dbe8903b8",
+        "schema": 1,
+        "storage": {
+          "control_transaction_histogram_ms": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "ingestion_commit_histogram_ms": [
+            7,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "ingestion_lock_wait_histogram_ms": [
+            14,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "logical_audio_bytes": 56011,
+          "observed_ms": 1792103662991,
+          "orphan_bytes": 0,
+          "physical_scan": [
+            {
+              "bytes": 0,
+              "category": "live_audio",
+              "observed_ms": 1792103648886
+            },
+            {
+              "bytes": 0,
+              "category": "pending_deletion",
+              "observed_ms": 1792103648886
+            },
+            {
+              "bytes": 0,
+              "category": "capture_staging",
+              "observed_ms": 1792103648886
+            },
+            {
+              "bytes": 0,
+              "category": "orphan_audio",
+              "observed_ms": 1792103648886
+            }
+          ]
+        },
+        "wal_bytes": 2249552
+      },
+      "coverage": [
+        [
+          "microphone",
+          3,
+          576000,
+          1792103649171,
+          1792103661171
+        ],
+        [
+          "system",
+          3,
+          578880,
+          1792103649605,
+          1792103661665
+        ]
+      ],
+      "samples": 51,
+      "sampled_max_durable_age_ms": 4679
+    },
+    "tap": {
+      "independent_total_comparison": [
+        {
+          "direct_processes": 3,
+          "independent_bytes": 25921312,
+          "reported_bytes": 25888544,
+          "ratio": 0.9987358664561423
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 26019616,
+          "reported_bytes": 25888544,
+          "ratio": 0.9949625697781244
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 26117920,
+          "reported_bytes": 25888544,
+          "ratio": 0.9912176773648131
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 26216224,
+          "reported_bytes": 25888544,
+          "ratio": 0.9875008696904635
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 26314528,
+          "reported_bytes": 26248992,
+          "ratio": 0.9975095126159967
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 26412832,
+          "reported_bytes": 26248992,
+          "ratio": 0.9937969544500188
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 26511136,
+          "reported_bytes": 26248992,
+          "ratio": 0.9901119288136125
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 26609440,
+          "reported_bytes": 26248992,
+          "ratio": 0.9864541305641907
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 26707744,
+          "reported_bytes": 26642208,
+          "ratio": 0.9975461798645366
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 26806048,
+          "reported_bytes": 26642208,
+          "ratio": 0.9938879464813314
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 26904352,
+          "reported_bytes": 26642208,
+          "ratio": 0.9902564462433439
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 27002656,
+          "reported_bytes": 26642208,
+          "ratio": 0.9866513871820609
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 27100960,
+          "reported_bytes": 27035424,
+          "ratio": 0.997581783080747
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 27182880,
+          "reported_bytes": 27035424,
+          "ratio": 0.9945754092281612
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 27232032,
+          "reported_bytes": 27035424,
+          "ratio": 0.9927802670032115
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 27281184,
+          "reported_bytes": 27035424,
+          "ratio": 0.9909915933267412
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 27330336,
+          "reported_bytes": 27297568,
+          "ratio": 0.9988010392554266
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 27379488,
+          "reported_bytes": 27297568,
+          "ratio": 0.9970079791119542
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 27379488,
+          "reported_bytes": 27297568,
+          "ratio": 0.9970079791119542
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 27379488,
+          "reported_bytes": 27297568,
+          "ratio": 0.9970079791119542
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 27379488,
+          "reported_bytes": 27379488,
+          "ratio": 1.0
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 27412232,
+          "reported_bytes": 27379488,
+          "ratio": 0.9988054967577977
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 16270440,
+          "reported_bytes": 27379488,
+          "ratio": 1.6827748972984136
+        },
+        {
+          "direct_processes": 3,
+          "independent_bytes": 16270440,
+          "reported_bytes": 27379488,
+          "ratio": 1.6827748972984136
+        }
+      ],
+      "results": {
+        "microphone": {
+          "type": "record_test_result",
+          "id": "a02a1a57-53a8-449e-b301-f2fa27f2d53a",
+          "source": "microphone",
+          "blocks": 3,
+          "frames": 576000,
+          "dropped_packets": 0
+        },
+        "system": {
+          "type": "record_test_result",
+          "id": "50a10383-dd7f-4d3a-8553-58a63b93eff9",
+          "source": "system",
+          "blocks": 3,
+          "frames": 575488,
+          "dropped_packets": 0
+        }
+      },
+      "diagnostics": {
+        "observed_ms": 1792103677613,
+        "pid": 61348,
+        "resources": {
+          "backlog_lower_bound": {
+            "coarse_seconds": 0,
+            "disk_free": 284745691136,
+            "oldest_coarse_ms": 0,
+            "oldest_vad_ms": 13783,
+            "store_wait_ms": 0,
+            "vad_seconds": 12
+          },
+          "capture": [
+            {
+              "active": false,
+              "frames": 576000,
+              "metrics": {
+                "callback_age_ms": 256,
+                "callback_deadline_misses": 0,
+                "callback_frames": 576000,
+                "callback_histogram_us": [
+                  1125,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "callback_max_ns": 6708,
+                "consumed_age_ms": 255,
+                "dropped_frames": 0,
+                "durable_age_ms": 207,
+                "input_rate": 48000,
+                "queued_ms": 0,
+                "ring_high_water_ms": 10,
+                "seal_histogram": [
+                  0,
+                  0,
+                  0,
+                  1,
+                  2,
+                  0,
+                  0,
+                  0
+                ]
+              },
+              "pid": 61353,
+              "session": "2591ce4c-1548-4f97-bc75-adb8d1200632"
+            },
+            {
+              "active": false,
+              "frames": 575488,
+              "metrics": {
+                "callback_age_ms": 73,
+                "callback_deadline_misses": 0,
+                "callback_frames": 575488,
+                "callback_histogram_us": [
+                  1123,
+                  1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "callback_max_ns": 18125,
+                "consumed_age_ms": 72,
+                "dropped_frames": 0,
+                "durable_age_ms": 63,
+                "input_rate": 48000,
+                "queued_ms": 0,
+                "ring_high_water_ms": 10,
+                "seal_histogram": [
+                  0,
+                  0,
+                  3,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              },
+              "pid": 61352,
+              "session": "0d3e6467-f611-4b5d-b0de-3222887d8a42"
+            }
+          ],
+          "capture_lag_ms": 0,
+          "footprint_bytes": 7012808,
+          "hard_bytes": 1610612736,
+          "mode": "Normal",
+          "model_pids": [
+            null,
+            null
+          ],
+          "os": {
+            "low_power": 0,
+            "memory_pressure": 0,
+            "on_battery": 0,
+            "physical_memory": 25769803776,
+            "thermal": 0
+          },
+          "peak_footprint_bytes": 27379488,
+          "request_histogram_ms": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ],
+          "request_max_ms": 13535,
+          "reserved_bytes": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "scope": "core_and_direct_children",
+          "soft_bytes": 1073741824,
+          "transitions": 0
+        },
+        "run_id": "eb7f700d-132c-4637-a472-ab71e1f9616f",
+        "schema": 1,
+        "storage": {
+          "control_transaction_histogram_ms": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "ingestion_commit_histogram_ms": [
+            7,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "ingestion_lock_wait_histogram_ms": [
+            14,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "logical_audio_bytes": 53633,
+          "observed_ms": 1792103677613,
+          "orphan_bytes": 0,
+          "physical_scan": [
+            {
+              "bytes": 0,
+              "category": "live_audio",
+              "observed_ms": 1792103663520
+            },
+            {
+              "bytes": 0,
+              "category": "pending_deletion",
+              "observed_ms": 1792103663520
+            },
+            {
+              "bytes": 0,
+              "category": "capture_staging",
+              "observed_ms": 1792103663520
+            },
+            {
+              "bytes": 0,
+              "category": "orphan_audio",
+              "observed_ms": 1792103663520
+            }
+          ]
+        },
+        "wal_bytes": 2249552
+      },
+      "coverage": [
+        [
+          "microphone",
+          3,
+          576000,
+          1792103663830,
+          1792103675830
+        ],
+        [
+          "system",
+          3,
+          575488,
+          1792103665020,
+          1792103677008
+        ]
+      ],
+      "samples": 54,
+      "sampled_max_durable_age_ms": 4511
+    }
+  },
+  "gui_external_cleanup": {
+    "app": "hear-integration.app (same playback code as final; predates unfinished-onset retention fix)",
+    "core_sha256": "cb269073ec0b6396ad6c3b288ccf32c0d4b0b857b0d6ebed7238a844649fd26f",
+    "fixture": "20-second public speech, four 5-second blocks, microphone only",
+    "first_chunk_requested_ms": 1792102244634,
+    "next_chunk_requested_ms": 1792102244675,
+    "external_cli_cleanup_ms": 1792102248888,
+    "cleared": "second prefetched block only; raw-audio cleanup; event and text unchanged",
+    "observed": "WKWebView changed pause button to play and stopped at approximately first 5-second boundary; no audio capture started",
+    "result": "PASS",
+    "limit": "does not establish zero-latency cancellation; automated tests cover one-in-flight and seek/dispose invalidation"
+  },
+  "unverified_mandatory": [
+    "final-candidate known-reference dual-source 2h/8h/24h/72h with coverage and resource trend",
+    "minimum macOS 13 and 8 GiB hardware",
+    "real labeled speech holdout",
+    "complete real Bluetooth/device/sleep/screen-lock/permission/slow-disk/power-loss matrix"
+  ],
+  "signed_native_faults": {
+    "core_sha256": "c341c02d9853b35df566929959932104cd5cd58eeca32741a26c5600d629b756",
+    "scope": "signed Tap dual-source short recordings; isolated native capture with no model, no cloud; explicit SQLite writer lock; not a long-run/quality claim",
+    "lock_11s": {
+      "writer_lock_seconds": 11.003701750189066,
+      "pending_blocks_while_locked": {
+        "microphone": 2,
+        "system": 2
+      },
+      "durable_blocks_recovered_exact_frames": 4,
+      "results": [
+        {
+          "type": "record_test_result",
+          "id": "19157630-3175-4c13-a143-7582c043efe5",
+          "source": "microphone",
+          "blocks": 5,
+          "frames": 1056256,
+          "dropped_packets": 0
+        },
+        {
+          "type": "record_test_result",
+          "id": "2a796241-f9ec-4561-8a14-83b8756247b6",
+          "source": "system",
+          "blocks": 5,
+          "frames": 1055232,
+          "dropped_packets": 0
+        }
+      ],
+      "coverage": [
+        [
+          "microphone",
+          5,
+          1056256,
+          1792103679275,
+          1792103701280
+        ],
+        [
+          "system",
+          5,
+          1055232,
+          1792103680467,
+          1792103702451
+        ]
+      ],
+      "enabled_intent_after": false
+    },
+    "core_crash_with_pending_journal": {
+      "writer_lock_seconds": 11.007002874743193,
+      "pending_blocks_while_locked": {
+        "microphone": 2,
+        "system": 2
+      },
+      "durable_blocks_recovered_exact_frames": 4,
+      "results": [],
+      "coverage": [
+        [
+          "microphone",
+          3,
+          720000,
+          1792103703397,
+          1792103718397
+        ],
+        [
+          "system",
+          4,
+          796672,
+          1792103704606,
+          1792103721203
+        ]
+      ],
+      "enabled_intent_after": false
+    }
+  },
+  "final_scale": {
+    "audio_exists_plan": [
+      "SCAN CONSTANT ROW",
+      "SCALAR SUBQUERY 1",
+      "SEARCH audio_blocks USING INDEX audio_blocks_source_end (source=? AND ended_ms>?)"
+    ],
+    "empty_claim_ms": 0.104959,
+    "equivalent_dual_days": 28.935185185185187,
+    "insert_ms": 28009.371584,
+    "last_claim_ms": 0.186708,
+    "queries": [
+      {
+        "median_ms": 31.883584,
+        "p95_ms": 34.442458,
+        "plan": [
+          "SCAN audio_blocks"
+        ],
+        "query": "legacy_capacity"
+      },
+      {
+        "median_ms": 0.00125,
+        "p95_ms": 0.002375,
+        "plan": [
+          "SEARCH storage_usage USING INTEGER PRIMARY KEY (rowid=?)"
+        ],
+        "query": "capacity"
+      },
+      {
+        "median_ms": 0.0018750000000000001,
+        "p95_ms": 0.003459,
+        "plan": [
+          "SCAN CONSTANT ROW",
+          "SCALAR SUBQUERY 1",
+          "SEARCH audio_blocks USING COVERING INDEX audio_blocks_media_path (media_path=?)"
+        ],
+        "query": "missing_media"
+      },
+      {
+        "median_ms": 0.0027089999999999996,
+        "p95_ms": 0.003709,
+        "plan": [
+          "SCAN CONSTANT ROW",
+          "SCALAR SUBQUERY 1",
+          "SEARCH audio_blocks USING COVERING INDEX audio_blocks_media_path (media_path=?)",
+          "SCALAR SUBQUERY 2",
+          "SEARCH media_deletion_jobs USING INDEX sqlite_autoindex_media_deletion_jobs_1 (media_path=?)"
+        ],
+        "query": "known_or_pending_delete"
+      },
+      {
+        "median_ms": 0.003333,
+        "p95_ms": 0.005833,
+        "plan": [
+          "SCAN CONSTANT ROW",
+          "SCALAR SUBQUERY 1",
+          "SCAN audio_blocks USING INDEX audio_blocks_pending"
+        ],
+        "query": "empty_pending"
+      },
+      {
+        "median_ms": 0.001584,
+        "p95_ms": 0.0022919999999999998,
+        "plan": [
+          "SEARCH audio_blocks USING COVERING INDEX audio_blocks_recovery (analysis_state=?)"
+        ],
+        "query": "sealing"
+      }
+    ],
+    "rows": 1000000,
+    "search": [
+      {
+        "max_ms": 0.9948750000000001,
+        "median_ms": 0.7722910000000001,
+        "plan": [
+          "SEARCH sr USING INDEX search_records_time (started_ms<?)",
+          "CORRELATED SCALAR SUBQUERY 7",
+          "SEARCH sr USING INDEX sqlite_autoindex_search_records_1 (kind=?)",
+          "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 3",
+          "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?)",
+          "SEARCH g USING INDEX sqlite_autoindex_speaker_groups_1 (speaker_scope=? AND speaker_label=?) LEFT-JOIN",
+          "SEARCH b USING INDEX speaker_bindings_current (current_segment_id=? AND state=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 37",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 38",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 39",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+          "SEARCH t USING INDEX sqlite_autoindex_cloud_tasks_1 (id=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 4",
+          "SEARCH e USING INDEX sqlite_autoindex_named_events_1 (id=?)",
+          "CORRELATED SCALAR SUBQUERY 5",
+          "SEARCH m USING INDEX sqlite_autoindex_manual_ranges_1 (id=?)",
+          "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 3",
+          "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?)",
+          "SEARCH g USING INDEX sqlite_autoindex_speaker_groups_1 (speaker_scope=? AND speaker_label=?) LEFT-JOIN",
+          "SEARCH b USING INDEX speaker_bindings_current (current_segment_id=? AND state=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 22",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 23",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 24",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+          "SEARCH t USING INDEX sqlite_autoindex_cloud_tasks_1 (id=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 4",
+          "SEARCH e USING INDEX sqlite_autoindex_named_events_1 (id=?)",
+          "CORRELATED SCALAR SUBQUERY 5",
+          "SEARCH m USING INDEX sqlite_autoindex_manual_ranges_1 (id=?)",
+          "CORRELATED SCALAR SUBQUERY 8",
+          "SEARCH sr USING INDEX search_records_ended (ended_ms=? AND started_ms=?)",
+          "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 3",
+          "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?)",
+          "SEARCH g USING INDEX sqlite_autoindex_speaker_groups_1 (speaker_scope=? AND speaker_label=?) LEFT-JOIN",
+          "SEARCH b USING INDEX speaker_bindings_current (current_segment_id=? AND state=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 52",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 53",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 54",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+          "SEARCH t USING INDEX sqlite_autoindex_cloud_tasks_1 (id=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 4",
+          "SEARCH e USING INDEX sqlite_autoindex_named_events_1 (id=?)",
+          "CORRELATED SCALAR SUBQUERY 5",
+          "SEARCH m USING INDEX sqlite_autoindex_manual_ranges_1 (id=?)",
+          "CORRELATED SCALAR SUBQUERY 1",
+          "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?)",
+          "SEARCH g USING INDEX sqlite_autoindex_speaker_groups_1 (speaker_scope=? AND speaker_label=?) LEFT-JOIN",
+          "SEARCH b USING INDEX speaker_bindings_current (current_segment_id=? AND state=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 12",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 13",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 14",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+          "CORRELATED SCALAR SUBQUERY 2",
+          "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?)",
+          "SEARCH g USING INDEX sqlite_autoindex_speaker_groups_1 (speaker_scope=? AND speaker_label=?) LEFT-JOIN",
+          "SEARCH b USING INDEX speaker_bindings_current (current_segment_id=? AND state=?) LEFT-JOIN",
+          "SEARCH person USING INDEX sqlite_autoindex_people_1 (id=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 17",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 18",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 19",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+          "USE TEMP B-TREE FOR LAST TERM OF ORDER BY"
+        ],
+        "read": "short_day"
+      },
+      {
+        "max_ms": 60.364458000000006,
+        "median_ms": 60.097708,
+        "plan": [
+          "SEARCH sr USING INDEX search_records_time (started_ms<?)",
+          "CORRELATED SCALAR SUBQUERY 4",
+          "SCAN search_fts VIRTUAL TABLE INDEX 0:=M1",
+          "CORRELATED SCALAR SUBQUERY 8",
+          "SEARCH sr USING INDEX sqlite_autoindex_search_records_1 (kind=?)",
+          "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 3",
+          "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?)",
+          "SEARCH g USING INDEX sqlite_autoindex_speaker_groups_1 (speaker_scope=? AND speaker_label=?) LEFT-JOIN",
+          "SEARCH b USING INDEX speaker_bindings_current (current_segment_id=? AND state=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 38",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 39",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 40",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+          "SCAN search_fts EXISTS VIRTUAL TABLE INDEX 0:=M1",
+          "SEARCH t USING INDEX sqlite_autoindex_cloud_tasks_1 (id=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 5",
+          "SEARCH e USING INDEX sqlite_autoindex_named_events_1 (id=?)",
+          "CORRELATED SCALAR SUBQUERY 6",
+          "SEARCH m USING INDEX sqlite_autoindex_manual_ranges_1 (id=?)",
+          "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 3",
+          "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?)",
+          "SEARCH g USING INDEX sqlite_autoindex_speaker_groups_1 (speaker_scope=? AND speaker_label=?) LEFT-JOIN",
+          "SEARCH b USING INDEX speaker_bindings_current (current_segment_id=? AND state=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 23",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 24",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 25",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+          "SEARCH t USING INDEX sqlite_autoindex_cloud_tasks_1 (id=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 5",
+          "SEARCH e USING INDEX sqlite_autoindex_named_events_1 (id=?)",
+          "CORRELATED SCALAR SUBQUERY 6",
+          "SEARCH m USING INDEX sqlite_autoindex_manual_ranges_1 (id=?)",
+          "CORRELATED SCALAR SUBQUERY 9",
+          "SEARCH sr USING INDEX search_records_ended (ended_ms=? AND started_ms=?)",
+          "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 3",
+          "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?)",
+          "SEARCH g USING INDEX sqlite_autoindex_speaker_groups_1 (speaker_scope=? AND speaker_label=?) LEFT-JOIN",
+          "SEARCH b USING INDEX speaker_bindings_current (current_segment_id=? AND state=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 53",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 54",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 55",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+          "SEARCH t USING INDEX sqlite_autoindex_cloud_tasks_1 (id=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 5",
+          "SEARCH e USING INDEX sqlite_autoindex_named_events_1 (id=?)",
+          "CORRELATED SCALAR SUBQUERY 6",
+          "SEARCH m USING INDEX sqlite_autoindex_manual_ranges_1 (id=?)",
+          "SCAN search_fts EXISTS VIRTUAL TABLE INDEX 0:=M1",
+          "CORRELATED SCALAR SUBQUERY 1",
+          "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?)",
+          "SEARCH g USING INDEX sqlite_autoindex_speaker_groups_1 (speaker_scope=? AND speaker_label=?) LEFT-JOIN",
+          "SEARCH b USING INDEX speaker_bindings_current (current_segment_id=? AND state=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 13",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 14",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 15",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+          "CORRELATED SCALAR SUBQUERY 2",
+          "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?)",
+          "SEARCH g USING INDEX sqlite_autoindex_speaker_groups_1 (speaker_scope=? AND speaker_label=?) LEFT-JOIN",
+          "SEARCH b USING INDEX speaker_bindings_current (current_segment_id=? AND state=?) LEFT-JOIN",
+          "SEARCH person USING INDEX sqlite_autoindex_people_1 (id=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 18",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 19",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 20",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+          "USE TEMP B-TREE FOR LAST TERM OF ORDER BY"
+        ],
+        "read": "fts_day"
+      },
+      {
+        "max_ms": 0.8195,
+        "median_ms": 0.802917,
+        "plan": [
+          "SEARCH sr USING INDEX search_records_time (started_ms<?)",
+          "CORRELATED SCALAR SUBQUERY 7",
+          "SEARCH sr USING INDEX sqlite_autoindex_search_records_1 (kind=?)",
+          "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 3",
+          "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?)",
+          "SEARCH g USING INDEX sqlite_autoindex_speaker_groups_1 (speaker_scope=? AND speaker_label=?) LEFT-JOIN",
+          "SEARCH b USING INDEX speaker_bindings_current (current_segment_id=? AND state=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 37",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 38",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 39",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+          "SEARCH t USING INDEX sqlite_autoindex_cloud_tasks_1 (id=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 4",
+          "SEARCH e USING INDEX sqlite_autoindex_named_events_1 (id=?)",
+          "CORRELATED SCALAR SUBQUERY 5",
+          "SEARCH m USING INDEX sqlite_autoindex_manual_ranges_1 (id=?)",
+          "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 3",
+          "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?)",
+          "SEARCH g USING INDEX sqlite_autoindex_speaker_groups_1 (speaker_scope=? AND speaker_label=?) LEFT-JOIN",
+          "SEARCH b USING INDEX speaker_bindings_current (current_segment_id=? AND state=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 22",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 23",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 24",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+          "SEARCH t USING INDEX sqlite_autoindex_cloud_tasks_1 (id=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 4",
+          "SEARCH e USING INDEX sqlite_autoindex_named_events_1 (id=?)",
+          "CORRELATED SCALAR SUBQUERY 5",
+          "SEARCH m USING INDEX sqlite_autoindex_manual_ranges_1 (id=?)",
+          "CORRELATED SCALAR SUBQUERY 8",
+          "SEARCH sr USING INDEX search_records_ended (ended_ms=? AND started_ms=?)",
+          "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 3",
+          "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?)",
+          "SEARCH g USING INDEX sqlite_autoindex_speaker_groups_1 (speaker_scope=? AND speaker_label=?) LEFT-JOIN",
+          "SEARCH b USING INDEX speaker_bindings_current (current_segment_id=? AND state=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 52",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 53",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 54",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+          "SEARCH t USING INDEX sqlite_autoindex_cloud_tasks_1 (id=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 4",
+          "SEARCH e USING INDEX sqlite_autoindex_named_events_1 (id=?)",
+          "CORRELATED SCALAR SUBQUERY 5",
+          "SEARCH m USING INDEX sqlite_autoindex_manual_ranges_1 (id=?)",
+          "CORRELATED SCALAR SUBQUERY 1",
+          "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?)",
+          "SEARCH g USING INDEX sqlite_autoindex_speaker_groups_1 (speaker_scope=? AND speaker_label=?) LEFT-JOIN",
+          "SEARCH b USING INDEX speaker_bindings_current (current_segment_id=? AND state=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 12",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 13",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 14",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+          "CORRELATED SCALAR SUBQUERY 2",
+          "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?)",
+          "SEARCH g USING INDEX sqlite_autoindex_speaker_groups_1 (speaker_scope=? AND speaker_label=?) LEFT-JOIN",
+          "SEARCH b USING INDEX speaker_bindings_current (current_segment_id=? AND state=?) LEFT-JOIN",
+          "SEARCH person USING INDEX sqlite_autoindex_people_1 (id=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 17",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 18",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 19",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+          "USE TEMP B-TREE FOR LAST TERM OF ORDER BY"
+        ],
+        "read": "short_all"
+      },
+      {
+        "max_ms": 60.061291000000004,
+        "median_ms": 60.040125,
+        "plan": [
+          "SEARCH sr USING INDEX search_records_time (started_ms<?)",
+          "CORRELATED SCALAR SUBQUERY 4",
+          "SCAN search_fts VIRTUAL TABLE INDEX 0:=M1",
+          "CORRELATED SCALAR SUBQUERY 8",
+          "SEARCH sr USING INDEX sqlite_autoindex_search_records_1 (kind=?)",
+          "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 3",
+          "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?)",
+          "SEARCH g USING INDEX sqlite_autoindex_speaker_groups_1 (speaker_scope=? AND speaker_label=?) LEFT-JOIN",
+          "SEARCH b USING INDEX speaker_bindings_current (current_segment_id=? AND state=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 38",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 39",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 40",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+          "SCAN search_fts EXISTS VIRTUAL TABLE INDEX 0:=M1",
+          "SEARCH t USING INDEX sqlite_autoindex_cloud_tasks_1 (id=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 5",
+          "SEARCH e USING INDEX sqlite_autoindex_named_events_1 (id=?)",
+          "CORRELATED SCALAR SUBQUERY 6",
+          "SEARCH m USING INDEX sqlite_autoindex_manual_ranges_1 (id=?)",
+          "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 3",
+          "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?)",
+          "SEARCH g USING INDEX sqlite_autoindex_speaker_groups_1 (speaker_scope=? AND speaker_label=?) LEFT-JOIN",
+          "SEARCH b USING INDEX speaker_bindings_current (current_segment_id=? AND state=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 23",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 24",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 25",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+          "SEARCH t USING INDEX sqlite_autoindex_cloud_tasks_1 (id=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 5",
+          "SEARCH e USING INDEX sqlite_autoindex_named_events_1 (id=?)",
+          "CORRELATED SCALAR SUBQUERY 6",
+          "SEARCH m USING INDEX sqlite_autoindex_manual_ranges_1 (id=?)",
+          "CORRELATED SCALAR SUBQUERY 9",
+          "SEARCH sr USING INDEX search_records_ended (ended_ms=? AND started_ms=?)",
+          "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 3",
+          "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?)",
+          "SEARCH g USING INDEX sqlite_autoindex_speaker_groups_1 (speaker_scope=? AND speaker_label=?) LEFT-JOIN",
+          "SEARCH b USING INDEX speaker_bindings_current (current_segment_id=? AND state=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 53",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 54",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 55",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+          "SEARCH t USING INDEX sqlite_autoindex_cloud_tasks_1 (id=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 5",
+          "SEARCH e USING INDEX sqlite_autoindex_named_events_1 (id=?)",
+          "CORRELATED SCALAR SUBQUERY 6",
+          "SEARCH m USING INDEX sqlite_autoindex_manual_ranges_1 (id=?)",
+          "SCAN search_fts EXISTS VIRTUAL TABLE INDEX 0:=M1",
+          "CORRELATED SCALAR SUBQUERY 1",
+          "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?)",
+          "SEARCH g USING INDEX sqlite_autoindex_speaker_groups_1 (speaker_scope=? AND speaker_label=?) LEFT-JOIN",
+          "SEARCH b USING INDEX speaker_bindings_current (current_segment_id=? AND state=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 13",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 14",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 15",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+          "CORRELATED SCALAR SUBQUERY 2",
+          "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?)",
+          "SEARCH g USING INDEX sqlite_autoindex_speaker_groups_1 (speaker_scope=? AND speaker_label=?) LEFT-JOIN",
+          "SEARCH b USING INDEX speaker_bindings_current (current_segment_id=? AND state=?) LEFT-JOIN",
+          "SEARCH person USING INDEX sqlite_autoindex_people_1 (id=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 18",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 19",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 20",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+          "USE TEMP B-TREE FOR LAST TERM OF ORDER BY"
+        ],
+        "read": "fts_all"
+      },
+      {
+        "max_ms": 0.667375,
+        "median_ms": 0.637416,
+        "plan": [
+          "SEARCH sr USING INTEGER PRIMARY KEY (rowid=?)",
+          "LIST SUBQUERY 4",
+          "SCAN search_fts VIRTUAL TABLE INDEX 0:M1",
+          "CORRELATED SCALAR SUBQUERY 8",
+          "SEARCH sr USING INDEX sqlite_autoindex_search_records_1 (kind=?)",
+          "REUSE LIST SUBQUERY 4",
+          "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 3",
+          "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?)",
+          "SEARCH g USING INDEX sqlite_autoindex_speaker_groups_1 (speaker_scope=? AND speaker_label=?) LEFT-JOIN",
+          "SEARCH b USING INDEX speaker_bindings_current (current_segment_id=? AND state=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 38",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 39",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 40",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+          "SEARCH t USING INDEX sqlite_autoindex_cloud_tasks_1 (id=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 5",
+          "SEARCH e USING INDEX sqlite_autoindex_named_events_1 (id=?)",
+          "CORRELATED SCALAR SUBQUERY 6",
+          "SEARCH m USING INDEX sqlite_autoindex_manual_ranges_1 (id=?)",
+          "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 3",
+          "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?)",
+          "SEARCH g USING INDEX sqlite_autoindex_speaker_groups_1 (speaker_scope=? AND speaker_label=?) LEFT-JOIN",
+          "SEARCH b USING INDEX speaker_bindings_current (current_segment_id=? AND state=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 23",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 24",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 25",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+          "SEARCH t USING INDEX sqlite_autoindex_cloud_tasks_1 (id=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 5",
+          "SEARCH e USING INDEX sqlite_autoindex_named_events_1 (id=?)",
+          "CORRELATED SCALAR SUBQUERY 6",
+          "SEARCH m USING INDEX sqlite_autoindex_manual_ranges_1 (id=?)",
+          "CORRELATED SCALAR SUBQUERY 9",
+          "SEARCH sr USING INDEX search_records_ended (ended_ms=? AND started_ms=? AND rowid=?)",
+          "REUSE LIST SUBQUERY 4",
+          "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 3",
+          "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?)",
+          "SEARCH g USING INDEX sqlite_autoindex_speaker_groups_1 (speaker_scope=? AND speaker_label=?) LEFT-JOIN",
+          "SEARCH b USING INDEX speaker_bindings_current (current_segment_id=? AND state=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 53",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 54",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 55",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+          "SEARCH t USING INDEX sqlite_autoindex_cloud_tasks_1 (id=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 5",
+          "SEARCH e USING INDEX sqlite_autoindex_named_events_1 (id=?)",
+          "CORRELATED SCALAR SUBQUERY 6",
+          "SEARCH m USING INDEX sqlite_autoindex_manual_ranges_1 (id=?)",
+          "CORRELATED SCALAR SUBQUERY 1",
+          "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?)",
+          "SEARCH g USING INDEX sqlite_autoindex_speaker_groups_1 (speaker_scope=? AND speaker_label=?) LEFT-JOIN",
+          "SEARCH b USING INDEX speaker_bindings_current (current_segment_id=? AND state=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 13",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 14",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 15",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+          "CORRELATED SCALAR SUBQUERY 2",
+          "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?)",
+          "SEARCH g USING INDEX sqlite_autoindex_speaker_groups_1 (speaker_scope=? AND speaker_label=?) LEFT-JOIN",
+          "SEARCH b USING INDEX speaker_bindings_current (current_segment_id=? AND state=?) LEFT-JOIN",
+          "SEARCH person USING INDEX sqlite_autoindex_people_1 (id=?) LEFT-JOIN",
+          "CORRELATED SCALAR SUBQUERY 18",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 19",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+          "CORRELATED SCALAR SUBQUERY 20",
+          "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+          "USE TEMP B-TREE FOR ORDER BY"
+        ],
+        "read": "empty_day"
+      },
+      {
+        "max_ms": 2.5734999999999997,
+        "median_ms": 1.904208,
+        "read": "timeline_day"
+      },
+      {
+        "max_ms": 30.111458,
+        "median_ms": 29.913999999999998,
+        "read": "detail_100_of_4000"
+      },
+      {
+        "max_ms": 0.6062500000000001,
+        "median_ms": 0.49129100000000003,
+        "read": "range_100"
+      }
+    ],
+    "sqlite": "3.53.2",
+    "warm_store_init_ms": 1.424292
+  },
+  "footprint_repair": {
+    "api": "proc_listchildpids returns PID count, not bytes",
+    "primary_source": "https://github.com/apple-oss-distributions/xnu/blob/main/libsyscall/wrappers/libproc/libproc.c",
+    "before": {
+      "parent_before_bytes": 9224576,
+      "parent_after_bytes": 9224576,
+      "children_bytes": [
+        40550808,
+        40681880,
+        40665496
+      ],
+      "actual_background_bytes": 9224576,
+      "expected_min_bytes": 131122760,
+      "children_included": false
+    },
+    "after": {
+      "parent_before_bytes": 9208216,
+      "parent_after_bytes": 9208216,
+      "children_bytes": [
+        40681880,
+        40649088,
+        40681880
+      ],
+      "actual_background_bytes": 131221064,
+      "expected_min_bytes": 131221064,
+      "children_included": true
+    },
+    "test": "python3 scripts/test_native_resources.py; real native adapter and 3 resident direct children, red before fix / green after",
+    "signed_comparison_limit": "Independent snapshots are sequential: exiting source processes can shrink the independently read total before the next diagnostic sample, producing ratios above1. Both modes median measured/independent ratios within1%; this is not an instantaneous OS-enforced cap.",
+    "signed_total_comparison_median_ratio": {
+      "sck": 0.9942893264779226,
+      "tap": 0.9959852744450393
+    }
+  },
+  "review": {
+    "requirements_targeted": "PASS R1/F10",
+    "adversarial_targeted": "PASS A1/F05/F07 and F06",
+    "final_architecture": "PASS full candidate + focused F06 repair",
+    "release_acceptance": "UNVERIFIED; in-progress; do not publish",
+    "post_verdict_formatting": "Removed trailing whitespace in verification script only; production code unchanged."
+  }
+}

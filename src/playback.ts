@@ -2,6 +2,7 @@ export type Chunk = {
 	wav_base64: string;
 	has_audio: boolean;
 	next_audio_ms: number | null;
+	generation?: number | null;
 };
 type Scheduled = {
 	node: AudioBufferSourceNode;
@@ -19,11 +20,16 @@ export class ContinuousPlayback {
 	private active = false;
 	private disposed = false;
 	private next = 0;
+	private from = 0;
 	private end = 0;
 	private source = "both";
 	private emptyTail = false;
 	private pendingError: { cause: unknown } | null = null;
 	private loading: Promise<void> | null = null;
+	private checking: Promise<void> | null = null;
+	private checkingEpoch = 0;
+	private generation: number | null = null;
+	private checkedAt = -Infinity;
 	private timer: ReturnType<typeof setInterval> | null = null;
 	private fetchChunk: (
 		from: number,
@@ -34,6 +40,12 @@ export class ContinuousPlayback {
 	private done: () => void;
 	private error: (cause: unknown) => void;
 	private createContext: () => AudioContext;
+	private validate: (
+		from: number,
+		to: number,
+		source: string,
+		generation: number,
+	) => Promise<boolean>;
 
 	constructor(
 		fetchChunk: (from: number, to: number, source: string) => Promise<Chunk>,
@@ -41,12 +53,19 @@ export class ContinuousPlayback {
 		done: () => void,
 		error: (cause: unknown) => void,
 		createContext = () => new AudioContext({ sampleRate: 48_000 }),
+		validate: (
+			from: number,
+			to: number,
+			source: string,
+			generation: number,
+		) => Promise<boolean> = async () => true,
 	) {
 		this.fetchChunk = fetchChunk;
 		this.position = position;
 		this.done = done;
 		this.error = error;
 		this.createContext = createContext;
+		this.validate = validate;
 	}
 	start(from: number, end: number, source: string) {
 		this.stop();
@@ -62,9 +81,12 @@ export class ContinuousPlayback {
 		this.context ??= this.createContext();
 		this.active = true;
 		this.next = from;
+		this.from = from;
 		this.end = end;
 		this.source = source;
 		this.emptyTail = false;
+		this.generation = null;
+		this.checkedAt = -Infinity;
 		const epoch = this.epoch;
 		void this.context
 			.resume()
@@ -97,6 +119,8 @@ export class ContinuousPlayback {
 		this.context = null;
 	}
 	private tick() {
+		if (this.active && performance.now() - this.checkedAt >= 250)
+			void this.check();
 		const time = this.context?.currentTime ?? 0;
 		const current = this.nodes.find(
 			(item) =>
@@ -109,6 +133,34 @@ export class ContinuousPlayback {
 					Math.round(current.at + (time - current.when) * 1000),
 				),
 			);
+	}
+	private check(): Promise<void> {
+		if (!this.active || this.generation === null) return Promise.resolve();
+		if (this.checking)
+			return this.checkingEpoch === this.epoch
+				? this.checking
+				: this.checking.then(() => this.check());
+		const epoch = this.epoch;
+		this.checkingEpoch = epoch;
+		this.checking = this.validate(
+			this.from,
+			this.end,
+			this.source,
+			this.generation,
+		)
+			.then((valid) => {
+				if (epoch !== this.epoch || !this.active) return;
+				this.checkedAt = performance.now();
+				if (!valid) {
+					this.stop();
+					this.done();
+				}
+			})
+			.catch((cause) => this.fail(epoch, cause))
+			.finally(() => {
+				this.checking = null;
+			});
+		return this.checking;
 	}
 	private fail(epoch: number, cause: unknown) {
 		if (epoch !== this.epoch || !this.active) return;
@@ -131,6 +183,7 @@ export class ContinuousPlayback {
 				const until = Math.min(at + 5000, this.end);
 				const response = await this.fetchChunk(at, until, this.source);
 				if (!this.active || epoch !== this.epoch) return;
+				this.generation ??= response.generation ?? null;
 				if (!response.has_audio) {
 					const next = response.next_audio_ms;
 					// Preserve the existing player behavior: skip wholly unavailable
@@ -145,6 +198,8 @@ export class ContinuousPlayback {
 				const binary = atob(response.wav_base64);
 				const bytes = Uint8Array.from(binary, (value) => value.charCodeAt(0));
 				const buffer = await context.decodeAudioData(bytes.buffer);
+				if (!this.active || epoch !== this.epoch) return;
+				await this.check();
 				if (!this.active || epoch !== this.epoch) return;
 				if (
 					buffer.numberOfChannels !== 1 ||
@@ -173,6 +228,9 @@ export class ContinuousPlayback {
 					this.pump();
 				};
 				node.start(when);
+				// An older core does not supply cleanup generations. Preserve its
+				// original one-chunk behavior instead of caching unrevokeable audio.
+				if (this.generation === null) break;
 			}
 		})()
 			.catch((cause) => {
@@ -195,7 +253,11 @@ export class ContinuousPlayback {
 					if (pending) this.error(pending.cause);
 					else if (this.emptyTail)
 						this.error(new Error("这段时间没有可播放的声音"));
-				} else if (this.nodes.length < 2 && this.next < this.end) this.pump();
+				} else if (
+					this.nodes.length < (this.generation === null ? 1 : 2) &&
+					this.next < this.end
+				)
+					this.pump();
 			});
 	}
 }

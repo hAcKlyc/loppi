@@ -27,6 +27,7 @@ struct WorkHeader {
 struct VadResult {
     segments: Vec<SpeechRegion>,
     speech_active: bool,
+    speech_pending: bool,
     error: Option<String>,
 }
 
@@ -80,6 +81,7 @@ impl VadWorker {
             return VadResult {
                 segments: vec![],
                 speech_active: false,
+                speech_pending: false,
                 error: Some("invalid_source".to_owned()),
             };
         }
@@ -93,6 +95,7 @@ impl VadWorker {
                 return VadResult {
                     segments: vec![],
                     speech_active: false,
+                    speech_pending: false,
                     error: Some("vad_unavailable".to_owned()),
                 };
             };
@@ -146,12 +149,14 @@ impl VadWorker {
             || segments.iter().any(|segment| {
                 segment.start_sample < block_end && segment.end_sample > header.start_sample
             });
+        let speech_pending = !header.flush && session.vad.detected();
         if header.flush {
             self.sessions.remove(&source);
         }
         VadResult {
             segments,
             speech_active,
+            speech_pending,
             error: None,
         }
     }

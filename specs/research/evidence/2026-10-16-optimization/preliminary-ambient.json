@@ -1,0 +1,179 @@
+{
+  "candidate_core_sha256": "fc27be0e8c3b2b9ad4c941677d9bb4296dbff3af280eeb3b2517ee6ecab6a738",
+  "scope": "superseded candidate; ambient sound without known reference; isolated recording, cloud paused; NO final-candidate/quality/long-run acceptance claim",
+  "requested_seconds": 7200,
+  "completed": false,
+  "stop_reason": "superseded pre-integration candidate has confirmed F06 native child-footprint undercount; stop preliminary ambient observation instead of treating it as final 2h/24h evidence",
+  "observed_seconds": 3613.9210796253756,
+  "samples": 3590,
+  "independent_sampler_peak_observed_app_footprint_bytes": 661343136,
+  "governor_totals_invalid_for_budget_evidence": true,
+  "status": {
+    "observations": 358,
+    "both_active": 357,
+    "latency_ms": {
+      "median": 19.762958399951458,
+      "max": 68.13200004398823
+    }
+  },
+  "final_capture_counters": [
+    {
+      "active": true,
+      "frames": 173280000,
+      "metrics": {
+        "callback_age_ms": 10,
+        "callback_deadline_misses": 0,
+        "callback_frames": 173437440,
+        "callback_histogram_us": [
+          338716,
+          29,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "callback_max_ns": 18541,
+        "consumed_age_ms": 9,
+        "dropped_frames": 0,
+        "durable_age_ms": 3212,
+        "input_rate": 48000,
+        "queued_ms": 0,
+        "ring_high_water_ms": 85,
+        "seal_histogram": [
+          0,
+          0,
+          0,
+          1,
+          709,
+          12,
+          0,
+          0
+        ]
+      },
+      "pid": 46553,
+      "session": "8c06f2e8-4594-4076-9c34-75d441222fc0"
+    },
+    {
+      "active": true,
+      "frames": 173280000,
+      "metrics": {
+        "callback_age_ms": 9,
+        "callback_deadline_misses": 0,
+        "callback_frames": 173385216,
+        "callback_histogram_us": [
+          338612,
+          31,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "callback_max_ns": 18667,
+        "consumed_age_ms": 8,
+        "dropped_frames": 0,
+        "durable_age_ms": 2186,
+        "input_rate": 48000,
+        "queued_ms": 0,
+        "ring_high_water_ms": 85,
+        "seal_histogram": [
+          0,
+          0,
+          675,
+          46,
+          1,
+          0,
+          0,
+          0
+        ]
+      },
+      "pid": 46552,
+      "session": "63961a47-b52e-4346-98d2-8f0504622909"
+    }
+  ],
+  "sample_continuity": {
+    "microphone": {
+      "blocks": 722,
+      "sample_discontinuities": 0,
+      "sample_gap_range": [
+        0,
+        0
+      ],
+      "wall_boundary_delta_histogram_ms": {
+        "0": 476,
+        "-1": 129,
+        "1": 116
+      },
+      "range": [
+        1792099788359,
+        1792103398346
+      ],
+      "session_states": [
+        [
+          "closed",
+          1
+        ]
+      ]
+    },
+    "system": {
+      "blocks": 722,
+      "sample_discontinuities": 0,
+      "sample_gap_range": [
+        0,
+        0
+      ],
+      "wall_boundary_delta_histogram_ms": {
+        "0": 721
+      },
+      "range": [
+        1792099789531,
+        1792103399531
+      ],
+      "session_states": [
+        [
+          "closed",
+          1
+        ]
+      ]
+    }
+  },
+  "media_decode": {
+    "microphone": {
+      "blocks": 722,
+      "retained_files": 14,
+      "decoded_files": 14,
+      "decode_frame_mismatches": 0,
+      "file_errors": 0,
+      "frames": 173280000,
+      "decisions": {
+        "discard_no_speech_v2": 708,
+        "retain_speech_v2": 12,
+        "pending_vad_v2": 2
+      },
+      "declared_gap_count": 0
+    },
+    "system": {
+      "blocks": 722,
+      "retained_files": 1,
+      "decoded_files": 1,
+      "decode_frame_mismatches": 0,
+      "file_errors": 0,
+      "frames": 173280000,
+      "decisions": {
+        "discard_digital_silence_v1": 721,
+        "retain_speech_v2": 1
+      },
+      "declared_gap_count": 1
+    }
+  },
+  "limitations": [
+    "Final footprint adapter, journal-boundary and retention repairs are absent from this old build",
+    "Microphone UTC boundaries show +/-1ms differences although sample coordinates are contiguous; not zero wall-clock gaps",
+    "Startup system source_start_gap is recorded; source start times differ",
+    "Most ambient audio was classified silence/non-speech; no reference or holdout validates those decisions",
+    "Do not use this aborted roughly one-hour observation to pass 2h/8h/24h/72h gates"
+  ]
+}
