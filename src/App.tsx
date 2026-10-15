@@ -214,31 +214,40 @@ function App() {
 		[date],
 	);
 
-	const refreshContext = useCallback(async () => {
-		const results = await Promise.allSettled([
-			core<{ type: "cloud_status"; id: string; queues: CloudQueue[] }>({
-				type: "cloud_status",
-			}),
-			core<{ type: "people"; id: string; people: Person[] }>({
-				type: "people",
-			}),
-			core<{
-				type: "models";
-				id: string;
-				state: {
-					phase: string;
-					speaker_phase: string;
-					progress_percent: number;
-				};
-			}>({ type: "models" }),
-			invoke<PrivacyStatus>("privacy_status"),
-			invoke<number>("login_item_status"),
-		]);
-		if (results[0].status === "fulfilled") setQueues(results[0].value.queues);
-		if (results[1].status === "fulfilled") setPeople(results[1].value.people);
-		if (results[2].status === "fulfilled") setModels(results[2].value.state);
-		if (results[3].status === "fulfilled") setPrivacy(results[3].value);
-		if (results[4].status === "fulfilled") setLoginStatus(results[4].value);
+	const contextInFlight = useRef<Promise<void> | null>(null);
+	const refreshContext = useCallback(() => {
+		if (contextInFlight.current) return contextInFlight.current;
+		const request = (async () => {
+			const results = await Promise.allSettled([
+				core<{ type: "cloud_status"; id: string; queues: CloudQueue[] }>({
+					type: "cloud_status",
+				}),
+				core<{ type: "people"; id: string; people: Person[] }>({
+					type: "people",
+				}),
+				core<{
+					type: "models";
+					id: string;
+					state: {
+						phase: string;
+						speaker_phase: string;
+						progress_percent: number;
+					};
+				}>({ type: "models" }),
+				invoke<PrivacyStatus>("privacy_status"),
+				invoke<number>("login_item_status"),
+			]);
+			if (results[0].status === "fulfilled") setQueues(results[0].value.queues);
+			if (results[1].status === "fulfilled") setPeople(results[1].value.people);
+			if (results[2].status === "fulfilled") setModels(results[2].value.state);
+			if (results[3].status === "fulfilled") setPrivacy(results[3].value);
+			if (results[4].status === "fulfilled") setLoginStatus(results[4].value);
+		})();
+		contextInFlight.current = request;
+		void request.finally(() => {
+			if (contextInFlight.current === request) contextInFlight.current = null;
+		});
+		return request;
 	}, []);
 
 	const refreshTasks = useCallback(async () => {
@@ -312,6 +321,8 @@ function App() {
 		void refreshStatus();
 		void refreshContext();
 		const timer = window.setInterval(() => {
+			if (document.visibilityState !== "visible" || !document.hasFocus())
+				return;
 			void refreshContext();
 		}, 5000);
 		return () => window.clearInterval(timer);

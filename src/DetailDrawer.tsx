@@ -14,6 +14,8 @@ import {
 	userError,
 } from "./api";
 
+import { type Chunk, ContinuousPlayback } from "./playback";
+
 type Props = {
 	item: TimelineItem;
 	people: Person[];
@@ -26,15 +28,6 @@ type Props = {
 	onMessage: (message: string) => void;
 	refreshToken: number;
 };
-
-function vttTime(milliseconds: number): string {
-	const whole = Math.max(0, Math.floor(milliseconds));
-	const hours = Math.floor(whole / 3_600_000);
-	const minutes = Math.floor((whole % 3_600_000) / 60_000);
-	const seconds = Math.floor((whole % 60_000) / 1_000);
-	const fraction = whole % 1_000;
-	return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${String(fraction).padStart(3, "0")}`;
-}
 
 function sameLocalDay(first: number, second: number): boolean {
 	const a = new Date(first);
@@ -175,12 +168,9 @@ export function DetailDrawer({
 		localDateTime(Math.floor(item.ended_ms / 1000) * 1000),
 	);
 	const [asrSources, setAsrSources] = useState<Sources>(item.sources);
-	const [captionUrl, setCaptionUrl] = useState("data:text/vtt,WEBVTT%0A");
-	const audioRef = useRef<HTMLAudioElement | null>(null);
-	const playbackEpoch = useRef(0);
-	const playingRef = useRef(false);
-	const cursorRef = useRef(item.started_ms);
-	const chunkEndRef = useRef(item.started_ms);
+	const player = useRef<ContinuousPlayback | null>(null);
+	const messageRef = useRef(onMessage);
+	messageRef.current = onMessage;
 	const sourceRef = useRef<Sources>(item.sources);
 	const momentsRequest = useRef(0);
 	const detailRequest = useRef(0);
@@ -321,113 +311,43 @@ export function DetailDrawer({
 		};
 	}, [detailReady, loadMoments, refreshToken]);
 
-	useEffect(
-		() => () => {
-			playingRef.current = false;
-			playbackEpoch.current += 1;
-			audioRef.current?.pause();
-		},
-		[],
-	);
-
-	const stopAudio = () => {
-		playingRef.current = false;
-		playbackEpoch.current += 1;
-		setPlaying(false);
-		audioRef.current?.pause();
-	};
-
 	useEffect(() => {
-		playingRef.current = false;
-		playbackEpoch.current += 1;
+		const playback = new ContinuousPlayback(
+			(from, to, source) =>
+				core<CoreResponse & Chunk>({
+					type: "playback_chunk",
+					from_ms: from,
+					to_ms: to,
+					sources: source as Sources,
+				}),
+			setPlayhead,
+			() => setPlaying(false),
+			(cause) => messageRef.current(userError(cause)),
+		);
+		player.current = playback;
+		return () => {
+			playback.dispose();
+			player.current = null;
+		};
+	}, []);
+	const stopAudio = () => {
+		player.current?.stop();
 		setPlaying(false);
-		audioRef.current?.pause();
-		cursorRef.current = Math.max(
-			detail.started_ms,
-			Math.min(cursorRef.current, detail.ended_ms),
+	};
+	useEffect(() => {
+		player.current?.stop();
+		setPlaying(false);
+		setPlayhead((at) =>
+			Math.max(detail.started_ms, Math.min(at, detail.ended_ms)),
 		);
 	}, [detail.started_ms, detail.ended_ms]);
-
-	const playChunk = useCallback(
-		async (at: number, epoch: number) => {
-			if (epoch !== playbackEpoch.current) return;
-			if (!playingRef.current || at >= detail.ended_ms) {
-				playingRef.current = false;
-				setPlaying(false);
-				return;
-			}
-			try {
-				const response = await core<{
-					type: "playback_chunk";
-					id: string;
-					wav_base64: string;
-					has_audio: boolean;
-					next_audio_ms: number | null;
-				}>({
-					type: "playback_chunk",
-					from_ms: at,
-					to_ms: Math.min(at + 5_000, detail.ended_ms),
-					sources: sourceRef.current,
-				});
-				if (!playingRef.current || epoch !== playbackEpoch.current) return;
-				if (!response.has_audio) {
-					if (
-						response.next_audio_ms != null &&
-						response.next_audio_ms < detail.ended_ms
-					) {
-						cursorRef.current = response.next_audio_ms;
-						setPlayhead(response.next_audio_ms);
-						void playChunk(response.next_audio_ms, epoch);
-					} else {
-						playingRef.current = false;
-						setPlaying(false);
-						onMessage("这段时间没有可播放的声音");
-					}
-					return;
-				}
-				cursorRef.current = at;
-				chunkEndRef.current = Math.min(at + 5_000, detail.ended_ms);
-				const audio = audioRef.current;
-				if (!audio) return;
-				const chunkEnd = Math.min(at + 5_000, detail.ended_ms);
-				const spoken = bestSegments(detail);
-				const labels = speakerLabels(detail.precise_segments);
-				const cues = spoken
-					.filter(
-						(segment) => segment.started_ms < chunkEnd && segment.ended_ms > at,
-					)
-					.map((segment) => {
-						const start = Math.max(0, segment.started_ms - at);
-						const end = Math.min(chunkEnd - at, segment.ended_ms - at);
-						const precise =
-							"revision" in segment ? (segment as PreciseSegment) : null;
-						const label = precise ? `${speakerName(precise, labels)}：` : "";
-						return `${vttTime(start)} --> ${vttTime(Math.max(start + 1, end))}\n${label}${segment.text}\n`;
-					});
-				setCaptionUrl(
-					`data:text/vtt;charset=utf-8,${encodeURIComponent(`WEBVTT\n\n${cues.join("\n")}`)}`,
-				);
-				audio.src = `data:audio/wav;base64,${response.wav_base64}`;
-				await audio.play();
-			} catch (error) {
-				if (epoch !== playbackEpoch.current) return;
-				playingRef.current = false;
-				setPlaying(false);
-				onMessage(userError(error));
-			}
-		},
-		[detail, onMessage],
-	);
-
 	const playFrom = (at: number) => {
 		at = Math.max(detail.started_ms, Math.min(at, detail.ended_ms - 1));
 		stopAudio();
-		cursorRef.current = at;
 		setPlayhead(at);
 		setAnchor(at);
-		playingRef.current = true;
 		setPlaying(true);
-		void playChunk(at, playbackEpoch.current);
+		player.current?.start(at, detail.ended_ms, sourceRef.current);
 	};
 
 	const sendNote = async () => {
@@ -649,7 +569,10 @@ export function DetailDrawer({
 						<button
 							type="button"
 							className="quiet-button"
-							onClick={() => onDataAction("cleanup", detail)}
+							onClick={() => {
+								stopAudio();
+								onDataAction("cleanup", detail);
+							}}
 						>
 							清理
 						</button>
@@ -688,29 +611,6 @@ export function DetailDrawer({
 				<div className="detail-columns">
 					<div className="detail-main">
 						<div className="audio-player">
-							<audio
-								ref={audioRef}
-								onTimeUpdate={(event) =>
-									setPlayhead(
-										Math.min(
-											chunkEndRef.current,
-											cursorRef.current +
-												event.currentTarget.currentTime * 1000,
-										),
-									)
-								}
-								onEnded={() =>
-									void playChunk(chunkEndRef.current, playbackEpoch.current)
-								}
-							>
-								<track
-									kind="captions"
-									src={captionUrl}
-									srcLang="zh"
-									label="文字转录"
-									default
-								/>
-							</audio>
 							<button
 								type="button"
 								className="play-button"

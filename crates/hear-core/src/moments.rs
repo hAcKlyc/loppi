@@ -355,36 +355,22 @@ pub fn clear_all_data(tx: &Transaction<'_>, start: i64, end: i64, now: i64) -> R
     Ok(())
 }
 
-pub fn recover(db: &Connection, directory: &Path) -> Result<(), String> {
-    let screenshot_dir = directory.join("screenshots");
-    let entries = match fs::read_dir(&screenshot_dir) {
-        Ok(entries) => entries,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => return Err(error.to_string()),
-    };
-    for entry in entries {
-        let entry = entry.map_err(|error| error.to_string())?;
-        let name = entry.file_name().to_string_lossy().to_string();
-        let remove = if name.ends_with(".pending") {
-            true
-        } else if let Some(id) = name.strip_suffix(".png") {
-            Uuid::parse_str(id).is_ok()
-                && db
-                    .query_row(
-                        "SELECT EXISTS(SELECT 1 FROM moments WHERE id=?1 AND kind='screenshot')",
-                        params![id],
-                        |row| row.get::<_, i64>(0),
-                    )
-                    .map_err(|error| error.to_string())?
-                    == 0
-        } else {
-            false
-        };
-        if remove {
-            let _ = fs::remove_file(entry.path());
-        }
+pub fn orphan(db: &Connection, name: &str) -> Result<bool, String> {
+    if name.ends_with(".pending") {
+        return Ok(true);
     }
-    Ok(())
+    let Some(id) = name
+        .strip_suffix(".png")
+        .filter(|id| Uuid::parse_str(id).is_ok())
+    else {
+        return Ok(false);
+    };
+    db.query_row(
+        "SELECT NOT EXISTS(SELECT 1 FROM moments WHERE id=?1 AND kind='screenshot')",
+        [id],
+        |r| r.get(0),
+    )
+    .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]

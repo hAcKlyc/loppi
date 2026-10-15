@@ -1,0 +1,39 @@
+{
+  "scope": "signed release GUI, public fixture in isolated data directory, CUA real WKWebView",
+  "passed": [
+    "20-second playback across four chunks reaches end",
+    "click transcript timestamp seeks",
+    "pause and resume from sub-second playhead",
+    "change source, no-audio message without stale buffer",
+    "close detail during playback"
+  ],
+  "first_play_request_spacing_ms": [
+    0,
+    43,
+    5052,
+    10066
+  ],
+  "last_play_request_ms": 1792098531626,
+  "media_identity": "public upstream zh.wav repeated into 20 seconds, local fixture",
+  "gui_data_dir": "isolated; not personal",
+  "no_late_playback_fetch_after_close": true,
+  "sampler": {
+    "samples": 8,
+    "interval_seconds": 1.0,
+    "observed_seconds": 8.00520187523216,
+    "peak_observed_app_footprint_bytes": 180851656,
+    "webview_attribution_incomplete": false,
+    "attribution": "exact bundle path + matching launchd resource coalition",
+    "raw_csv_max_bytes": 335544320,
+    "diagnostics_max_bytes": 100663296,
+    "limits": "Processes shorter than the inventory interval may be missed; sampled total is a lower bound, not sum of per-process lifetime peaks. Zero energy on old OS means unavailable."
+  },
+  "repair_verification": {
+    "core_sha256": "fc27be0e8c3b2b9ad4c941677d9bb4296dbff3af280eeb3b2517ee6ecab6a738",
+    "real_WKWebView": [
+      "second chunk corrupt: UI remains playing while first chunk is valid, then stops at exactly first 5-second boundary and shows read error",
+      "after restoring fixture, timestamp click restarts and all 20 seconds play to completion"
+    ],
+    "scope": "isolated public fixture; current signed bundle"
+  }
+}

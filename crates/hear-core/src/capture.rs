@@ -9,6 +9,92 @@ use std::time::{Duration, Instant, SystemTime};
 const PACKET_FRAMES: usize = 1024;
 const MAX_BUFFER_BYTES: usize = 8 * 1024 * 1024;
 
+/// Fixed counters only: callbacks never allocate or acquire a lock for metrics.
+pub struct Metrics {
+    origin: Instant,
+    queued_ns: AtomicU64,
+    high_water_ns: AtomicU64,
+    callback_ns: AtomicU64,
+    consumed_ns: AtomicU64,
+    durable_ns: AtomicU64,
+    callback_frames: AtomicU64,
+    dropped_frames: AtomicU64,
+    seal_ms: [AtomicU64; 8],
+    callback_us: [AtomicU64; 8],
+    callback_max_ns: AtomicU64,
+    callback_deadline_misses: AtomicU64,
+    input_rate: AtomicU64,
+}
+#[derive(serde::Serialize, serde::Deserialize, Clone, Default)]
+pub struct MetricsView {
+    pub callback_frames: u64,
+    pub dropped_frames: u64,
+    pub queued_ms: u64,
+    pub ring_high_water_ms: u64,
+    pub callback_age_ms: Option<u64>,
+    pub consumed_age_ms: Option<u64>,
+    pub durable_age_ms: Option<u64>,
+    /// <=1/5/10/50/100/500/1000 ms, then overflow; lifetime counts.
+    pub seal_histogram: [u64; 8],
+    pub callback_histogram_us: [u64; 8],
+    pub callback_max_ns: u64,
+    pub callback_deadline_misses: u64,
+    pub input_rate: u64,
+}
+impl Metrics {
+    fn new() -> Self {
+        Self {
+            origin: Instant::now(),
+            queued_ns: AtomicU64::new(0),
+            high_water_ns: AtomicU64::new(0),
+            callback_ns: AtomicU64::new(0),
+            consumed_ns: AtomicU64::new(0),
+            durable_ns: AtomicU64::new(0),
+            callback_frames: AtomicU64::new(0),
+            dropped_frames: AtomicU64::new(0),
+            seal_ms: std::array::from_fn(|_| AtomicU64::new(0)),
+            callback_us: std::array::from_fn(|_| AtomicU64::new(0)),
+            callback_max_ns: AtomicU64::new(0),
+            callback_deadline_misses: AtomicU64::new(0),
+            input_rate: AtomicU64::new(0),
+        }
+    }
+    fn now(&self) -> u64 {
+        self.origin.elapsed().as_nanos() as u64 + 1
+    }
+    pub fn sealed(&self, elapsed: Duration) {
+        self.durable_ns.store(self.now(), Ordering::Relaxed);
+        let bucket = [1, 5, 10, 50, 100, 500, 1000]
+            .iter()
+            .position(|v| elapsed.as_millis() <= *v)
+            .unwrap_or(7);
+        self.seal_ms[bucket].fetch_add(1, Ordering::Relaxed);
+    }
+    pub fn view(&self) -> MetricsView {
+        let now = self.now();
+        let age = |v: &AtomicU64| {
+            let value = v.load(Ordering::Relaxed);
+            (value != 0).then(|| now.saturating_sub(value) / 1_000_000)
+        };
+        MetricsView {
+            callback_frames: self.callback_frames.load(Ordering::Relaxed),
+            dropped_frames: self.dropped_frames.load(Ordering::Relaxed),
+            queued_ms: self.queued_ns.load(Ordering::Relaxed) / 1_000_000,
+            ring_high_water_ms: self.high_water_ns.load(Ordering::Relaxed) / 1_000_000,
+            callback_age_ms: age(&self.callback_ns),
+            consumed_age_ms: age(&self.consumed_ns),
+            durable_age_ms: age(&self.durable_ns),
+            seal_histogram: std::array::from_fn(|i| self.seal_ms[i].load(Ordering::Relaxed)),
+            callback_histogram_us: std::array::from_fn(|i| {
+                self.callback_us[i].load(Ordering::Relaxed)
+            }),
+            callback_max_ns: self.callback_max_ns.load(Ordering::Relaxed),
+            callback_deadline_misses: self.callback_deadline_misses.load(Ordering::Relaxed),
+            input_rate: self.input_rate.load(Ordering::Relaxed),
+        }
+    }
+}
+
 /// Arrival time checks wall-clock discontinuity; start_at maps actual samples.
 pub struct AudioPacket {
     pub at: Instant,
@@ -28,13 +114,13 @@ pub struct AudioSender {
     free: Consumer<AudioPacket>,
     spare: Option<AudioPacket>,
     packet_samples: usize,
-    queued_ns: Arc<AtomicU64>,
+    metrics: Arc<Metrics>,
 }
 
 pub struct AudioReceiver {
     ready: Consumer<AudioPacket>,
     free: Producer<AudioPacket>,
-    queued_ns: Arc<AtomicU64>,
+    metrics: Arc<Metrics>,
 }
 
 pub fn channel(rate: u32, channels: usize) -> Result<(AudioSender, AudioReceiver), String> {
@@ -65,19 +151,19 @@ pub fn channel(rate: u32, channels: usize) -> Result<(AudioSender, AudioReceiver
             unreachable!();
         }
     }
-    let queued_ns = Arc::new(AtomicU64::new(0));
+    let metrics = Arc::new(Metrics::new());
     Ok((
         AudioSender {
             ready,
             free,
             spare: None,
             packet_samples,
-            queued_ns: Arc::clone(&queued_ns),
+            metrics: Arc::clone(&metrics),
         },
         AudioReceiver {
             ready: ready_rx,
             free: free_tx,
-            queued_ns,
+            metrics,
         },
     ))
 }
@@ -86,6 +172,52 @@ impl AudioSender {
     /// No allocation, locks, waiting, logging, or filesystem work in callbacks.
     /// A full queue rejects this callback atomically, never overwrites audio.
     pub fn enqueue<T: Copy>(
+        &mut self,
+        data: &[T],
+        rate: u32,
+        channels: usize,
+        captured_ns: Option<i64>,
+        convert: impl Fn(T) -> f32,
+    ) -> bool {
+        let began = Instant::now();
+        self.metrics
+            .input_rate
+            .store(rate as u64, Ordering::Relaxed);
+        self.metrics
+            .callback_ns
+            .store(self.metrics.now(), Ordering::Relaxed);
+        let frames = if channels == 0 {
+            0
+        } else {
+            (data.len() / channels) as u64
+        };
+        self.metrics
+            .callback_frames
+            .fetch_add(frames, Ordering::Relaxed);
+        let success = self.enqueue_inner(data, rate, channels, captured_ns, convert);
+        if !success {
+            self.metrics
+                .dropped_frames
+                .fetch_add(frames, Ordering::Relaxed);
+        }
+        let elapsed = began.elapsed();
+        let ns = elapsed.as_nanos() as u64;
+        self.metrics
+            .callback_max_ns
+            .fetch_max(ns, Ordering::Relaxed);
+        let bucket = [10, 50, 100, 250, 500, 1000, 5000]
+            .iter()
+            .position(|v| elapsed.as_micros() <= *v)
+            .unwrap_or(7);
+        self.metrics.callback_us[bucket].fetch_add(1, Ordering::Relaxed);
+        if rate > 0 && frames > 0 && ns > frames * 1_000_000_000 / rate as u64 {
+            self.metrics
+                .callback_deadline_misses
+                .fetch_add(1, Ordering::Relaxed);
+        }
+        success
+    }
+    fn enqueue_inner<T: Copy>(
         &mut self,
         data: &[T],
         rate: u32,
@@ -111,6 +243,7 @@ impl AudioSender {
         }
         let duration_ns = (data.len() / channels) as u64 * 1_000_000_000 / rate as u64;
         if self
+            .metrics
             .queued_ns
             .load(Ordering::Acquire)
             .saturating_add(duration_ns)
@@ -144,9 +277,18 @@ impl AudioSender {
             packet.rate = rate;
             packet.channels = channels;
             let chunk_ns = (chunk.len() / channels) as u64 * 1_000_000_000 / rate as u64;
-            self.queued_ns.fetch_add(chunk_ns, Ordering::Release);
+            let queued = self
+                .metrics
+                .queued_ns
+                .fetch_add(chunk_ns, Ordering::Release)
+                + chunk_ns;
+            self.metrics
+                .high_water_ns
+                .fetch_max(queued, Ordering::Relaxed);
             if let Err(rtrb::PushError::Full(packet)) = self.ready.push(packet) {
-                self.queued_ns.fetch_sub(chunk_ns, Ordering::Release);
+                self.metrics
+                    .queued_ns
+                    .fetch_sub(chunk_ns, Ordering::Release);
                 self.spare = Some(packet);
                 return false;
             }
@@ -156,6 +298,9 @@ impl AudioSender {
 }
 
 impl AudioReceiver {
+    pub fn metrics(&self) -> Arc<Metrics> {
+        Arc::clone(&self.metrics)
+    }
     /// Only the normalizer may wait. Short sleeps avoid callback-side wakeups.
     pub fn recv_timeout(&mut self, timeout: Duration) -> Result<AudioPacket, RecvTimeoutError> {
         let deadline = Instant::now() + timeout;
@@ -163,7 +308,10 @@ impl AudioReceiver {
             if let Ok(packet) = self.ready.pop() {
                 let ns = (packet.samples.len() / packet.channels) as u64 * 1_000_000_000
                     / packet.rate as u64;
-                self.queued_ns.fetch_sub(ns, Ordering::AcqRel);
+                self.metrics.queued_ns.fetch_sub(ns, Ordering::AcqRel);
+                self.metrics
+                    .consumed_ns
+                    .store(self.metrics.now(), Ordering::Relaxed);
                 return Ok(packet);
             }
             if self.ready.is_abandoned() {
@@ -212,6 +360,15 @@ mod tests {
             rx.recycle(packet);
         }
         assert_eq!(pointers.len(), count);
+        let view = rx.metrics().view();
+        assert_eq!(view.dropped_frames, 1024);
+        assert_eq!(view.callback_frames, (count * 11 + 1) as u64 * 1024);
+        assert_eq!(view.queued_ms, 0);
+        assert!(view.ring_high_water_ms <= 2000);
+        assert_eq!(
+            view.callback_histogram_us.iter().sum::<u64>(),
+            (count * 11 + 1) as u64
+        );
     }
 
     #[test]

@@ -47,101 +47,140 @@ pub fn init(db: &Connection) -> Result<(), String> {
     .map_err(|error| error.to_string())
 }
 
-pub fn recover(db: &Connection) -> Result<(), String> {
+pub struct RecoveryJob {
+    pub id: String,
+    path: String,
+    destination: Option<String>,
+    staging_dev: Option<i64>,
+    state: String,
+}
+
+/// Freeze only jobs owned by the previous process before accepting new exports.
+pub fn prepare_recovery(db: &Connection) -> Result<(), String> {
+    db.execute_batch("CREATE INDEX IF NOT EXISTS export_jobs_recovery ON export_jobs(state,id);
+        UPDATE export_jobs SET state=CASE WHEN state='published' THEN 'recovering_published' ELSE 'recovering' END
+        WHERE state IN ('pending','published');").map_err(|e| e.to_string())
+}
+pub fn recovery_jobs(db: &Connection, after: &str) -> Result<Vec<RecoveryJob>, String> {
     let mut stmt = db
-        .prepare("SELECT id,staging_path,destination_path,staging_dev,state FROM export_jobs")
-        .map_err(|error| error.to_string())?;
-    let jobs = stmt
-        .query_map([], |r| {
-            Ok((
-                r.get::<_, String>(0)?,
-                r.get::<_, String>(1)?,
-                r.get::<_, Option<String>>(2)?,
-                r.get::<_, Option<i64>>(3)?,
-                r.get::<_, String>(4)?,
-            ))
+        .prepare(
+            "SELECT id,staging_path,destination_path,staging_dev,state FROM export_jobs
+        WHERE state IN ('recovering','recovering_published') AND id>?1 ORDER BY id LIMIT 32",
+        )
+        .map_err(|e| e.to_string())?;
+    stmt.query_map([after], |r| {
+        Ok(RecoveryJob {
+            id: r.get(0)?,
+            path: r.get(1)?,
+            destination: r.get(2)?,
+            staging_dev: r.get(3)?,
+            state: r.get(4)?,
         })
-        .map_err(|error| error.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| error.to_string())?;
-    for (id, path, destination, staging_dev, state) in jobs {
-        if state == "published" {
-            // The directory rename and the success marker were durable. The
-            // final user file is committed, even if job GC was interrupted.
-            db.execute("DELETE FROM export_jobs WHERE id=?1", params![id])
-                .map_err(|error| error.to_string())?;
-            continue;
-        }
-        let path = PathBuf::from(path);
-        let name = path
-            .file_name()
-            .and_then(|value| value.to_str())
-            .unwrap_or("");
-        if !path.is_absolute() || !name.starts_with(".hear-export-") || !name.ends_with(".pending")
-        {
-            db.execute("DELETE FROM export_jobs WHERE id=?1", params![id])
-                .map_err(|error| error.to_string())?;
-            continue;
-        }
-        let parent = path.parent().ok_or("export parent missing")?;
-        match fs::remove_file(&path) {
-            Ok(()) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                // An unplugged destination can make the whole parent vanish.
-                // Keep the job so it can be retried when the volume returns.
-                let Ok(parent_meta) = fs::metadata(parent) else {
-                    continue;
-                };
-                if !parent_meta.is_dir() {
-                    continue;
-                }
-                // Rename may have published the file before a crash or an
-                // I/O error. The first TAR entry identifies this job, even
-                // after a remount changes the device number. Inode numbers
-                // can be reused and are unsafe for deleting user files.
-                let mut removed_published = false;
-                if let Some(destination) = destination {
-                    let destination = PathBuf::from(destination);
-                    if destination.is_absolute() && destination.parent() == Some(parent) {
-                        match fs::symlink_metadata(&destination) {
-                            Ok(meta)
-                                if meta.file_type().is_file()
-                                    && destination_has_job_marker(&destination, &id) =>
-                            {
-                                if fs::remove_file(&destination).is_err() {
-                                    continue;
-                                }
-                                removed_published = true;
+    })
+    .map_err(|e| e.to_string())?
+    .collect::<Result<Vec<_>, _>>()
+    .map_err(|e| e.to_string())
+}
+pub fn finish_recovery(db: &Connection, job: &RecoveryJob) -> Result<(), String> {
+    db.execute(
+        "DELETE FROM export_jobs WHERE id=?1 AND state=?2",
+        params![job.id, job.state],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+/// Filesystem work runs without any database connection or Store lock.
+pub fn recover_job(job: &RecoveryJob) -> bool {
+    let RecoveryJob {
+        id,
+        path,
+        destination,
+        staging_dev,
+        state,
+    } = job;
+    if state == "recovering_published" {
+        return true;
+    }
+    let path = PathBuf::from(path);
+    let name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("");
+    if !path.is_absolute() || !name.starts_with(".hear-export-") || !name.ends_with(".pending") {
+        return true;
+    }
+    let parent = path.parent().expect("absolute export path has a parent");
+    match fs::remove_file(&path) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            // An unplugged destination can make the whole parent vanish.
+            // Keep the job so it can be retried when the volume returns.
+            let Ok(parent_meta) = fs::metadata(parent) else {
+                return false;
+            };
+            if !parent_meta.is_dir() {
+                return false;
+            }
+            // Rename may have published the file before a crash or an
+            // I/O error. The first TAR entry identifies this job, even
+            // after a remount changes the device number. Inode numbers
+            // can be reused and are unsafe for deleting user files.
+            let mut removed_published = false;
+            if let Some(destination) = destination {
+                let destination = PathBuf::from(destination);
+                if destination.is_absolute() && destination.parent() == Some(parent) {
+                    match fs::symlink_metadata(&destination) {
+                        Ok(meta)
+                            if meta.file_type().is_file()
+                                && destination_has_job_marker(&destination, id) =>
+                        {
+                            if fs::remove_file(&destination).is_err() {
+                                return false;
                             }
-                            Ok(_) if staging_dev != Some(parent_meta.dev() as i64) => continue,
-                            Ok(_) => {}
-                            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                            Err(_) => continue,
+                            removed_published = true;
                         }
+                        Ok(_) if *staging_dev != Some(parent_meta.dev() as i64) => return false,
+                        Ok(_) => {}
+                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                        Err(_) => return false,
                     }
                 }
-                if !removed_published
-                    && staging_dev.is_some_and(|dev| dev != parent_meta.dev() as i64)
-                {
-                    // The mountpoint may currently name a different volume.
-                    // Without our marked destination, keep the job for retry.
-                    continue;
-                }
             }
-            // A disconnected or read-only external destination must not stop
-            // recording on login. Keep the job and retry on next launch.
-            Err(_) => continue,
+            if !removed_published && staging_dev.is_some_and(|dev| dev != parent_meta.dev() as i64)
+            {
+                // The mountpoint may currently name a different volume.
+                // Without our marked destination, keep the job for retry.
+                return false;
+            }
         }
-        if File::open(parent)
-            .and_then(|directory| directory.sync_all())
-            .is_err()
-        {
-            continue;
-        }
-        db.execute("DELETE FROM export_jobs WHERE id=?1", params![id])
-            .map_err(|error| error.to_string())?;
+        // A disconnected or read-only external destination must not stop
+        // recording on login. Keep the job and retry on next launch.
+        Err(_) => return false,
     }
-    Ok(())
+    if File::open(parent)
+        .and_then(|directory| directory.sync_all())
+        .is_err()
+    {
+        return false;
+    }
+    true
+}
+#[cfg(test)]
+pub fn recover(db: &Connection) -> Result<(), String> {
+    prepare_recovery(db)?;
+    let mut after = String::new();
+    loop {
+        let jobs = recovery_jobs(db, &after)?;
+        if jobs.is_empty() {
+            return Ok(());
+        }
+        for job in jobs {
+            after = job.id.clone();
+            if recover_job(&job) {
+                finish_recovery(db, &job)?;
+            }
+        }
+    }
 }
 
 fn rename_exclusive(from: &Path, to: &Path) -> Result<(), String> {
@@ -155,23 +194,14 @@ fn rename_exclusive(from: &Path, to: &Path) -> Result<(), String> {
     }
 }
 
-pub fn cleanup_spool(directory: &Path) -> Result<(), String> {
-    let spool = directory.join("export_tmp");
-    let metadata = match fs::symlink_metadata(&spool) {
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => return Err(error.to_string()),
-    };
-    if !metadata.file_type().is_dir() || metadata.file_type().is_symlink() {
-        return Err("export spool is not a private directory".into());
-    }
-    for entry in fs::read_dir(&spool).map_err(|error| error.to_string())? {
-        let entry = entry.map_err(|error| error.to_string())?;
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-        if name.starts_with("export-") && name.ends_with(".jsonl") {
-            fs::remove_file(entry.path()).map_err(|error| error.to_string())?;
-        }
+pub fn cleanup_spool_entry(entry: &fs::DirEntry) -> Result<(), String> {
+    let name = entry.file_name();
+    let name = name.to_string_lossy();
+    if name.starts_with("export-")
+        && name.ends_with(".jsonl")
+        && entry.file_type().is_ok_and(|t| t.is_file())
+    {
+        fs::remove_file(entry.path()).map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -748,6 +778,46 @@ pub fn export(
 mod tests {
     use super::*;
     use crate::cleanup;
+
+    #[test]
+    fn recovery_is_paged_and_never_claims_a_new_live_export() {
+        let db = Connection::open_in_memory().unwrap();
+        init(&db).unwrap();
+        for i in 0..70 {
+            db.execute(
+                "INSERT INTO export_jobs(id,staging_path,created_ms) VALUES(?1,'invalid',0)",
+                params![format!("old-{i:04}")],
+            )
+            .unwrap();
+        }
+        prepare_recovery(&db).unwrap();
+        db.execute(
+            "INSERT INTO export_jobs(id,staging_path,created_ms) VALUES('new-live','invalid',1)",
+            [],
+        )
+        .unwrap();
+        let mut after = String::new();
+        let mut visited = 0;
+        loop {
+            let jobs = recovery_jobs(&db, &after).unwrap();
+            if jobs.is_empty() {
+                break;
+            }
+            assert!(jobs.len() <= 32);
+            for job in jobs {
+                after = job.id.clone();
+                assert!(recover_job(&job));
+                finish_recovery(&db, &job).unwrap();
+                visited += 1;
+            }
+        }
+        assert_eq!(visited, 70);
+        assert_eq!(
+            db.query_row("SELECT id FROM export_jobs", [], |r| r.get::<_, String>(0))
+                .unwrap(),
+            "new-live"
+        );
+    }
 
     #[test]
     fn screenshot_and_note_export_follow_the_selected_time_and_media_option() {

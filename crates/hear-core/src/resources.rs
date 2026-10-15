@@ -3,9 +3,34 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+/// Fixed lifetime histograms (milliseconds), with no growing sample buffer.
+#[derive(Default)]
+pub struct Histogram([AtomicU64; 8]);
+pub struct Timer<'a>(&'a Histogram, Instant);
+impl Histogram {
+    pub fn observe(&self, elapsed: Duration) {
+        let bucket = [1, 5, 10, 50, 100, 500, 1000]
+            .iter()
+            .position(|v| elapsed.as_millis() <= *v)
+            .unwrap_or(7);
+        self.0[bucket].fetch_add(1, Ordering::Relaxed);
+    }
+    pub fn timer(&self) -> Timer<'_> {
+        Timer(self, Instant::now())
+    }
+    pub fn counts(&self) -> [u64; 8] {
+        std::array::from_fn(|i| self.0[i].load(Ordering::Relaxed))
+    }
+}
+impl Drop for Timer<'_> {
+    fn drop(&mut self) {
+        self.0.observe(self.1.elapsed());
+    }
+}
+
 const MIB: u64 = 1024 * 1024;
 #[repr(C)]
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone, Copy, serde::Serialize)]
 pub struct Native {
     pub memory_pressure: u32,
     pub thermal: u32,
@@ -51,7 +76,7 @@ impl Work {
         }
     }
 }
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone, Copy, serde::Serialize)]
 pub struct Backlog {
     pub vad_seconds: u64,
     pub coarse_seconds: u64,
@@ -59,6 +84,14 @@ pub struct Backlog {
     pub oldest_coarse_ms: u64,
     pub disk_free: u64,
     pub store_wait_ms: u64,
+}
+#[derive(serde::Serialize)]
+struct CaptureView {
+    session: uuid::Uuid,
+    pid: u32,
+    frames: u64,
+    active: bool,
+    metrics: Option<crate::capture::MetricsView>,
 }
 struct State {
     mode: Mode,
@@ -75,11 +108,18 @@ struct State {
     waiting: [Option<Instant>; 2],
     last_admission: [Instant; 5],
     backlog: Backlog,
+    os: Native,
+    peak: u64,
+    transitions: u64,
+    latency_ms: u64,
+    capture_lag_ms: u64,
+    captures: [Option<CaptureView>; 2],
 }
 pub struct Governor {
     state: Mutex<State>,
     origin: Instant,
     pub request_latency_ms: AtomicU64,
+    pub request_histogram: Histogram,
     capture: [AtomicU64; 2],
 }
 impl Governor {
@@ -103,9 +143,16 @@ impl Governor {
                 waiting: [None; 2],
                 last_admission: [now - Duration::from_secs(60); 5],
                 backlog: Backlog::default(),
+                os: Native::default(),
+                peak: 0,
+                transitions: 0,
+                latency_ms: 0,
+                capture_lag_ms: 0,
+                captures: [None, None],
             }),
             origin: now,
             request_latency_ms: AtomicU64::new(0),
+            request_histogram: Histogram::default(),
             capture: [AtomicU64::new(0), AtomicU64::new(0)],
         })
     }
@@ -115,8 +162,50 @@ impl Governor {
             Ordering::Release,
         );
     }
+    pub fn capture_observed(
+        &self,
+        source: &str,
+        session: uuid::Uuid,
+        pid: u32,
+        progress: &crate::source_process::Progress,
+    ) {
+        let i = usize::from(source == "system");
+        let mut state = self.state.lock().unwrap();
+        if state.captures[i]
+            .as_ref()
+            .is_none_or(|v| v.session != session || progress.frames > v.frames)
+            && progress.frames > 0
+        {
+            self.capture_progress(source);
+        }
+        state.captures[i] = Some(CaptureView {
+            session,
+            pid,
+            frames: progress.frames,
+            active: true,
+            metrics: progress.capture.clone().or_else(|| {
+                state.captures[i]
+                    .as_ref()
+                    .filter(|v| v.session == session && v.pid == pid)
+                    .and_then(|v| v.metrics.clone())
+            }),
+        });
+    }
+    pub fn diagnostics(&self) -> serde_json::Value {
+        let s = self.state.lock().unwrap();
+        serde_json::json!({"scope":"core_and_direct_children", "mode":format!("{:?}",s.mode),
+            "footprint_bytes":s.total,"peak_footprint_bytes":s.peak,"soft_bytes":s.soft,"hard_bytes":s.hard,
+            "request_histogram_ms":self.request_histogram.counts(),"transitions":s.transitions,"request_max_ms":s.latency_ms,"capture_lag_ms":s.capture_lag_ms,
+            "reserved_bytes":s.busy,"model_pids":s.models.map(|v|v.map(|m|m.0)),
+            "os":s.os,"backlog_lower_bound":s.backlog,"capture":s.captures})
+    }
     pub fn capture_stopped(&self, source: &str) {
         self.capture[usize::from(source == "system")].store(0, Ordering::Release);
+        if let Some(view) =
+            self.state.lock().unwrap().captures[usize::from(source == "system")].as_mut()
+        {
+            view.active = false;
+        }
     }
     pub fn sample(&self, backlog: Backlog) {
         let os = native();
@@ -146,7 +235,13 @@ impl Governor {
             || latency > 500
             || backlog.store_wait_ms > 500
             || backlog.disk_free < 2 * 1024 * MIB;
+        let previous = state.mode;
         state.advance(Instant::now(), pressure, critical);
+        state.transitions += u64::from(previous != state.mode);
+        state.peak = state.peak.max(total);
+        state.os = os;
+        state.latency_ms = latency;
+        state.capture_lag_ms = capture_lag;
         state.total = total;
         state.low_power = os.low_power != 0;
         state.on_battery = os.on_battery != 0;
@@ -362,6 +457,35 @@ impl Drop for Resident {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn source_observations_cannot_inherit_another_session_or_process_metrics() {
+        let governor = Governor::new();
+        let session = uuid::Uuid::new_v4();
+        let mut progress = crate::source_process::Progress::default();
+        progress.capture = Some(crate::capture::MetricsView {
+            callback_frames: 48000,
+            dropped_frames: 1024,
+            ..Default::default()
+        });
+        governor.capture_observed("microphone", session, 42, &progress);
+        progress.capture = None;
+        governor.capture_observed("microphone", session, 42, &progress);
+        assert_eq!(
+            governor.diagnostics()["capture"][0]["metrics"]["dropped_frames"],
+            1024
+        );
+        let next_session = uuid::Uuid::new_v4();
+        governor.capture_observed("microphone", next_session, 42, &progress);
+        assert!(governor.diagnostics()["capture"][0]["metrics"].is_null());
+        progress.capture = Some(crate::capture::MetricsView::default());
+        governor.capture_observed("microphone", next_session, 42, &progress);
+        progress.capture = None;
+        governor.capture_observed("microphone", next_session, 43, &progress);
+        governor.capture_stopped("microphone");
+        let snapshot = governor.diagnostics();
+        assert!(snapshot["capture"][0]["metrics"].is_null());
+        assert_eq!(snapshot["capture"][0]["active"], false);
+    }
     #[test]
     fn pressure_has_hysteresis_and_critical_cancels_immediately() {
         let governor = Governor::new();

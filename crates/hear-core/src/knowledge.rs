@@ -131,6 +131,7 @@ pub fn init(db: &Connection) -> Result<(), String> {
            UNIQUE(kind,item_id)
          );
          CREATE INDEX IF NOT EXISTS search_records_time ON search_records(started_ms,ended_ms);
+         CREATE INDEX IF NOT EXISTS search_records_ended ON search_records(ended_ms,started_ms);
          CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5(text,
            content='search_records',content_rowid='rowid',tokenize='trigram');
          CREATE TRIGGER IF NOT EXISTS search_records_insert AFTER INSERT ON search_records BEGIN
@@ -272,6 +273,7 @@ pub fn init(db: &Connection) -> Result<(), String> {
       CREATE INDEX voice_observations_retry ON voice_observations(available_ms,updated_ms,segment_id) WHERE state='pending';
       CREATE INDEX voice_samples_model_page ON voice_samples(model_version,id) WHERE revoked_ms IS NULL;
       CREATE INDEX voice_observations_unmatched ON voice_observations(matched_generation,updated_ms,segment_id) WHERE state='ready';")?;
+    db.execute_batch("CREATE INDEX IF NOT EXISTS voice_samples_segment_revision ON voice_samples(segment_id,id) WHERE revoked_ms IS NULL;").map_err(|e|e.to_string())?;
     Ok(())
 }
 
@@ -310,7 +312,12 @@ fn revision_part(hash: &mut Sha256, value: &str) {
     hash.update(value.as_bytes());
 }
 
-fn segment_revision_part(db: &Connection, id: Uuid, hash: &mut Sha256) -> Result<(), String> {
+#[cfg(test)]
+fn legacy_segment_revision_part(
+    db: &Connection,
+    id: Uuid,
+    hash: &mut Sha256,
+) -> Result<(), String> {
     if visible_segment(db, id)?.is_none() {
         return Err("segment is no longer current".into());
     }
@@ -354,13 +361,150 @@ fn segment_revision_part(db: &Connection, id: Uuid, hash: &mut Sha256) -> Result
     Ok(())
 }
 
+// A page shares four indexed reads instead of five queries per segment.
+// Parts retain the exact historical digest encoding for already-open clients.
+struct RevisionParts {
+    group: String,
+    parts: Vec<String>,
+}
+fn revision_parts(
+    db: &Connection,
+    ids: &[String],
+) -> Result<std::collections::HashMap<String, RevisionParts>, String> {
+    let ids = serde_json::to_string(ids).map_err(|e| e.to_string())?;
+    let mut output = std::collections::HashMap::new();
+    let mut stmt = db.prepare("SELECT p.id,p.source,p.started_ms,p.ended_ms,p.text,p.speaker_scope,
+      coalesce(p.speaker_label,''),coalesce(g.group_id,'') FROM precise_segments p
+      JOIN cloud_tasks t ON t.id=p.task_id LEFT JOIN speaker_groups g
+      ON g.speaker_scope=p.speaker_scope AND g.speaker_label=p.speaker_label
+      WHERE p.id IN (SELECT value FROM json_each(?1)) AND t.state='complete' AND
+      ((t.target_kind='event' AND EXISTS(SELECT 1 FROM named_events e WHERE e.id=t.target_id
+        AND e.deleted_ms IS NULL AND t.target_version=printf('%d:%d:%d',e.source_mask,e.started_ms,e.ended_ms)))
+       OR (t.target_kind='range' AND EXISTS(SELECT 1 FROM manual_ranges m WHERE m.id=t.target_id
+        AND t.target_version=cast(m.revision AS TEXT))))").map_err(|e|e.to_string())?;
+    for row in stmt
+        .query_map([&ids], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                (
+                    r.get::<_, String>(1)?,
+                    r.get::<_, i64>(2)?,
+                    r.get::<_, i64>(3)?,
+                    r.get::<_, String>(4)?,
+                    r.get::<_, String>(5)?,
+                    r.get::<_, String>(6)?,
+                    r.get::<_, String>(7)?,
+                ),
+            ))
+        })
+        .map_err(|e| e.to_string())?
+    {
+        let (id, row) = row.map_err(|e| e.to_string())?;
+        output.insert(
+            id.clone(),
+            RevisionParts {
+                group: row.6.clone(),
+                parts: vec![format!("{id}:{row:?}")],
+            },
+        );
+    }
+    for sql in [
+        "SELECT current_segment_id,id||':'||state||':'||revision||':'||text FROM text_corrections WHERE current_segment_id IN(SELECT value FROM json_each(?1)) ORDER BY current_segment_id,id",
+        "SELECT current_segment_id,id||':'||person_id||':'||origin||':'||apply_scope||':'||state FROM speaker_bindings WHERE current_segment_id IN(SELECT value FROM json_each(?1)) ORDER BY current_segment_id,id",
+        "SELECT segment_id,id||':'||person_id FROM voice_samples WHERE segment_id IN(SELECT value FROM json_each(?1)) AND revoked_ms IS NULL ORDER BY segment_id,id",
+    ] {
+        let mut stmt = db.prepare(sql).map_err(|e| e.to_string())?;
+        for row in stmt
+            .query_map([&ids], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+            })
+            .map_err(|e| e.to_string())?
+        {
+            let (id, part) = row.map_err(|e| e.to_string())?;
+            if let Some(entry) = output.get_mut(&id) {
+                entry.parts.push(part);
+            }
+        }
+    }
+    Ok(output)
+}
+fn append_revision(hash: &mut Sha256, parts: &RevisionParts) {
+    for part in &parts.parts {
+        revision_part(hash, part);
+    }
+}
+fn finish_revision(hash: Sha256) -> i64 {
+    let bytes = hash.finalize();
+    i64::from_le_bytes(bytes[..8].try_into().unwrap()) & ((1_i64 << 53) - 1)
+}
+fn group_revision(db: &Connection, group: &str) -> Result<i64, String> {
+    let mut hash = Sha256::new();
+    revision_part(&mut hash, "speaker_group");
+    revision_part(&mut hash, group);
+    let mut after = String::new();
+    loop {
+        let ids=db.prepare("SELECT p.id FROM precise_segments p JOIN speaker_groups g ON g.speaker_scope=p.speaker_scope AND g.speaker_label=p.speaker_label WHERE g.group_id=?1 AND p.id>?2 ORDER BY p.id LIMIT 256").map_err(|e|e.to_string())?
+          .query_map(params![group,after],|r|r.get::<_,String>(0)).map_err(|e|e.to_string())?.collect::<Result<Vec<_>,_>>().map_err(|e|e.to_string())?;
+        if ids.is_empty() {
+            break;
+        }
+        let parts = revision_parts(db, &ids)?;
+        for id in &ids {
+            if let Some(part) = parts.get(id) {
+                append_revision(&mut hash, part);
+            }
+        }
+        after = ids.last().unwrap().clone();
+    }
+    Ok(finish_revision(hash))
+}
+pub fn fill_revisions(
+    db: &Connection,
+    segments: &mut [hear_protocol::PreciseSegment],
+) -> Result<(), String> {
+    let mut groups = std::collections::HashMap::new();
+    for page in segments.chunks_mut(256) {
+        let parts = revision_parts(
+            db,
+            &page.iter().map(|s| s.id.to_string()).collect::<Vec<_>>(),
+        )?;
+        for segment in page {
+            let part = parts
+                .get(&segment.id.to_string())
+                .ok_or("segment is no longer current")?;
+            let mut hash = Sha256::new();
+            revision_part(&mut hash, "segment");
+            append_revision(&mut hash, part);
+            segment.revision = finish_revision(hash);
+            if !part.group.is_empty() {
+                let revision = if let Some(revision) = groups.get(&part.group) {
+                    *revision
+                } else {
+                    let revision = group_revision(db, &part.group)?;
+                    groups.insert(part.group.clone(), revision);
+                    revision
+                };
+                segment.speaker_revision = revision;
+            }
+        }
+    }
+    Ok(())
+}
 /// Content revision is a digest of the current object projection. It changes
 /// for manual and background edits without a parallel revision owner/table.
 pub fn object_revision(db: &Connection, kind: &str, id: Uuid) -> Result<i64, String> {
     let mut hash = Sha256::new();
     revision_part(&mut hash, kind);
     match kind {
-        "segment" => segment_revision_part(db, id, &mut hash)?,
+        "segment" => {
+            let parts = revision_parts(db, &[id.to_string()])?;
+            append_revision(
+                &mut hash,
+                parts
+                    .get(&id.to_string())
+                    .ok_or("segment is no longer current")?,
+            );
+        }
         "speaker_group" => {
             let group: String = db
                 .query_row(
@@ -371,26 +515,9 @@ pub fn object_revision(db: &Connection, kind: &str, id: Uuid) -> Result<i64, Str
                     |r| r.get(0),
                 )
                 .map_err(|error| error.to_string())?;
-            revision_part(&mut hash, &group);
-            let mut stmt = db
-                .prepare(
-                    "SELECT p.id FROM precise_segments p JOIN speaker_groups g
-                 ON g.speaker_scope=p.speaker_scope AND g.speaker_label=p.speaker_label
-                 WHERE g.group_id=?1 ORDER BY p.id",
-                )
-                .map_err(|error| error.to_string())?;
-            let ids = stmt
-                .query_map(params![group], |r| r.get::<_, String>(0))
-                .map_err(|error| error.to_string())?
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(|error| error.to_string())?;
-            for member in ids {
-                let member = Uuid::parse_str(&member).map_err(|error| error.to_string())?;
-                if visible_segment(db, member)?.is_some() {
-                    segment_revision_part(db, member, &mut hash)?;
-                }
-            }
+            return group_revision(db, &group);
         }
+
         "person" => {
             let row: (String, i64) = db
                 .query_row(
@@ -487,12 +614,7 @@ pub fn object_revision(db: &Connection, kind: &str, id: Uuid) -> Result<i64, Str
         }
         _ => return Err("unknown revision subject".into()),
     }
-    let bytes = hash.finalize();
-    // Revisions cross JSON into the JavaScript client. Keep the digest inside
-    // Number.MAX_SAFE_INTEGER so an unchanged object can be edited without
-    // losing low bits during JSON.parse and triggering a false conflict.
-    const MAX_SAFE_JSON_INTEGER: i64 = (1 << 53) - 1;
-    Ok(i64::from_le_bytes(bytes[..8].try_into().unwrap()) & MAX_SAFE_JSON_INTEGER)
+    Ok(finish_revision(hash))
 }
 
 pub fn expect_revision(db: &Connection, kind: &str, id: Uuid, expected: i64) -> Result<(), String> {
@@ -839,6 +961,45 @@ pub fn search(
     if start < 0 || end <= start || limit == 0 || limit > 200 {
         return Err("invalid search range or limit".to_owned());
     }
+    let (sql, search_text) = search_sql(db, query)?;
+    let mut stmt = db.prepare(&sql).map_err(|error| error.to_string())?;
+    stmt.query_map(
+        params![
+            start,
+            end,
+            person_id.map(|id| id.to_string()),
+            search_text,
+            i64::from(limit),
+            i64::from(offset)
+        ],
+        |r| {
+            let id: String = r.get(1)?;
+            let source: Option<String> = r.get(2)?;
+            let person: Option<String> = r.get(6)?;
+            Ok(SearchHit {
+                kind: r.get(0)?,
+                item_id: Uuid::parse_str(&id).map_err(|_| rusqlite::Error::InvalidQuery)?,
+                source: source.map(|s| {
+                    if s == "microphone" {
+                        AudioSource::Microphone
+                    } else {
+                        AudioSource::System
+                    }
+                }),
+                started_ms: r.get(3)?,
+                ended_ms: r.get(4)?,
+                text: r.get(5)?,
+                person_id: person.map(|s| Uuid::parse_str(&s).unwrap()),
+                person_name: r.get(7)?,
+            })
+        },
+    )
+    .map_err(|error| error.to_string())?
+    .collect::<Result<Vec<_>, _>>()
+    .map_err(|error| error.to_string())
+}
+
+fn search_sql(db: &Connection, query: Option<&str>) -> Result<(String, String), String> {
     let query = query.map(str::trim).filter(|value| !value.is_empty());
     if query.is_some_and(|value| value.chars().count() > 256 || value.chars().any(char::is_control))
     {
@@ -850,8 +1011,17 @@ pub fn search(
     } else {
         query.unwrap_or("").to_owned()
     };
+    // Frequent phrases should stream newest time-indexed rows and stop at the
+    // requested page; rare phrases should seek FTS directly. Probe only a fixed
+    // number of postings, never count all historical matches. Both plans apply
+    // exactly the same visibility, identity and deduplication predicates.
+    let common_phrase = use_fts && db.query_row(
+        "SELECT EXISTS(SELECT 1 FROM search_fts WHERE search_fts MATCH ?1 LIMIT 1 OFFSET 4095)",
+        [&search_text], |r|r.get::<_,bool>(0)).map_err(|e|e.to_string())?;
     let match_clause = if query.is_none() {
         "1"
+    } else if common_phrase {
+        "EXISTS(SELECT 1 FROM search_fts WHERE rowid=sr.rowid AND search_fts MATCH ?4)"
     } else if use_fts {
         "sr.rowid IN (SELECT rowid FROM search_fts WHERE search_fts MATCH ?4)"
     } else {
@@ -894,41 +1064,24 @@ pub fn search(
               OR twin.target_kind=hit.target_kind AND twin.result_rowid<hit.result_rowid)))
       ORDER BY hit.started_ms DESC,hit.result_rowid DESC LIMIT ?5 OFFSET ?6"
     );
-    let mut stmt = db.prepare(&sql).map_err(|error| error.to_string())?;
-    stmt.query_map(
-        params![
-            start,
-            end,
-            person_id.map(|id| id.to_string()),
-            search_text,
-            i64::from(limit),
-            i64::from(offset)
-        ],
-        |r| {
-            let id: String = r.get(1)?;
-            let source: Option<String> = r.get(2)?;
-            let person: Option<String> = r.get(6)?;
-            Ok(SearchHit {
-                kind: r.get(0)?,
-                item_id: Uuid::parse_str(&id).map_err(|_| rusqlite::Error::InvalidQuery)?,
-                source: source.map(|s| {
-                    if s == "microphone" {
-                        AudioSource::Microphone
-                    } else {
-                        AudioSource::System
-                    }
-                }),
-                started_ms: r.get(3)?,
-                ended_ms: r.get(4)?,
-                text: r.get(5)?,
-                person_id: person.map(|s| Uuid::parse_str(&s).unwrap()),
-                person_name: r.get(7)?,
-            })
-        },
-    )
-    .map_err(|error| error.to_string())?
-    .collect::<Result<Vec<_>, _>>()
-    .map_err(|error| error.to_string())
+    Ok((sql, search_text))
+}
+#[cfg(test)]
+pub fn search_query_plan(
+    db: &Connection,
+    query: Option<&str>,
+    start: i64,
+    end: i64,
+) -> Vec<String> {
+    let (sql, text) = search_sql(db, query).unwrap();
+    db.prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
+        .unwrap()
+        .query_map(params![start, end, None::<String>, text, 50, 0], |r| {
+            r.get(3)
+        })
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap()
 }
 
 pub fn search_empty_reason(
@@ -2404,6 +2557,40 @@ mod tests {
     use hear_protocol::{CloudProvider, EventSources};
 
     #[test]
+    fn common_and_rare_fts_plans_preserve_time_order_ranges_and_pagination() {
+        let store = crate::Store::new(Connection::open_in_memory().unwrap()).unwrap();
+        let tx = store.db.unchecked_transaction().unwrap();
+        for i in 1..=4200 {
+            tx.execute(
+                "INSERT INTO search_records(kind,item_id,source,started_ms,ended_ms,text)
+                VALUES('note',?1,NULL,?2,?2+1,?3)",
+                params![
+                    Uuid::from_u128(i as u128).to_string(),
+                    i,
+                    if i % 100 == 0 {
+                        "commonword rareword"
+                    } else {
+                        "commonword"
+                    }
+                ],
+            )
+            .unwrap();
+        }
+        tx.commit().unwrap();
+        let hits = search(&store.db, Some("commonword"), 0, 5000, None, 20, 50).unwrap();
+        assert_eq!(
+            hits.iter().map(|h| h.started_ms).collect::<Vec<_>>(),
+            (4131..=4180).rev().collect::<Vec<_>>()
+        );
+        let hits = search(&store.db, Some("commonword"), 4000, 4050, None, 0, 50).unwrap();
+        assert_eq!(hits.len(), 50);
+        assert_eq!(hits[0].started_ms, 4049);
+        let hits = search(&store.db, Some("rareword"), 0, 5000, None, 0, 50).unwrap();
+        assert_eq!(hits.len(), 42);
+        assert_eq!(hits[0].started_ms, 4200);
+    }
+
+    #[test]
     fn transient_voice_failures_retry_but_pressure_does_not_consume_attempts() {
         let db = crate::Store::new(Connection::open_in_memory().unwrap())
             .unwrap()
@@ -3331,10 +3518,21 @@ mod tests {
             .precise_segments[0]
             .id;
         let seen = object_revision(&db, "segment", segment).unwrap();
+        let mut legacy = Sha256::new();
+        revision_part(&mut legacy, "segment");
+        legacy_segment_revision_part(&db, segment, &mut legacy).unwrap();
+        assert_eq!(seen, finish_revision(legacy));
         let tx = db.transaction().unwrap();
         expect_revision(&tx, "segment", segment, seen).unwrap();
         correct_text(&tx, segment, "先改", 8003).unwrap();
         tx.commit().unwrap();
+        let mut legacy = Sha256::new();
+        revision_part(&mut legacy, "segment");
+        legacy_segment_revision_part(&db, segment, &mut legacy).unwrap();
+        assert_eq!(
+            object_revision(&db, "segment", segment).unwrap(),
+            finish_revision(legacy)
+        );
         let tx = db.transaction().unwrap();
         assert!(
             expect_revision(&tx, "segment", segment, seen)

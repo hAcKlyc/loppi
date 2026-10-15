@@ -148,6 +148,20 @@ pub fn init(db: &Connection) -> Result<(), String> {
          );",
     )
     .map_err(|error| error.to_string())?;
+    crate::storage::migrate(
+        db,
+        "cloud_cooldown_v1",
+        "ALTER TABLE cloud_queues ADD COLUMN cooldown_ms INTEGER NOT NULL DEFAULT 0;",
+    )?;
+    db.execute_batch(
+        "CREATE INDEX IF NOT EXISTS cloud_tasks_ready_priority
+        ON cloud_tasks(provider,manual DESC,started_ms,created_ms)
+        WHERE state IN ('pending','submitted');
+        CREATE INDEX IF NOT EXISTS cloud_tasks_ready_age
+        ON cloud_tasks(provider,started_ms,created_ms)
+        WHERE state IN ('pending','submitted');",
+    )
+    .map_err(|e| e.to_string())?;
     crate::knowledge::init(db)
 }
 
@@ -1249,8 +1263,8 @@ fn visible_manual_ranges(
          WHERE started_ms<?2 AND ended_ms>?1 AND (
            EXISTS(SELECT 1 FROM audio_blocks b WHERE b.media_path IS NOT NULL
              AND b.started_ms<m.ended_ms AND b.ended_ms>m.started_ms
-             AND ((b.source='microphone' AND m.source_mask&1!=0)
-               OR (b.source='system' AND m.source_mask&2!=0)))
+             AND b.source IN (CASE WHEN m.source_mask&1!=0 THEN 'microphone' END,
+               CASE WHEN m.source_mask&2!=0 THEN 'system' END))
            OR EXISTS(SELECT 1 FROM coarse_segments c WHERE c.started_ms<m.ended_ms
              AND c.ended_ms>m.started_ms
              AND ((c.source='microphone' AND m.source_mask&1!=0)
@@ -1572,22 +1586,23 @@ pub fn timeline_gaps(
     Ok(gaps)
 }
 
+pub(crate) const RANGE_AUDIO_EXISTS: &str =
+    "SELECT EXISTS(SELECT 1 FROM audio_blocks WHERE media_path IS NOT NULL
+		 AND started_ms<?2 AND ended_ms>?1 AND
+		 source IN (CASE WHEN ?3&1!=0 THEN 'microphone' END, CASE WHEN ?3&2!=0 THEN 'system' END))";
+
 fn unorganized(db: &Connection, start: i64, end: i64, mask: i64) -> Result<TimelineItem, String> {
     let has_audio: bool = db
-        .query_row(
-            "SELECT EXISTS(SELECT 1 FROM audio_blocks WHERE media_path IS NOT NULL
-		 AND started_ms<?2 AND ended_ms>?1 AND
-		 ((source='microphone' AND ?3&1!=0) OR (source='system' AND ?3&2!=0)))",
-            params![start, end, mask],
-            |row| row.get(0),
-        )
+        .query_row(RANGE_AUDIO_EXISTS, params![start, end, mask], |row| {
+            row.get(0)
+        })
         .map_err(|error| error.to_string())?;
     let has_sound: bool = db.query_row(
         "SELECT EXISTS(SELECT 1 FROM audio_blocks WHERE speech_active=1 AND retention_decision!='all_data'
          AND started_ms<?2 AND ended_ms>?1 AND
-         ((source='microphone' AND ?3&1!=0) OR (source='system' AND ?3&2!=0))
+         source IN (CASE WHEN ?3&1!=0 THEN 'microphone' END, CASE WHEN ?3&2!=0 THEN 'system' END)
          UNION ALL SELECT 1 FROM coarse_segments WHERE started_ms<?2 AND ended_ms>?1 AND
-         ((source='microphone' AND ?3&1!=0) OR (source='system' AND ?3&2!=0)))",
+         source IN (CASE WHEN ?3&1!=0 THEN 'microphone' END, CASE WHEN ?3&2!=0 THEN 'system' END))",
         params![start,end,mask], |row| row.get(0),
     ).map_err(|error| error.to_string())?;
     let status: Option<String> = db
@@ -1605,7 +1620,7 @@ fn unorganized(db: &Connection, start: i64, end: i64, mask: i64) -> Result<Timel
           AND NOT EXISTS(SELECT 1 FROM precise_segments p WHERE p.task_id=cloud_tasks.id)
           THEN 'no_transcript' ELSE state END,started_ms,ended_ms,source FROM cloud_tasks
         WHERE target_kind='range' AND started_ms < ?2 AND ended_ms > ?1
-          AND ((source='microphone' AND ?3&1!=0) OR (source='system' AND ?3&2!=0))
+          AND source IN (CASE WHEN ?3&1!=0 THEN 'microphone' END, CASE WHEN ?3&2!=0 THEN 'system' END)
           AND state!='superseded' ORDER BY created_ms DESC LIMIT 1",
             params![start, end, mask],
             |row| {
@@ -1791,35 +1806,7 @@ pub fn range_detail(
 }
 
 fn fill_precise_revisions(db: &Connection, segments: &mut [PreciseSegment]) -> Result<(), String> {
-    let mut group_revisions = std::collections::HashMap::<String, i64>::new();
-    for segment in segments {
-        segment.revision = crate::knowledge::object_revision(db, "segment", segment.id)?;
-        // A short provider label still has a real local group that the user
-        // can assign, even while its unconfirmed display label is hidden.
-        let group = if let Some(group) = &segment.speaker {
-            Some(group.clone())
-        } else {
-            db.query_row(
-                "SELECT g.group_id FROM precise_segments p JOIN speaker_groups g
-                 ON g.speaker_scope=p.speaker_scope AND g.speaker_label=p.speaker_label
-                 WHERE p.id=?1",
-                params![segment.id.to_string()],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()
-            .map_err(|error| error.to_string())?
-        };
-        if let Some(group) = group {
-            segment.speaker_revision = if let Some(revision) = group_revisions.get(&group) {
-                *revision
-            } else {
-                let revision = crate::knowledge::object_revision(db, "speaker_group", segment.id)?;
-                group_revisions.insert(group, revision);
-                revision
-            };
-        }
-    }
-    Ok(())
+    crate::knowledge::fill_revisions(db, segments)
 }
 
 fn coarse_for(
@@ -1834,7 +1821,7 @@ fn coarse_for(
         .prepare(
             "SELECT id,source,started_ms,ended_ms,text FROM coarse_segments
         WHERE started_ms < ?2 AND ended_ms > ?1 AND trim(text)!=''
-          AND ((source='microphone' AND ?3&1!=0) OR (source='system' AND ?3&2!=0))
+          AND source IN (CASE WHEN ?3&1!=0 THEN 'microphone' END, CASE WHEN ?3&2!=0 THEN 'system' END)
         ORDER BY started_ms,id LIMIT ?4 OFFSET ?5",
         )
         .map_err(|e| e.to_string())?;
@@ -2135,28 +2122,46 @@ pub fn recover_tasks(db: &mut Connection, now: i64) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(test)]
 pub fn take_task(
     db: &mut Connection,
     provider: CloudProvider,
     now: i64,
 ) -> Result<Option<CloudTask>, String> {
+    take_task_fair(db, provider, now, 0)
+}
+
+pub fn take_task_fair(
+    db: &mut Connection,
+    provider: CloudProvider,
+    now: i64,
+    turn: u64,
+) -> Result<Option<CloudTask>, String> {
     let tx = db.transaction().map_err(|e| e.to_string())?;
     let enabled: bool = tx
         .query_row(
-            "SELECT q.configured=1 AND q.paused=0 AND c.account IS NOT NULL
+            "SELECT q.configured=1 AND q.paused=0 AND q.cooldown_ms<=?2 AND c.account IS NOT NULL
              FROM cloud_queues q LEFT JOIN cloud_credential_refs c USING(provider) WHERE q.provider=?1",
-            params![provider_name(provider)],
+            params![provider_name(provider), now],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
     if !enabled {
         return Ok(None);
     }
+    // Three priority turns retain manual preference; every fourth turn serves
+    // the oldest eligible work regardless of priority. One priority turn is
+    // newest-first so a long history import cannot hide current work.
+    let order = match turn % 4 {
+        1 => "manual DESC,started_ms DESC,created_ms DESC",
+        3 => "started_ms,created_ms",
+        _ => "manual DESC,started_ms,created_ms",
+    };
     let row:Option<(String,String,String,String,String,i64,i64,Option<String>,String,i64,i64,i64,Option<String>)>=tx.query_row(
-        "SELECT id,target_kind,target_id,target_version,model_id,started_ms,ended_ms,source,state,attempts,
+        &format!("SELECT id,target_kind,target_id,target_version,model_id,started_ms,ended_ms,source,state,attempts,
             submit_attempts,updated_ms,remote_id
          FROM cloud_tasks WHERE provider=?1 AND state IN ('pending','submitted') AND next_attempt_ms<=?2
-         ORDER BY manual DESC,started_ms,created_ms LIMIT 1",params![provider_name(provider),now],
+         ORDER BY {order} LIMIT 1"),params![provider_name(provider),now],
         |row|Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?,row.get(4)?,row.get(5)?,
             row.get(6)?,row.get(7)?,row.get(8)?,row.get(9)?,row.get(10)?,row.get(11)?,row.get(12)?)))
         .optional().map_err(|e|e.to_string())?;
@@ -2365,9 +2370,23 @@ pub fn defer_paused(db: &mut Connection, task: &CloudTask, now: i64) -> Result<(
     Ok(())
 }
 
+#[cfg(test)]
 pub fn task_failed(db: &Connection, task: &CloudTask, error: &str, now: i64) -> Result<(), String> {
+    task_failed_with_retry(db, task, error, None, now)
+}
+
+pub fn task_failed_with_retry(
+    db: &Connection,
+    task: &CloudTask,
+    error: &str,
+    retry_after_ms: Option<i64>,
+    now: i64,
+) -> Result<(), String> {
+    let tx = db.unchecked_transaction().map_err(|e| e.to_string())?;
+    let db = &tx;
     let attempts = task.attempts + 1;
-    let transient = error == "provider_transport"
+    let transient = error == "provider_deadline"
+        || error == "provider_transport"
         || error == "provider_read_failed"
         || error == "credential_missing"
         || error == "provider_not_configured"
@@ -2377,7 +2396,17 @@ pub fn task_failed(db: &Connection, task: &CloudTask, error: &str, now: i64) -> 
         || error == "provider_incomplete_output";
     let retry = transient;
     let scale = attempts.min(10);
-    let next = now + (30_000_i64 * scale * scale).min(10 * 60 * 1000);
+    let base_delay = (30_000_i64 * scale * scale).min(10 * 60 * 1000);
+    let jitter = (task.id.as_u128() % (base_delay as u128 / 5 + 1)) as i64;
+    let delay = (base_delay + jitter).max(retry_after_ms.unwrap_or(0));
+    let next = now.saturating_add(delay);
+    if error == "provider_http_429" || (error == "provider_http_503" && retry_after_ms.is_some()) {
+        db.execute(
+            "UPDATE cloud_queues SET cooldown_ms=max(cooldown_ms,?2) WHERE provider=?1",
+            params![provider_name(task.provider), next],
+        )
+        .map_err(|e| e.to_string())?;
+    }
     let updated = db
         .execute(
             "UPDATE cloud_tasks SET state=?2,attempts=?3,next_attempt_ms=?4,
@@ -2414,7 +2443,7 @@ pub fn task_failed(db: &Connection, task: &CloudTask, error: &str, now: i64) -> 
         )
         .map_err(|e| e.to_string())?;
     }
-    Ok(())
+    tx.commit().map_err(|e| e.to_string())
 }
 
 pub fn asr_wait(db: &Connection, task: &CloudTask, now: i64) -> Result<(), String> {
@@ -3036,24 +3065,26 @@ pub fn voice_pcm_16k(
     Ok(samples)
 }
 
-pub fn recover_asr_staging(directory: &Path) {
-    let Ok(entries) = std::fs::read_dir(directory) else {
+pub fn recover_asr_entry(entry: &std::fs::DirEntry) {
+    let name = entry.file_name();
+    let name = name.to_string_lossy();
+    let Some(suffix) = name.strip_prefix(".asr-ogg-") else {
         return;
     };
-    for entry in entries.flatten() {
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-        let Some(suffix) = name.strip_prefix(".asr-ogg-") else {
-            continue;
-        };
-        if suffix.len() != 12 || !suffix.bytes().all(|byte| byte.is_ascii_alphanumeric()) {
-            continue;
-        }
-        if entry
+    if suffix.len() == 12
+        && suffix.bytes().all(|b| b.is_ascii_alphanumeric())
+        && entry
             .file_type()
-            .is_ok_and(|kind| kind.is_dir() && !kind.is_symlink())
-        {
-            let _ = std::fs::remove_dir_all(entry.path());
+            .is_ok_and(|t| t.is_dir() && !t.is_symlink())
+    {
+        let _ = std::fs::remove_dir_all(entry.path());
+    }
+}
+#[cfg(test)]
+pub fn recover_asr_staging(directory: &Path) {
+    if let Ok(entries) = std::fs::read_dir(directory) {
+        for entry in entries.flatten() {
+            recover_asr_entry(&entry);
         }
     }
 }
@@ -3198,6 +3229,72 @@ mod tests {
     fn db() -> Connection {
         let db = Connection::open_in_memory().unwrap();
         crate::Store::new(db).unwrap().db
+    }
+
+    #[test]
+    fn cloud_fairness_and_persistent_cooldown_preserve_paid_identity_and_pause() {
+        let mut db = db();
+        set_configured(&db, CloudProvider::Asr, "bigmodel").unwrap();
+        let mut ids = Vec::new();
+        for (start, manual) in [(100, 0), (200, 1), (300, 1), (400, 1)] {
+            let id = Uuid::new_v4();
+            ids.push(id);
+            db.execute("INSERT INTO cloud_tasks(id,provider,target_kind,target_id,target_version,model_id,processor_version,
+                started_ms,ended_ms,manual,state,created_ms,updated_ms)
+                VALUES(?1,'asr','range',?1,'1','bigmodel','v',?2,?2+50,?3,'pending',1,1)", params![id.to_string(),start,manual]).unwrap();
+        }
+        let first = take_task_fair(&mut db, CloudProvider::Asr, 1000, 0)
+            .unwrap()
+            .unwrap();
+        assert_eq!(first.id, ids[1]);
+        assert_eq!(
+            take_task_fair(&mut db, CloudProvider::Asr, 1000, 1)
+                .unwrap()
+                .unwrap()
+                .id,
+            ids[3]
+        );
+        assert_eq!(
+            take_task_fair(&mut db, CloudProvider::Asr, 1000, 2)
+                .unwrap()
+                .unwrap()
+                .id,
+            ids[2]
+        );
+        assert_eq!(
+            take_task_fair(&mut db, CloudProvider::Asr, 1000, 3)
+                .unwrap()
+                .unwrap()
+                .id,
+            ids[0]
+        );
+        mark_submit_intent(&db, &first, 1001).unwrap();
+        task_failed_with_retry(&db, &first, "provider_http_429", Some(600_000), 1002).unwrap();
+        recover_tasks(&mut db, 1003).unwrap();
+        assert!(
+            take_task_fair(&mut db, CloudProvider::Asr, 500_000, 0)
+                .unwrap()
+                .is_none()
+        );
+        db.execute(
+            "UPDATE cloud_tasks SET next_attempt_ms=9999999 WHERE id!=?1",
+            [first.id.to_string()],
+        )
+        .unwrap();
+        db.execute("UPDATE cloud_queues SET paused=1 WHERE provider='asr'", [])
+            .unwrap();
+        assert!(
+            take_task_fair(&mut db, CloudProvider::Asr, 601_003, 0)
+                .unwrap()
+                .is_none()
+        );
+        db.execute("UPDATE cloud_queues SET paused=0 WHERE provider='asr'", [])
+            .unwrap();
+        let retry = take_task_fair(&mut db, CloudProvider::Asr, 601_003, 0)
+            .unwrap()
+            .unwrap();
+        assert_eq!(retry.remote_id, first.remote_id);
+        assert_eq!(retry.submit_attempts, 1);
     }
 
     fn coarse(db: &Connection, _id: &str, start: i64, end: i64, text: &str) {
@@ -4898,7 +4995,7 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
-        let retry = take_task(&mut db, CloudProvider::Asr, 37_004)
+        let retry = take_task(&mut db, CloudProvider::Asr, 43_004)
             .unwrap()
             .unwrap();
         assert_eq!(retry.remote_id, task.remote_id);
@@ -4924,7 +5021,7 @@ mod tests {
             .unwrap();
         mark_submit_intent(&db, &task, 7_002).unwrap();
         task_failed(&db, &task, "credential_missing", 7_003).unwrap();
-        let retry = take_task(&mut db, CloudProvider::Asr, 37_003)
+        let retry = take_task(&mut db, CloudProvider::Asr, 43_003)
             .unwrap()
             .unwrap();
         assert_eq!(retry.remote_id, task.remote_id);

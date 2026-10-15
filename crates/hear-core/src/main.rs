@@ -7,7 +7,7 @@ use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use sha2::{Digest, Sha256};
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
-use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
+use std::os::unix::fs::{FileTypeExt, MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
@@ -35,7 +35,9 @@ mod microphone;
 mod model_pack;
 mod moments;
 mod playback;
+mod reads;
 mod record;
+mod recovery;
 mod resources;
 mod retention;
 mod source_process;
@@ -138,10 +140,7 @@ fn run() -> Result<(), String> {
     let connection =
         Connection::open(directory.join("hear.sqlite")).map_err(|error| error.to_string())?;
     let store = Store::new(connection)?;
-    events::recover_asr_staging(&directory);
-    archive::recover(&store.db)?;
-    archive::cleanup_spool(&directory)?;
-    moments::recover(&store.db, &directory)?;
+    archive::prepare_recovery(&store.db)?;
     let mut store = store;
     store.recover(&directory)?;
     events::recover_tasks(&mut store.db, now_ms()?)?;
@@ -176,6 +175,7 @@ fn run() -> Result<(), String> {
         LogEvent::simple("core", LogLevel::Info, "started"),
     );
     let shared = Arc::new(CoreState {
+        readers: reads::Pool::open(&directory.join("hear.sqlite"))?,
         store: Mutex::new(store),
         llm_outbound: Mutex::new(()),
         asr_outbound: Mutex::new(()),
@@ -218,6 +218,11 @@ fn run() -> Result<(), String> {
         });
     }
     let stop = Arc::new(AtomicBool::new(false));
+    {
+        let shared = Arc::clone(&shared);
+        let stop = Arc::clone(&stop);
+        thread::spawn(move || recovery::run(shared, stop));
+    }
     {
         let shared = Arc::clone(&shared);
         let stop = Arc::clone(&stop);
@@ -362,7 +367,9 @@ fn ingest_session_locked(
     entries.sort_by_key(|(_, e)| (e.started_ms, e.ended_ms, e.id));
     for (path, entry) in entries {
         let (acknowledged, ranges) = {
+            let began = Instant::now();
             let store = store.lock().map_err(|e| e.to_string())?;
+            store.ingestion_wait_ms.observe(began.elapsed());
             let ack = ingestion::acknowledged(&store.db, &entry)?;
             (
                 ack,
@@ -376,11 +383,15 @@ fn ingest_session_locked(
         if !acknowledged {
             match ingestion::prepare(directory, &entry, &ranges) {
                 Ok(prepared) => {
-                    let result = ingestion::commit(
-                        &mut store.lock().map_err(|e| e.to_string())?.db,
-                        &entry,
-                        &prepared,
-                    );
+                    let result = {
+                        let began = Instant::now();
+                        let mut store = store.lock().map_err(|e| e.to_string())?;
+                        store.ingestion_wait_ms.observe(began.elapsed());
+                        let began = Instant::now();
+                        let result = ingestion::commit(&mut store.db, &entry, &prepared);
+                        store.ingestion_commit_ms.observe(began.elapsed());
+                        result
+                    };
                     if let Err(error) = result {
                         ingestion::discard_prepared(directory, &prepared);
                         return Err(error);
@@ -508,6 +519,7 @@ fn maintenance_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
 
 fn resource_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
     let mut blocked_since = None;
+    let mut storage_metrics = serde_json::Value::Null;
     while !stop.load(Ordering::Acquire) {
         let mut backlog = resources::Backlog {
             disk_free: fs2::available_space(&shared.directory).unwrap_or(0),
@@ -516,6 +528,17 @@ fn resource_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
         let now = now_ms().unwrap_or(0);
         if let Ok(store) = shared.store.try_lock() {
             blocked_since = None;
+            if let Ok(value)=store.db.query_row("SELECT audio_bytes,orphan_bytes FROM storage_usage WHERE id=1",[],|r|Ok(serde_json::json!({"logical_audio_bytes":r.get::<_,i64>(0)?,"orphan_bytes":r.get::<_,i64>(1)?}))) {storage_metrics=value;}
+            storage_metrics["observed_ms"] = serde_json::json!(now);
+            storage_metrics["control_transaction_histogram_ms"] =
+                serde_json::json!(store.transaction_ms.counts());
+            storage_metrics["ingestion_lock_wait_histogram_ms"] =
+                serde_json::json!(store.ingestion_wait_ms.counts());
+            storage_metrics["ingestion_commit_histogram_ms"] =
+                serde_json::json!(store.ingestion_commit_ms.counts());
+            if let Ok(encoded)=store.db.query_row("SELECT json_group_array(json_object('category',category,'bytes',bytes,'observed_ms',observed_ms)) FROM physical_storage",[],|r|r.get::<_,String>(0)) {
+                storage_metrics["physical_scan"]=serde_json::from_str(&encoded).unwrap_or(serde_json::Value::Null);
+            }
             if let Ok((seconds,oldest))=store.db.query_row("SELECT coalesce(sum(frames),0)/48000,coalesce(min(started_ms),?1) FROM
               (SELECT frames,started_ms FROM audio_blocks WHERE analysis_state='pending' AND analysis_attempts<3 AND media_path IS NOT NULL ORDER BY started_ms,id LIMIT 1024)",[now],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,i64>(1)?))) {
                 backlog.vad_seconds=seconds.max(0) as u64;backlog.oldest_vad_ms=now.saturating_sub(oldest).max(0) as u64;
@@ -531,6 +554,26 @@ fn resource_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
                 .as_millis() as u64;
         }
         shared.resources.sample(backlog);
+        if shared.resources.mode() != resources::Mode::Normal {
+            shared.readers.shrink();
+        }
+        let diagnostics = serde_json::json!({"schema":1,"run_id":shared.run_id,"pid":std::process::id(),"observed_ms":now,
+            "resources":shared.resources.diagnostics(),"storage":storage_metrics,
+            "wal_bytes":fs::metadata(shared.directory.join("hear.sqlite-wal")).map(|m|m.len()).ok()});
+        // A bounded, replace-only diagnostic snapshot; it is not durable
+        // business state and contains no audio, text, people or credentials.
+        let path = shared.directory.join("diagnostics.json.pending");
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&path)
+        {
+            if serde_json::to_writer(&mut file, &diagnostics).is_ok() {
+                let _ = fs::rename(&path, shared.directory.join("diagnostics.json"));
+            }
+        }
         thread::sleep(Duration::from_secs(1));
     }
 }
@@ -777,6 +820,7 @@ fn cloud_loop(
     stop: Arc<AtomicBool>,
     provider: hear_protocol::CloudProvider,
 ) {
+    let mut turn = 0u64;
     let mut last_refresh = Instant::now() - Duration::from_secs(30);
     while !stop.load(Ordering::Acquire) {
         let now = match now_ms() {
@@ -809,7 +853,7 @@ fn cloud_loop(
             .store
             .lock()
             .map_err(|e| e.to_string())
-            .and_then(|mut store| events::take_task(&mut store.db, provider, now));
+            .and_then(|mut store| events::take_task_fair(&mut store.db, provider, now, turn));
         let task = match task {
             Ok(Some(task)) => task,
             Ok(None) => {
@@ -823,6 +867,7 @@ fn cloud_loop(
                 continue;
             }
         };
+        turn = turn.wrapping_add(1);
         let task_id = task.id;
         let outcome = process_cloud_task(&shared, &task, now);
         let mut event = LogEvent::simple(
@@ -840,12 +885,18 @@ fn cloud_loop(
         );
         event.job_id = Some(task_id);
         if let Err(error) = &outcome {
-            event.error_code = Some(error.clone());
+            event.error_code = Some(error.code.clone());
         }
         shared.logs.emit(ClientKind::Worker, task_id, event);
         if let Err(error) = outcome {
             if let Ok(store) = shared.store.lock() {
-                let _ = events::task_failed(&store.db, &task, &error, now_ms().unwrap_or(now));
+                let _ = events::task_failed_with_retry(
+                    &store.db,
+                    &task,
+                    &error.code,
+                    error.retry_after_ms,
+                    now_ms().unwrap_or(now),
+                );
             }
         }
     }
@@ -1046,7 +1097,8 @@ fn process_cloud_task(
     shared: &CoreState,
     task: &events::CloudTask,
     now: i64,
-) -> Result<(), String> {
+) -> Result<(), cloud::Failure> {
+    let deadline = Instant::now() + Duration::from_secs(60);
     let (current, model) = shared
         .store
         .lock()
@@ -1063,7 +1115,7 @@ fn process_cloud_task(
         return Ok(());
     }
     if model.is_none() {
-        return Err("provider_not_configured".to_owned());
+        return Err("provider_not_configured".to_owned().into());
     }
     match task.provider {
         hear_protocol::CloudProvider::Llm => {
@@ -1090,7 +1142,7 @@ fn process_cloud_task(
                 return Ok(());
             }
             let key = active_cloud_credential(shared, task.provider)?;
-            let output = cloud::chat(&key, &task.model_id, events::FIT_SYSTEM, &input)?;
+            let output = cloud::chat(&key, &task.model_id, events::FIT_SYSTEM, &input, deadline)?;
             drop(outbound);
             let _event_gate = shared.asr_outbound.lock().map_err(|e| e.to_string())?;
             let count = {
@@ -1121,7 +1173,7 @@ fn process_cloud_task(
                     return Ok(());
                 }
                 let key = active_cloud_credential(shared, task.provider)?;
-                cloud::query_audio(&key, task.remote_id)?
+                cloud::query_audio(&key, task.remote_id, deadline)?
             };
             match query {
                 cloud::AsrQuery::Complete(utterances) => {
@@ -1131,18 +1183,18 @@ fn process_cloud_task(
                 }
                 cloud::AsrQuery::Processing => {
                     if task.submit_attempts > 0 && now - task.updated_ms > 2 * 60 * 60 * 1000 {
-                        return Err("provider_processing_timeout".to_owned());
+                        return Err("provider_processing_timeout".to_owned().into());
                     }
                     let store = shared.store.lock().map_err(|e| e.to_string())?;
-                    events::asr_wait(&store.db, task, now_ms()?)
+                    events::asr_wait(&store.db, task, now_ms()?).map_err(Into::into)
                 }
                 cloud::AsrQuery::Missing => {
                     if task.submit_attempts > 0 && now - task.updated_ms < 60_000 {
                         let store = shared.store.lock().map_err(|e| e.to_string())?;
-                        return events::asr_wait(&store.db, task, now_ms()?);
+                        return events::asr_wait(&store.db, task, now_ms()?).map_err(Into::into);
                     }
                     if task.submit_attempts >= 3 {
-                        return Err("provider_missing_submitted_task".to_owned());
+                        return Err("provider_missing_submitted_task".to_owned().into());
                     }
                     if queue_is_paused(shared, task.provider)? {
                         let mut store = shared.store.lock().map_err(|e| e.to_string())?;
@@ -1171,14 +1223,21 @@ fn process_cloud_task(
                         events::defer_paused(&mut store.db, task, now)?;
                         return Ok(());
                     }
+                    let key = active_cloud_credential(shared, task.provider)?;
+                    cloud::remaining(deadline)?;
                     {
                         let store = shared.store.lock().map_err(|e| e.to_string())?;
                         events::mark_submit_intent(&store.db, task, now_ms()?)?;
                     }
-                    let key = active_cloud_credential(shared, task.provider)?;
-                    cloud::submit_audio(&key, task.remote_id, &ogg, cloud::AsrAudioFormat::Ogg)?;
+                    cloud::submit_audio(
+                        &key,
+                        task.remote_id,
+                        &ogg,
+                        cloud::AsrAudioFormat::Ogg,
+                        deadline,
+                    )?;
                     let store = shared.store.lock().map_err(|e| e.to_string())?;
-                    events::asr_wait(&store.db, task, now_ms()?)
+                    events::asr_wait(&store.db, task, now_ms()?).map_err(Into::into)
                 }
             }
         }
@@ -1294,10 +1353,13 @@ fn start_source(shared: &Arc<CoreState>, source: AudioSource) -> SourceSlot {
                         }
                     }
                 },
-                || {
-                    source_shared
-                        .resources
-                        .capture_progress(source_name(source))
+                |pid, progress| {
+                    source_shared.resources.capture_observed(
+                        source_name(source),
+                        session_id,
+                        pid,
+                        progress,
+                    );
                 },
             )
         });
@@ -1541,6 +1603,7 @@ fn capture_supervisor(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
 }
 
 struct CoreState {
+    readers: reads::Pool,
     store: Mutex<Store>,
     llm_outbound: Mutex<()>,
     asr_outbound: Mutex<()>,
@@ -1951,8 +2014,8 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
         match envelope.request {
             Request::CloudStatus => {
                 let queues = {
-                    let store = shared.store.lock().map_err(|e| e.to_string())?;
-                    events::queue_states(&store.db)?
+                    let reader = shared.readers.snapshot()?;
+                    events::queue_states(&reader)?
                 };
                 Response::CloudStatus {
                     id: envelope.id,
@@ -1960,10 +2023,10 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                 }
             }
             Request::CloudTasks { provider, limit } => {
-                let store = shared.store.lock().map_err(|e| e.to_string())?;
+                let reader = shared.readers.snapshot()?;
                 Response::CloudTasks {
                     id: envelope.id,
-                    tasks: events::task_views(&store.db, provider, limit)?,
+                    tasks: events::task_views(&reader, provider, limit)?,
                 }
             }
             Request::ConfigureCloud {
@@ -2098,12 +2161,12 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                 response
             }
             Request::Timeline { from_ms, to_ms } => {
-                let store = shared.store.lock().map_err(|e| e.to_string())?;
-                match events::timeline(&store.db, from_ms, to_ms) {
+                let reader = shared.readers.snapshot()?;
+                match events::timeline(&reader, from_ms, to_ms) {
                     Ok(items) => Response::Timeline {
                         id: envelope.id,
                         items,
-                        gaps: events::timeline_gaps(&store.db, from_ms, to_ms, now_ms()?)?,
+                        gaps: events::timeline_gaps(&reader, from_ms, to_ms, now_ms()?)?,
                     },
                     Err(_) => Response::Error {
                         id: envelope.id,
@@ -2117,8 +2180,10 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                 offset,
                 limit,
             } => {
-                let store = shared.store.lock().map_err(|e| e.to_string())?;
-                match events::event_detail(&store.db, event_id, offset, limit) {
+                let reader = shared.readers.snapshot()?;
+                match reader.cached(("event", event_id, offset, limit), |db| {
+                    events::event_detail(db, event_id, offset, limit)
+                }) {
                     Ok(event) => Response::Event {
                         id: envelope.id,
                         event,
@@ -2137,9 +2202,11 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                 offset,
                 limit,
             } => {
-                let store = shared.store.lock().map_err(|e| e.to_string())?;
-                match events::range_detail(&store.db, started_ms, ended_ms, sources, offset, limit)
-                {
+                let reader = shared.readers.snapshot()?;
+                match reader.cached(
+                    ("range", started_ms, ended_ms, sources, offset, limit),
+                    |db| events::range_detail(db, started_ms, ended_ms, sources, offset, limit),
+                ) {
                     Ok(event) => Response::Event {
                         id: envelope.id,
                         event,
@@ -2420,15 +2487,15 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                 }
             }
             Request::People => {
-                let store = shared.store.lock().map_err(|e| e.to_string())?;
+                let reader = shared.readers.snapshot()?;
                 Response::People {
                     id: envelope.id,
-                    people: knowledge::people(&store.db)?,
+                    people: reader.cached("people", knowledge::people)?,
                 }
             }
             Request::ObjectRevision { kind, object_id } => {
-                let store = shared.store.lock().map_err(|error| error.to_string())?;
-                match knowledge::object_revision(&store.db, &kind, object_id) {
+                let reader = shared.readers.snapshot()?;
+                match knowledge::object_revision(&reader, &kind, object_id) {
                     Ok(revision) => Response::ObjectRevision {
                         id: envelope.id,
                         revision,
@@ -2441,17 +2508,17 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                 }
             }
             Request::VoiceSamples { person_id } => {
-                let store = shared.store.lock().map_err(|e| e.to_string())?;
+                let reader = shared.readers.snapshot()?;
                 Response::VoiceSamples {
                     id: envelope.id,
-                    samples: knowledge::voice_samples(&store.db, person_id)?,
+                    samples: knowledge::voice_samples(&reader, person_id)?,
                 }
             }
             Request::ReviewItems => {
-                let store = shared.store.lock().map_err(|e| e.to_string())?;
+                let reader = shared.readers.snapshot()?;
                 Response::ReviewItems {
                     id: envelope.id,
-                    items: knowledge::review_items(&store.db)?,
+                    items: knowledge::review_items(&reader)?,
                 }
             }
             Request::ResolveReview {
@@ -2487,9 +2554,9 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                 offset,
                 limit,
             } => {
-                let store = shared.store.lock().map_err(|e| e.to_string())?;
+                let reader = shared.readers.snapshot()?;
                 match knowledge::search(
-                    &store.db,
+                    &reader,
                     query.as_deref(),
                     from_ms,
                     to_ms,
@@ -2501,7 +2568,7 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                         id: envelope.id,
                         empty_reason: if hits.is_empty() && offset == 0 {
                             Some(knowledge::search_empty_reason(
-                                &store.db, from_ms, to_ms, person_id,
+                                &reader, from_ms, to_ms, person_id,
                             )?)
                         } else {
                             None
@@ -2521,8 +2588,8 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                 offset,
                 limit,
             } => {
-                let store = shared.store.lock().map_err(|e| e.to_string())?;
-                match moments::list(&store.db, from_ms, to_ms, offset, limit) {
+                let reader = shared.readers.snapshot()?;
+                match moments::list(&reader, from_ms, to_ms, offset, limit) {
                     Ok(moments) => Response::Moments {
                         id: envelope.id,
                         moments,
@@ -2609,12 +2676,10 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
             }
             Request::ScreenshotData { moment_id } => {
                 let _gate = shared.cleanup_gate.lock().map_err(|e| e.to_string())?;
-                let result = Connection::open_with_flags(
-                    shared.directory.join("hear.sqlite"),
-                    rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-                )
-                .map_err(|error| error.to_string())
-                .and_then(|db| moments::image(&db, &shared.directory, moment_id));
+                let result = shared
+                    .readers
+                    .snapshot()
+                    .and_then(|db| moments::image(&db, &shared.directory, moment_id));
                 match result {
                     Ok(png_base64) => Response::ScreenshotData {
                         id: envelope.id,
@@ -2634,12 +2699,9 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                 sources,
             } => {
                 let _gate = shared.cleanup_gate.lock().map_err(|e| e.to_string())?;
-                let result = Connection::open_with_flags(
-                    shared.directory.join("hear.sqlite"),
-                    rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-                )
-                .map_err(|error| error.to_string())
-                .and_then(|db| playback::chunk(&db, &shared.directory, from_ms, to_ms, sources));
+                let result = shared.readers.snapshot().and_then(|db| {
+                    playback::chunk(&db, &shared.directory, from_ms, to_ms, sources)
+                });
                 match result {
                     Ok((wav_base64, has_audio, next_audio_ms)) => Response::PlaybackChunk {
                         id: envelope.id,
@@ -3217,7 +3279,14 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                             &AtomicBool::new(false),
                             &AtomicU64::new(0),
                             || shared.resources.capture_progress(source_name(source)),
-                            || shared.resources.capture_progress(source_name(source)),
+                            |pid, progress| {
+                                shared.resources.capture_observed(
+                                    source_name(source),
+                                    session_id,
+                                    pid,
+                                    progress,
+                                )
+                            },
                         )
                     })();
                     flag.store(false, Ordering::Release);
@@ -3325,7 +3394,7 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
         let mut event = LogEvent::simple("ipc", LogLevel::Info, request_name);
         event.revision = shared
             .store
-            .lock()
+            .try_lock()
             .ok()
             .and_then(|store| store.state().ok())
             .map(|state| state.revision);
@@ -3333,6 +3402,10 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
         shared.logs.emit(ClientKind::Core, envelope.id, event);
     }
     let body = serde_json::to_vec(&response).map_err(|error| error.to_string())?;
+    shared
+        .resources
+        .request_histogram
+        .observe(request_started.elapsed());
     shared.resources.request_latency_ms.fetch_max(
         request_started.elapsed().as_millis() as u64,
         Ordering::AcqRel,
@@ -3388,6 +3461,9 @@ fn source_name(source: AudioSource) -> &'static str {
 
 struct Store {
     db: Connection,
+    transaction_ms: resources::Histogram,
+    ingestion_wait_ms: resources::Histogram,
+    ingestion_commit_ms: resources::Histogram,
 }
 
 struct PendingBlock {
@@ -3492,7 +3568,12 @@ impl Store {
         inventory::init(&db)?;
         coarse::init(&db)?;
         archive::init(&db)?;
-        Ok(Self { db })
+        Ok(Self {
+            db,
+            transaction_ms: Default::default(),
+            ingestion_wait_ms: Default::default(),
+            ingestion_commit_ms: Default::default(),
+        })
     }
 
     fn recover(&mut self, directory: &Path) -> Result<(), String> {
@@ -4176,6 +4257,7 @@ impl Store {
         fingerprint: &str,
         change: impl FnOnce(&Transaction<'_>) -> Result<Response, String>,
     ) -> Result<Response, String> {
+        let _timer = self.transaction_ms.timer();
         let tx = self.db.transaction().map_err(|error| error.to_string())?;
         if let Some(response) = prior_mutation_response(&tx, id, fingerprint)? {
             return Ok(response);
@@ -4201,6 +4283,7 @@ impl Store {
         fingerprint: String,
         change: impl FnOnce(&Transaction<'_>) -> rusqlite::Result<usize>,
     ) -> Result<Response, String> {
+        let _timer = self.transaction_ms.timer();
         let tx = self.db.transaction().map_err(|error| error.to_string())?;
         let id_text = id.to_string();
         let receipt: Option<(String, String)> = tx

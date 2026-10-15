@@ -105,13 +105,13 @@ VAD 先事务提交 `coarse_jobs` 的来源/session/16 kHz 样本区间与 `spee
 
 `capture_supervisor` 每路独立启动/停止并处理睡眠和异常退出。录制意图、手动暂停、容量暂停、来源开关、系统许可、模型准备及本次登录的完全退出各有独立含义。来源异常后使用有上限退避，恢复前保持真实缺口；另一来源可继续。容量边界暂停新增采集并提醒，释放空间后由用户手动恢复。[采集监督](../crates/hear-core/src/main.rs)、[封块写入](../crates/hear-core/src/record.rs)。
 
-启动只恢复有索引的未完成录制/任务状态，媒体历史遍历已移到 `inventory::Scan`：每轮最多 32 个文件、每个文件单独持有媒体生命周期屏障，文件检查和删除不持有 `Store`。它区分 live / pending-deletion / capture-staging / orphan，按扫描代次分批对账孤儿配额；物理分类是带观察时间的扫描结果，不能冒充瞬时精确磁盘快照。旧版本封块 `sealing` 的恢复仍保留；截图和导出遗留暂存恢复仍在启动执行。容量暂停保持粘滞，扫描不能覆盖用户暂停或自动恢复录制。
+启动只恢复有索引的未完成录制/任务状态，媒体历史遍历已移到 `inventory::Scan`：每轮最多 32 个文件、每个文件单独持有媒体生命周期屏障，文件检查和删除不持有 `Store`。它区分 live / pending-deletion / capture-staging / orphan，按扫描代次分批对账孤儿配额；物理分类是带观察时间的扫描结果，不能冒充瞬时精确磁盘快照。旧版本封块 `sealing` 的恢复仍保留；截图、ASR/导出暂存和旧导出文件恢复由 `recovery::run` 在服务接收请求后分批执行，每步最多 32 项。启动只将旧导出作业标记为 recovering，后台永不领取新 pending 作业；文件 IO 后按原 job/state 确认，失联磁盘在下一轮重试。ASR/导出暂存复用各自唯一资源准入槽排除活跃文件，截图复用 cleanup_gate；不按文件时间猜测所有权。容量暂停保持粘滞，扫描不能覆盖用户暂停或自动恢复录制。
 
 `capture::channel` 是预分配的 SPSC 双环缓冲，回调只转换/复制到复用缓冲；输入总排队时长最多约 2 秒、字节上限 8 MiB。归一化与编码/fsync 分线程，待封块通道最多 2 项。来源进程每 250 ms 发非阻塞心跳；core 以 3 秒心跳、45 秒启动、15 秒耐久进度和 10 秒停止截止时间监督，超时只回收该来源。停止信号同时发给两路，监督线程只 join 已结束的来源。父进程死亡后 helper 自行退出；原生 HAL/SCK 的致命错误不能结束核心。真实采样时间优先使用硬件单调时间，墙钟跳变仍切断 session。
 
 [`ingestion`](../crates/hear-core/src/ingestion.rs) 先同步 prepared 元数据，随后同步并发布 Opus，再同步含长度/hash 的 ready 元数据。每 session 最多 64 个待入库记录；核心按时间顺序、短事务导入，持久回执跨越数据库提交到 journal 删除同步的窗口，避免重复或清理后复活。缺失/损坏媒体保留隔离元数据并记录缺口，暂时性 IO / 重编码失败保留待重试。清理与导入共用媒体屏障；来源继续落盘，迟到块按 session 代次、来源、所选范围及清理提交时刻裁剪，保留未选尾部和操作之后的新录音，因此清理不再全局暂停设备。恢复日志不是第二个业务事实库。
 
-云请求复用进程内 `ureq::Agent` 连接池，凭据仍逐请求附加。请求总期限为 60 秒，包含响应体读取；底层系统 DNS 调用不可取消，是该期限的已知例外。响应读取失败作为瞬态错误保留原远端请求 ID，退避后先查询原请求。[云客户端](../crates/hear-core/src/cloud.rs)。
+云请求复用进程内 `ureq::Agent` 连接池，凭据仍逐请求附加。一次任务共享 60 秒预算，每次网络请求只获剩余时间（含响应体）；底层系统 DNS、Keychain 和不可取消文件 IO 是平台例外，预算耗尽后不再发起新请求。响应读取/截止失败作为瞬态错误保留原远端请求 ID，退避后先查询原请求。内部 Failure 只携带脱敏代码与 Retry-After 的秒数/HTTP-date 延迟，429（以及带该头的 503）把 provider 冷却下界写回原 cloud_queues，重启仍生效、不改 paused。二次退避附有任务 ID 派生的 0–20% 抖动；每四次领取中三次保留人工优先（其中一次最新优先）、一次按最旧待办，持续人工工作不会饿死历史自动任务。[云客户端](../crates/hear-core/src/cloud.rs)。
 
 ## 5. 外发、修订与清理边界
 
@@ -122,6 +122,10 @@ VAD 先事务提交 `coarse_jobs` 的来源/session/16 kHz 样本区间与 `spee
 - 清理前先生成带范围/模式/内容签名的预览；`清除原始音频`保留文字和已提取的声纹特征，`清除全部数据`还删除范围内的文字、动作、关联声纹样例等并要求额外确认。逻辑墓碑先生效，再处理共享封块和物理删除。[`cleanup.rs`](../crates/hear-core/src/cleanup.rs)。
 
 所有回放、搜索与导出只读取当前有效投影。导出在核心生成受限归档，不把媒体目录路径交给 UI/CLI；搜索索引仅是派生数据，不作为内容存在性的裁判。[`playback.rs`](../crates/hear-core/src/playback.rs)、[`knowledge.rs`](../crates/hear-core/src/knowledge.rs)、[`archive.rs`](../crates/hear-core/src/archive.rs)。
+
+读取使用固定两个只读连接，每次请求持有一个短 WAL 快照，获取与 SQL 共用 3 秒预算；progress handler 在 SQLite 执行中取消超时查询，退出即回滚释放快照。每连接最多缓存一页、4 MiB，按该连接的 data_version 失效，压力下清空；缓存不是修订权威。详情修订按 256 行批量取得纠错/人物/声纹依据，组修订分页计算，沿用原摘要字节格式，旧页面 revision 仍有效。短词走时间索引，长词先探测最多 4096 个 FTS postings：常见词按时间流式校验 FTS，稀有词用 FTS 直接定位，最终可见性/去重/分页语义相同。音频范围读取通过带媒体路径／语音活动条件的 source + ended_ms 部分索引定位相交块，避免先扫描来源全部历史；来源掩码以 CASE/IN 集合表达，规避 SQLite 的 OR 分支选回旧 started_ms 索引。
+
+GUI 上下文刷新合并在途请求，仅前台聚焦时周期刷新。连续播放由 [`src/playback.ts`](../src/playback.ts) 管理单一 AudioContext：一个网络/解码请求、至多当前和下一段两个 5 秒缓冲，按音频时钟接续，UI 计时只更新绝对时刻。切位置、来源、关闭或本页发起清理立即停止并淘汰旧代次，迟到结果不能发声；下一块预取失败时保留已排程的当前音频，到边界再报告读取错误；整段无媒体仍按原规则跳到下一可用时刻。交互入口不变。
 
 ## 6. 构建与分发形态
 
@@ -142,7 +146,9 @@ VAD 先事务提交 `coarse_jobs` 的来源/session/16 kHz 样本区间与 `spee
 
 ## 7. 观察与验收
 
-`unilogs` 将各模块的结构化、脱敏事件写到受限滚动 JSONL；日志不是状态事实，也不包含原音频、正文、截图、向量或密钥。[日志实现](../crates/hear-core/src/unilogs.rs)。资源采样脚本按进程/PID 记录 CPU、内存、磁盘及能耗计数；进程存活或内存平台并不能替代音频覆盖、可回放和缺口检查。[`measure_macos.sh`](../scripts/measure_macos.sh)、[`report_macos_resources.py`](../scripts/report_macos_resources.py)。
+`unilogs` 将各模块的结构化、脱敏事件写到受限滚动 JSONL；日志不是状态事实，也不包含原音频、正文、截图、向量或密钥。[日志实现](../crates/hear-core/src/unilogs.rs)。核心每秒覆盖写入一个 `diagnostics.json`（不 fsync、不作为恢复事实），包含 run/PID、压力模式/转换次数、后台 footprint 峰值、积压秒数下界、带观察时间的容量与物理扫描、WAL 字节数；采集回调只更新固定原子计数，记录回调/丢失帧、ring 高水位、消费/可靠落盘年龄、回调耗时与封块直方图，成功和正常报错退出均发送最终计数（强杀无法补发）；控制事务和 ingestion 锁等待/提交也使用固定桶。诊断不保存音频、正文或凭据。
+
+资源采样默认 1 秒，可显式短测 100–250 ms；进程清单最多每秒更新，生命周期更短的进程仍可能遗漏。按精确 bundle 路径识别本体与 helper，WebView 通过 launchd resource coalition 与已确认 desktop 关联，不能按 WebKit 进程名全算。PID 加出生时间防止重用后拼接曲线；支持旧系统 rusage 回退，缺失能耗为 0 表示不可用。原始 CSV 轮转上限约 320 MiB、诊断流约 96 MiB，分钟报告保留每进程峰值，meta 记录同时采样总量（不是不同时间峰值之和）。进程存活或内存平台并不能替代音频覆盖、可回放和缺口检查。[`measure_macos.sh`](../scripts/measure_macos.sh)、[`report_macos_resources.py`](../scripts/report_macos_resources.py)。隔离录制结束后可用 [`audit_recording_coverage.py`](../scripts/audit_recording_coverage.py) 对显式时间范围分别核对清单／仍保留媒体的缺口与重叠，逐块验证路径和可选解码帧数；一次只解码一块，不能据此推断语音召回或参考音频一致。
 
 当前源码的短音频链路曾跑通，但 Batch 6 尚有说话人误并/漏认、设备/睡眠、长时资源、最终 GUI/CLI 和公证安装门槛。具体进度以 [plan.md](../plan.md) 和 [PRD 执行台账](prd/prd_0.1.md) 为准；文档存在不表示门槛通过。
 

@@ -16,6 +16,8 @@ MIB = 1024 * 1024
 COLORS = {
     "hear-core": "#247567",
     "hear-worker": "#bf7647",
+    "hear-capture": "#4596a2",
+    "hear-webview": "#a05caa",
     "hear-desktop": "#626faf",
 }
 GAP_SECONDS = 150
@@ -49,18 +51,20 @@ def read_samples(paths):
                         "time": stamp,
                         "role": role,
                         "pid": pid,
+                        "birth": row.get("process_birth", ""),
+                        "lifetime_peak_mib": int(row.get("lifetime_peak_footprint_bytes") or 0) / MIB,
                         "footprint_mib": int(row["physical_footprint_bytes"]) / MIB,
                         "resident_mib": int(row["resident_bytes"]) / MIB,
                         "cpu_ns": int(row["user_time_ns"]) + int(row["system_time_ns"]),
                         "energy_nj": int(row["energy_nj"]),
                     }
-                    samples[(role, pid, stamp)] = item
+                    samples[(role, pid, item["birth"], stamp)] = item
                 except (KeyError, TypeError, ValueError):
                     # An interrupted write leaves at most one incomplete line.
                     continue
     groups = defaultdict(list)
     for item in samples.values():
-        groups[(item["role"], item["pid"])].append(item)
+        groups[(item["role"], str(item["pid"]) + ("@" + item["birth"] if item["birth"] else ""))].append(item)
     for rows in groups.values():
         rows.sort(key=lambda row: row["time"])
     return groups, sorted(timestamps), dict(absences)
@@ -72,6 +76,9 @@ def percentile(values, fraction):
 
 
 def summarize(groups, timestamps, absences):
+    global GAP_SECONDS
+    intervals = [(b-a).total_seconds() for a,b in zip(timestamps,timestamps[1:]) if b>a]
+    GAP_SECONDS=max(1,statistics.median(intervals)*2.5) if intervals else 150
     gaps = []
     for before, after in zip(timestamps, timestamps[1:]):
         seconds = (after - before).total_seconds()
@@ -84,7 +91,9 @@ def summarize(groups, timestamps, absences):
         cpu_delta = rows[-1]["cpu_ns"] - rows[0]["cpu_ns"]
         processes.append({
             "role": role,
-            "pid": pid,
+            "pid": rows[0]["pid"],
+            "birth": rows[0]["birth"],
+            "lifetime_peak_mib": round(max(r["lifetime_peak_mib"] for r in rows),1),
             "first": rows[0]["time"].isoformat(),
             "last": rows[-1]["time"].isoformat(),
             "samples": len(rows),
@@ -100,6 +109,7 @@ def summarize(groups, timestamps, absences):
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "first": timestamps[0].isoformat() if timestamps else None,
         "last": timestamps[-1].isoformat() if timestamps else None,
+        "sampling_gap_threshold_seconds": GAP_SECONDS,
         "sampling_gaps": gaps,
         "absent_samples": absences,
         "processes": processes,
@@ -194,11 +204,11 @@ svg{{width:100%;min-width:680px}}svg text{{font-size:11px;fill:#77877f}}.grid{{s
 table{{border-collapse:collapse;width:100%;white-space:nowrap}}th,td{{text-align:right;padding:9px;border-bottom:1px solid #e9eeea}}th:first-child,td:first-child{{text-align:left}}
 th{{color:#62746c;font-weight:600}}.note{{font-size:13px;color:#66786f}}ul{{margin:0;padding-left:20px}}</style>
 <main><h1>hear · 资源曲线</h1><p>更新：{html.escape(report["generated_at"])} · 所有时刻为 UTC · 按 PID 分段；采样空档不连线</p>
-<section><h2>物理内存足迹 · MiB</h2><div class="legend">{legend}</div>{memory}</section>
+<section><h2>物理内存足迹 · MiB</h2><p class="note">分钟摘要保留各进程该分钟峰值；精确同时总量见采样器 meta.json，不能相加不同时间的进程峰值。</p><div class="legend">{legend}</div>{memory}</section>
 <section><h2>单核 CPU 占比 · %</h2><div class="legend">{legend}</div>{cpu}</section>
 <section><h2>进程摘要</h2><table><thead><tr><th>进程</th><th>PID</th><th>采样</th><th>初值 MiB</th><th>末值 MiB</th><th>中位 MiB</th><th>P95 MiB</th><th>峰值 MiB</th><th>平均单核 CPU</th></tr></thead>
 <tbody>{''.join(table_rows)}</tbody></table></section>
-<section><h2>采样空档 · {len(gaps)}</h2><ul>{gap_rows or '<li>无超过 150 秒的采样空档</li>'}</ul>
+<section><h2>采样空档 · {len(gaps)}</h2><ul>{gap_rows or f'<li>无超过 {GAP_SECONDS:g} 秒的采样空档</li>'}</ul>
 <p class="note">absent 样本：{html.escape(json.dumps(report["absent_samples"], ensure_ascii=False))}。进程能耗计数与物理足迹只能用于同机趋势，不等于整机电池续航；采样空档内的峰值未知。</p></section></main></html>"""
 
 

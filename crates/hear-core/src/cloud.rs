@@ -95,13 +95,62 @@ fn agent() -> &'static ureq::Agent {
     })
 }
 
-fn json_response(response: Result<ureq::Response, ureq::Error>) -> Result<Value, String> {
-    let response = match response {
-        Ok(response) => response,
-        Err(ureq::Error::Status(code, _)) => return Err(format!("provider_http_{code}")),
-        Err(_) => return Err("provider_transport".to_owned()),
+/// Internal scheduling metadata, never a supplier body or credential.
+#[derive(Debug)]
+pub struct Failure {
+    pub code: String,
+    pub retry_after_ms: Option<i64>,
+}
+impl From<String> for Failure {
+    fn from(code: String) -> Self {
+        Self {
+            code,
+            retry_after_ms: None,
+        }
+    }
+}
+impl From<Failure> for String {
+    fn from(error: Failure) -> Self {
+        error.code
+    }
+}
+
+pub fn remaining(deadline: Instant) -> Result<Duration, Failure> {
+    deadline
+        .checked_duration_since(Instant::now())
+        .filter(|d| !d.is_zero())
+        .ok_or_else(|| "provider_deadline".to_owned().into())
+}
+
+fn retry_after(value: &str, now: std::time::SystemTime) -> Option<i64> {
+    let duration = match value.trim().parse::<u64>() {
+        Ok(seconds) => Duration::from_secs(seconds),
+        Err(_) => httpdate::parse_http_date(value)
+            .ok()?
+            .duration_since(now)
+            .unwrap_or_default(),
     };
-    parse_body(response)
+    // Saturate arithmetic, preserving the supplier's lower bound even across restart.
+    Some(duration.as_millis().min(i64::MAX as u128) as i64)
+}
+
+fn checked_response(
+    response: Result<ureq::Response, ureq::Error>,
+) -> Result<ureq::Response, Failure> {
+    match response {
+        Ok(response) => Ok(response),
+        Err(ureq::Error::Status(code, response)) => Err(Failure {
+            code: format!("provider_http_{code}"),
+            retry_after_ms: response
+                .header("Retry-After")
+                .and_then(|v| retry_after(v, std::time::SystemTime::now())),
+        }),
+        Err(_) => Err("provider_transport".to_owned().into()),
+    }
+}
+
+fn json_response(response: Result<ureq::Response, ureq::Error>) -> Result<Value, Failure> {
+    parse_body(checked_response(response)?).map_err(Into::into)
 }
 
 fn parse_body(response: ureq::Response) -> Result<Value, String> {
@@ -123,6 +172,7 @@ pub fn verify_llm(key: &str, model: &str) -> Result<(), String> {
         model,
         "Return only JSON with {\"ok\":true}. This is a connectivity check; no user data is included.",
         "Return JSON with ok true.",
+        Instant::now() + Duration::from_secs(60),
     )?;
     if result.get("ok").and_then(Value::as_bool) == Some(true) {
         Ok(())
@@ -131,7 +181,13 @@ pub fn verify_llm(key: &str, model: &str) -> Result<(), String> {
     }
 }
 
-pub fn chat(key: &str, model: &str, system: &str, user: &str) -> Result<Value, String> {
+pub fn chat(
+    key: &str,
+    model: &str,
+    system: &str,
+    user: &str,
+    deadline: Instant,
+) -> Result<Value, Failure> {
     let body = json!({
         "model": model,
         "thinking": {"type":"disabled"},
@@ -144,6 +200,7 @@ pub fn chat(key: &str, model: &str, system: &str, user: &str) -> Result<Value, S
     let response = json_response(
         agent()
             .post(DEEPSEEK_URL)
+            .timeout(remaining(deadline)?)
             .set("Authorization", &format!("Bearer {key}"))
             .set("Content-Type", "application/json")
             .send_string(&body.to_string()),
@@ -154,13 +211,13 @@ pub fn chat(key: &str, model: &str, system: &str, user: &str) -> Result<Value, S
         .and_then(|array| array.first())
         .ok_or_else(|| "provider_missing_choice".to_owned())?;
     if choice.get("finish_reason").and_then(Value::as_str) != Some("stop") {
-        return Err("provider_incomplete_output".to_owned());
+        return Err("provider_incomplete_output".to_owned().into());
     }
     let content = choice
         .pointer("/message/content")
         .and_then(Value::as_str)
         .ok_or_else(|| "provider_missing_content".to_owned())?;
-    serde_json::from_str(content).map_err(|_| "provider_invalid_json_content".to_owned())
+    serde_json::from_str(content).map_err(|_| "provider_invalid_json_content".to_owned().into())
 }
 
 fn volc_request(
@@ -168,20 +225,18 @@ fn volc_request(
     key: &str,
     request_id: Uuid,
     body: Value,
-) -> Result<(String, String, Value), String> {
+    deadline: Instant,
+) -> Result<(String, String, Value), Failure> {
     let response = agent()
         .post(url)
+        .timeout(remaining(deadline)?)
         .set("X-Api-Key", key)
         .set("X-Api-Resource-Id", VOLC_RESOURCE)
         .set("X-Api-Request-Id", &request_id.to_string())
         .set("X-Api-Sequence", "-1")
         .set("Content-Type", "application/json")
         .send_string(&body.to_string());
-    let response = match response {
-        Ok(response) => response,
-        Err(ureq::Error::Status(code, _)) => return Err(format!("provider_http_{code}")),
-        Err(_) => return Err("provider_transport".to_owned()),
-    };
+    let response = checked_response(response)?;
     let status = response
         .header("X-Api-Status-Code")
         .unwrap_or("")
@@ -204,24 +259,25 @@ pub fn submit_audio(
     request_id: Uuid,
     audio: &[u8],
     format: AsrAudioFormat,
-) -> Result<(), String> {
+    deadline: Instant,
+) -> Result<(), Failure> {
     let (name, maximum, minimum) = match format {
         AsrAudioFormat::Wav => ("wav", 12_000_000, 44),
         AsrAudioFormat::Ogg => ("ogg", 10_000_000, 64),
     };
     if audio.len() > maximum || audio.len() < minimum {
-        return Err("asr_audio_size".to_owned());
+        return Err("asr_audio_size".to_owned().into());
     }
     let body = json!({
         "user": {"uid":"hear-local"},
         "audio": {"data":base64::engine::general_purpose::STANDARD.encode(audio),"format":name},
         "request": {"model_name":"bigmodel","enable_speaker_info":true,"show_utterances":true,"ssd_version":"300"}
     });
-    let (status, _, _) = volc_request(VOLC_SUBMIT, key, request_id, body)?;
+    let (status, _, _) = volc_request(VOLC_SUBMIT, key, request_id, body, deadline)?;
     if status == "20000000" {
         Ok(())
     } else {
-        Err(format!("provider_status_{status}"))
+        Err(format!("provider_status_{status}").into())
     }
 }
 
@@ -240,14 +296,17 @@ pub struct AsrUtterance {
     pub speaker: Option<String>,
 }
 
-pub fn query_audio(key: &str, request_id: Uuid) -> Result<AsrQuery, String> {
-    let (status, message, response) = volc_request(VOLC_QUERY, key, request_id, json!({}))?;
+pub fn query_audio(key: &str, request_id: Uuid, deadline: Instant) -> Result<AsrQuery, Failure> {
+    let (status, message, response) =
+        volc_request(VOLC_QUERY, key, request_id, json!({}), deadline)?;
     match status.as_str() {
         "20000001" | "20000002" => Ok(AsrQuery::Processing),
         "20000003" => Ok(AsrQuery::Complete(Vec::new())),
         "45000000" if message.contains("cannot find task") => Ok(AsrQuery::Missing),
-        "20000000" => parse_asr_result(&response).map(AsrQuery::Complete),
-        _ => Err(format!("provider_status_{status}")),
+        "20000000" => parse_asr_result(&response)
+            .map(AsrQuery::Complete)
+            .map_err(Into::into),
+        _ => Err(format!("provider_status_{status}").into()),
     }
 }
 
@@ -381,10 +440,10 @@ pub fn verify_asr(key: &str) -> Result<(), String> {
         wav.extend_from_slice(&((phase.sin() * 3_000.0) as i16).to_le_bytes());
     }
     let request_id = Uuid::new_v4();
-    submit_audio(key, request_id, &wav, AsrAudioFormat::Wav)?;
-    let deadline = Instant::now() + Duration::from_secs(30);
+    let deadline = Instant::now() + Duration::from_secs(60);
+    submit_audio(key, request_id, &wav, AsrAudioFormat::Wav, deadline)?;
     loop {
-        match query_audio(key, request_id)? {
+        match query_audio(key, request_id, deadline)? {
             AsrQuery::Complete(_) => return Ok(()),
             AsrQuery::Missing => return Err("provider_verification_task_missing".to_owned()),
             AsrQuery::Processing if Instant::now() < deadline => {
@@ -398,6 +457,77 @@ pub fn verify_asr(key: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn retry_headers_preserve_seconds_dates_and_deadlines() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let now = UNIX_EPOCH + Duration::from_secs(1_000_000);
+        assert_eq!(retry_after("120", now), Some(120_000));
+        assert_eq!(
+            retry_after(&httpdate::fmt_http_date(now + Duration::from_secs(90)), now),
+            Some(90_000)
+        );
+        assert_eq!(
+            retry_after(&httpdate::fmt_http_date(now - Duration::from_secs(90)), now),
+            Some(0)
+        );
+        assert_eq!(retry_after("not a delay", SystemTime::now()), None);
+        let response = ureq::Response::new(429, "Too Many Requests", "private").unwrap();
+        assert_eq!(
+            checked_response(Err(ureq::Error::Status(429, response)))
+                .err()
+                .unwrap()
+                .code,
+            "provider_http_429"
+        );
+        assert_eq!(
+            remaining(Instant::now() - Duration::from_millis(1))
+                .err()
+                .unwrap()
+                .code,
+            "provider_deadline"
+        );
+    }
+
+    #[test]
+    fn slow_response_body_obeys_request_budget_and_retry_metadata_survives_http_error() {
+        use std::io::Write;
+        use std::net::TcpListener;
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0; 1024];
+            let _ = stream.read(&mut request);
+            stream.write_all(b"HTTP/1.1 429 Too Many Requests\r\nContent-Length: 0\r\nRetry-After: 123\r\nConnection: close\r\n\r\n").unwrap();
+            let (mut stream, _) = listener.accept().unwrap();
+            let _ = stream.read(&mut request);
+            stream
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Length: 10000\r\nConnection: close\r\n\r\n{",
+                )
+                .unwrap();
+            for _ in 0..100 {
+                std::thread::sleep(Duration::from_millis(10));
+                if stream.write_all(b" ").is_err() {
+                    break;
+                }
+            }
+        });
+        let url = format!("http://{address}");
+        let error = json_response(agent().get(&url).call()).unwrap_err();
+        assert_eq!(error.code, "provider_http_429");
+        assert_eq!(error.retry_after_ms, Some(123_000));
+        let began = Instant::now();
+        let error = json_response(agent().get(&url).timeout(Duration::from_millis(100)).call())
+            .unwrap_err();
+        assert!(matches!(
+            error.code.as_str(),
+            "provider_read_failed" | "provider_transport"
+        ));
+        assert!(began.elapsed() < Duration::from_secs(2));
+        server.join().unwrap();
+    }
 
     fn word(start: i64, end: i64, text: &str) -> Value {
         json!({"start_time":start,"end_time":end,"text":text})

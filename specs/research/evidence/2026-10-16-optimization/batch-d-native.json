@@ -1,0 +1,460 @@
+{
+  "core_sha256": "999f41ae216592d55780e01268c20b72f108d919c04d82929deb66f18a5d269c",
+  "scope": "isolated signed app, simultaneous 12 second microphone/system for SCK and Tap; not a long-run result",
+  "sck": {
+    "results": {
+      "microphone": {
+        "type": "record_test_result",
+        "id": "623fdf4e-66c0-439a-a25c-11e53807c236",
+        "source": "microphone",
+        "blocks": 3,
+        "frames": 576000,
+        "dropped_packets": 0
+      },
+      "system": {
+        "type": "record_test_result",
+        "id": "a6c417f3-cc87-461d-86eb-be301eaccc25",
+        "source": "system",
+        "blocks": 3,
+        "frames": 578880,
+        "dropped_packets": 0
+      }
+    },
+    "diagnostics": {
+      "observed_ms": 1792100673983,
+      "pid": 50254,
+      "resources": {
+        "backlog_lower_bound": {
+          "coarse_seconds": 0,
+          "disk_free": 283279306752,
+          "oldest_coarse_ms": 0,
+          "oldest_vad_ms": 13949,
+          "store_wait_ms": 0,
+          "vad_seconds": 12
+        },
+        "capture": [
+          {
+            "active": false,
+            "frames": 576000,
+            "metrics": {
+              "callback_age_ms": 94,
+              "callback_deadline_misses": 0,
+              "callback_frames": 576000,
+              "callback_histogram_us": [
+                1123,
+                2,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "callback_max_ns": 13458,
+              "consumed_age_ms": 92,
+              "dropped_frames": 0,
+              "durable_age_ms": 42,
+              "input_rate": 48000,
+              "queued_ms": 0,
+              "ring_high_water_ms": 10,
+              "seal_histogram": [
+                0,
+                0,
+                0,
+                1,
+                2,
+                0,
+                0,
+                0
+              ]
+            },
+            "pid": 50262,
+            "session": "8d33ef71-f3c3-4448-82a5-3b51937ffbad"
+          },
+          {
+            "active": false,
+            "frames": 578880,
+            "metrics": {
+              "callback_age_ms": 297,
+              "callback_deadline_misses": 0,
+              "callback_frames": 578880,
+              "callback_histogram_us": [
+                601,
+                2,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "callback_max_ns": 13834,
+              "consumed_age_ms": 296,
+              "dropped_frames": 0,
+              "durable_age_ms": 267,
+              "input_rate": 48000,
+              "queued_ms": 0,
+              "ring_high_water_ms": 60,
+              "seal_histogram": [
+                0,
+                0,
+                3,
+                0,
+                0,
+                0,
+                0,
+                0
+              ]
+            },
+            "pid": 50261,
+            "session": "37c19fa0-e979-44a5-bf09-9c3e39dc6aac"
+          }
+        ],
+        "capture_lag_ms": 0,
+        "footprint_bytes": 8094128,
+        "hard_bytes": 1610612736,
+        "mode": "Normal",
+        "model_pids": [
+          null,
+          null
+        ],
+        "os": {
+          "low_power": 0,
+          "memory_pressure": 0,
+          "on_battery": 0,
+          "physical_memory": 25769803776,
+          "thermal": 0
+        },
+        "peak_footprint_bytes": 8126896,
+        "request_histogram_ms": [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2
+        ],
+        "request_max_ms": 0,
+        "reserved_bytes": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "scope": "core_and_direct_children",
+        "soft_bytes": 1073741824,
+        "transitions": 0
+      },
+      "run_id": "35c09aca-d101-4b37-b882-77dfa5c6e20f",
+      "schema": 1,
+      "storage": {
+        "control_transaction_histogram_ms": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "ingestion_commit_histogram_ms": [
+          7,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "ingestion_lock_wait_histogram_ms": [
+          14,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "logical_audio_bytes": 51393,
+        "observed_ms": 1792100673983,
+        "orphan_bytes": 0,
+        "physical_scan": [
+          {
+            "bytes": 0,
+            "category": "live_audio",
+            "observed_ms": 1792100659800
+          },
+          {
+            "bytes": 0,
+            "category": "pending_deletion",
+            "observed_ms": 1792100659800
+          },
+          {
+            "bytes": 0,
+            "category": "capture_staging",
+            "observed_ms": 1792100659800
+          },
+          {
+            "bytes": 0,
+            "category": "orphan_audio",
+            "observed_ms": 1792100659800
+          }
+        ]
+      },
+      "wal_bytes": 2204232
+    },
+    "coverage": [
+      [
+        "microphone",
+        3,
+        576000,
+        1792100660034,
+        1792100672034
+      ],
+      [
+        "system",
+        3,
+        578880,
+        1792100660280,
+        1792100672340
+      ]
+    ],
+    "samples": 51,
+    "sampled_max_durable_age_ms": 4688
+  },
+  "tap": {
+    "results": {
+      "microphone": {
+        "type": "record_test_result",
+        "id": "01bff6fb-6d68-4077-872f-48e1f8cbd569",
+        "source": "microphone",
+        "blocks": 3,
+        "frames": 576000,
+        "dropped_packets": 0
+      },
+      "system": {
+        "type": "record_test_result",
+        "id": "6ec4b436-9123-4063-a3a3-14f5eee4b573",
+        "source": "system",
+        "blocks": 3,
+        "frames": 575488,
+        "dropped_packets": 0
+      }
+    },
+    "diagnostics": {
+      "observed_ms": 1792100688399,
+      "pid": 50349,
+      "resources": {
+        "backlog_lower_bound": {
+          "coarse_seconds": 0,
+          "disk_free": 283278024704,
+          "oldest_coarse_ms": 0,
+          "oldest_vad_ms": 13871,
+          "store_wait_ms": 0,
+          "vad_seconds": 12
+        },
+        "capture": [
+          {
+            "active": false,
+            "frames": 576000,
+            "metrics": {
+              "callback_age_ms": 72,
+              "callback_deadline_misses": 0,
+              "callback_frames": 576000,
+              "callback_histogram_us": [
+                1125,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "callback_max_ns": 7334,
+              "consumed_age_ms": 72,
+              "dropped_frames": 0,
+              "durable_age_ms": 13,
+              "input_rate": 48000,
+              "queued_ms": 0,
+              "ring_high_water_ms": 10,
+              "seal_histogram": [
+                0,
+                0,
+                0,
+                0,
+                3,
+                0,
+                0,
+                0
+              ]
+            },
+            "pid": 50353,
+            "session": "51d7d4aa-5d63-4ed3-9b39-866b07d0090f"
+          },
+          {
+            "active": false,
+            "frames": 575488,
+            "metrics": {
+              "callback_age_ms": 144,
+              "callback_deadline_misses": 0,
+              "callback_frames": 575488,
+              "callback_histogram_us": [
+                1124,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "callback_max_ns": 9875,
+              "consumed_age_ms": 144,
+              "dropped_frames": 0,
+              "durable_age_ms": 132,
+              "input_rate": 48000,
+              "queued_ms": 0,
+              "ring_high_water_ms": 10,
+              "seal_histogram": [
+                0,
+                0,
+                3,
+                0,
+                0,
+                0,
+                0,
+                0
+              ]
+            },
+            "pid": 50354,
+            "session": "9c12fb68-6d75-4662-a3d1-0b49aab8ecf6"
+          }
+        ],
+        "capture_lag_ms": 0,
+        "footprint_bytes": 8995248,
+        "hard_bytes": 1610612736,
+        "mode": "Normal",
+        "model_pids": [
+          null,
+          null
+        ],
+        "os": {
+          "low_power": 0,
+          "memory_pressure": 0,
+          "on_battery": 0,
+          "physical_memory": 25769803776,
+          "thermal": 0
+        },
+        "peak_footprint_bytes": 9060784,
+        "request_histogram_ms": [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2
+        ],
+        "request_max_ms": 13636,
+        "reserved_bytes": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "scope": "core_and_direct_children",
+        "soft_bytes": 1073741824,
+        "transitions": 0
+      },
+      "run_id": "09f5dc21-2c67-4db1-8716-88a32dbbaa00",
+      "schema": 1,
+      "storage": {
+        "control_transaction_histogram_ms": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "ingestion_commit_histogram_ms": [
+          7,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "ingestion_lock_wait_histogram_ms": [
+          14,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "logical_audio_bytes": 51759,
+        "observed_ms": 1792100688399,
+        "orphan_bytes": 0,
+        "physical_scan": [
+          {
+            "bytes": 0,
+            "category": "live_audio",
+            "observed_ms": 1792100674222
+          },
+          {
+            "bytes": 0,
+            "category": "pending_deletion",
+            "observed_ms": 1792100674222
+          },
+          {
+            "bytes": 0,
+            "category": "capture_staging",
+            "observed_ms": 1792100674222
+          },
+          {
+            "bytes": 0,
+            "category": "orphan_audio",
+            "observed_ms": 1792100674222
+          }
+        ]
+      },
+      "wal_bytes": 2204232
+    },
+    "coverage": [
+      [
+        "microphone",
+        3,
+        576000,
+        1792100674528,
+        1792100686527
+      ],
+      [
+        "system",
+        3,
+        575488,
+        1792100675754,
+        1792100687742
+      ]
+    ],
+    "samples": 54,
+    "sampled_max_durable_age_ms": 4675
+  },
+  "final_bundle": "target/release/bundle/macos/hear-verified.app",
+  "provenance": "Current compiled core embedded in a separate signed copy of the same release bundle; worker and frontend unchanged. Kept separate so the older-SHA preliminary soak is not modified in place."
+}

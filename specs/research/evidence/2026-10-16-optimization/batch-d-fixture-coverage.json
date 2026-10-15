@@ -1,0 +1,66 @@
+{
+  "from_ms": 1792098168815,
+  "to_ms": 1792098188815,
+  "decode_requested": true,
+  "sources": {
+    "microphone": {
+      "manifest": {
+        "covered_ms": 20000,
+        "missing_ms": 0,
+        "overlap_ms": 0,
+        "first_100_gaps": []
+      },
+      "retained_media": {
+        "covered_ms": 20000,
+        "missing_ms": 0,
+        "overlap_ms": 0,
+        "first_100_gaps": []
+      },
+      "blocks": 4,
+      "retained_files": 4,
+      "decoded_files": 4,
+      "decode_frame_mismatches": 0,
+      "file_errors": 0,
+      "first_100_file_errors": [],
+      "frames": 960000,
+      "decisions": {
+        "speech": 4
+      },
+      "declared_gap_count": 0
+    },
+    "system": {
+      "manifest": {
+        "covered_ms": 0,
+        "missing_ms": 20000,
+        "overlap_ms": 0,
+        "first_100_gaps": [
+          [
+            1792098168815,
+            1792098188815
+          ]
+        ]
+      },
+      "retained_media": {
+        "covered_ms": 0,
+        "missing_ms": 20000,
+        "overlap_ms": 0,
+        "first_100_gaps": [
+          [
+            1792098168815,
+            1792098188815
+          ]
+        ]
+      },
+      "blocks": 0,
+      "retained_files": 0,
+      "decoded_files": 0,
+      "decode_frame_mismatches": 0,
+      "file_errors": 0,
+      "first_100_file_errors": [],
+      "frames": 0,
+      "decisions": {},
+      "declared_gap_count": 0
+    }
+  },
+  "limits": "Manifest coverage and optional decode integrity are separate from known-reference sound and speech-retention recall. No reference or quality pass is implied. Run against a stopped isolated capture for a stable final audit."
+}

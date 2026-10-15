@@ -26,7 +26,7 @@ pub fn chunk(
         .prepare(
             "SELECT id,source,started_ms,ended_ms,frames,media_path FROM audio_blocks
          WHERE media_path IS NOT NULL AND started_ms<?2 AND ended_ms>?1
-         AND ((source='microphone' AND ?3&1!=0) OR (source='system' AND ?3&2!=0))
+         AND source IN (CASE WHEN ?3&1!=0 THEN 'microphone' END, CASE WHEN ?3&2!=0 THEN 'system' END)
          ORDER BY started_ms,id",
         )
         .map_err(|error| error.to_string())?;

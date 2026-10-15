@@ -19,13 +19,15 @@ struct Config {
     seconds: Option<u8>,
 }
 #[derive(Serialize, Deserialize, Default)]
-struct Progress {
+pub struct Progress {
     ready: bool,
-    frames: u64,
+    pub frames: u64,
     blocks: usize,
     dropped_packets: u64,
     finished: bool,
     error: Option<String>,
+    #[serde(default)]
+    pub capture: Option<crate::capture::MetricsView>,
 }
 
 fn nonblocking(fd: i32) -> Result<(), String> {
@@ -51,7 +53,7 @@ pub fn supervise(
     stop: &AtomicBool,
     durable_frames: &AtomicU64,
     started: impl FnMut(),
-    progress: impl FnMut(),
+    progress: impl FnMut(u32, &Progress),
 ) -> Result<record::RecordResult, String> {
     if seconds.is_some_and(|v| !(1..=60).contains(&v)) {
         return Err("invalid recording duration".into());
@@ -98,7 +100,7 @@ fn monitor(
     stop: &AtomicBool,
     durable_frames: &AtomicU64,
     mut started: impl FnMut(),
-    mut progress: impl FnMut(),
+    mut progress: impl FnMut(u32, &Progress),
     deadlines: Deadlines,
 ) -> Result<record::RecordResult, String> {
     let mut child = OwnedChild(child);
@@ -157,8 +159,8 @@ fn monitor(
                             last_frames = message.frames;
                             sealed = Instant::now();
                             durable_frames.store(last_frames, Ordering::Release);
-                            progress();
                         }
+                        progress(child.0.id(), &message);
                         if message.finished {
                             final_result = Some(match message.error {
                                 Some(e) => Err(e),
@@ -259,7 +261,9 @@ pub fn run_child(parent: i32) -> Result<(), String> {
     let ready = Arc::new(AtomicBool::new(false));
     let frames = Arc::new(AtomicU64::new(0));
     let finished = Arc::new(AtomicBool::new(false));
+    let metrics = Arc::new(std::sync::OnceLock::<Arc<crate::capture::Metrics>>::new());
     let heartbeat = {
+        let metrics = Arc::clone(&metrics);
         let ready = Arc::clone(&ready);
         let frames = Arc::clone(&frames);
         let finished = Arc::clone(&finished);
@@ -268,6 +272,7 @@ pub fn run_child(parent: i32) -> Result<(), String> {
                 emit(&Progress {
                     ready: ready.load(Ordering::Acquire),
                     frames: frames.load(Ordering::Acquire),
+                    capture: metrics.get().map(|m| m.view()),
                     ..Default::default()
                 });
                 std::thread::sleep(Duration::from_millis(250));
@@ -300,33 +305,71 @@ pub fn run_child(parent: i32) -> Result<(), String> {
         &media,
         clock,
         persist,
-        || ready.store(true, Ordering::Release),
+        |capture_metrics| {
+            let _ = metrics.set(capture_metrics);
+            ready.store(true, Ordering::Release);
+        },
     );
     finished.store(true, Ordering::Release);
     let _ = heartbeat.join();
-    emit(&match result {
-        Ok(stats) => Progress {
-            ready: true,
-            frames: stats.frames,
-            blocks: stats.blocks,
-            dropped_packets: stats.dropped_packets,
-            finished: true,
-            error: None,
-        },
-        Err(error) => Progress {
-            ready: ready.load(Ordering::Acquire),
-            frames: frames.load(Ordering::Acquire),
-            finished: true,
-            error: Some(error),
-            ..Default::default()
-        },
-    });
+    emit(&finished_progress(
+        result,
+        ready.load(Ordering::Acquire),
+        frames.load(Ordering::Acquire),
+        metrics.get().map(|m| m.view()),
+    ));
     Ok(())
+}
+
+fn finished_progress(
+    result: Result<record::RecordResult, String>,
+    ready: bool,
+    frames: u64,
+    capture: Option<crate::capture::MetricsView>,
+) -> Progress {
+    let mut progress = Progress {
+        ready,
+        frames,
+        finished: true,
+        capture,
+        ..Default::default()
+    };
+    match result {
+        Ok(stats) => {
+            progress.ready = true;
+            progress.frames = stats.frames;
+            progress.blocks = stats.blocks;
+            progress.dropped_packets = stats.dropped_packets;
+        }
+        Err(error) => progress.error = Some(error),
+    }
+    progress
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn error_exit_keeps_counts_after_the_last_heartbeat() {
+        let (mut tx, rx) = crate::capture::channel(48_000, 1).unwrap();
+        let metrics = rx.metrics();
+        let last_heartbeat = metrics.view();
+        let packet = [0.1_f32; 1024];
+        while tx.enqueue(&packet, 48_000, 1, None, |v| v) {}
+        assert_eq!(last_heartbeat.dropped_frames, 0);
+        let final_message = finished_progress(
+            Err("callback overflow".into()),
+            true,
+            240000,
+            Some(metrics.view()),
+        );
+        let wire = serde_json::to_vec(&final_message).unwrap();
+        let decoded: Progress = serde_json::from_slice(&wire).unwrap();
+        assert!(decoded.finished && decoded.ready);
+        assert_eq!(decoded.frames, 240000);
+        assert_eq!(decoded.error.as_deref(), Some("callback overflow"));
+        assert_eq!(decoded.capture.unwrap().dropped_frames, 1024);
+    }
     fn fixture(code: &str, stop: bool) -> (Result<record::RecordResult, String>, Duration, u32) {
         let child = Command::new("/usr/bin/python3")
             .args(["-c", code])
@@ -354,7 +397,7 @@ mod tests {
             &AtomicBool::new(stop),
             &AtomicU64::new(0),
             || {},
-            || {},
+            |_, _| {},
             Deadlines {
                 stop: Duration::from_millis(200),
                 start: Duration::from_secs(1),

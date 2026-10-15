@@ -333,7 +333,7 @@ pub fn record_session(
     directory: &Path,
     clock: ClockAnchor,
     persist: impl FnMut(RecordEvent) -> Result<(), String> + Send,
-    started: impl FnOnce(),
+    started: impl FnOnce(std::sync::Arc<capture::Metrics>),
 ) -> Result<RecordResult, String> {
     if seconds.is_some_and(|v| !(1..=60).contains(&v)) {
         return Err("invalid recording duration".into());
@@ -356,16 +356,22 @@ fn run_source(
     directory: &Path,
     clock: ClockAnchor,
     mut persist: impl FnMut(RecordEvent) -> Result<(), String> + Send,
-    started: impl FnOnce(),
+    started: impl FnOnce(std::sync::Arc<capture::Metrics>),
 ) -> Result<RecordResult, String> {
-    let device = Device::open(source)?;
+    let mut device = Device::open(source)?;
     let deadline = duration.map(|duration| Instant::now() + duration);
-    started();
+    let metrics = device.receiver().metrics();
+    started(std::sync::Arc::clone(&metrics));
     std::thread::scope(|scope| {
         let (sender, receiver) = mpsc::sync_channel(2);
         let writer = scope.spawn(move || {
             for input in receiver {
+                let block = matches!(input, SealInput::Block(_));
+                let began = Instant::now();
                 persist_input(directory, &mut persist, input)?;
+                if block {
+                    metrics.sealed(began.elapsed());
+                }
             }
             Ok::<_, String>(())
         });
