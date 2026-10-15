@@ -1,13 +1,14 @@
-use crate::capture::AudioPacket;
+use crate::capture::AudioSender;
 use hear_protocol::ProbeStats;
+use std::cell::UnsafeCell;
 use std::ffi::c_void;
 use std::io::Read;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, mpsc};
 use std::thread;
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, Instant};
 
 const TAP_PROBE_TIMEOUT: Duration = Duration::from_secs(8);
 const TAP_START_TIMEOUT: Duration = Duration::from_secs(8);
@@ -27,11 +28,19 @@ pub fn tap_ready() -> bool {
     tap_ready_marker().is_ok_and(|path| path.is_file())
 }
 
-pub fn probe_child(seconds: u8, timeout: Duration) -> Result<ProbeStats, String> {
+pub fn probe_child(
+    source: hear_protocol::AudioSource,
+    seconds: u8,
+    timeout: Duration,
+) -> Result<ProbeStats, String> {
     let binary = std::env::current_exe().map_err(|error| error.to_string())?;
     let mut probe = Command::new(binary)
         .args([
-            "probe-system",
+            if source == hear_protocol::AudioSource::Microphone {
+                "probe-mic"
+            } else {
+                "probe-system"
+            },
             &seconds.to_string(),
             "--parent-pid",
             &std::process::id().to_string(),
@@ -78,11 +87,12 @@ pub fn probe_child(seconds: u8, timeout: Duration) -> Result<ProbeStats, String>
 }
 
 fn tap_preflight() -> Result<(), String> {
-    probe_child(1, TAP_PROBE_TIMEOUT).map(|_| ())
+    probe_child(hear_protocol::AudioSource::System, 1, TAP_PROBE_TIMEOUT).map(|_| ())
 }
 
 struct CallbackState {
-    sender: mpsc::SyncSender<AudioPacket>,
+    sender: UnsafeCell<AudioSender>,
+    busy: AtomicBool,
     dropped: Arc<AtomicU64>,
 }
 
@@ -92,6 +102,7 @@ unsafe extern "C" fn receive_audio(
     frames: u32,
     rate: u32,
     channels: u32,
+    sample_start_ns: u64,
 ) {
     if context.is_null()
         || samples.is_null()
@@ -102,18 +113,29 @@ unsafe extern "C" fn receive_audio(
     {
         return;
     }
+    // SCK dispatches on a serial queue; HAL uses one IOProc for this source.
+    // Native stop drains callbacks before freeing this unique mutable owner.
     let state = unsafe { &*(context as *const CallbackState) };
+    // Native APIs serialize this source; reject unexpected reentrancy before
+    // borrowing the SPSC producer, rather than risking aliased mutable access.
+    if state
+        .busy
+        .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+        .is_err()
+    {
+        state.dropped.fetch_add(1, Ordering::Relaxed);
+        return;
+    }
     let count = frames as usize * channels as usize;
-    let packet = AudioPacket {
-        at: Instant::now(),
-        wall_at: SystemTime::now(),
-        samples: unsafe { std::slice::from_raw_parts(samples, count) }.to_vec(),
-        rate,
-        channels: channels as usize,
-    };
-    if state.sender.try_send(packet).is_err() {
+    let data = unsafe { std::slice::from_raw_parts(samples, count) };
+    let captured = (sample_start_ns != 0)
+        .then(|| i64::try_from(sample_start_ns).ok())
+        .flatten();
+    if !unsafe { &mut *state.sender.get() }.enqueue(data, rate, channels as usize, captured, |v| v)
+    {
         state.dropped.fetch_add(1, Ordering::Relaxed);
     }
+    state.busy.store(false, Ordering::Release);
 }
 
 pub struct SystemAudio {
@@ -125,11 +147,11 @@ pub struct SystemAudio {
 }
 
 impl SystemAudio {
-    pub fn start(sender: mpsc::SyncSender<AudioPacket>) -> Result<Self, String> {
+    pub fn start(sender: AudioSender) -> Result<Self, String> {
         unsafe extern "C" {
             fn hear_system_audio_start(
                 context: *mut c_void,
-                callback: unsafe extern "C" fn(*mut c_void, *const f32, u32, u32, u32),
+                callback: unsafe extern "C" fn(*mut c_void, *const f32, u32, u32, u32, u64),
                 stage: *mut i32,
                 prefer_tap: i32,
             ) -> *mut c_void;
@@ -148,7 +170,8 @@ impl SystemAudio {
         }
         let dropped = Arc::new(AtomicU64::new(0));
         let context = Box::into_raw(Box::new(CallbackState {
-            sender,
+            sender: UnsafeCell::new(sender),
+            busy: AtomicBool::new(false),
             dropped: Arc::clone(&dropped),
         }));
         let (handle, stage) = if use_tap {

@@ -1,0 +1,256 @@
+{
+  "db_busy": {
+    "durable_journal_during_lock": 4,
+    "results": {
+      "microphone": {
+        "code": 0,
+        "response": {
+          "type": "record_test_result",
+          "id": "52ff4038-1648-4167-acf7-8adb2eb0b8b5",
+          "source": "microphone",
+          "blocks": 5,
+          "frames": 1152000,
+          "dropped_packets": 0
+        }
+      },
+      "system": {
+        "code": 0,
+        "response": {
+          "type": "record_test_result",
+          "id": "ba6ab918-7a24-4d65-8aae-d8cf101382e9",
+          "source": "system",
+          "blocks": 5,
+          "frames": 1153920,
+          "dropped_packets": 0
+        }
+      }
+    },
+    "core_alive": true,
+    "sessions": [
+      [
+        "microphone",
+        "closed",
+        24204
+      ],
+      [
+        "system",
+        "closed",
+        24476
+      ]
+    ],
+    "blocks": [
+      [
+        "microphone",
+        5,
+        1152000
+      ],
+      [
+        "system",
+        5,
+        1153920
+      ]
+    ],
+    "pending_journal": 0
+  },
+  "one_source_crash": {
+    "other_helper_survived": true,
+    "results": {
+      "microphone": {
+        "code": 0,
+        "response": {
+          "type": "record_test_result",
+          "id": "575ed2cf-942e-464f-865f-856ac070b61e",
+          "source": "microphone",
+          "blocks": 5,
+          "frames": 1152000,
+          "dropped_packets": 0
+        }
+      },
+      "system": {
+        "code": 2,
+        "response": "hear: record_test_failed: test recording failed; inspect source permissions and diagnostics\n"
+      }
+    },
+    "core_alive": true,
+    "sessions": [
+      [
+        "microphone",
+        "closed",
+        24206
+      ],
+      [
+        "system",
+        "failed",
+        5437
+      ]
+    ],
+    "blocks": [
+      [
+        "microphone",
+        5,
+        1152000
+      ],
+      [
+        "system",
+        1,
+        240000
+      ]
+    ],
+    "pending_journal": 0
+  },
+  "core_crash": {
+    "helpers_remaining_after_parent_death": 0,
+    "results": {
+      "microphone": {
+        "code": 1,
+        "response": "hear: EOF while parsing a value at line 1 column 0\n"
+      },
+      "system": {
+        "code": 1,
+        "response": "hear: EOF while parsing a value at line 1 column 0\n"
+      }
+    },
+    "core_alive": true,
+    "sessions": [
+      [
+        "microphone",
+        "interrupted",
+        5215
+      ],
+      [
+        "system",
+        "interrupted",
+        7000
+      ]
+    ],
+    "blocks": [
+      [
+        "microphone",
+        1,
+        240000
+      ],
+      [
+        "system",
+        2,
+        313920
+      ]
+    ],
+    "pending_journal": 0
+  },
+  "sck_short": {
+    "native_record_test": [
+      [
+        "microphone",
+        {
+          "returncode": 0,
+          "out": "{\n  \"type\": \"record_test_result\",\n  \"id\": \"447f83aa-1296-41eb-ad7c-25c6533c6356\",\n  \"source\": \"microphone\",\n  \"blocks\": 2,\n  \"frames\": 384000,\n  \"dropped_packets\": 0\n}\n",
+          "err": ""
+        }
+      ],
+      [
+        "system",
+        {
+          "returncode": 0,
+          "out": "{\n  \"type\": \"record_test_result\",\n  \"id\": \"ef655488-6837-4203-858b-7bf7c85aaacc\",\n  \"source\": \"system\",\n  \"blocks\": 2,\n  \"frames\": 386880,\n  \"dropped_packets\": 0\n}\n",
+          "err": ""
+        }
+      ]
+    ],
+    "sessions": [
+      [
+        "system",
+        "closed",
+        8558
+      ],
+      [
+        "microphone",
+        "closed",
+        8229
+      ]
+    ],
+    "audio": [
+      [
+        "microphone",
+        2,
+        384000,
+        37813
+      ],
+      [
+        "system",
+        2,
+        386880,
+        0
+      ]
+    ],
+    "gaps": [
+      [
+        "system",
+        "source_start_gap",
+        498
+      ]
+    ],
+    "core_alive": true
+  },
+  "tap_short": {
+    "native_record_test": [
+      [
+        "microphone",
+        {
+          "returncode": 0,
+          "out": "{\n  \"type\": \"record_test_result\",\n  \"id\": \"bb88f926-692e-40d5-8bbd-05130222b236\",\n  \"source\": \"microphone\",\n  \"blocks\": 2,\n  \"frames\": 384000,\n  \"dropped_packets\": 0\n}\n",
+          "err": ""
+        }
+      ],
+      [
+        "system",
+        {
+          "returncode": 0,
+          "out": "{\n  \"type\": \"record_test_result\",\n  \"id\": \"5b1d371b-82d6-4dbb-8437-19b5e74ebc56\",\n  \"source\": \"system\",\n  \"blocks\": 2,\n  \"frames\": 383488,\n  \"dropped_packets\": 0\n}\n",
+          "err": ""
+        }
+      ]
+    ],
+    "sessions": [
+      [
+        "system",
+        "closed",
+        9442
+      ],
+      [
+        "microphone",
+        "closed",
+        8225
+      ]
+    ],
+    "audio": [
+      [
+        "microphone",
+        2,
+        384000,
+        41305
+      ],
+      [
+        "system",
+        2,
+        383488,
+        0
+      ]
+    ],
+    "gaps": [
+      [
+        "system",
+        "source_start_gap",
+        1453
+      ]
+    ],
+    "core_alive": true
+  },
+  "build": {
+    "signed": true,
+    "deep_strict_verification": true,
+    "os": "macOS 26.6.2",
+    "hardware": "Apple M5 / 24 GiB",
+    "core_sha256": "706f501b1b4a767effa2ff10fc39ef5e25bf3c2a82720e74f6db98d1eda0754f",
+    "scope": "final Batch B candidate, isolated HEAR_DATA_DIR, temporary audio removed; not 24h/quality/minOS evidence"
+  }
+}

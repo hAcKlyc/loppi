@@ -8,7 +8,7 @@
 #include <math.h>
 
 typedef void (*HearAudioCallback)(void *context, const float *samples,
-                                  uint32_t frames, uint32_t rate, uint32_t channels);
+                                  uint32_t frames, uint32_t rate, uint32_t channels, uint64_t sample_start_ns);
 
 @interface HearSystemOutput : NSObject <SCStreamOutput, SCStreamDelegate> {
 @public
@@ -61,7 +61,12 @@ typedef void (*HearAudioCallback)(void *context, const float *samples,
         callback(callback_context, samples,
                  (uint32_t)CMSampleBufferGetNumSamples(buffer),
                  (uint32_t)format->mSampleRate,
-                 (uint32_t)format->mChannelsPerFrame);
+                 (uint32_t)format->mChannelsPerFrame,
+                 CMTIME_IS_VALID(CMSampleBufferGetPresentationTimeStamp(buffer)) &&
+                 CMSampleBufferGetPresentationTimeStamp(buffer).timescale > 0 &&
+                 CMSampleBufferGetPresentationTimeStamp(buffer).value >= 0
+                   ? (uint64_t)CMTimeConvertScale(CMSampleBufferGetPresentationTimeStamp(buffer),
+                       1000000000, kCMTimeRoundingMethod_Default).value : 0);
       }
     }
     if (backing) CFRelease(backing);

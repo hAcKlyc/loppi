@@ -27,6 +27,8 @@ mod cleanup;
 mod cloud;
 mod diagnostics;
 mod events;
+mod ingestion;
+mod inventory;
 mod knowledge;
 mod media;
 mod microphone;
@@ -35,6 +37,7 @@ mod moments;
 mod playback;
 mod record;
 mod retention;
+mod source_process;
 mod storage;
 mod system_audio;
 mod unilogs;
@@ -54,22 +57,21 @@ fn main() {
 
 fn run() -> Result<(), String> {
     let args: Vec<_> = std::env::args().skip(1).collect();
-    if args.first().is_some_and(|value| value == "probe-mic") {
-        let seconds = args
-            .get(1)
-            .and_then(|value| value.parse::<u64>().ok())
-            .unwrap_or(3);
-        if !(1..=20).contains(&seconds) || args.len() > 2 {
-            return Err("usage: hear-core probe-mic [1..20 seconds]".to_owned());
+    if args.first().is_some_and(|s| s == "capture-source") {
+        if args.len() != 2 {
+            return Err("invalid capture helper arguments".into());
         }
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&probe(AudioSource::Microphone, seconds as u8, true)?)
-                .map_err(|error| error.to_string())?
-        );
-        return Ok(());
+        return source_process::run_child(args[1].parse().map_err(|_| "invalid capture parent")?);
     }
-    if args.first().is_some_and(|value| value == "probe-system") {
+    if args
+        .first()
+        .is_some_and(|value| value == "probe-system" || value == "probe-mic")
+    {
+        let source = if args[0] == "probe-mic" {
+            AudioSource::Microphone
+        } else {
+            AudioSource::System
+        };
         let seconds = args
             .get(1)
             .and_then(|value| value.parse::<u64>().ok())
@@ -103,7 +105,7 @@ fn run() -> Result<(), String> {
         }
         println!(
             "{}",
-            serde_json::to_string_pretty(&probe(AudioSource::System, seconds as u8, true)?)
+            serde_json::to_string_pretty(&probe(source, seconds as u8, true)?)
                 .map_err(|error| error.to_string())?
         );
         return Ok(());
@@ -134,12 +136,12 @@ fn run() -> Result<(), String> {
         .map_err(|error| error.to_string())?;
     let connection =
         Connection::open(directory.join("hear.sqlite")).map_err(|error| error.to_string())?;
-    let mut store = Store::new(connection)?;
+    let store = Store::new(connection)?;
     events::recover_asr_staging(&directory);
     archive::recover(&store.db)?;
     archive::cleanup_spool(&directory)?;
     moments::recover(&store.db, &directory)?;
-    cleanup::recover_staging(&store.db, &directory)?;
+    let mut store = store;
     store.recover(&directory)?;
     events::recover_tasks(&mut store.db, now_ms()?)?;
     knowledge::recover_voice(&store.db)?;
@@ -187,7 +189,6 @@ fn run() -> Result<(), String> {
         system_busy: AtomicBool::new(false),
         capture: Mutex::new(CaptureRuntime::default()),
         allow_capture: AtomicBool::new(capture_after_launch),
-        maintenance_pause: AtomicBool::new(false),
     });
     if models_present || speaker_present {
         let models = Arc::clone(&shared.models);
@@ -219,6 +220,32 @@ fn run() -> Result<(), String> {
         let shared = Arc::clone(&shared);
         let stop = Arc::clone(&stop);
         thread::spawn(move || maintenance_loop(shared, stop));
+    }
+    {
+        let shared = Arc::clone(&shared);
+        let stop = Arc::clone(&stop);
+        thread::spawn(move || ingestion_loop(shared, stop));
+    }
+    {
+        let shared = Arc::clone(&shared);
+        let stop = Arc::clone(&stop);
+        thread::spawn(move || {
+            let mut next = Instant::now();
+            let mut scan = None;
+            while !stop.load(Ordering::Acquire) {
+                if scan.is_none() && Instant::now() >= next {
+                    scan = inventory::Scan::new(&shared.store).ok();
+                    next = Instant::now() + Duration::from_secs(1800);
+                }
+                if let Some(current) = scan.as_mut() {
+                    match current.step(&shared.store, &shared.cleanup_gate, &shared.directory) {
+                        Ok(false) => {}
+                        _ => scan = None,
+                    }
+                }
+                thread::sleep(Duration::from_millis(50));
+            }
+        });
     }
     let capture_thread = {
         let capture_shared = Arc::clone(&shared);
@@ -291,6 +318,128 @@ fn run() -> Result<(), String> {
     fs::remove_file(&socket).map_err(|error| error.to_string())?;
     drop(lock);
     Ok(())
+}
+
+// Only the core commits facts. The cleanup gate covers planning through durable
+// acknowledgement; Store is held only for SQL, never Opus, hashing or fsync.
+fn ingest_session(shared: &CoreState, session: uuid::Uuid, closed: bool) -> Result<(), String> {
+    let _gate = shared.cleanup_gate.lock().map_err(|e| e.to_string())?;
+    ingest_session_locked(&shared.store, &shared.directory, session, closed)
+}
+
+fn ingest_session_locked(
+    store: &Mutex<Store>,
+    directory: &Path,
+    session: uuid::Uuid,
+    closed: bool,
+) -> Result<(), String> {
+    let paths = ingestion::pending(directory, session, closed)?;
+    let mut entries = Vec::new();
+    for path in paths {
+        // Ready supersedes prepared during the atomic publication window.
+        if path.extension().is_some_and(|e| e == "prepared")
+            && path.with_extension("ready").exists()
+        {
+            continue;
+        }
+        match ingestion::load(&path) {
+            Ok(entry) => entries.push((path, entry)),
+            Err(_) => ingestion::quarantine(directory, &path)?,
+        }
+    }
+    entries.sort_by_key(|(_, e)| (e.started_ms, e.ended_ms, e.id));
+    for (path, entry) in entries {
+        let (acknowledged, ranges) = {
+            let store = store.lock().map_err(|e| e.to_string())?;
+            let ack = ingestion::acknowledged(&store.db, &entry)?;
+            (
+                ack,
+                if ack {
+                    vec![]
+                } else {
+                    ingestion::surviving_samples(&store.db, &entry)?
+                },
+            )
+        };
+        if !acknowledged {
+            match ingestion::prepare(directory, &entry, &ranges) {
+                Ok(prepared) => {
+                    let result = ingestion::commit(
+                        &mut store.lock().map_err(|e| e.to_string())?.db,
+                        &entry,
+                        &prepared,
+                    );
+                    if let Err(error) = result {
+                        ingestion::discard_prepared(directory, &prepared);
+                        return Err(error);
+                    }
+                    ingestion::finish_markers(directory, &prepared);
+                }
+                Err(ingestion::PrepareError::Retry(error)) => return Err(error),
+                Err(ingestion::PrepareError::Invalid(_reason)) => {
+                    // Missing/corrupt sealed media cannot be called a confirmed
+                    // recording. Preserve the manifest and expose an explicit gap.
+                    ingestion::reject(&mut store.lock().map_err(|e| e.to_string())?.db, &entry)?;
+                    ingestion::quarantine(directory, &path)?;
+                }
+            }
+        }
+        ingestion::acknowledge(directory, &entry)?;
+        ingestion::forget_receipt(&store.lock().map_err(|e| e.to_string())?.db, &entry)?;
+    }
+    let free = fs2::available_space(directory).map_err(|e| e.to_string())?;
+    {
+        let mut store = store.lock().map_err(|e| e.to_string())?;
+        let state = store.state()?;
+        if !state.storage_paused
+            && (state.audio_used_bytes >= state.audio_limit_bytes || free <= 1_073_741_824)
+        {
+            store.pause_storage()?;
+        }
+    }
+    if closed && ingestion::finish_journal(directory, session)? {
+        ingestion::forget_session(&store.lock().map_err(|e| e.to_string())?.db, session)?;
+    }
+
+    Ok(())
+}
+
+fn ingestion_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
+    let mut after = String::new();
+    while !stop.load(Ordering::Acquire) {
+        let sessions = shared
+            .store
+            .lock()
+            .map_err(|e| e.to_string())
+            .and_then(|s| ingestion::pending_sessions(&s.db, &after));
+        if let Ok(sessions) = sessions {
+            after = sessions.last().map(ToString::to_string).unwrap_or_default();
+            for session in sessions {
+                if stop.load(Ordering::Acquire) {
+                    break;
+                }
+                let closed = shared
+                    .store
+                    .lock()
+                    .ok()
+                    .and_then(|s| {
+                        s.db.query_row(
+                            "SELECT state!='open' FROM recording_sessions WHERE id=?1",
+                            [session.to_string()],
+                            |r| r.get::<_, bool>(0),
+                        )
+                        .ok()
+                    })
+                    .unwrap_or(false);
+                if ingest_session(&shared, session, closed).is_err() {
+                    let mut event = LogEvent::simple("capture", LogLevel::Warn, "ingestion_retry");
+                    event.capture_span_id = Some(session);
+                    shared.logs.emit(ClientKind::Core, session, event);
+                }
+            }
+        }
+        thread::sleep(Duration::from_millis(250));
+    }
 }
 
 // The database owns deletion intent; filesystem latency never holds Store.
@@ -871,6 +1020,7 @@ fn decode_saved_block(directory: &Path, block: &PendingBlock) -> Result<Vec<f32>
 
 struct SourceSlot {
     session_id: uuid::Uuid,
+    slept: bool,
     recorded_frames: Arc<AtomicU64>,
     stop: Arc<AtomicBool>,
     join: thread::JoinHandle<()>,
@@ -884,25 +1034,6 @@ fn start_source(shared: &Arc<CoreState>, source: AudioSource) -> SourceSlot {
     let source_stop = Arc::clone(&stop);
     let source_shared = Arc::clone(shared);
     let join = thread::spawn(move || {
-        let status = microphone::allow_idle_sleep();
-        let mut event = LogEvent::simple(
-            "capture",
-            if status == 0 {
-                LogLevel::Info
-            } else {
-                LogLevel::Warn
-            },
-            if status == 0 {
-                "idle_sleep_allowed"
-            } else {
-                "idle_sleep_policy_failed"
-            },
-        );
-        event.capture_span_id = Some(session_id);
-        if status != 0 {
-            event.error_code = Some("coreaudio_sleep_policy_failed".to_owned());
-        }
-        source_shared.logs.emit(ClientKind::Core, session_id, event);
         let clock = match record::ClockAnchor::now() {
             Ok(clock) => clock,
             Err(error) => {
@@ -923,10 +1054,6 @@ fn start_source(shared: &Arc<CoreState>, source: AudioSource) -> SourceSlot {
                 return;
             }
         };
-        let media_dir = source_shared
-            .directory
-            .join("media")
-            .join(source_name(source));
         let start_result = source_shared
             .store
             .lock()
@@ -935,26 +1062,16 @@ fn start_source(shared: &Arc<CoreState>, source: AudioSource) -> SourceSlot {
                 store.start_recording_session(session_id, source, source_shared.run_id, clock)
             });
         let result = start_result.and_then(|()| {
-            record::record_continuously(
-                source,
+            let session = ingestion::session(
+                &source_shared.store.lock().map_err(|e| e.to_string())?.db,
+                session_id,
+            )?;
+            source_process::supervise(
+                &source_shared.directory,
+                session,
+                None,
                 &source_stop,
-                &media_dir,
-                clock,
-                |event| {
-                    let finalized_frames = match &event {
-                        record::RecordEvent::Block(block) if !block.preparing => {
-                            block.frames as u64
-                        }
-                        _ => 0,
-                    };
-                    source_shared
-                        .store
-                        .lock()
-                        .map_err(|error| error.to_string())?
-                        .insert_record_event(&source_shared.directory, session_id, event)?;
-                    source_frames.fetch_add(finalized_frames, Ordering::Relaxed);
-                    Ok(())
-                },
+                &source_frames,
                 || {
                     if let Ok(mut capture) = source_shared.capture.lock() {
                         match source {
@@ -1045,6 +1162,7 @@ fn start_source(shared: &Arc<CoreState>, source: AudioSource) -> SourceSlot {
     });
     SourceSlot {
         session_id,
+        slept: false,
         recorded_frames,
         stop,
         join,
@@ -1101,7 +1219,6 @@ fn capture_supervisor(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
             .lock()
             .is_ok_and(|models| matches!(models.phase, ModelPhase::Ready));
         let capture_allowed = shared.allow_capture.load(Ordering::Acquire)
-            && !shared.maintenance_pause.load(Ordering::Acquire)
             && models_ready
             && state.as_ref().is_ok_and(|state| {
                 state.enabled_intent && !state.paused_intent && !state.storage_paused
@@ -1138,15 +1255,21 @@ fn capture_supervisor(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
                 reset_capture_retry(retry_at, retry_delay);
             }
             let should_stop = slept || !wanted;
-            if slot
+            if let Some(current) = slot.as_mut() {
+                if should_stop {
+                    current.stop.store(true, Ordering::Release);
+                }
+                current.slept |= slept;
+            }
+            // A stopping HAL source must not delay control of the other source.
+            let finished = slot
                 .as_ref()
-                .is_some_and(|current| should_stop || current.join.is_finished())
-            {
+                .is_some_and(|current| current.join.is_finished());
+            if finished {
                 let current = slot.take().unwrap();
-                current.stop.store(true, Ordering::Release);
-                let ended_unexpectedly = !should_stop;
+                let ended_unexpectedly = !current.stop.load(Ordering::Acquire);
                 let _ = current.join.join();
-                if slept {
+                if current.slept {
                     if let Ok(mut store) = shared.store.lock() {
                         let _ = store
                             .record_gap_after_session(current.session_id, "sleep_or_clock_gap");
@@ -1171,7 +1294,7 @@ fn capture_supervisor(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
             }
             // Close after join: a failing source can open a gap while its
             // thread is winding down, even after pause was requested.
-            if !wanted && *was_wanted {
+            if !wanted && (*was_wanted || finished) {
                 reset_capture_retry(retry_at, retry_delay);
                 if let Ok(mut store) = shared.store.lock() {
                     let _ = store.close_open_gaps(source);
@@ -1191,8 +1314,10 @@ fn capture_supervisor(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
         }
         thread::sleep(Duration::from_millis(250));
     }
-    for slot in [microphone, system].into_iter().flatten() {
+    for slot in [&microphone, &system].into_iter().flatten() {
         slot.stop.store(true, Ordering::Release);
+    }
+    for slot in [microphone, system].into_iter().flatten() {
         let _ = slot.join.join();
     }
     if let Ok(mut store) = shared.store.lock() {
@@ -1216,30 +1341,6 @@ struct CoreState {
     system_busy: AtomicBool,
     capture: Mutex<CaptureRuntime>,
     allow_capture: AtomicBool,
-    maintenance_pause: AtomicBool,
-}
-
-struct CaptureMaintenance<'a>(&'a CoreState);
-
-impl Drop for CaptureMaintenance<'_> {
-    fn drop(&mut self) {
-        self.0.maintenance_pause.store(false, Ordering::Release);
-    }
-}
-
-fn pause_capture_for_cleanup(shared: &CoreState) -> Result<CaptureMaintenance<'_>, String> {
-    shared.maintenance_pause.store(true, Ordering::Release);
-    let guard = CaptureMaintenance(shared);
-    let deadline = Instant::now() + Duration::from_secs(30);
-    while shared.microphone_busy.load(Ordering::Acquire)
-        || shared.system_busy.load(Ordering::Acquire)
-    {
-        if Instant::now() >= deadline {
-            return Err("audio capture did not finish sealing in time; retry cleanup".into());
-        }
-        thread::sleep(Duration::from_millis(100));
-    }
-    Ok(guard)
 }
 
 fn open_intent_gap(
@@ -1361,7 +1462,7 @@ impl CoreState {
             cloud_ready,
             self.allow_capture.load(Ordering::Acquire),
             self.launch_mode == LaunchMode::Login,
-            self.maintenance_pause.load(Ordering::Acquire),
+            false,
             self.microphone_busy.load(Ordering::Acquire),
             self.system_busy.load(Ordering::Acquire),
         );
@@ -1453,15 +1554,18 @@ fn probe(source: AudioSource, seconds: u8, direct: bool) -> Result<ProbeStats, S
     if !(1..=20).contains(&seconds) {
         return Err("audio source test duration must be 1 to 20 seconds".to_owned());
     }
+    if !direct {
+        if source == AudioSource::System
+            && system_audio::tap_available()
+            && !system_audio::tap_ready()
+        {
+            return Err("system audio Tap requires foreground authorization".into());
+        }
+        return system_audio::probe_child(source, seconds, Duration::from_secs(seconds as u64 + 8));
+    }
     match source {
         AudioSource::Microphone => microphone::Microphone::probe(seconds),
         AudioSource::System => {
-            if !direct && system_audio::tap_available() {
-                if !system_audio::tap_ready() {
-                    return Err("system audio Tap requires foreground authorization".to_owned());
-                }
-                return system_audio::probe_child(seconds, Duration::from_secs(seconds as u64 + 8));
-            }
             unsafe extern "C" {
                 fn hear_system_audio_probe(seconds: u32, peak_millionths_out: *mut u64) -> i64;
             }
@@ -2363,16 +2467,8 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                 let _llm = shared.llm_outbound.lock().map_err(|e| e.to_string())?;
                 let _asr = shared.asr_outbound.lock().map_err(|e| e.to_string())?;
                 let _voice = shared.voice_outbound.lock().map_err(|e| e.to_string())?;
-                let near_capture_edge = {
-                    let store = shared.store.lock().map_err(|e| e.to_string())?;
-                    cleanup::verified_scope(&store.db, preview_token, confirmed_all_data, now_ms()?)
-                        .is_ok_and(|scope| scope.end >= now_ms().unwrap_or(0) - 20_000)
-                };
-                let _maintenance = if near_capture_edge {
-                    Some(pause_capture_for_cleanup(shared)?)
-                } else {
-                    None
-                };
+                // Core publication is fenced by cleanup_gate. Source helpers
+                // keep sealing; generation/range tombstones filter late journals.
                 let snapshot = (|| {
                     let store = shared.store.lock().map_err(|e| e.to_string())?;
                     if let Some(previous) =
@@ -2881,27 +2977,30 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                     }
                 } else {
                     let directory = shared.directory.clone();
-                    let source_name = match source {
-                        AudioSource::Microphone => "microphone",
-                        AudioSource::System => "system",
-                    };
-                    let media_dir = directory.join("media").join(source_name);
                     let session_id = uuid::Uuid::new_v4();
-                    let clock = record::ClockAnchor::now()?;
-                    let start_result = shared
-                        .store
-                        .lock()
-                        .map_err(|error| error.to_string())?
-                        .start_recording_session(session_id, source, shared.run_id, clock);
-                    let capture_result = start_result.and_then(|()| {
-                        record::record_short(source, seconds, &media_dir, clock, |event| {
-                            shared
-                                .store
-                                .lock()
-                                .map_err(|error| error.to_string())?
-                                .insert_record_event(&directory, session_id, event)
-                        })
-                    });
+                    let capture_result = (|| {
+                        let clock = record::ClockAnchor::now()?;
+                        shared
+                            .store
+                            .lock()
+                            .map_err(|e| e.to_string())?
+                            .start_recording_session(session_id, source, shared.run_id, clock)?;
+                        let session = ingestion::session(
+                            &shared.store.lock().map_err(|e| e.to_string())?.db,
+                            session_id,
+                        )?;
+                        source_process::supervise(
+                            &directory,
+                            session,
+                            Some(seconds),
+                            &AtomicBool::new(false),
+                            &AtomicU64::new(0),
+                            || {},
+                        )
+                    })();
+                    flag.store(false, Ordering::Release);
+                    let imported = ingest_session(shared, session_id, true);
+                    let capture_result = capture_result.and_then(|stats| imported.map(|()| stats));
                     let end_result = shared
                         .store
                         .lock()
@@ -2909,7 +3008,6 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                         .and_then(|mut store| {
                             store.end_recording_session(session_id, capture_result.is_ok())
                         });
-                    flag.store(false, Ordering::Release);
                     match capture_result.and_then(|stats| end_result.map(|()| stats)) {
                         Ok(stats) => Response::RecordTestResult {
                             id: envelope.id,
@@ -3163,6 +3261,8 @@ impl Store {
         events::init(&db)?;
         moments::init(&db)?;
         cleanup::init(&db)?;
+        ingestion::init(&db)?;
+        inventory::init(&db)?;
         archive::init(&db)?;
         Ok(Self { db })
     }
@@ -3235,15 +3335,19 @@ impl Store {
         }
         let current_ms = now_ms()?;
         let recovery = self.db.transaction().map_err(|error| error.to_string())?;
-        recovery
-            .execute(
-                "INSERT INTO media_gaps (id, source, started_ms, ended_ms, reason)
-             SELECT id, source, last_confirmed_ms,
-                    NULL, 'interrupted_tail'
-             FROM recording_sessions WHERE state = 'open'",
-                [],
-            )
-            .map_err(|error| error.to_string())?;
+        let open_sessions = {
+            let mut statement = recovery
+                .prepare("SELECT id FROM recording_sessions WHERE state='open'")
+                .map_err(|e| e.to_string())?;
+            statement
+                .query_map([], |r| r.get::<_, String>(0))
+                .map_err(|e| e.to_string())?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| e.to_string())?
+        };
+        for id in open_sessions {
+            ingestion::record_tail_gap(&recovery, &id, "interrupted_tail")?;
+        }
         recovery.execute(
             "UPDATE recording_sessions SET ended_ms = ?1, state = 'interrupted' WHERE state = 'open'",
             params![current_ms],
@@ -3253,7 +3357,7 @@ impl Store {
             [],
         ).map_err(|error| error.to_string())?;
         recovery.commit().map_err(|error| error.to_string())?;
-        self.scan_orphan_media(directory)?;
+
         if !self.storage_available(directory)? {
             self.pause_storage()?;
         }
@@ -3267,63 +3371,6 @@ impl Store {
             }
             if !intent.system_enabled {
                 self.close_open_gaps(AudioSource::System)?;
-            }
-        }
-        Ok(())
-    }
-
-    fn scan_orphan_media(&mut self, directory: &Path) -> Result<(), String> {
-        self.db
-            .execute("DELETE FROM orphan_media", [])
-            .map_err(|error| error.to_string())?;
-        for source in ["microphone", "system"] {
-            let media_dir = directory.join("media").join(source);
-            let entries = match fs::read_dir(&media_dir) {
-                Ok(entries) => entries,
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
-                Err(error) => return Err(error.to_string()),
-            };
-            for entry in entries {
-                let entry = entry.map_err(|error| error.to_string())?;
-                if !entry
-                    .file_type()
-                    .map_err(|error| error.to_string())?
-                    .is_file()
-                {
-                    continue;
-                }
-                let name = entry.file_name().to_string_lossy().into_owned();
-                let Some((id, extension)) = name.rsplit_once('.') else {
-                    continue;
-                };
-                if !matches!(extension, "opus" | "pending") || uuid::Uuid::parse_str(id).is_err() {
-                    continue;
-                }
-                let relative = format!("media/{source}/{name}");
-                let known: bool = self
-                    .db
-                    .query_row(
-                        // Committed deletion intent is not live/orphan media.
-                        // Counting it again can create a sticky quota pause
-                        // during startup before background unlink completes.
-                        "SELECT EXISTS(SELECT 1 FROM audio_blocks WHERE media_path = ?1)
-                          OR EXISTS(SELECT 1 FROM media_deletion_jobs
-                            WHERE media_path=?1 AND completed_ms IS NULL)",
-                        params![relative],
-                        |row| row.get(0),
-                    )
-                    .map_err(|error| error.to_string())?;
-                if !known {
-                    let bytes = entry.metadata().map_err(|error| error.to_string())?.len();
-                    self.db
-                        .execute(
-                            "INSERT INTO orphan_media (media_path, bytes, detected_ms)
-                         VALUES (?1, ?2, ?3) ON CONFLICT(media_path) DO UPDATE
-                         SET bytes=excluded.bytes,detected_ms=excluded.detected_ms",
-                            params![relative, bytes as i64, now_ms()?],
-                        )
-                        .map_err(|error| error.to_string())?;
-                }
             }
         }
         Ok(())
@@ -3394,27 +3441,38 @@ impl Store {
             ],
         )
         .map_err(|error| error.to_string())?;
+        tx.execute(
+            "INSERT INTO session_generation SELECT ?1,generation FROM ingestion_state WHERE id=1",
+            [id.to_string()],
+        )
+        .map_err(|e| e.to_string())?;
+        tx.execute(
+            "INSERT INTO ingestion_pending_sessions VALUES(?1)",
+            [id.to_string()],
+        )
+        .map_err(|e| e.to_string())?;
         tx.commit().map_err(|error| error.to_string())?;
         Ok(())
     }
 
     fn end_recording_session(&mut self, id: uuid::Uuid, completed: bool) -> Result<(), String> {
         let at = now_ms()?;
-        if !completed {
-            self.db
-                .execute(
-                    "INSERT INTO media_gaps (id, source, started_ms, ended_ms, reason)
-                 SELECT id, source, last_confirmed_ms, NULL, 'source_failure'
-                 FROM recording_sessions WHERE id = ?1 AND state = 'open'",
-                    params![id.to_string()],
-                )
-                .map_err(|error| error.to_string())?;
+        let tx = self.db.transaction().map_err(|e| e.to_string())?;
+        let open: bool = tx
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM recording_sessions WHERE id=?1 AND state='open')",
+                [id.to_string()],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        if !completed && open {
+            ingestion::record_tail_gap(&tx, &id.to_string(), "source_failure")?;
         }
-        self.db.execute(
+        tx.execute(
             "UPDATE recording_sessions SET ended_ms = ?2, state = ?3 WHERE id = ?1 AND state = 'open'",
             params![id.to_string(), at, if completed { "closed" } else { "failed" }],
         ).map_err(|error| error.to_string())?;
-        Ok(())
+        tx.commit().map_err(|e| e.to_string())
     }
 
     fn record_gap_after_session(
@@ -3422,21 +3480,9 @@ impl Store {
         session_id: uuid::Uuid,
         reason: &str,
     ) -> Result<(), String> {
-        let at = now_ms()?;
-        self.db
-            .execute(
-                "INSERT INTO media_gaps (id, source, started_ms, ended_ms, reason)
-             SELECT ?1, source, last_confirmed_ms, NULL, ?3
-             FROM recording_sessions WHERE id = ?2 AND last_confirmed_ms < ?4",
-                params![
-                    uuid::Uuid::new_v4().to_string(),
-                    session_id.to_string(),
-                    reason,
-                    at
-                ],
-            )
-            .map_err(|error| error.to_string())?;
-        Ok(())
+        let tx = self.db.transaction().map_err(|e| e.to_string())?;
+        ingestion::record_tail_gap(&tx, &session_id.to_string(), reason)?;
+        tx.commit().map_err(|e| e.to_string())
     }
 
     fn close_open_gaps(&mut self, source: AudioSource) -> Result<(), String> {
@@ -3452,33 +3498,7 @@ impl Store {
         Ok(())
     }
 
-    fn insert_record_event(
-        &mut self,
-        directory: &Path,
-        session_id: uuid::Uuid,
-        event: record::RecordEvent,
-    ) -> Result<(), String> {
-        match event {
-            record::RecordEvent::Block(block) => self.insert_block(directory, session_id, block),
-            record::RecordEvent::Gap(gap) => {
-                self.db
-                    .execute(
-                        "INSERT INTO media_gaps (id, source, started_ms, ended_ms, reason)
-                     VALUES (?1, ?2, ?3, ?4, ?5)",
-                        params![
-                            uuid::Uuid::new_v4().to_string(),
-                            source_name(gap.source),
-                            gap.started_ms,
-                            gap.ended_ms,
-                            gap.reason
-                        ],
-                    )
-                    .map_err(|error| error.to_string())?;
-                Ok(())
-            }
-        }
-    }
-
+    #[cfg(test)]
     fn insert_block(
         &mut self,
         directory: &Path,
@@ -4303,6 +4323,7 @@ mod tests {
         fs::write(media_dir.join(&orphan), vec![7; 200]).unwrap();
         let mut store = Store::new(Connection::open_in_memory().unwrap()).unwrap();
         store.recover(directory.path()).unwrap();
+        store = inventory::scan_all(store, directory.path());
         let counted: i64 = store
             .db
             .query_row("SELECT sum(bytes) FROM orphan_media", [], |row| row.get(0))
@@ -4413,7 +4434,7 @@ mod tests {
     }
 
     #[test]
-    fn orphan_over_limit_pauses_at_recovery_before_capture_starts() {
+    fn orphan_over_limit_pauses_when_background_reconciliation_discovers_it() {
         let directory = tempfile::tempdir().unwrap();
         let media_dir = directory.path().join("media/microphone");
         fs::create_dir_all(&media_dir).unwrap();
@@ -4434,6 +4455,7 @@ mod tests {
         drop(store);
         let mut store = Store::new(Connection::open(&db_path).unwrap()).unwrap();
         store.recover(directory.path()).unwrap();
+        store = inventory::scan_all(store, directory.path());
         assert!(store.state().unwrap().storage_paused);
     }
 

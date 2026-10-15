@@ -3468,7 +3468,7 @@ mod tests {
             0
         );
         db.execute(
-            "INSERT INTO media_gaps VALUES ('gap','microphone',1000,1050,'source_failure')",
+            "INSERT INTO media_gaps(id,source,started_ms,ended_ms,reason) VALUES ('gap','microphone',1000,1050,'source_failure')",
             [],
         )
         .unwrap();
@@ -3589,7 +3589,7 @@ mod tests {
         );
         assert!(utterance_has_encoded_audio(&db, "microphone", 1_000, 11_000, false).unwrap());
         db.execute(
-            "INSERT INTO media_gaps VALUES ('failure','microphone',6000,7000,'source_failure')",
+            "INSERT INTO media_gaps(id,source,started_ms,ended_ms,reason) VALUES ('failure','microphone',6000,7000,'source_failure')",
             [],
         )
         .unwrap();
@@ -4708,7 +4708,7 @@ mod tests {
             "partial_transcript"
         );
         db.execute(
-            "INSERT INTO media_gaps VALUES ('gap','microphone',6000,931000,'source_failure')",
+            "INSERT INTO media_gaps(id,source,started_ms,ended_ms,reason) VALUES ('gap','microphone',6000,931000,'source_failure')",
             [],
         )
         .unwrap();
@@ -4746,7 +4746,7 @@ mod tests {
             "provider_invalid_timing"
         );
         db.execute(
-            "INSERT INTO media_gaps VALUES ('gap','microphone',3000,5000,'source_failure')",
+            "INSERT INTO media_gaps(id,source,started_ms,ended_ms,reason) VALUES ('gap','microphone',3000,5000,'source_failure')",
             [],
         )
         .unwrap();
@@ -4837,7 +4837,7 @@ mod tests {
         )
         .unwrap();
         db.execute(
-            "INSERT INTO media_gaps VALUES ('real','microphone',6001,6002,'source_failure')",
+            "INSERT INTO media_gaps(id,source,started_ms,ended_ms,reason) VALUES ('real','microphone',6001,6002,'source_failure')",
             [],
         )
         .unwrap();

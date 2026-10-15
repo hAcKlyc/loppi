@@ -1,4 +1,4 @@
-use crate::capture::AudioPacket;
+use crate::capture::{self, AudioPacket, AudioReceiver};
 use crate::media::{OpusBlock, SealedAudio};
 use crate::microphone::Microphone;
 use crate::retention::{self, Retention};
@@ -9,7 +9,7 @@ use sherpa_onnx::LinearResampler;
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
-use std::sync::mpsc::{self, Receiver};
+use std::sync::mpsc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
@@ -52,7 +52,7 @@ fn callback_stalled(last_callback_at: Instant, now: Instant) -> bool {
 
 enum Device {
     Microphone(Microphone),
-    System(SystemAudio, Receiver<AudioPacket>),
+    System(SystemAudio, AudioReceiver),
 }
 
 impl Device {
@@ -60,15 +60,15 @@ impl Device {
         match source {
             AudioSource::Microphone => Ok(Self::Microphone(Microphone::start()?)),
             AudioSource::System => {
-                let (sender, receiver) = mpsc::sync_channel(64);
+                let (sender, receiver) = capture::channel(48_000, 2)?;
                 Ok(Self::System(SystemAudio::start(sender)?, receiver))
             }
         }
     }
 
-    fn receiver(&self) -> &Receiver<AudioPacket> {
+    fn receiver(&mut self) -> &mut AudioReceiver {
         match self {
-            Self::Microphone(device) => &device.receiver,
+            Self::Microphone(device) => &mut device.receiver,
             Self::System(_, receiver) => receiver,
         }
     }
@@ -88,9 +88,18 @@ impl Device {
     }
 }
 
-struct Assembler<'a, F: FnMut(RecordEvent) -> Result<(), String>> {
+struct UnsealedBlock {
+    record: BlockRecord,
+    samples: Vec<f32>,
+}
+
+enum SealInput {
+    Block(UnsealedBlock),
+    Gap(RecordGap),
+}
+
+struct Assembler<F: FnMut(SealInput) -> Result<(), String>> {
     source: AudioSource,
-    directory: &'a Path,
     persist: F,
     started_ms: Option<i64>,
     samples: Vec<f32>,
@@ -101,12 +110,12 @@ struct Assembler<'a, F: FnMut(RecordEvent) -> Result<(), String>> {
     session_started_ms: i64,
 }
 
-impl<F: FnMut(RecordEvent) -> Result<(), String>> Assembler<'_, F> {
+impl<F: FnMut(SealInput) -> Result<(), String>> Assembler<F> {
     fn push(&mut self, samples: &[f32], sample_start_ms: i64) -> Result<(), String> {
         if self.last_packet_end_ms.is_none()
             && sample_start_ms.saturating_sub(self.session_started_ms) > 250
         {
-            (self.persist)(RecordEvent::Gap(RecordGap {
+            (self.persist)(SealInput::Gap(RecordGap {
                 source: self.source,
                 started_ms: self.session_started_ms,
                 ended_ms: sample_start_ms,
@@ -120,7 +129,7 @@ impl<F: FnMut(RecordEvent) -> Result<(), String>> Assembler<'_, F> {
             let gap_ms = sample_start_ms.saturating_sub(previous_end);
             if gap_ms > 250 {
                 self.seal()?;
-                (self.persist)(RecordEvent::Gap(RecordGap {
+                (self.persist)(SealInput::Gap(RecordGap {
                     source: self.source,
                     started_ms: previous_end,
                     ended_ms: sample_start_ms,
@@ -162,12 +171,12 @@ impl<F: FnMut(RecordEvent) -> Result<(), String>> Assembler<'_, F> {
         let sample_start = self.frames;
         let ended_ms = started_ms + frames as i64 * 1000 / RATE as i64;
         let id = Uuid::new_v4();
-        // Digital silence needs no model. Other sound is sealed durably so the
-        // independent retention policy can resolve it after local VAD.
-        let retention = retention::classify(&self.samples);
-        let digital_silence = retention == Retention::DiscardDigitalSilence;
-        if !digital_silence {
-            (self.persist)(RecordEvent::Block(BlockRecord {
+        let decision = retention::classify(&self.samples).code();
+        // The normalizer transfers ownership, then immediately consumes more
+        // callbacks. Only the separate bounded writer encodes/fsyncs/publishes.
+        let samples = std::mem::replace(&mut self.samples, Vec::with_capacity(BLOCK_FRAMES));
+        (self.persist)(SealInput::Block(UnsealedBlock {
+            record: BlockRecord {
                 id,
                 source: self.source,
                 started_ms,
@@ -175,31 +184,10 @@ impl<F: FnMut(RecordEvent) -> Result<(), String>> Assembler<'_, F> {
                 media: None,
                 frames,
                 sample_start,
-                decision: retention.code(),
-                preparing: true,
-            }))?;
-        }
-        let media = if digital_silence {
-            None
-        } else {
-            std::fs::create_dir_all(self.directory).map_err(|error| error.to_string())?;
-            if available_space(self.directory).map_err(|error| error.to_string())? < 1_073_741_824 {
-                return Err("storage_low".to_owned());
-            }
-            let mut block = OpusBlock::create(self.directory, id)?;
-            block.push(&self.samples)?;
-            Some(block.seal()?)
-        };
-        (self.persist)(RecordEvent::Block(BlockRecord {
-            id,
-            source: self.source,
-            started_ms,
-            ended_ms,
-            media,
-            frames,
-            sample_start,
-            decision: retention.code(),
-            preparing: false,
+                decision,
+                preparing: false,
+            },
+            samples,
         }))?;
         self.blocks += 1;
         self.frames += frames as u64;
@@ -207,6 +195,45 @@ impl<F: FnMut(RecordEvent) -> Result<(), String>> Assembler<'_, F> {
         self.samples.clear();
         Ok(())
     }
+}
+
+fn persist_input(
+    directory: &Path,
+    persist: &mut impl FnMut(RecordEvent) -> Result<(), String>,
+    input: SealInput,
+) -> Result<(), String> {
+    let SealInput::Block(UnsealedBlock {
+        mut record,
+        samples,
+    }) = input
+    else {
+        if let SealInput::Gap(gap) = input {
+            return persist(RecordEvent::Gap(gap));
+        }
+        unreachable!();
+    };
+    let digital_silence = record.decision == Retention::DiscardDigitalSilence.code();
+    if !digital_silence {
+        persist(RecordEvent::Block(BlockRecord {
+            id: record.id,
+            source: record.source,
+            started_ms: record.started_ms,
+            ended_ms: record.ended_ms,
+            media: None,
+            frames: record.frames,
+            sample_start: record.sample_start,
+            decision: record.decision,
+            preparing: true,
+        }))?;
+        std::fs::create_dir_all(directory).map_err(|e| e.to_string())?;
+        if available_space(directory).map_err(|e| e.to_string())? < 1_073_741_824 {
+            return Err("storage_low".into());
+        }
+        let mut block = OpusBlock::create(directory, record.id)?;
+        block.push(&samples)?;
+        record.media = Some(block.seal()?);
+    }
+    persist(RecordEvent::Block(record))
 }
 
 fn wall_ms(time: SystemTime) -> Result<i64, String> {
@@ -224,6 +251,24 @@ pub struct ClockAnchor {
 }
 
 impl ClockAnchor {
+    pub fn from_coordinates(wall_ms: i64, monotonic_ns: i64) -> Result<Self, String> {
+        let current = Self::now()?;
+        let elapsed = current
+            .monotonic_ns
+            .checked_sub(monotonic_ns)
+            .filter(|elapsed| *elapsed >= 0)
+            .ok_or("invalid capture clock anchor")?;
+        let at = current
+            .at
+            .checked_sub(Duration::from_nanos(elapsed as u64))
+            .ok_or("capture clock anchor too old")?;
+        Ok(Self {
+            at,
+            wall_ms,
+            monotonic_ns,
+        })
+    }
+
     pub fn now() -> Result<Self, String> {
         let at = Instant::now();
         let wall_ms = wall_ms(SystemTime::now())?;
@@ -255,58 +300,101 @@ impl ClockAnchor {
         if mapped_end.abs_diff(observed_end) > 2_000 {
             return Err("wall clock changed during audio capture".to_owned());
         }
+        if let Some(start_ns) = packet.sample_start_ns {
+            let start_ms = self
+                .wall_ms
+                .saturating_add(start_ns.saturating_sub(self.monotonic_ns) / 1_000_000);
+            let hardware_end = packet.callback_end_ns.unwrap_or(start_ns);
+            let mapped_hardware_end = self
+                .wall_ms
+                .saturating_add(hardware_end.saturating_sub(self.monotonic_ns) / 1_000_000);
+            if mapped_hardware_end.abs_diff(mapped_end) > 2_000 {
+                return Err("audio hardware clock changed during capture".into());
+            }
+            return Ok(start_ms);
+        }
+        if let Some(start) = packet.start_at {
+            return Ok(if start >= self.at {
+                self.wall_ms
+                    .saturating_add(start.duration_since(self.at).as_millis() as i64)
+            } else {
+                self.wall_ms
+                    .saturating_sub(self.at.duration_since(start).as_millis() as i64)
+            });
+        }
         Ok(mapped_end.saturating_sub(duration.as_millis() as i64))
     }
 }
 
-/// Runs the exact per-source capture and durable writer path for a short setup
-/// test. This test never changes the user's persistent enable intent.
-pub fn record_short(
+pub fn record_session(
     source: AudioSource,
-    seconds: u8,
-    directory: &Path,
-    clock: ClockAnchor,
-    persist: impl FnMut(RecordEvent) -> Result<(), String>,
-) -> Result<RecordResult, String> {
-    if !(1..=60).contains(&seconds) {
-        return Err("test recording duration must be 1 to 60 seconds".to_owned());
-    }
-    run_source(
-        source,
-        Some(Instant::now() + Duration::from_secs(seconds as u64)),
-        &AtomicBool::new(false),
-        directory,
-        clock,
-        persist,
-        || {},
-    )
-}
-
-pub fn record_continuously(
-    source: AudioSource,
+    seconds: Option<u8>,
     stop: &AtomicBool,
     directory: &Path,
     clock: ClockAnchor,
-    persist: impl FnMut(RecordEvent) -> Result<(), String>,
+    persist: impl FnMut(RecordEvent) -> Result<(), String> + Send,
     started: impl FnOnce(),
 ) -> Result<RecordResult, String> {
-    run_source(source, None, stop, directory, clock, persist, started)
+    if seconds.is_some_and(|v| !(1..=60).contains(&v)) {
+        return Err("invalid recording duration".into());
+    }
+    run_source(
+        source,
+        seconds.map(|s| Duration::from_secs(s as u64)),
+        stop,
+        directory,
+        clock,
+        persist,
+        started,
+    )
 }
 
 fn run_source(
     source: AudioSource,
-    deadline: Option<Instant>,
+    duration: Option<Duration>,
     stop: &AtomicBool,
     directory: &Path,
     clock: ClockAnchor,
-    persist: impl FnMut(RecordEvent) -> Result<(), String>,
+    mut persist: impl FnMut(RecordEvent) -> Result<(), String> + Send,
     started: impl FnOnce(),
 ) -> Result<RecordResult, String> {
     let device = Device::open(source)?;
+    let deadline = duration.map(|duration| Instant::now() + duration);
     started();
+    std::thread::scope(|scope| {
+        let (sender, receiver) = mpsc::sync_channel(2);
+        let writer = scope.spawn(move || {
+            for input in receiver {
+                persist_input(directory, &mut persist, input)?;
+            }
+            Ok::<_, String>(())
+        });
+        let captured = consume_source(device, source, deadline, stop, clock, |input| {
+            sender.try_send(input).map_err(|e| match e {
+                mpsc::TrySendError::Full(_) => {
+                    "audio sealing queue overflowed; source stopped".to_owned()
+                }
+                mpsc::TrySendError::Disconnected(_) => "audio sealing worker stopped".to_owned(),
+            })
+        });
+        drop(sender);
+        let sealed = writer
+            .join()
+            .map_err(|_| "audio sealing worker panicked".to_owned())?;
+        sealed.and(captured)
+    })
+}
+
+fn consume_source(
+    mut device: Device,
+    source: AudioSource,
+    deadline: Option<Instant>,
+    stop: &AtomicBool,
+    clock: ClockAnchor,
+    persist: impl FnMut(SealInput) -> Result<(), String>,
+) -> Result<RecordResult, String> {
     let mut assembler = Assembler {
         source,
-        directory,
         persist,
         started_ms: None,
         samples: Vec::with_capacity(BLOCK_FRAMES),
@@ -317,7 +405,8 @@ fn run_source(
         session_started_ms: clock.wall_ms,
     };
     let mut resampler: Option<LinearResampler> = None;
-    let mut input_rate = None;
+    let mut input_format = None;
+    let mut mono_buffer = Vec::with_capacity(1024);
     // A wall-clock adjustment must not move later samples before earlier ones.
     // The first callback anchors this source session; subsequent coordinates
     // are derived only from callback monotonic time.
@@ -335,15 +424,15 @@ fn run_source(
                     assembler.seal()?;
                     return Err("audio callback queue overflowed; source stopped".to_owned());
                 }
-                if input_rate.is_some_and(|rate| rate != packet.rate) {
+                if input_format.is_some_and(|format| format != (packet.rate, packet.channels)) {
                     assembler.seal()?;
-                    return Err("audio source sample rate changed; source stopped".to_owned());
+                    return Err("audio source format changed; source stopped".to_owned());
                 }
                 if packet.channels == 0 || packet.samples.len() % packet.channels != 0 {
                     assembler.seal()?;
                     return Err("invalid audio source channel layout".to_owned());
                 }
-                input_rate = Some(packet.rate);
+                input_format = Some((packet.rate, packet.channels));
                 let frames = packet.samples.len() / packet.channels;
                 let duration = Duration::from_secs_f64(frames as f64 / packet.rate as f64);
                 if previous_packet_at.is_some_and(|at| packet.at < at) {
@@ -358,14 +447,17 @@ fn run_source(
                         return Err(error);
                     }
                 };
-                let mono: Vec<f32> = if packet.channels == 1 {
-                    packet.samples
+                let mono = if packet.channels == 1 {
+                    packet.samples.as_slice()
                 } else {
-                    packet
-                        .samples
-                        .chunks_exact(packet.channels)
-                        .map(|frame| frame.iter().sum::<f32>() / packet.channels as f32)
-                        .collect()
+                    mono_buffer.clear();
+                    mono_buffer.extend(
+                        packet
+                            .samples
+                            .chunks_exact(packet.channels)
+                            .map(|frame| frame.iter().sum::<f32>() / packet.channels as f32),
+                    );
+                    mono_buffer.as_slice()
                 };
                 if packet.rate as usize != RATE && resampler.is_none() {
                     resampler = LinearResampler::create(packet.rate as i32, RATE as i32);
@@ -373,11 +465,12 @@ fn run_source(
                         return Err("audio resampler unavailable".to_owned());
                     }
                 }
-                let mono_48k = match resampler.as_ref() {
-                    Some(resampler) => resampler.resample(&mono, false),
-                    None => mono,
-                };
-                assembler.push(&mono_48k, start_ms)?;
+                if let Some(resampler) = resampler.as_ref() {
+                    assembler.push(&resampler.resample(mono, false), start_ms)?;
+                } else {
+                    assembler.push(mono, start_ms)?;
+                }
+                device.receiver().recycle(packet);
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => {
                 assembler.seal()?;
@@ -419,10 +512,15 @@ mod tests {
         let mut events = Vec::new();
         let mut assembler = Assembler {
             source: AudioSource::System,
-            directory: temporary.path(),
-            persist: |event| {
-                events.push(event);
-                Ok(())
+            persist: |input| {
+                persist_input(
+                    temporary.path(),
+                    &mut |event| {
+                        events.push(event);
+                        Ok(())
+                    },
+                    input,
+                )
             },
             started_ms: None,
             samples: Vec::new(),
@@ -484,6 +582,9 @@ mod tests {
         let packet = |at, wall_at| AudioPacket {
             at,
             wall_at,
+            start_at: None,
+            sample_start_ns: None,
+            callback_end_ns: None,
             samples: vec![0.1; 4_800],
             rate: 48_000,
             channels: 1,

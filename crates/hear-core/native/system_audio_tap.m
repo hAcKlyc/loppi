@@ -3,6 +3,7 @@
 #import <CoreAudio/AudioHardwareTapping.h>
 #import <CoreAudio/CATapDescription.h>
 #include <math.h>
+#include <mach/mach_time.h>
 #include <dlfcn.h>
 #include <stdatomic.h>
 #include <stdint.h>
@@ -23,7 +24,7 @@ static HearDestroyTap hear_destroy_tap_function(void) {
   return (HearDestroyTap)dlsym(RTLD_DEFAULT, "AudioHardwareDestroyProcessTap");
 }
 
-typedef void (*HearAudioCallback)(void *, const float *, uint32_t, uint32_t, uint32_t);
+typedef void (*HearAudioCallback)(void *, const float *, uint32_t, uint32_t, uint32_t, uint64_t);
 
 extern int hear_allow_audio_idle_sleep(void);
 extern void *hear_legacy_system_audio_start(void *, HearAudioCallback, int *);
@@ -36,6 +37,7 @@ typedef struct {
   AudioObjectID device;
   AudioDeviceIOProcID io_proc;
   uint32_t sample_rate;
+  mach_timebase_info_data_t timebase;
   HearAudioCallback callback;
   void *callback_context;
   atomic_uint_fast64_t last_frame_ns;
@@ -60,7 +62,6 @@ static OSStatus hear_tap_receive(AudioObjectID device, const AudioTimeStamp *now
                                   void *context) {
   (void)device;
   (void)now;
-  (void)input_time;
   (void)output;
   (void)output_time;
   HearTapSession *session = context;
@@ -75,7 +76,10 @@ static OSStatus hear_tap_receive(AudioObjectID device, const AudioTimeStamp *now
   if (frames > 0) {
     atomic_store(&session->last_frame_ns, monotonic_ns());
     session->callback(session->callback_context, buffer->mData, frames,
-                      session->sample_rate, 1);
+                      session->sample_rate, 1,
+                      input_time && (input_time->mFlags & kAudioTimeStampHostTimeValid)
+                        ? (uint64_t)(((__uint128_t)input_time->mHostTime * session->timebase.numer)
+                                     / session->timebase.denom) : 0);
   }
   return noErr;
 }
@@ -123,6 +127,8 @@ static void *hear_tap_start(void *context, HearAudioCallback callback, int *stag
     if (stage) *stage = 20;
     return NULL;
   }
+  mach_timebase_info(&session->timebase);
+  if (session->timebase.denom == 0) { free(session); return NULL; }
   session->tap = kAudioObjectUnknown;
   session->device = kAudioObjectUnknown;
   session->callback = callback;
@@ -291,8 +297,9 @@ typedef struct {
 } HearTapProbe;
 
 static void hear_probe_receive(void *context, const float *samples, uint32_t frames,
-                               uint32_t rate, uint32_t channels) {
+                               uint32_t rate, uint32_t channels, uint64_t sample_start_ns) {
   (void)rate;
+  (void)sample_start_ns;
   HearTapProbe *probe = context;
   atomic_fetch_add(&probe->frames, frames);
   uint64_t peak = atomic_load(&probe->peak_millionths);

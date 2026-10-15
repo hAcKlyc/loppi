@@ -1,6 +1,6 @@
 # hear 0.1 整体架构
 
-> 口径：2026-10-01 工作树当前实现，Batch 6 尚未验收/提交。产品目标见 [PRD](prd/prd_0.1.md)，算法与具体阈值见 [核心处理算法](tech_docs/algorithms.md)和[说话人和全局人物](tech_docs/speaker-identity.md)。本机已安装 `.app` 的能力须以安装版实测区分，不能由本文件推定。
+> 口径：2026-10-16 工作树当前实现；稳定性与性能优化仍在开发和整体验收中。产品目标见 [PRD](prd/prd_0.1.md)，算法与具体阈值见 [核心处理算法](tech_docs/algorithms.md)和[说话人和全局人物](tech_docs/speaker-identity.md)。本机已安装 `.app` 的能力须以安装版实测区分，不能由本文件推定。
 
 ## 1. 系统边界与进程
 
@@ -9,8 +9,11 @@ flowchart LR
   subgraph Mac[用户的 Mac]
     UI[Tauri 桌面窗口与悬浮窗] -->|版本化本机 IPC| Core[hear-core 唯一状态 owner]
     CLI[hear CLI] -->|相同 IPC| Core
-    MIC[麦克风] --> Core
-    SYS[电脑声音] --> Core
+    MIC[麦克风] --> CaptureMic[受监督麦克风来源进程]
+    SYS[电脑声音] --> CaptureSys[受监督系统声来源进程]
+    CaptureMic --> Journal[耐久媒体与恢复日志]
+    CaptureSys --> Journal
+    Journal --> Core
     Core --> DB[(hear.sqlite / WAL)]
     Core --> Files[(Opus 原声 / 截图 / 日志)]
     Core -->|有界 stdin/stdout| Worker[hear-worker 本地模型]
@@ -25,6 +28,7 @@ flowchart LR
 | GUI | [`src/App.tsx`](../src/App.tsx)、[`src-tauri/src/lib.rs`](../src-tauri/src/lib.rs) | 时间线、详情、队列、人物、设置、顶部/悬浮兔子入口；通过 Tauri command 调用核心，不直接改数据库。主窗口关闭可隐藏，悬浮窗同进程。 |
 | CLI | [`crates/hear-cli/src/main.rs`](../crates/hear-cli/src/main.rs) | 查询、控制、修订、搜索、导出与清理的完整命令入口；与 GUI 共用请求协议。 |
 | 核心 | [`crates/hear-core/src/main.rs`](../crates/hear-core/src/main.rs) | 唯一 SQLite 写入者；持有采集监督、时间映射、媒体、两条云队列、声纹任务和权限/容量状态。登录项与按需服务争同一个 owner 锁。 |
+| 采集来源 | [`source_process.rs`](../crates/hear-core/src/source_process.rs)、[`record.rs`](../crates/hear-core/src/record.rs) | 每个来源以同一签名核心可执行文件的私有子命令运行；持有原生设备、有界缓冲及封块写入。只发布不可变媒体和 core 管理的 ingestion 日志，不访问业务库。 |
 | 本地推理 | [`crates/hear-worker/src/main.rs`](../crates/hear-worker/src/main.rs) | 常驻 Silero VAD + SenseVoice 粗转；另以受控 `embed` 子进程提取 CampPlus 声纹。只返回计算结果，不拥有数据库。 |
 | IPC 协议 | [`crates/hear-protocol/src/lib.rs`](../crates/hear-protocol/src/lib.rs) | 请求/响应、稳定 ID、预期修订、重复提交标识和协议版本。当前工作树版本为 15。 |
 | macOS 桥接 | [`src-tauri/native/`](../src-tauri/native/privacy.m)、[`crates/hear-core/native/`](../crates/hear-core/native/system_audio.m) | 登录项、权限、截图/OCR、系统声 API 等原生操作；业务数据仍由核心裁决。 |
@@ -88,7 +92,11 @@ flowchart TD
 
 `capture_supervisor` 每路独立启动/停止并处理睡眠和异常退出。录制意图、手动暂停、容量暂停、来源开关、系统许可、模型准备及本次登录的完全退出各有独立含义。来源异常后使用有上限退避，恢复前保持真实缺口；另一来源可继续。容量边界暂停新增采集并提醒，释放空间后由用户手动恢复。[采集监督](../crates/hear-core/src/main.rs)、[封块写入](../crates/hear-core/src/record.rs)。
 
-启动按顺序恢复暂存媒体、清理事务状态、录制尾部、两条云队列和未完成声纹任务，再开放服务；已提交的物理删除在后台有界执行。孤儿扫描识别待删除墓碑，不将其重新计入逻辑额度；实际剩余磁盘检查继续生效。崩溃恢复不推断缺失原声，也不把用户手动暂停变成启动。显式完全退出停止当次录音；关闭普通窗口仅隐藏窗口。[启动恢复顺序](../crates/hear-core/src/main.rs)。
+启动只恢复有索引的未完成录制/任务状态，媒体历史遍历已移到 `inventory::Scan`：每轮最多 32 个文件、每个文件单独持有媒体生命周期屏障，文件检查和删除不持有 `Store`。它区分 live / pending-deletion / capture-staging / orphan，按扫描代次分批对账孤儿配额；物理分类是带观察时间的扫描结果，不能冒充瞬时精确磁盘快照。旧版本封块 `sealing` 的恢复仍保留；截图和导出遗留暂存恢复仍在启动执行。容量暂停保持粘滞，扫描不能覆盖用户暂停或自动恢复录制。
+
+`capture::channel` 是预分配的 SPSC 双环缓冲，回调只转换/复制到复用缓冲；输入总排队时长最多约 2 秒、字节上限 8 MiB。归一化与编码/fsync 分线程，待封块通道最多 2 项。来源进程每 250 ms 发非阻塞心跳；core 以 3 秒心跳、45 秒启动、15 秒耐久进度和 10 秒停止截止时间监督，超时只回收该来源。停止信号同时发给两路，监督线程只 join 已结束的来源。父进程死亡后 helper 自行退出；原生 HAL/SCK 的致命错误不能结束核心。真实采样时间优先使用硬件单调时间，墙钟跳变仍切断 session。
+
+[`ingestion`](../crates/hear-core/src/ingestion.rs) 先同步 prepared 元数据，随后同步并发布 Opus，再同步含长度/hash 的 ready 元数据。每 session 最多 64 个待入库记录；核心按时间顺序、短事务导入，持久回执跨越数据库提交到 journal 删除同步的窗口，避免重复或清理后复活。缺失/损坏媒体保留隔离元数据并记录缺口，暂时性 IO / 重编码失败保留待重试。清理与导入共用媒体屏障；来源继续落盘，迟到块按 session 代次、来源、所选范围及清理提交时刻裁剪，保留未选尾部和操作之后的新录音，因此清理不再全局暂停设备。恢复日志不是第二个业务事实库。
 
 云请求复用进程内 `ureq::Agent` 连接池，凭据仍逐请求附加。请求总期限为 60 秒，包含响应体读取；底层系统 DNS 调用不可取消，是该期限的已知例外。响应读取失败作为瞬态错误保留原远端请求 ID，退避后先查询原请求。[云客户端](../crates/hear-core/src/cloud.rs)。
 

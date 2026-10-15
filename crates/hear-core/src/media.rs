@@ -29,6 +29,16 @@ pub fn decode_block(path: &Path, expected_frames: usize) -> Result<Vec<f32>, Str
     {
         return Err("audio block exceeded size limit".to_owned());
     }
+    decode_reader(file, expected_frames)
+}
+
+pub(crate) fn decode_reader(
+    file: impl std::io::Read + std::io::Seek,
+    expected_frames: usize,
+) -> Result<Vec<f32>, String> {
+    if expected_frames == 0 || expected_frames > RATE as usize * 11 {
+        return Err("invalid block sample count".into());
+    }
     let mut reader = ogg::PacketReader::new(file);
     let head = reader
         .read_packet()

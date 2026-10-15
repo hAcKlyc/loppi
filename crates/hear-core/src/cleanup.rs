@@ -472,7 +472,7 @@ pub fn originals(db: &Connection, scope: &PreviewScope) -> Result<Vec<OriginalAu
     Ok(selected)
 }
 
-fn encode_part(
+pub(crate) fn encode_part(
     directory: &Path,
     row: &OriginalAudio,
     pcm: &[f32],
@@ -598,6 +598,29 @@ pub fn clear_staging_markers(directory: &Path, prepared: &PreparedMedia) {
     }
 }
 
+pub fn recover_staged_file(directory: &Path, marker: &Path, committed: bool) -> Result<(), String> {
+    if !marker.starts_with(directory) || marker.extension().is_none_or(|e| e != "cleanup-staged") {
+        return Err("invalid cleanup marker".into());
+    }
+    for extension in if committed {
+        vec!["pending"]
+    } else {
+        vec!["pending", "opus"]
+    } {
+        match fs::remove_file(marker.with_extension(extension)) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e.to_string()),
+        }
+    }
+    match fs::remove_file(marker) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[cfg(test)]
 pub fn recover_staging(db: &Connection, directory: &Path) -> Result<(), String> {
     for source in ["microphone", "system"] {
         let media_dir = directory.join("media").join(source);
@@ -630,24 +653,11 @@ pub fn recover_staging(db: &Connection, directory: &Path) -> Result<(), String> 
                     |r| r.get(0),
                 )
                 .map_err(|error| error.to_string())?;
-            match fs::remove_file(media_dir.join(format!("{id}.pending"))) {
-                Ok(()) => {}
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                Err(error) => return Err(error.to_string()),
-            }
+            recover_staged_file(directory, &entry.path(), committed != 0)?;
             if committed == 0 {
-                match fs::remove_file(media_dir.join(format!("{id}.opus"))) {
-                    Ok(()) => {}
-                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                    Err(error) => return Err(error.to_string()),
-                }
-                db.execute(
-                    "DELETE FROM orphan_media WHERE media_path=?1",
-                    params![relative],
-                )
-                .map_err(|error| error.to_string())?;
+                db.execute("DELETE FROM orphan_media WHERE media_path=?1", [relative])
+                    .map_err(|e| e.to_string())?;
             }
-            fs::remove_file(entry.path()).map_err(|error| error.to_string())?;
         }
     }
     Ok(())
@@ -704,7 +714,7 @@ pub fn apply(
         let gaps = {
             let mut statement = tx
                 .prepare(
-                    "SELECT id,source,started_ms,ended_ms,reason FROM media_gaps
+                    "SELECT id,source,started_ms,ended_ms,reason,tail_session_id FROM media_gaps
 			 WHERE started_ms<?2 AND coalesce(ended_ms,9223372036854775807)>?1
 			 AND ((source='microphone' AND ?3&1!=0) OR (source='system' AND ?3&2!=0))",
                 )
@@ -717,25 +727,27 @@ pub fn apply(
                         row.get::<_, i64>(2)?,
                         row.get::<_, Option<i64>>(3)?,
                         row.get::<_, String>(4)?,
+                        row.get::<_, Option<String>>(5)?,
                     ))
                 })
                 .map_err(|error| error.to_string())?
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|error| error.to_string())?
         };
-        for (id, source, start, maybe_end, reason) in gaps {
+        for (id, source, start, maybe_end, reason, tail_session_id) in gaps {
             let end = maybe_end.unwrap_or(i64::MAX);
             tx.execute("DELETE FROM media_gaps WHERE id=?1", params![id])
                 .map_err(|error| error.to_string())?;
             if start < scope.start {
                 tx.execute(
-                    "INSERT INTO media_gaps VALUES (?1,?2,?3,?4,?5)",
+                    "INSERT INTO media_gaps(id,source,started_ms,ended_ms,reason,tail_session_id) VALUES (?1,?2,?3,?4,?5,?6)",
                     params![
                         Uuid::new_v4().to_string(),
                         source,
                         start,
                         scope.start,
-                        reason
+                        reason,
+                        tail_session_id
                     ],
                 )
                 .map_err(|error| error.to_string())?;
@@ -747,13 +759,14 @@ pub fn apply(
                     scope.end
                 };
                 tx.execute(
-                    "INSERT INTO media_gaps VALUES (?1,?2,?3,?4,?5)",
+                    "INSERT INTO media_gaps(id,source,started_ms,ended_ms,reason,tail_session_id) VALUES (?1,?2,?3,?4,?5,?6)",
                     params![
                         Uuid::new_v4().to_string(),
                         source,
                         tail_start,
                         maybe_end,
-                        reason
+                        reason,
+                        tail_session_id
                     ],
                 )
                 .map_err(|error| error.to_string())?;
@@ -1107,7 +1120,7 @@ mod tests {
             store
                 .db
                 .execute(
-                    "INSERT INTO media_gaps VALUES (?1,?2,1000,5000,'source_failure')",
+                    "INSERT INTO media_gaps(id,source,started_ms,ended_ms,reason) VALUES (?1,?2,1000,5000,'source_failure')",
                     params![id, source],
                 )
                 .unwrap();
