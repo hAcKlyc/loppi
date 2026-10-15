@@ -2368,6 +2368,7 @@ pub fn defer_paused(db: &mut Connection, task: &CloudTask, now: i64) -> Result<(
 pub fn task_failed(db: &Connection, task: &CloudTask, error: &str, now: i64) -> Result<(), String> {
     let attempts = task.attempts + 1;
     let transient = error == "provider_transport"
+        || error == "provider_read_failed"
         || error == "credential_missing"
         || error == "provider_not_configured"
         || error.starts_with("keychain_read_")
@@ -4890,8 +4891,14 @@ mod tests {
             .unwrap();
         mark_submit_intent(&db, &task, 7_002).unwrap();
         task_failed(&db, &task, "provider_read_failed", 7_003).unwrap();
-        retry_task(&db, task.id, 7_004).unwrap();
-        let retry = take_task(&mut db, CloudProvider::Asr, 7_005)
+        // A read timeout is transient, but must respect backoff and keep the
+        // original paid request identity for query-before-resubmit recovery.
+        assert!(
+            take_task(&mut db, CloudProvider::Asr, 7_005)
+                .unwrap()
+                .is_none()
+        );
+        let retry = take_task(&mut db, CloudProvider::Asr, 37_004)
             .unwrap()
             .unwrap();
         assert_eq!(retry.remote_id, task.remote_id);

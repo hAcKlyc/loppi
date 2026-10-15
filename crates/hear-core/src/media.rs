@@ -128,12 +128,23 @@ impl OpusBlock {
         })
     }
 
-    pub fn push(&mut self, mono_48k: &[f32]) -> Result<(), String> {
-        self.pending_pcm.extend_from_slice(mono_48k);
-        while self.pending_pcm.len() >= FRAME {
-            let frame: Vec<_> = self.pending_pcm.drain(..FRAME).collect();
-            self.write_frame(&frame, FRAME as u64, PacketWriteEndInfo::NormalPacket)?;
+    pub fn push(&mut self, mut mono_48k: &[f32]) -> Result<(), String> {
+        if !self.pending_pcm.is_empty() {
+            let take = (FRAME - self.pending_pcm.len()).min(mono_48k.len());
+            self.pending_pcm.extend_from_slice(&mono_48k[..take]);
+            mono_48k = &mono_48k[take..];
+            if self.pending_pcm.len() == FRAME {
+                let mut frame = [0.0; FRAME];
+                frame.copy_from_slice(&self.pending_pcm);
+                self.write_frame(&frame, FRAME as u64, PacketWriteEndInfo::NormalPacket)?;
+                self.pending_pcm.clear();
+            }
         }
+        let mut frames = mono_48k.chunks_exact(FRAME);
+        for frame in &mut frames {
+            self.write_frame(frame, FRAME as u64, PacketWriteEndInfo::NormalPacket)?;
+        }
+        self.pending_pcm.extend_from_slice(frames.remainder());
         Ok(())
     }
 
@@ -212,6 +223,32 @@ impl OpusBlock {
 mod tests {
     use super::*;
     use ogg::PacketReader;
+
+    #[test]
+    fn input_chunking_preserves_exact_audio_and_bounds_pending_pcm() {
+        let directory = tempfile::tempdir().unwrap();
+        let pcm: Vec<f32> = (0..240_557)
+            .map(|i| (i as f32 * 0.05).sin() * 0.2)
+            .collect();
+        let mut whole = OpusBlock::create(directory.path(), Uuid::new_v4()).unwrap();
+        whole.push(&pcm).unwrap();
+        assert!(whole.pending_pcm.len() < FRAME);
+        let whole = whole.seal().unwrap();
+        for size in [1, 123, 960, 1007, 48_000] {
+            let mut block = OpusBlock::create(directory.path(), Uuid::new_v4()).unwrap();
+            for chunk in pcm.chunks(size) {
+                block.push(chunk).unwrap();
+                assert!(block.pending_pcm.len() < FRAME);
+                assert!(block.pending_pcm.capacity() <= FRAME * 2);
+            }
+            let sealed = block.seal().unwrap();
+            assert_eq!(sealed.samples, whole.samples);
+            assert_eq!(
+                decode_block(&sealed.path, pcm.len()).unwrap(),
+                decode_block(&whole.path, pcm.len()).unwrap()
+            );
+        }
+    }
 
     #[test]
     fn ogg_block_seals_with_playable_headers_and_exact_duration() {

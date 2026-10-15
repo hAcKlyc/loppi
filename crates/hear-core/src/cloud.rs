@@ -83,12 +83,16 @@ pub fn delete_credential(reference: &str) -> Result<(), String> {
         .map_err(|error| format!("keychain_delete_{}", error.code()))
 }
 
-fn agent() -> ureq::Agent {
-    ureq::AgentBuilder::new()
-        .timeout_connect(Duration::from_secs(10))
-        .timeout_read(Duration::from_secs(45))
-        .timeout_write(Duration::from_secs(30))
-        .build()
+fn agent() -> &'static ureq::Agent {
+    static AGENT: OnceLock<ureq::Agent> = OnceLock::new();
+    AGENT.get_or_init(|| {
+        ureq::AgentBuilder::new()
+            .timeout(Duration::from_secs(60))
+            .timeout_connect(Duration::from_secs(10))
+            .timeout_read(Duration::from_secs(45))
+            .timeout_write(Duration::from_secs(30))
+            .build()
+    })
 }
 
 fn json_response(response: Result<ureq::Response, ureq::Error>) -> Result<Value, String> {

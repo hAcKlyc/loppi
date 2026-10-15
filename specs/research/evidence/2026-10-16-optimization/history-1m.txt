@@ -1,0 +1,10 @@
+   Compiling hear-core v0.1.0 (/Users/ethan/Projects/hear/crates/hear-core)
+    Finished `release` profile [optimized] target(s) in 22.90s
+     Running unittests src/main.rs (target/release/deps/hear_core-beaf530e695c4c79)
+
+running 1 test
+{"empty_claim_ms":0.048374999999999994,"insert_ms":25889.269833,"last_claim_ms":0.1175,"queries":[{"median_ms":31.219625,"p95_ms":32.71725,"plan":["SCAN audio_blocks"],"query":"legacy_capacity"},{"median_ms":0.00125,"p95_ms":0.0020829999999999998,"plan":["SEARCH storage_usage USING INTEGER PRIMARY KEY (rowid=?)"],"query":"capacity"},{"median_ms":0.001792,"p95_ms":0.003583,"plan":["SCAN CONSTANT ROW","SCALAR SUBQUERY 1","SEARCH audio_blocks USING COVERING INDEX audio_blocks_media_path (media_path=?)"],"query":"missing_media"},{"median_ms":0.00275,"p95_ms":0.004125,"plan":["SCAN CONSTANT ROW","SCALAR SUBQUERY 1","SEARCH audio_blocks USING COVERING INDEX audio_blocks_media_path (media_path=?)","SCALAR SUBQUERY 2","SEARCH media_deletion_jobs USING INDEX sqlite_autoindex_media_deletion_jobs_1 (media_path=?)"],"query":"known_or_pending_delete"},{"median_ms":0.003208,"p95_ms":0.012707999999999999,"plan":["SCAN CONSTANT ROW","SCALAR SUBQUERY 1","SCAN audio_blocks USING INDEX audio_blocks_pending"],"query":"empty_pending"},{"median_ms":0.001625,"p95_ms":0.0022500000000000003,"plan":["SEARCH audio_blocks USING COVERING INDEX audio_blocks_recovery (analysis_state=?)"],"query":"sealing"}],"rows":1000000,"sqlite":"3.53.2"}
+test storage::tests::history_scale_benchmark ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 128 filtered out; finished in 26.63s
+

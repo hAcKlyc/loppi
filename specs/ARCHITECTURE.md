@@ -49,6 +49,10 @@ flowchart LR
 
 表的创建分散在 [`main.rs` 的 `Store::new`](../crates/hear-core/src/main.rs)、[`events.rs`](../crates/hear-core/src/events.rs)、[`knowledge.rs`](../crates/hear-core/src/knowledge.rs)、[`cleanup.rs`](../crates/hear-core/src/cleanup.rs)、[`moments.rs`](../crates/hear-core/src/moments.rs)。这是当前模块 owner，而非一份另行维护的模式定义。
 
+容量展示读取 `storage_usage` 常量规模投影；媒体与孤儿的新增、更新、删除由 SQLite 触发器在原事务更新计数，首迁移回填一次。`core_migrations` 将搜索、说话人组、纠错锚点历史回填和完成标记一起提交，失败可重试，不在每次启动扫描全部历史。访问媒体路径、session 样本、待分析和恢复状态使用对应索引。[存储迁移](../crates/hear-core/src/storage.rs)。
+
+物理删除由 core 的维护线程每批最多取 32 个待办。文件 IO 在 `Store` 锁之外执行，逐文件复用 `cleanup_gate` 保护播放/导出媒体寿命；成功或文件已不存在才确认完成，失败不阻挡后续路径并在下轮重试。逻辑失效与用户清理语义仍由清理事务裁决。当前容量投影仍为原有逻辑媒体口径，未扩张为全部物理临时空间。
+
 ### 2.2 双时间坐标
 
 每一路采集有独立来源内采样序号与单调时钟锚点；核心把它们映射为真实 UTC 毫秒。`audio_blocks`、粗/精转、事件、重点/笔记/截图都存真实时刻。文件内偏移和供应商句段的相对毫秒仅用于解码/对齐，入库前必须映射回真实时刻。播放器和详情显示当地钟点，点击真实时刻再由核心寻找对应封块；不能把“从事件开始累计播放的秒数”当作墙钟。[采集时钟](../crates/hear-core/src/record.rs)、[供应商时间映射](../crates/hear-core/src/events.rs)、[按真实时间播放](../crates/hear-core/src/playback.rs)。
@@ -84,7 +88,9 @@ flowchart TD
 
 `capture_supervisor` 每路独立启动/停止并处理睡眠和异常退出。录制意图、手动暂停、容量暂停、来源开关、系统许可、模型准备及本次登录的完全退出各有独立含义。来源异常后使用有上限退避，恢复前保持真实缺口；另一来源可继续。容量边界暂停新增采集并提醒，释放空间后由用户手动恢复。[采集监督](../crates/hear-core/src/main.rs)、[封块写入](../crates/hear-core/src/record.rs)。
 
-启动按顺序恢复暂存媒体、清理作业、录制尾部、两条云队列和未完成声纹任务，再开放服务。崩溃恢复不推断缺失原声，也不把用户手动暂停变成启动。显式完全退出停止当次录音；关闭普通窗口仅隐藏窗口。[启动恢复顺序](../crates/hear-core/src/main.rs)。
+启动按顺序恢复暂存媒体、清理事务状态、录制尾部、两条云队列和未完成声纹任务，再开放服务；已提交的物理删除在后台有界执行。孤儿扫描识别待删除墓碑，不将其重新计入逻辑额度；实际剩余磁盘检查继续生效。崩溃恢复不推断缺失原声，也不把用户手动暂停变成启动。显式完全退出停止当次录音；关闭普通窗口仅隐藏窗口。[启动恢复顺序](../crates/hear-core/src/main.rs)。
+
+云请求复用进程内 `ureq::Agent` 连接池，凭据仍逐请求附加。请求总期限为 60 秒，包含响应体读取；底层系统 DNS 调用不可取消，是该期限的已知例外。响应读取失败作为瞬态错误保留原远端请求 ID，退避后先查询原请求。[云客户端](../crates/hear-core/src/cloud.rs)。
 
 ## 5. 外发、修订与清理边界
 

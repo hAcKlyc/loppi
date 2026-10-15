@@ -21,7 +21,9 @@ pub fn init(db: &Connection) -> Result<(), String> {
     CREATE TABLE IF NOT EXISTS media_deletion_jobs (
       media_path TEXT PRIMARY KEY,created_ms INTEGER NOT NULL,
       completed_ms INTEGER,error_code TEXT
-    );",
+    );
+    CREATE INDEX IF NOT EXISTS media_deletion_pending ON media_deletion_jobs(media_path)
+      WHERE completed_ms IS NULL;",
     )
     .map_err(|error| error.to_string())
 }
@@ -1028,57 +1030,66 @@ pub fn apply(
     Ok((prepared.originals.len() as u64, pending as u64))
 }
 
+pub fn deletion_batch(db: &Connection, after: &str) -> Result<Vec<String>, String> {
+    let mut stmt = db
+        .prepare(
+            "SELECT media_path FROM media_deletion_jobs
+      WHERE completed_ms IS NULL AND media_path>?1 ORDER BY media_path LIMIT 32",
+        )
+        .map_err(|e| e.to_string())?;
+    stmt.query_map(params![after], |r| r.get(0))
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
+}
+
+pub fn delete_file(directory: &Path, job: &str) -> Result<bool, String> {
+    let relative = Path::new(job);
+    if !valid_media_path(relative, "microphone")
+        && !valid_media_path(relative, "system")
+        && !crate::moments::valid_screenshot_path(relative)
+    {
+        return Err("invalid pending media deletion path".into());
+    }
+    match fs::remove_file(directory.join(relative)) {
+        Ok(()) => Ok(true),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(true),
+        Err(_) => Ok(false),
+    }
+}
+
+pub fn finish_deletion(db: &Connection, job: &str, deleted: bool, now: i64) -> Result<(), String> {
+    db.execute(
+        "UPDATE media_deletion_jobs SET completed_ms=?2,error_code=?3
+      WHERE media_path=?1 AND completed_ms IS NULL",
+        params![
+            job,
+            if deleted { Some(now) } else { None },
+            if deleted { None } else { Some("unlink_failed") }
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+    if deleted {
+        db.execute("DELETE FROM orphan_media WHERE media_path=?1", params![job])
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
 pub fn drain_deletions(db: &Connection, directory: &Path, now: i64) -> Result<u64, String> {
     let mut completed = 0;
     let mut after = String::new();
     loop {
-        let jobs = {
-            let mut stmt = db
-                .prepare(
-                    "SELECT media_path FROM media_deletion_jobs
-               WHERE completed_ms IS NULL AND media_path>?1 ORDER BY media_path LIMIT 1000",
-                )
-                .map_err(|error| error.to_string())?;
-            stmt.query_map(params![after], |r| r.get::<_, String>(0))
-                .map_err(|error| error.to_string())?
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(|error| error.to_string())?
-        };
+        let jobs = deletion_batch(db, &after)?;
         if jobs.is_empty() {
             break;
         }
         after = jobs.last().unwrap().clone();
         for job in jobs {
-            let relative = PathBuf::from(&job);
-            if !valid_media_path(&relative, "microphone")
-                && !valid_media_path(&relative, "system")
-                && !crate::moments::valid_screenshot_path(&relative)
-            {
-                return Err("invalid pending media deletion path".to_owned());
-            }
-            let path = directory.join(&relative);
-            match fs::remove_file(&path) {
-                Ok(()) => {}
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                Err(_) => {
-                    db.execute(
-                        "UPDATE media_deletion_jobs SET error_code='unlink_failed'
-                  WHERE media_path=?1",
-                        params![job],
-                    )
-                    .map_err(|error| error.to_string())?;
-                    continue;
-                }
-            }
-            db.execute(
-                "UPDATE media_deletion_jobs SET completed_ms=?2,error_code=NULL
-          WHERE media_path=?1",
-                params![job, now],
-            )
-            .map_err(|error| error.to_string())?;
-            db.execute("DELETE FROM orphan_media WHERE media_path=?1", params![job])
-                .map_err(|error| error.to_string())?;
-            completed += 1;
+            let deleted = delete_file(directory, &job)?;
+            finish_deletion(db, &job, deleted, now)?;
+            completed += u64::from(deleted);
         }
     }
     Ok(completed)
@@ -1193,6 +1204,97 @@ mod tests {
     }
 
     #[test]
+    fn restart_after_partial_cleanup_does_not_create_a_quota_pause() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut store = crate::Store::new(Connection::open_in_memory().unwrap()).unwrap();
+        audio(&store.db, directory.path(), "microphone");
+        let preview = preview(
+            &store.db,
+            500,
+            1500,
+            EventSources::Microphone,
+            CleanupMode::RawAudio,
+            10000,
+        )
+        .unwrap();
+        let scope = verified_scope(&store.db, preview.token, false, 10000).unwrap();
+        let prepared = prepare_media(
+            directory.path(),
+            &scope,
+            originals(&store.db, &scope).unwrap(),
+        )
+        .unwrap();
+        let tx = store.db.transaction().unwrap();
+        apply(&tx, &scope, &prepared, 10001).unwrap();
+        tx.commit().unwrap();
+        clear_staging_markers(directory.path(), &prepared);
+        let used = store.state().unwrap().audio_used_bytes;
+        assert!(used > 0);
+        store
+            .db
+            .execute(
+                "UPDATE capture_guard SET audio_limit_bytes=?1",
+                params![used as i64 + 1],
+            )
+            .unwrap();
+        assert!(!deletion_batch(&store.db, "").unwrap().is_empty());
+        // Recovery happens before the pending old file is physically removed.
+        store.recover(directory.path()).unwrap();
+        assert_eq!(store.state().unwrap().audio_used_bytes, used);
+        assert!(!store.state().unwrap().storage_paused);
+        assert_eq!(
+            drain_deletions(&store.db, directory.path(), 10002).unwrap(),
+            1
+        );
+        assert!(!store.state().unwrap().storage_paused);
+        // This repair must never automatically clear an existing user/storage pause.
+        store
+            .db
+            .execute_batch(
+                "UPDATE service_state SET paused_intent=1;
+          UPDATE capture_guard SET pause_reason='storage_limit'",
+            )
+            .unwrap();
+        store.recover(directory.path()).unwrap();
+        assert!(store.state().unwrap().paused_intent);
+        assert!(store.state().unwrap().storage_paused);
+    }
+
+    #[test]
+    fn failed_unlink_yields_and_missing_file_retry_is_idempotent() {
+        let directory = tempfile::tempdir().unwrap();
+        let db = crate::Store::new(Connection::open_in_memory().unwrap())
+            .unwrap()
+            .db;
+        let bad = "media/microphone/00000000-0000-0000-0000-000000000001.opus";
+        let good = "media/microphone/00000000-0000-0000-0000-000000000002.opus";
+        fs::create_dir_all(directory.path().join(bad)).unwrap(); // remove_file must fail
+        fs::write(directory.path().join(good), b"audio").unwrap();
+        for path in [bad, good] {
+            db.execute(
+                "INSERT INTO media_deletion_jobs VALUES (?1,1,NULL,NULL)",
+                [path],
+            )
+            .unwrap();
+        }
+        let batch = deletion_batch(&db, "").unwrap();
+        assert_eq!(batch.len(), 2);
+        assert!(!delete_file(directory.path(), bad).unwrap());
+        finish_deletion(&db, bad, false, 2).unwrap();
+        assert!(delete_file(directory.path(), good).unwrap());
+        // Crash between unlink and DB acknowledgement: replay still completes.
+        assert!(delete_file(directory.path(), good).unwrap());
+        finish_deletion(&db, good, true, 3).unwrap();
+        assert!(deletion_batch(&db, good).unwrap().is_empty());
+        assert_eq!(deletion_batch(&db, "").unwrap(), vec![bad.to_owned()]);
+        fs::remove_dir(directory.path().join(bad)).unwrap();
+        assert!(delete_file(directory.path(), bad).unwrap());
+        finish_deletion(&db, bad, true, 4).unwrap();
+        assert!(deletion_batch(&db, "").unwrap().is_empty());
+        assert!(delete_file(directory.path(), "../outside.opus").is_err());
+    }
+
+    #[test]
     fn deletion_drain_clears_more_than_one_batch() {
         let directory = tempfile::tempdir().unwrap();
         let db = crate::Store::new(Connection::open_in_memory().unwrap())
@@ -1209,6 +1311,7 @@ mod tests {
             )
             .unwrap();
         }
+        assert_eq!(deletion_batch(&db, "").unwrap().len(), 32);
         assert_eq!(drain_deletions(&db, directory.path(), 2).unwrap(), 1001);
         assert_eq!(fs::read_dir(media_dir).unwrap().count(), 0);
     }

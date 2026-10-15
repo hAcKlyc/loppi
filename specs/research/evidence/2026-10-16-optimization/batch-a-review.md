@@ -1,0 +1,25 @@
+# Batch A review contract
+
+- Mode: repair. Internal engineering checkpoint, not delivery of the whole P0/P1 objective.
+- Requirement: `specs/prd/devplan_261016_reliability-performance.md` and accepted research report. This batch covers indexes and incremental logical capacity, one-time historical backfills, bounded physical deletion outside Store, Opus buffering without output changes, reusable HTTP connection pool and transient response-read recovery.
+- Baseline: `2c81ebd49601c85d89aa3529555aeddaa98d63f5` to current working tree.
+- In scope: `crates/hear-core/src/{storage,cleanup,cloud,events,knowledge,main,media}.rs`; `specs/ARCHITECTURE.md`; devplan; `specs/research/evidence/2026-10-16-optimization/`.
+- Out of scope: pre-existing untracked rabbit/playground assets and earlier research reports/evidence. Batch B/C/D are outstanding and are not required for this internal checkpoint. Background orphan/staging scans and physical-space reconciliation explicitly remain Batch B because concurrency depends on ingestion lifecycle. No release/completion claim is allowed here.
+- Guarantees: preserve UI/IPC semantics, original audio and time mapping, retention decisions, manual corrections, pause intent, cloud external scope, durable transactions; constant-size capacity reads; no per-frame PCM front-drain; deletion intent survives crash and one unlink failure does not prevent later jobs. Shared cleanup gate continues to protect playback/export. A read failure retries the same remote ASR identity after backoff.
+- Non-goals for this batch: 24h assurance, native fault isolation, VAD split, governor, full process-tree budgets, read-pool/playback changes. No new cloud concurrency or automatic release. HTTP total timeout excludes the underlying platform's uninterruptible DNS, as documented by ureq.
+- In-scope defects: introduced or materially exposed by this batch, plus the above explicitly implemented guarantees. Do not reopen unchanged adjacent code or judge the entire multi-batch objective complete.
+- Authorized architecture: core-owned SQLite projection maintained by same-transaction triggers, versioned migration markers, existing durable deletion jobs with bounded background executor using existing cleanup gate, process-scoped HTTP agent. No new business owner or external API.
+- Required lenses: Phase 1 fresh read-only requirements + adversarial; after adjudication/repairs, final fresh architecture over complete candidate. Reviewers must read their corresponding `.agents/skills/review-*/SKILL.md`, never edit or delegate.
+- Acceptance evidence: 127 core tests passing (one explicit scale benchmark excluded); debug core/CLI build and isolated `scripts/smoke_core.py` passed. Product bundled SQLite 3.53.2 release scale benchmark is in `history-1m.txt`. No native/UI changes in this batch. SQL/migration changes require core+scale rerun; deletion changes require cleanup/core+CLI smoke; encoding changes require media tests; HTTP task state changes require relevant events regression. Documentation-only changes do not invalidate code checks.
+
+## Adjudication
+
+Phase 1 requirements / adversarial both found the same introduced P1 blocker: startup no longer drains deletion jobs before orphan accounting, so successfully deletable files could cause a sticky quota pause. Both reproduced with isolated actual core/CLI; all other scoped checks passed. This is one root cause, not two findings.
+
+Decision: blocking defect, accepted. Repair recognizes durable pending deletion intent in the orphan classification query; it does not clear existing pauses or weaken free-disk checking. Added a regression using actual partial-cleanup replacement media, recovery before unlink, eventual deletion, and existing user/storage pauses. Existing real-orphan quota regression remains. Re-run core tests, debug build + isolated CLI smoke, and release scale including the revised orphan lookup. Media/HTTP semantics unaffected. Final architecture review pending.
+
+Repair verification: 128 core tests passed, `cargo check`, debug core/CLI build, and all four isolated CLI smoke groups passed. Final release scale benchmark passed on 1,000,000 rows; capacity median 0.00125 ms vs legacy sum 31.219625 ms; revised orphan lookup 0.00275 ms; actual empty claim 0.048375 ms and last-row claim 0.1175 ms. These are local warm-query microbenchmarks, not whole-app speedups.
+
+Adversarial focused follow-up PASS: repeated actual isolated core reproduction with 30 MiB logical usage / 64 MiB cap and 60 MiB in 1024 pending deletion jobs; no false storage pause before/after deletion. Existing manual and storage pauses survive another restart. Original real-orphan over-limit test also passes. No remaining root-cause blocker. Phase 1 requirements had the same sole finding; no independent evidence gaps.
+
+Final architecture: fresh reviewer PASS over the full repaired candidate. Correct owner and lock ordering; all added mechanisms authorized and necessary; no remaining blocker or required evidence gap for Batch A. This closes only the internal Batch A gate.

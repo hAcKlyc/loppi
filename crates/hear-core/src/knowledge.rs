@@ -52,9 +52,6 @@ pub fn init(db: &Connection) -> Result<(), String> {
            PRIMARY KEY(speaker_scope,speaker_label)
          );
          CREATE INDEX IF NOT EXISTS speaker_groups_group ON speaker_groups(group_id);
-         INSERT OR IGNORE INTO speaker_groups(speaker_scope,speaker_label,group_id)
-           SELECT DISTINCT speaker_scope,speaker_label,speaker_scope||':'||speaker_label
-           FROM precise_segments WHERE speaker_label IS NOT NULL;
          CREATE TABLE IF NOT EXISTS voice_samples (
            id TEXT PRIMARY KEY,
            person_id TEXT NOT NULL REFERENCES people(id),
@@ -171,13 +168,29 @@ pub fn init(db: &Connection) -> Result<(), String> {
              WHERE kind='precise' AND item_id=old.current_segment_id;
            UPDATE search_records SET text=new.text WHERE new.state='active'
              AND kind='precise' AND item_id=new.current_segment_id;
-         END;
-         INSERT OR IGNORE INTO search_records(kind,item_id,source,started_ms,ended_ms,text)
-           SELECT 'coarse',id,source,started_ms,ended_ms,text FROM coarse_segments;
-         INSERT OR IGNORE INTO search_records(kind,item_id,source,started_ms,ended_ms,text)
-           SELECT 'precise',id,source,started_ms,ended_ms,text FROM precise_segments;",
+         END;",
     )
     .map_err(|error| error.to_string())?;
+    // Historical repairs run once; live publication maintains these projections.
+    crate::storage::migrate(
+        db,
+        "search_backfill_v1",
+        "
+        INSERT OR IGNORE INTO search_records(kind,item_id,source,started_ms,ended_ms,text)
+          SELECT 'coarse',id,source,started_ms,ended_ms,text FROM coarse_segments;
+        INSERT OR IGNORE INTO search_records(kind,item_id,source,started_ms,ended_ms,text)
+          SELECT 'precise',id,source,started_ms,ended_ms,text FROM precise_segments;
+    ",
+    )?;
+    crate::storage::migrate(
+        db,
+        "speaker_groups_backfill_v1",
+        "
+        INSERT OR IGNORE INTO speaker_groups(speaker_scope,speaker_label,group_id)
+          SELECT DISTINCT speaker_scope,speaker_label,speaker_scope||':'||speaker_label
+          FROM precise_segments WHERE speaker_label IS NOT NULL;
+    ",
+    )?;
     let correction_columns = db
         .prepare("PRAGMA table_info(text_corrections)")
         .map_err(|error| error.to_string())?
@@ -195,12 +208,14 @@ pub fn init(db: &Connection) -> Result<(), String> {
         )
         .map_err(|error| error.to_string())?;
     }
-    db.execute(
-        "UPDATE text_corrections SET anchor_segment_id=original_segment_id
-      WHERE anchor_segment_id IS NULL",
-        [],
-    )
-    .map_err(|error| error.to_string())?;
+    crate::storage::migrate(
+        db,
+        "correction_anchor_backfill_v1",
+        "
+        UPDATE text_corrections SET anchor_segment_id=original_segment_id
+          WHERE anchor_segment_id IS NULL;
+    ",
+    )?;
     let columns = db
         .prepare("PRAGMA table_info(speaker_bindings)")
         .map_err(|error| error.to_string())?

@@ -35,6 +35,7 @@ mod moments;
 mod playback;
 mod record;
 mod retention;
+mod storage;
 mod system_audio;
 mod unilogs;
 
@@ -137,7 +138,6 @@ fn run() -> Result<(), String> {
     events::recover_asr_staging(&directory);
     archive::recover(&store.db)?;
     archive::cleanup_spool(&directory)?;
-    cleanup::drain_deletions(&store.db, &directory, now_ms()?)?;
     moments::recover(&store.db, &directory)?;
     cleanup::recover_staging(&store.db, &directory)?;
     store.recover(&directory)?;
@@ -215,6 +215,11 @@ fn run() -> Result<(), String> {
         });
     }
     let stop = Arc::new(AtomicBool::new(false));
+    {
+        let shared = Arc::clone(&shared);
+        let stop = Arc::clone(&stop);
+        thread::spawn(move || maintenance_loop(shared, stop));
+    }
     let capture_thread = {
         let capture_shared = Arc::clone(&shared);
         let capture_stop = Arc::clone(&stop);
@@ -288,6 +293,58 @@ fn run() -> Result<(), String> {
     Ok(())
 }
 
+// The database owns deletion intent; filesystem latency never holds Store.
+// A cursor lets failed unlinks yield to later work, then retry next sweep.
+fn maintenance_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
+    let mut after = String::new();
+    while !stop.load(Ordering::Acquire) {
+        let batch = shared
+            .store
+            .lock()
+            .map_err(|e| e.to_string())
+            .and_then(|store| cleanup::deletion_batch(&store.db, &after));
+        match batch {
+            Ok(jobs) if !jobs.is_empty() => {
+                for path in jobs {
+                    if stop.load(Ordering::Acquire) {
+                        return;
+                    }
+                    after = path.clone();
+                    // Share the existing media lifetime guard with playback,
+                    // export and cleanup; never acquire Store before this guard.
+                    let Ok(_media_guard) = shared.cleanup_gate.lock() else {
+                        return;
+                    };
+                    match cleanup::delete_file(&shared.directory, &path) {
+                        Ok(deleted) => {
+                            if let Ok(mut store) = shared.store.lock() {
+                                if let Ok(tx) = store.db.transaction() {
+                                    if cleanup::finish_deletion(
+                                        &tx,
+                                        &path,
+                                        deleted,
+                                        now_ms().unwrap_or(0),
+                                    )
+                                    .is_ok()
+                                    {
+                                        let _ = tx.commit();
+                                    }
+                                }
+                            }
+                        }
+                        Err(_) => {}
+                    }
+                }
+                thread::sleep(Duration::from_millis(25));
+            }
+            _ => {
+                after.clear();
+                thread::sleep(Duration::from_secs(1));
+            }
+        }
+    }
+}
+
 fn analysis_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
     let worker_path = match std::env::current_exe()
         .ok()
@@ -355,11 +412,6 @@ fn analysis_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
                 .publish_analysis(&block, result)
         });
         let success = published.is_ok();
-        if published.is_ok_and(|deleted| deleted) {
-            if let (Ok(store), Ok(now)) = (shared.store.lock(), now_ms()) {
-                let _ = cleanup::drain_deletions(&store.db, &shared.directory, now);
-            }
-        }
         if !success {
             worker = None;
             if let Ok(mut store) = shared.store.lock() {
@@ -2366,13 +2418,6 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                                             &shared.directory,
                                             &prepared,
                                         );
-                                        if let Ok(store) = shared.store.lock() {
-                                            let _ = cleanup::drain_deletions(
-                                                &store.db,
-                                                &shared.directory,
-                                                now_ms()?,
-                                            );
-                                        }
                                         response
                                     }
                                     Ok(response) => {
@@ -3114,6 +3159,7 @@ impl Store {
              );",
         )
         .map_err(|error| error.to_string())?;
+        storage::init(&db)?;
         events::init(&db)?;
         moments::init(&db)?;
         cleanup::init(&db)?;
@@ -3257,7 +3303,12 @@ impl Store {
                 let known: bool = self
                     .db
                     .query_row(
-                        "SELECT EXISTS(SELECT 1 FROM audio_blocks WHERE media_path = ?1)",
+                        // Committed deletion intent is not live/orphan media.
+                        // Counting it again can create a sticky quota pause
+                        // during startup before background unlink completes.
+                        "SELECT EXISTS(SELECT 1 FROM audio_blocks WHERE media_path = ?1)
+                          OR EXISTS(SELECT 1 FROM media_deletion_jobs
+                            WHERE media_path=?1 AND completed_ms IS NULL)",
                         params![relative],
                         |row| row.get(0),
                     )
@@ -3266,8 +3317,9 @@ impl Store {
                     let bytes = entry.metadata().map_err(|error| error.to_string())?.len();
                     self.db
                         .execute(
-                            "INSERT OR REPLACE INTO orphan_media (media_path, bytes, detected_ms)
-                         VALUES (?1, ?2, ?3)",
+                            "INSERT INTO orphan_media (media_path, bytes, detected_ms)
+                         VALUES (?1, ?2, ?3) ON CONFLICT(media_path) DO UPDATE
+                         SET bytes=excluded.bytes,detected_ms=excluded.detected_ms",
                             params![relative, bytes as i64, now_ms()?],
                         )
                         .map_err(|error| error.to_string())?;
@@ -3520,8 +3572,7 @@ impl Store {
         let (used, limit): (i64, i64) = self
             .db
             .query_row(
-                "SELECT (SELECT coalesce(sum(bytes), 0) FROM audio_blocks) +
-                    (SELECT coalesce(sum(bytes), 0) FROM orphan_media), audio_limit_bytes
+                "SELECT (SELECT audio_bytes+orphan_bytes FROM storage_usage WHERE id=1), audio_limit_bytes
              FROM capture_guard WHERE id = 1",
                 [],
                 |row| Ok((row.get(0)?, row.get(1)?)),
@@ -3807,8 +3858,7 @@ impl Store {
                     tx.execute(
                         "UPDATE capture_guard SET audio_limit_bytes=?1,
                          pause_reason=CASE WHEN
-                           (SELECT coalesce(sum(bytes),0) FROM audio_blocks) +
-                           (SELECT coalesce(sum(bytes),0) FROM orphan_media) >= ?1
+                           (SELECT audio_bytes+orphan_bytes FROM storage_usage WHERE id=1) >= ?1
                            THEN 'storage_limit' ELSE pause_reason END
                          WHERE id=1",
                         params![limit_bytes as i64],
@@ -3998,8 +4048,7 @@ fn read_state(db: &Connection) -> Result<ServiceState, String> {
     db.query_row(
         "SELECT revision, enabled_intent, paused_intent, microphone_enabled, system_enabled,
                 (SELECT pause_reason IS NOT NULL FROM capture_guard WHERE id = 1),
-                (SELECT coalesce(sum(bytes),0) FROM audio_blocks) +
-                (SELECT coalesce(sum(bytes),0) FROM orphan_media),
+                (SELECT audio_bytes+orphan_bytes FROM storage_usage WHERE id=1),
                 (SELECT audio_limit_bytes FROM capture_guard WHERE id=1)
          FROM service_state WHERE id = 1",
         [],
