@@ -10,7 +10,6 @@ use std::io::{Read, Write};
 use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
-use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, SyncSender};
 use std::sync::{Arc, Mutex};
@@ -25,6 +24,7 @@ mod archive;
 mod capture;
 mod cleanup;
 mod cloud;
+mod coarse;
 mod diagnostics;
 mod events;
 mod ingestion;
@@ -36,6 +36,7 @@ mod model_pack;
 mod moments;
 mod playback;
 mod record;
+mod resources;
 mod retention;
 mod source_process;
 mod storage;
@@ -189,6 +190,7 @@ fn run() -> Result<(), String> {
         system_busy: AtomicBool::new(false),
         capture: Mutex::new(CaptureRuntime::default()),
         allow_capture: AtomicBool::new(capture_after_launch),
+        resources: resources::Governor::new(),
     });
     if models_present || speaker_present {
         let models = Arc::clone(&shared.models);
@@ -246,6 +248,16 @@ fn run() -> Result<(), String> {
                 thread::sleep(Duration::from_millis(50));
             }
         });
+    }
+    {
+        let shared = Arc::clone(&shared);
+        let stop = Arc::clone(&stop);
+        thread::spawn(move || resource_loop(shared, stop));
+    }
+    {
+        let shared = Arc::clone(&shared);
+        let stop = Arc::clone(&stop);
+        thread::spawn(move || coarse_loop(shared, stop));
     }
     let capture_thread = {
         let capture_shared = Arc::clone(&shared);
@@ -494,6 +506,146 @@ fn maintenance_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
     }
 }
 
+fn resource_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
+    let mut blocked_since = None;
+    while !stop.load(Ordering::Acquire) {
+        let mut backlog = resources::Backlog {
+            disk_free: fs2::available_space(&shared.directory).unwrap_or(0),
+            ..Default::default()
+        };
+        let now = now_ms().unwrap_or(0);
+        if let Ok(store) = shared.store.try_lock() {
+            blocked_since = None;
+            if let Ok((seconds,oldest))=store.db.query_row("SELECT coalesce(sum(frames),0)/48000,coalesce(min(started_ms),?1) FROM
+              (SELECT frames,started_ms FROM audio_blocks WHERE analysis_state='pending' AND analysis_attempts<3 AND media_path IS NOT NULL ORDER BY started_ms,id LIMIT 1024)",[now],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,i64>(1)?))) {
+                backlog.vad_seconds=seconds.max(0) as u64;backlog.oldest_vad_ms=now.saturating_sub(oldest).max(0) as u64;
+            }
+            if let Ok((seconds,oldest))=store.db.query_row("SELECT coalesce(sum(ended_ms-started_ms),0)/1000,coalesce(min(started_ms),?1) FROM
+              (SELECT started_ms,ended_ms FROM coarse_jobs WHERE state='pending' ORDER BY started_ms,id LIMIT 1024)",[now],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,i64>(1)?))) {
+                backlog.coarse_seconds=seconds.max(0) as u64;backlog.oldest_coarse_ms=now.saturating_sub(oldest).max(0) as u64;
+            }
+        } else {
+            backlog.store_wait_ms = blocked_since
+                .get_or_insert_with(Instant::now)
+                .elapsed()
+                .as_millis() as u64;
+        }
+        shared.resources.sample(backlog);
+        thread::sleep(Duration::from_secs(1));
+    }
+}
+
+fn coarse_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
+    let Ok(exe) = std::env::current_exe() else {
+        return;
+    };
+    let model = model_pack::installed_path(&shared.directory);
+    let mut worker: Option<analysis::AnalysisClient> = None;
+    let mut turn = 0usize;
+    while !stop.load(Ordering::Acquire) {
+        if worker.as_ref().is_some_and(|w| {
+            w.idle_for() > Duration::from_secs(30)
+                || shared.resources.unload(resources::Work::Coarse)
+        }) {
+            worker = None;
+        }
+        if !shared
+            .models
+            .lock()
+            .is_ok_and(|s| matches!(s.phase, ModelPhase::Ready))
+        {
+            shared.resources.no_work(resources::Work::Coarse);
+            thread::sleep(Duration::from_millis(500));
+            continue;
+        }
+        let available=shared.store.lock().ok().and_then(|s|s.db.query_row("SELECT EXISTS(SELECT 1 FROM coarse_jobs WHERE state='pending' AND available_ms<=?1)",[now_ms().unwrap_or(0)],|r|r.get::<_,bool>(0)).ok()).unwrap_or(false);
+        if !available {
+            shared.resources.no_work(resources::Work::Coarse);
+            thread::sleep(Duration::from_millis(500));
+            continue;
+        }
+        let Some(_permit) = shared.resources.try_admit(resources::Work::Coarse) else {
+            thread::sleep(Duration::from_millis(250));
+            continue;
+        };
+        let now = now_ms().unwrap_or(0);
+        let first = if turn % 2 == 0 {
+            "microphone"
+        } else {
+            "system"
+        };
+        let second = if first == "microphone" {
+            "system"
+        } else {
+            "microphone"
+        };
+        let newest = turn % 8 < 6;
+        turn = turn.wrapping_add(1);
+        let task = shared
+            .store
+            .lock()
+            .map_err(|e| e.to_string())
+            .and_then(|mut s| match coarse::take(&mut s.db, first, newest, now)? {
+                Some(job) => Ok(Some(job)),
+                None => coarse::take(&mut s.db, second, newest, now),
+            });
+        let job = match task {
+            Ok(Some(job)) => job,
+            _ => {
+                drop(_permit);
+                thread::sleep(Duration::from_millis(500));
+                continue;
+            }
+        };
+        let result = (|| -> Result<String, String> {
+            let parts =
+                coarse::manifest(&shared.store.lock().map_err(|e| e.to_string())?.db, &job)?;
+            let pcm = coarse::pcm(&shared.directory, &job, parts)?;
+            if worker.is_none() {
+                worker = Some(
+                    analysis::AnalysisClient::start(
+                        &exe.with_file_name("hear-worker"),
+                        "recognize",
+                        &model,
+                    )?
+                    .managed(&shared.resources, resources::Work::Coarse),
+                );
+            }
+            worker.as_mut().unwrap().request(
+                &job.source,
+                &job.session_id,
+                job.start,
+                &pcm,
+                true,
+                Duration::from_secs(60),
+                &|| {
+                    stop.load(Ordering::Acquire) || shared.resources.cancel(resources::Work::Coarse)
+                },
+            )
+        })();
+        match result {
+            Ok(text) => {
+                if let Ok(mut store) = shared.store.lock() {
+                    if coarse::publish(&mut store.db, &job, &text).is_err() {
+                        let _ = coarse::failed(
+                            &store.db,
+                            &job,
+                            "publish_failed",
+                            now_ms().unwrap_or(now),
+                        );
+                    }
+                }
+            }
+            Err(error) => {
+                worker = None;
+                if let Ok(store) = shared.store.lock() {
+                    let _ = coarse::failed(&store.db, &job, &error, now_ms().unwrap_or(now));
+                }
+            }
+        }
+    }
+}
+
 fn analysis_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
     let worker_path = match std::env::current_exe()
         .ok()
@@ -505,6 +657,12 @@ fn analysis_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
     let model_dir = model_pack::installed_path(&shared.directory);
     let mut worker: Option<analysis::AnalysisClient> = None;
     while !stop.load(Ordering::Acquire) {
+        if worker
+            .as_ref()
+            .is_some_and(|w| w.idle_for() > Duration::from_secs(60))
+        {
+            worker = None;
+        }
         let models_ready = shared
             .models
             .lock()
@@ -529,10 +687,20 @@ fn analysis_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
                 continue;
             }
         };
-        let result = (|| -> Result<analysis::WorkResult, String> {
+        let result = (|| -> Result<analysis::VadResult, String> {
             let pcm = decode_saved_block(&shared.directory, &block)?;
             if worker.is_none() {
-                let mut restarted = analysis::AnalysisClient::start(&worker_path, &model_dir)?;
+                worker = Some(analysis::AnalysisClient::start(
+                    &worker_path,
+                    "vad",
+                    &model_dir,
+                )?);
+            }
+            if worker.as_ref().unwrap().needs_replay(
+                &block.source,
+                &block.session_id,
+                block.sample_start,
+            ) {
                 let context = shared
                     .store
                     .lock()
@@ -540,18 +708,32 @@ fn analysis_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
                     .replay_context(&block)?;
                 for prior in context {
                     let prior_pcm = decode_saved_block(&shared.directory, &prior)?;
-                    let replay =
-                        restarted.analyze(&prior.source, prior.sample_start, &prior_pcm, false)?;
+                    let replay = worker.as_mut().unwrap().analyze(
+                        &prior.source,
+                        &prior.session_id,
+                        prior.sample_start,
+                        &prior_pcm,
+                        false,
+                    )?;
                     if replay.error.is_some() {
                         return Err("worker rejected replay audio".to_owned());
                     }
+                    // Replay can close speech that had not yet been published
+                    // when the worker died. Keep that suffix through the same
+                    // durable dedupe and cleanup boundary as current results.
+                    let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                    let tx = store.db.transaction().map_err(|e| e.to_string())?;
+                    coarse::enqueue(&tx, &prior, replay.segments)?;
+                    tx.commit().map_err(|e| e.to_string())?;
                 }
-                worker = Some(restarted);
             }
-            worker
-                .as_mut()
-                .unwrap()
-                .analyze(&block.source, block.sample_start, &pcm, block.flush)
+            worker.as_mut().unwrap().analyze(
+                &block.source,
+                &block.session_id,
+                block.sample_start,
+                &pcm,
+                block.flush,
+            )
         })();
         let published = result.and_then(|result| {
             shared
@@ -614,6 +796,15 @@ fn cloud_loop(
             }
             last_refresh = Instant::now();
         }
+        let work = if provider == hear_protocol::CloudProvider::Llm {
+            resources::Work::Llm
+        } else {
+            resources::Work::Asr
+        };
+        let Some(_permit) = shared.resources.try_admit(work) else {
+            thread::sleep(Duration::from_millis(500));
+            continue;
+        };
         let task = shared
             .store
             .lock()
@@ -622,10 +813,12 @@ fn cloud_loop(
         let task = match task {
             Ok(Some(task)) => task,
             Ok(None) => {
+                drop(_permit);
                 thread::sleep(Duration::from_secs(1));
                 continue;
             }
             Err(_) => {
+                drop(_permit);
                 thread::sleep(Duration::from_secs(2));
                 continue;
             }
@@ -658,79 +851,15 @@ fn cloud_loop(
     }
 }
 
-fn run_voice_worker(model_path: &Path, samples: &[f32]) -> Result<Vec<f32>, String> {
-    let worker = std::env::current_exe()
-        .map_err(|error| error.to_string())?
-        .with_file_name("hear-worker");
-    run_voice_worker_with_timeout(&worker, model_path, samples, Duration::from_secs(30))
-}
-
+#[cfg(test)]
 fn run_voice_worker_with_timeout(
     worker: &Path,
     model_path: &Path,
     samples: &[f32],
     timeout: Duration,
 ) -> Result<Vec<f32>, String> {
-    let deadline = Instant::now() + timeout;
-    let mut child = Command::new(worker)
-        .arg("embed")
-        .arg(model_path)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|_| "worker_failed".to_owned())?;
-    let mut input = child
-        .stdin
-        .take()
-        .ok_or_else(|| "worker_failed".to_owned())?;
-    let mut bytes = Vec::with_capacity(4 + samples.len() * 4);
-    bytes.extend_from_slice(&(samples.len() as u32).to_le_bytes());
-    for sample in samples {
-        bytes.extend_from_slice(&sample.to_le_bytes());
-    }
-    let (sender, receiver) = mpsc::sync_channel(1);
-    thread::spawn(move || {
-        let result = input
-            .write_all(&bytes)
-            .map_err(|_| "worker_failed".to_owned());
-        drop(input);
-        let _ = sender.send(result);
-    });
-    let mut write_result = None;
-    loop {
-        if let Ok(result) = receiver.try_recv() {
-            write_result = Some(result);
-        }
-        if matches!(write_result, Some(Err(_))) {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err("worker_failed".into());
-        }
-        match child.try_wait() {
-            Ok(Some(_)) => break,
-            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(50)),
-            _ => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err("worker_timeout".to_owned());
-            }
-        }
-    }
-    if write_result.is_none() {
-        write_result = receiver.recv_timeout(Duration::from_millis(500)).ok();
-    }
-    if !matches!(write_result, Some(Ok(()))) {
-        let _ = child.wait();
-        return Err("worker_failed".into());
-    }
-    let output = child
-        .wait_with_output()
-        .map_err(|_| "worker_failed".to_owned())?;
-    if !output.status.success() || output.stdout.len() > 8_192 {
-        return Err("worker_failed".to_owned());
-    }
-    serde_json::from_slice(&output.stdout).map_err(|_| "model_invalid".to_owned())
+    let mut worker = analysis::AnalysisClient::start(worker, "embed", model_path)?;
+    worker.request("microphone", "test", 0, samples, true, timeout, &|| false)
 }
 
 fn voice_error_code(error: &str) -> &'static str {
@@ -741,23 +870,59 @@ fn voice_error_code(error: &str) -> &'static str {
         "speaker audio unavailable" | "ASR source audio unavailable" => "audio_unavailable",
         "speaker audio range unsuitable" | "speaker audio level unsuitable" => "audio_quality",
         "worker_timeout" => "worker_timeout",
+        "resource_deferred" => "resource_deferred",
         "model_invalid" => "model_invalid",
         _ => "worker_failed",
     }
 }
 
 fn voice_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
+    let mut worker: Option<analysis::AnalysisClient> = None;
+    let mut matcher = knowledge::VoiceMatcher::default();
     while !stop.load(Ordering::Acquire) {
+        if worker.as_ref().is_some_and(|w| {
+            w.idle_for() > Duration::from_secs(30)
+                || shared.resources.unload(resources::Work::Voice)
+        }) {
+            worker = None;
+        }
+        if shared.resources.mode() != resources::Mode::Normal {
+            shared.resources.no_work(resources::Work::Voice);
+            matcher.clear();
+            thread::sleep(Duration::from_millis(500));
+            continue;
+        }
         // Matching saved vectors is a database operation. An unavailable
         // model must not hide identities after an upgrade or sample change.
         let now = now_ms().unwrap_or(0);
-        let matched = shared
-            .store
-            .lock()
-            .map_err(|error| error.to_string())
-            .and_then(|mut store| knowledge::match_one_ready(&mut store.db, now));
+        if shared.resources.unload(resources::Work::Voice) {
+            matcher.clear();
+        }
+        let matched = (|| -> Result<bool, String> {
+            let input =
+                knowledge::prepare_match(&shared.store.lock().map_err(|e| e.to_string())?.db)?;
+            let Some(input) = input else {
+                return Ok(false);
+            };
+            let selected = matcher.select(&input, |after| {
+                knowledge::match_sample_page(
+                    &shared.store.lock().map_err(|e| e.to_string())?.db,
+                    &input,
+                    after,
+                )
+            })?;
+            knowledge::publish_match(
+                &mut shared.store.lock().map_err(|e| e.to_string())?.db,
+                &input,
+                selected,
+                now,
+            )
+        })();
         match matched {
-            Ok(true) => continue,
+            Ok(true) => {
+                shared.resources.no_work(resources::Work::Voice);
+                continue;
+            }
             Err(_) => {
                 thread::sleep(Duration::from_secs(2));
                 continue;
@@ -769,9 +934,20 @@ fn voice_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
             .lock()
             .is_ok_and(|state| matches!(state.speaker_phase, ModelPhase::Ready));
         if !ready {
+            shared.resources.no_work(resources::Work::Voice);
             thread::sleep(Duration::from_secs(2));
             continue;
         }
+        let available=shared.store.lock().ok().and_then(|s|s.db.query_row("SELECT EXISTS(SELECT 1 FROM voice_observations WHERE state='pending' AND available_ms<=?1)",[now],|r|r.get::<_,bool>(0)).ok()).unwrap_or(false);
+        if !available {
+            shared.resources.no_work(resources::Work::Voice);
+            thread::sleep(Duration::from_secs(1));
+            continue;
+        }
+        let Some(_permit) = shared.resources.try_admit(resources::Work::Voice) else {
+            thread::sleep(Duration::from_millis(500));
+            continue;
+        };
         let Ok(_voice_gate) = shared.voice_outbound.lock() else {
             break;
         };
@@ -789,12 +965,34 @@ fn voice_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
                     .and_then(|store| {
                         events::voice_manifest(&store.db, &work.source, work.start, work.end)
                     });
-                let result = manifest
+                let result: Result<Vec<f32>, String> = manifest
                     .and_then(|(task, parts)| {
                         events::voice_pcm_16k(&shared.directory, &task, &parts)
                     })
                     .and_then(|pcm| {
-                        run_voice_worker(&model_pack::speaker_model_path(&shared.directory), &pcm)
+                        if worker.is_none() {
+                            let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+                            worker = Some(
+                                analysis::AnalysisClient::start(
+                                    &exe.with_file_name("hear-worker"),
+                                    "embed",
+                                    &model_pack::speaker_model_path(&shared.directory),
+                                )?
+                                .managed(&shared.resources, resources::Work::Voice),
+                            );
+                        }
+                        worker.as_mut().unwrap().request(
+                            "microphone",
+                            "voice",
+                            0,
+                            &pcm,
+                            true,
+                            Duration::from_secs(30),
+                            &|| {
+                                stop.load(Ordering::Acquire)
+                                    || shared.resources.cancel(resources::Work::Voice)
+                            },
+                        )
                     });
                 let mut event = LogEvent::simple("identity", LogLevel::Info, "voice_processed");
                 event.job_id = Some(work.segment_id);
@@ -821,6 +1019,7 @@ fn voice_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
                         }
                     }
                     Err(error) => {
+                        worker = None;
                         let code = voice_error_code(&error);
                         if let Ok(store) = shared.store.lock() {
                             let _ = knowledge::fail_voice(&store.db, work.segment_id, code, now);
@@ -831,8 +1030,14 @@ fn voice_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
                 }
                 shared.logs.emit(ClientKind::Worker, work.segment_id, event);
             }
-            Ok(None) => thread::sleep(Duration::from_secs(1)),
-            Err(_) => thread::sleep(Duration::from_secs(2)),
+            Ok(None) => {
+                drop(_permit);
+                thread::sleep(Duration::from_secs(1));
+            }
+            Err(_) => {
+                drop(_permit);
+                thread::sleep(Duration::from_secs(2));
+            }
         }
     }
 }
@@ -1073,6 +1278,9 @@ fn start_source(shared: &Arc<CoreState>, source: AudioSource) -> SourceSlot {
                 &source_stop,
                 &source_frames,
                 || {
+                    source_shared
+                        .resources
+                        .capture_progress(source_name(source));
                     if let Ok(mut capture) = source_shared.capture.lock() {
                         match source {
                             AudioSource::Microphone => {
@@ -1086,8 +1294,14 @@ fn start_source(shared: &Arc<CoreState>, source: AudioSource) -> SourceSlot {
                         }
                     }
                 },
+                || {
+                    source_shared
+                        .resources
+                        .capture_progress(source_name(source))
+                },
             )
         });
+        source_shared.resources.capture_stopped(source_name(source));
         let completed = result.is_ok();
         if result.as_ref().is_err_and(|error| error == "storage_low") {
             if let Ok(mut store) = source_shared.store.lock() {
@@ -1341,6 +1555,7 @@ struct CoreState {
     system_busy: AtomicBool,
     capture: Mutex<CaptureRuntime>,
     allow_capture: AtomicBool,
+    resources: Arc<resources::Governor>,
 }
 
 fn open_intent_gap(
@@ -1716,6 +1931,7 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
         "sha256:{:x}",
         Sha256::digest(serde_json::to_vec(&envelope.request).map_err(|error| error.to_string())?)
     );
+    let request_started = Instant::now();
     let explicit_quit = matches!(envelope.request, Request::Quit);
     let quit = explicit_quit
         || matches!(envelope.request, Request::YieldToLogin)
@@ -2553,22 +2769,27 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                 destination,
             } => {
                 let db_path = shared.directory.join("hear.sqlite");
-                let result = rusqlite::Connection::open(db_path)
-                    .map_err(|error| error.to_string())
-                    .and_then(|db| {
-                        db.busy_timeout(Duration::from_secs(5))
-                            .map_err(|error| error.to_string())?;
-                        archive::export(
-                            &db,
-                            &shared.directory,
-                            from_ms,
-                            to_ms,
-                            sources,
-                            include_audio,
-                            include_screenshots,
-                            &destination,
-                            &shared.cleanup_gate,
-                        )
+                let result = shared
+                    .resources
+                    .wait_admit(resources::Work::Export, Duration::from_secs(30))
+                    .and_then(|_permit| {
+                        rusqlite::Connection::open(db_path)
+                            .map_err(|error| error.to_string())
+                            .and_then(|db| {
+                                db.busy_timeout(Duration::from_secs(5))
+                                    .map_err(|error| error.to_string())?;
+                                archive::export(
+                                    &db,
+                                    &shared.directory,
+                                    from_ms,
+                                    to_ms,
+                                    sources,
+                                    include_audio,
+                                    include_screenshots,
+                                    &destination,
+                                    &shared.cleanup_gate,
+                                )
+                            })
                     });
                 match result {
                     Ok((audio_files, transcript_segments)) => Response::ExportComplete {
@@ -2995,10 +3216,12 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                             Some(seconds),
                             &AtomicBool::new(false),
                             &AtomicU64::new(0),
-                            || {},
+                            || shared.resources.capture_progress(source_name(source)),
+                            || shared.resources.capture_progress(source_name(source)),
                         )
                     })();
                     flag.store(false, Ordering::Release);
+                    shared.resources.capture_stopped(source_name(source));
                     let imported = ingest_session(shared, session_id, true);
                     let capture_result = capture_result.and_then(|stats| imported.map(|()| stats));
                     let end_result = shared
@@ -3110,6 +3333,10 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
         shared.logs.emit(ClientKind::Core, envelope.id, event);
     }
     let body = serde_json::to_vec(&response).map_err(|error| error.to_string())?;
+    shared.resources.request_latency_ms.fetch_max(
+        request_started.elapsed().as_millis() as u64,
+        Ordering::AcqRel,
+    );
     stream.write_all(&body).map_err(|error| error.to_string())?;
     Ok(quit && !matches!(response, Response::Error { .. }))
 }
@@ -3263,6 +3490,7 @@ impl Store {
         cleanup::init(&db)?;
         ingestion::init(&db)?;
         inventory::init(&db)?;
+        coarse::init(&db)?;
         archive::init(&db)?;
         Ok(Self { db })
     }
@@ -3356,6 +3584,7 @@ impl Store {
             "UPDATE audio_blocks SET analysis_state = 'pending' WHERE analysis_state = 'processing'",
             [],
         ).map_err(|error| error.to_string())?;
+        coarse::recover(&recovery)?;
         recovery.commit().map_err(|error| error.to_string())?;
 
         if !self.storage_available(directory)? {
@@ -3729,7 +3958,7 @@ impl Store {
     fn publish_analysis(
         &mut self,
         block: &PendingBlock,
-        result: analysis::WorkResult,
+        result: analysis::VadResult,
     ) -> Result<bool, String> {
         if result.error.is_some() {
             return Err("local speech worker rejected audio".to_owned());
@@ -3746,28 +3975,7 @@ impl Store {
         if !still_current {
             return Ok(false);
         }
-        for segment in result.segments {
-            if segment.end_sample <= segment.start_sample {
-                return Err("local speech worker returned an invalid time range".to_owned());
-            }
-            let started_ms = map_sample(&tx, &block.session_id, segment.start_sample)?;
-            let ended_ms = map_sample(&tx, &block.session_id, segment.end_sample)?;
-            tx.execute(
-                "INSERT INTO coarse_segments
-                 (id, block_id, session_id, source, started_ms, ended_ms, text, model_version)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'sensevoice-int8-2024-07-17')",
-                params![
-                    uuid::Uuid::new_v4().to_string(),
-                    block.id,
-                    block.session_id,
-                    block.source,
-                    started_ms,
-                    ended_ms,
-                    segment.text
-                ],
-            )
-            .map_err(|error| error.to_string())?;
-        }
+        coarse::enqueue(&tx, block, result.segments)?;
         tx.execute(
             "UPDATE audio_blocks SET analysis_state = 'complete', speech_active = ?2
              WHERE id = ?1 AND analysis_state = 'processing'",

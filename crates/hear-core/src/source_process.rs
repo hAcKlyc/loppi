@@ -51,6 +51,7 @@ pub fn supervise(
     stop: &AtomicBool,
     durable_frames: &AtomicU64,
     started: impl FnMut(),
+    progress: impl FnMut(),
 ) -> Result<record::RecordResult, String> {
     if seconds.is_some_and(|v| !(1..=60).contains(&v)) {
         return Err("invalid recording duration".into());
@@ -70,6 +71,7 @@ pub fn supervise(
         stop,
         durable_frames,
         started,
+        progress,
         Deadlines::default(),
     )
 }
@@ -96,6 +98,7 @@ fn monitor(
     stop: &AtomicBool,
     durable_frames: &AtomicU64,
     mut started: impl FnMut(),
+    mut progress: impl FnMut(),
     deadlines: Deadlines,
 ) -> Result<record::RecordResult, String> {
     let mut child = OwnedChild(child);
@@ -154,6 +157,7 @@ fn monitor(
                             last_frames = message.frames;
                             sealed = Instant::now();
                             durable_frames.store(last_frames, Ordering::Release);
+                            progress();
                         }
                         if message.finished {
                             final_result = Some(match message.error {
@@ -349,6 +353,7 @@ mod tests {
             config,
             &AtomicBool::new(stop),
             &AtomicU64::new(0),
+            || {},
             || {},
             Deadlines {
                 stop: Duration::from_millis(200),

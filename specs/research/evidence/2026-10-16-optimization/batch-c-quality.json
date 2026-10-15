@@ -1,0 +1,342 @@
+{
+  "fixture_source": "https://github.com/k2-fsa/sherpa-onnx/blob/master/scripts/sense-voice/run.sh",
+  "comparison_baseline": "27f9c2788be40376b201b14c4b01b7a7b270b941 signed worker copy",
+  "public_fixed_input": {
+    "zh": {
+      "exact_match": true,
+      "frames": 89472,
+      "vad_seconds": 0.6460962491109967,
+      "asr_seconds": 0.5515324156731367
+    },
+    "en": {
+      "exact_match": true,
+      "frames": 114432,
+      "vad_seconds": 0.018232166301459074,
+      "asr_seconds": 0.3823497500270605
+    },
+    "ja": {
+      "exact_match": true,
+      "frames": 115200,
+      "vad_seconds": 0.017274250276386738,
+      "asr_seconds": 0.41899458412081003
+    },
+    "ko": {
+      "exact_match": true,
+      "frames": 73728,
+      "vad_seconds": 0.013495832681655884,
+      "asr_seconds": 0.17988208308815956
+    },
+    "yue": {
+      "exact_match": true,
+      "frames": 82368,
+      "vad_seconds": 0.01430645864456892,
+      "asr_seconds": 0.1899795001372695
+    },
+    "zh_weak": {
+      "exact_match": true,
+      "frames": 89472,
+      "vad_seconds": 0.013770709279924631,
+      "asr_seconds": 0.24759429087862372
+    },
+    "zh_boundaries": {
+      "exact_match": true,
+      "frames": 628832,
+      "vad_seconds": 0.08084004139527678,
+      "asr_seconds": 1.4806507071480155
+    },
+    "silence": {
+      "exact_match": true,
+      "frames": 160000,
+      "vad_seconds": 0.021552250254899263,
+      "asr_seconds": 0
+    }
+  },
+  "voice_and_model_memory": {
+    "voice_baseline_seconds": [
+      0.22630787454545498,
+      0.18477337481454015,
+      0.1843719999305904
+    ],
+    "voice_reused_seconds": [
+      0.9101299582980573,
+      0.06669929064810276,
+      0.0662675416097045,
+      0.0665229163132608,
+      0.06643083365634084,
+      0.06629274971783161,
+      0.066128124948591,
+      0.06625074986368418,
+      0.06610750034451485,
+      0.06604816671460867
+    ],
+    "voice_exact_match": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ],
+    "voice_idle_resource": "24602,783068625,27561791,129761280,114934216,147456,0,5709454568,5703407479",
+    "coarse_worst_input_seconds": [
+      1.9936894169077277,
+      1.7246390841901302,
+      1.6836104998365045,
+      1.6861224169842899,
+      1.683999584056437,
+      1.6886304998770356,
+      1.6820280416868627,
+      1.7023977916687727,
+      1.6877161674201488,
+      1.6860836250707507,
+      1.6846417081542313,
+      1.6842162907123566,
+      1.6924639577046037,
+      1.6998853753320873,
+      1.6841998337768018,
+      1.68940454069525,
+      1.6838297499343753,
+      1.6856506671756506,
+      1.6836791248060763,
+      1.7061021248809993,
+      1.6840317090973258,
+      1.7006650413386524,
+      1.689424500335008,
+      1.685087834019214,
+      1.6835782499983907,
+      1.7013615830801427,
+      1.6891491659916937,
+      1.6855773329734802,
+      1.6841320828534663,
+      1.6907372497953475
+    ],
+    "coarse_idle_resource": "24605,100813175416,284145625,642760704,395740048,557056,0,593239366016,593098666370",
+    "coarse_footprint_peak_bytes": 640811920,
+    "coarse_footprint_first_ten_seconds_max": 640779152,
+    "coarse_footprint_last_ten_seconds_max": 395740048,
+    "scope": "100ms process observation; 30 repeated maximum 30s recognition inputs; private model weights read-only; public upstream zh WAV; no release quality claim"
+  },
+  "pipeline_recovery": {
+    "normal": {
+      "elapsed_seconds": 16.73680816590786,
+      "source_audio_seconds": 335.52,
+      "blocks": [
+        [
+          "microphone",
+          "complete",
+          34
+        ],
+        [
+          "system",
+          "complete",
+          34
+        ]
+      ],
+      "jobs": [
+        [
+          "complete",
+          60
+        ]
+      ],
+      "vad_killed": false,
+      "sources_exact_equal": true,
+      "segment_count": {
+        "microphone": 30,
+        "system": 30
+      },
+      "failures": 0
+    },
+    "vad_crash": {
+      "elapsed_seconds": 16.825558417011052,
+      "source_audio_seconds": 335.52,
+      "blocks": [
+        [
+          "microphone",
+          "complete",
+          34
+        ],
+        [
+          "system",
+          "complete",
+          34
+        ]
+      ],
+      "jobs": [
+        [
+          "complete",
+          60
+        ]
+      ],
+      "vad_killed": true,
+      "sources_exact_equal": true,
+      "segment_count": {
+        "microphone": 30,
+        "system": 30
+      },
+      "failures": 0,
+      "same_as_uninterrupted": {
+        "microphone": true,
+        "system": true
+      }
+    }
+  },
+  "limitations": [
+    "Short public input regression, not annotated real-world quality acceptance.",
+    "100ms footprint sampling can miss sub-sample peaks; not 24h or low-memory-machine evidence.",
+    "Timing is observational, not controlled cold/warm benchmark.",
+    "Full process-tree and GUI metrics belong to final combined validation."
+  ],
+  "continuous_speech_recovery": {
+    "jobs_restart": {
+      "sources": {
+        "microphone": {
+          "spans_ms": [
+            [
+              152,
+              20416
+            ],
+            [
+              20416,
+              30416
+            ],
+            [
+              30416,
+              50448
+            ],
+            [
+              50448,
+              59984
+            ]
+          ],
+          "no_holes_or_overlap": true
+        },
+        "system": {
+          "spans_ms": [
+            [
+              152,
+              20416
+            ],
+            [
+              20416,
+              30416
+            ],
+            [
+              30416,
+              50448
+            ],
+            [
+              50448,
+              59984
+            ]
+          ],
+          "no_holes_or_overlap": true
+        }
+      },
+      "elapsed_seconds": 6.301092290785164,
+      "jobs": [
+        [
+          "complete",
+          8
+        ]
+      ]
+    },
+    "legacy_upgrade": {
+      "sources": {
+        "microphone": {
+          "spans_ms": [
+            [
+              152,
+              20416
+            ],
+            [
+              20416,
+              30416
+            ],
+            [
+              30416,
+              50448
+            ],
+            [
+              50448,
+              59984
+            ]
+          ],
+          "no_holes_or_overlap": true
+        },
+        "system": {
+          "spans_ms": [
+            [
+              152,
+              20416
+            ],
+            [
+              20416,
+              30416
+            ],
+            [
+              30416,
+              50448
+            ],
+            [
+              50448,
+              59984
+            ]
+          ],
+          "no_holes_or_overlap": true
+        }
+      },
+      "elapsed_seconds": 5.785300833173096,
+      "jobs": [
+        [
+          "complete",
+          6
+        ]
+      ]
+    }
+  },
+  "native": {
+    "core_sha256": "e1aaa20637c70b5eb659dfe6442016bc09ab7a87d9a0582d5df374ff98808289",
+    "signed_deep_strict": true,
+    "scope": "Final Batch C signed candidate; isolated SCK/Tap 8s each source; no long-run or real-quality claim",
+    "sck": {
+      "microphone": {
+        "type": "record_test_result",
+        "id": "72fe4c09-ea3b-4691-9eaf-06d95aff26da",
+        "source": "microphone",
+        "blocks": 2,
+        "frames": 384000,
+        "dropped_packets": 0
+      },
+      "system": {
+        "type": "record_test_result",
+        "id": "613d5cc9-e7df-4f94-935e-8cd36229c842",
+        "source": "system",
+        "blocks": 2,
+        "frames": 385920,
+        "dropped_packets": 0
+      }
+    },
+    "tap": {
+      "microphone": {
+        "type": "record_test_result",
+        "id": "33bb31a4-5c92-4a34-b76a-620aa958fa1f",
+        "source": "microphone",
+        "blocks": 2,
+        "frames": 384000,
+        "dropped_packets": 0
+      },
+      "system": {
+        "type": "record_test_result",
+        "id": "3f29f02d-3804-4909-9add-e26e1ef28f04",
+        "source": "system",
+        "blocks": 2,
+        "frames": 383488,
+        "dropped_packets": 0
+      }
+    }
+  }
+}

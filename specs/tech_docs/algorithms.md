@@ -41,9 +41,11 @@
 
 ## 4. VAD 与本地粗转录
 
-[`analysis_loop`](../../crates/hear-core/src/main.rs) 从已封口待分析块读取音频，经 [`AnalysisClient`](../../crates/hear-core/src/analysis.rs) 重采样到 16 kHz，按来源与采样号送给独立常驻 [`hear-worker`](../../crates/hear-worker/src/main.rs)。worker 用 **Silero VAD** 检测声音，再对收束的语音窗调用 **SenseVoice INT8** 本地粗转。VAD 以 512 样本小窗输入；两路各有会话状态。非连续采样号或 `flush` 会重建/结束对应状态，防止断流两侧被误连。
+[`analysis_loop`](../../crates/hear-core/src/main.rs) 从已封口待分析块读取音频，经 [`AnalysisClient`](../../crates/hear-core/src/analysis.rs) 逐块重采样到 16 kHz，按来源、session 与采样号送给轻量 `hear-worker vad`。**Silero VAD** 模型与阈值不变，仍以 512 样本小窗输入、约 20 秒主动 flush。非连续坐标或新 session 重建对应状态；核心分别为两条来源回放最近连续人声尾部，不能用“进程已重启”替代另一条流的恢复。
 
-当前 worker 为持续有声设约 20 秒主动 flush，避免仅靠 VAD 的 `max_speech_duration=30s` 误以为已有硬上限。结果是 `start_sample/end_sample + text + speech_active`，核心将样本位置转为真实时刻、来源和模型版本后写 `coarse_segments`。粗转可以错字、缺字或空文字；人声检测和音频事实仍独立存在。worker 不直接写数据库，变慢时由核心持久待办追赶，录音热路径不等待它。
+VAD 返回样本区间与 `speech_active`，核心在同一事务写入 `coarse_jobs` 并完成原有保留判定。未处理/失败保守保留，句尾晚到时区间先保护上一封块，无人声回收不等待重型识别。粗转由独立 `coarse_loop` 调度 `hear-worker recognize`：从已有 Opus 封块按原逐块重采样重建完全相同的输入，使用 **SenseVoice INT8**，发布到原 `coarse_segments`，模型/阈值未替换。
+
+`coarse_jobs` 持有稳定任务身份；重复回放不重复发布已确认前缀。来源交替且定期服务最老待办，资源延期不消耗错误次数，异常失败有上限退避。清理使任务失效，迟到 VAD 与识别结果重新校验墓碑或任务状态。空文字/粗转失败不改变已确立的人声事实，worker 永不直接写数据库。进程与 IPC 有输入上限、统一请求截止时间、取消及父进程生命周期绑定。
 
 ## 5. 从粗转到候选，再到事件
 
@@ -107,3 +109,5 @@ Mark、评论和主动截图是独立的 `moments`，按用户触发或选择的
 | 本机匿名合组及全局人物门槛 | [`knowledge.rs`](../../crates/hear-core/src/knowledge.rs) | 小样本原型值，跨设备误认/漏认尚未冻结。 |
 
 这些参数的改变须同时检查输入/模型版本、旧任务与修订重放、真实时间对齐、用户可见结果和代表性音频质量。单个案例的说话人组数吻合，不等于逐句分段准确，也不等于跨事件人物识别准确。
+
+恢复重放输出并非全是旧结果：20秒硬分段在新起点上可能包含尚未提交的尾部。core 对重放和当前结果使用同一持久 coarse_jobs 前缀去重/清理裁决；升级前 coarse_segments 的已发表毫秒端点也参与确认水位。重放只补任务，不覆盖已完成块的 VAD/保留事实。

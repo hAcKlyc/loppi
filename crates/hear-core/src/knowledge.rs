@@ -267,6 +267,11 @@ pub fn init(db: &Connection) -> Result<(), String> {
         [],
     )
     .map_err(|error| error.to_string())?;
+    crate::storage::migrate(db,"voice_retry_v1","ALTER TABLE voice_observations ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE voice_observations ADD COLUMN available_ms INTEGER NOT NULL DEFAULT 0;
+      CREATE INDEX voice_observations_retry ON voice_observations(available_ms,updated_ms,segment_id) WHERE state='pending';
+      CREATE INDEX voice_samples_model_page ON voice_samples(model_version,id) WHERE revoked_ms IS NULL;
+      CREATE INDEX voice_observations_unmatched ON voice_observations(matched_generation,updated_ms,segment_id) WHERE state='ready';")?;
     Ok(())
 }
 
@@ -1386,8 +1391,8 @@ pub fn take_voice(db: &mut Connection, now: i64) -> Result<Option<VoiceWork>, St
     let row: Option<(String, String, i64, i64)> = tx
         .query_row(
             "SELECT segment_id,source,started_ms,ended_ms FROM voice_observations
-         WHERE state='pending' ORDER BY updated_ms,segment_id LIMIT 1",
-            [],
+         WHERE state='pending' AND available_ms<=?1 ORDER BY available_ms,updated_ms,segment_id LIMIT 1",
+            [now],
             |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
         )
         .optional()
@@ -1444,17 +1449,16 @@ pub fn take_voice(db: &mut Connection, now: i64) -> Result<Option<VoiceWork>, St
 }
 
 pub fn fail_voice(db: &Connection, id: Uuid, error_code: &str, now: i64) -> Result<(), String> {
+    let deferred = error_code == "resource_deferred";
     let code = match error_code {
         "audio_unavailable" | "audio_quality" | "model_invalid" | "worker_failed"
-        | "worker_timeout" => error_code,
+        | "worker_timeout" | "resource_deferred" => error_code,
         _ => "worker_failed",
     };
-    db.execute(
-        "UPDATE voice_observations SET state='unavailable',error_code=?2,
-      updated_ms=?3 WHERE segment_id=?1 AND state='processing'",
-        params![id.to_string(), code, now],
-    )
-    .map_err(|error| error.to_string())?;
+    let transient = matches!(code, "worker_failed" | "worker_timeout") || deferred;
+    db.execute("UPDATE voice_observations SET state=CASE WHEN ?4 AND (attempts<3 OR ?5) THEN 'pending' ELSE 'unavailable' END,
+      attempts=attempts+CASE WHEN ?5 THEN 0 ELSE 1 END,available_ms=?3+min(300000,5000*(1<<min(attempts,6))),error_code=?2,
+      updated_ms=?3 WHERE segment_id=?1 AND state='processing'",params![id.to_string(),code,now,transient,deferred]).map_err(|e|e.to_string())?;
     Ok(())
 }
 
@@ -1989,28 +1993,154 @@ fn apply_group_binding(
     Ok(())
 }
 
-pub fn match_one_ready(db: &mut Connection, now: i64) -> Result<bool, String> {
-    let tx = db.transaction().map_err(|error| error.to_string())?;
-    let generation: i64 = tx
+pub struct MatchInput {
+    generation: i64,
+    id: String,
+    bytes: Vec<u8>,
+    model: String,
+    denied: std::collections::HashSet<String>,
+}
+pub fn prepare_match(db: &Connection) -> Result<Option<MatchInput>, String> {
+    let generation: i64 = db
         .query_row(
             "SELECT generation FROM identity_state WHERE id=1",
             [],
             |r| r.get(0),
         )
-        .map_err(|error| error.to_string())?;
-    let candidate: Option<(String, Vec<u8>, String)> = tx
+        .map_err(|e| e.to_string())?;
+    let row: Option<(String, Vec<u8>, String)> = db
         .query_row(
             "SELECT segment_id,vector,model_version FROM voice_observations
-       WHERE state='ready' AND matched_generation<?1
-       ORDER BY updated_ms,segment_id LIMIT 1",
-            params![generation],
+      WHERE state='ready' AND matched_generation<?1 ORDER BY matched_generation,updated_ms,segment_id LIMIT 1",
+            [generation],
             |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         )
         .optional()
-        .map_err(|error| error.to_string())?;
-    let Some((id, bytes, model)) = candidate else {
-        return Ok(false);
+        .map_err(|e| e.to_string())?;
+    let Some((id, bytes, model)) = row else {
+        return Ok(None);
     };
+    let denied = db
+        .prepare("SELECT person_id FROM denied_matches WHERE segment_id=?1")
+        .map_err(|e| e.to_string())?
+        .query_map([&id], |r| r.get::<_, String>(0))
+        .map_err(|e| e.to_string())?
+        .collect::<Result<_, _>>()
+        .map_err(|e| e.to_string())?;
+    Ok(Some(MatchInput {
+        generation,
+        id,
+        bytes,
+        model,
+        denied,
+    }))
+}
+pub struct SampleRow {
+    id: String,
+    person: String,
+    bytes: Vec<u8>,
+}
+pub fn match_sample_page(
+    db: &Connection,
+    input: &MatchInput,
+    after: &str,
+) -> Result<Vec<SampleRow>, String> {
+    db.prepare("SELECT id,person_id,vector FROM voice_samples WHERE revoked_ms IS NULL AND model_version=?1 AND id>?2 ORDER BY id LIMIT 256").map_err(|e|e.to_string())?
+      .query_map(params![input.model,after],|r|Ok(SampleRow{id:r.get(0)?,person:r.get(1)?,bytes:r.get(2)?})).map_err(|e|e.to_string())?.collect::<Result<_,_>>().map_err(|e|e.to_string())
+}
+#[derive(Default)]
+pub struct VoiceMatcher {
+    key: Option<(i64, String)>,
+    samples: Vec<(String, Vec<f32>)>,
+}
+impl VoiceMatcher {
+    pub fn clear(&mut self) {
+        self.key = None;
+        self.samples.clear();
+        self.samples.shrink_to_fit();
+    }
+    /// At most 4096 decoded samples are cached (about 3 MiB of vectors).
+    /// Larger libraries are scored in bounded pages, never truncated.
+    pub fn select(
+        &mut self,
+        input: &MatchInput,
+        mut page: impl FnMut(&str) -> Result<Vec<SampleRow>, String>,
+    ) -> Result<Option<String>, String> {
+        let query = decode_vector(&input.bytes)?;
+        let mut ranking: Vec<(String, f32)> = Vec::with_capacity(3);
+        let mut score = |person: &str, sample: &[f32]| {
+            if input.denied.contains(person) {
+                return;
+            }
+            let value = query.iter().zip(sample).map(|(a, b)| a * b).sum::<f32>();
+            if let Some(prior) = ranking.iter_mut().find(|(id, _)| id == person) {
+                prior.1 = prior.1.max(value);
+            } else {
+                ranking.push((person.to_owned(), value));
+            }
+            ranking.sort_by(|a, b| b.1.total_cmp(&a.1));
+            ranking.truncate(2);
+        };
+        let key = (input.generation, input.model.clone());
+        if self.key.as_ref() == Some(&key) {
+            for (person, sample) in &self.samples {
+                score(person, sample);
+            }
+        } else {
+            self.clear();
+            let mut after = String::new();
+            let mut cacheable = true;
+            loop {
+                let rows = page(&after)?;
+                let finished = rows.len() < 256;
+                for row in rows {
+                    after = row.id;
+                    let sample = decode_vector(&row.bytes)?;
+                    score(&row.person, &sample);
+                    if cacheable {
+                        if self.samples.len() < 4096 {
+                            self.samples.push((row.person, sample));
+                        } else {
+                            self.samples.clear();
+                            cacheable = false;
+                        }
+                    }
+                }
+                if finished {
+                    break;
+                }
+            }
+            if cacheable {
+                self.key = Some(key);
+            }
+        }
+        Ok(ranking
+            .first()
+            .filter(|(_, value)| {
+                *value >= PERSON_MATCH_MIN
+                    && ranking
+                        .get(1)
+                        .is_none_or(|(_, other)| *value - *other >= PERSON_MATCH_MARGIN)
+            })
+            .map(|(person, _)| person.clone()))
+    }
+}
+
+pub fn publish_match(
+    db: &mut Connection,
+    input: &MatchInput,
+    selected: Option<String>,
+    now: i64,
+) -> Result<bool, String> {
+    let tx = db.transaction().map_err(|e| e.to_string())?;
+    let current:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM voice_observations WHERE segment_id=?1 AND state='ready' AND matched_generation<?2 AND vector=?3 AND model_version=?4)
+      AND (SELECT generation FROM identity_state WHERE id=1)=?2",params![input.id,input.generation,input.bytes,input.model],|r|r.get(0)).map_err(|e|e.to_string())?;
+    if !current {
+        return Ok(false);
+    }
+    let id = &input.id;
+    let bytes = &input.bytes;
+    let generation = input.generation;
     let segment = Uuid::parse_str(&id).map_err(|error| error.to_string())?;
     // A generation changes when samples or denials change. Re-evaluate the
     // old automatic answer within this transaction, including the case where
@@ -2051,40 +2181,7 @@ pub fn match_one_ready(db: &mut Connection, now: i64) -> Result<bool, String> {
         if let Some(person) = manual_person {
             apply_group_binding(&tx, &group, None, &person, "automatic", now)?;
         } else if manual == 0 {
-            let query = decode_vector(&bytes)?;
-            let mut stmt = tx
-                .prepare(
-                    "SELECT s.person_id,s.vector FROM voice_samples s
-              WHERE s.revoked_ms IS NULL AND s.model_version=?1 AND NOT EXISTS(
-                SELECT 1 FROM denied_matches d WHERE d.segment_id=?2 AND d.person_id=s.person_id)",
-                )
-                .map_err(|error| error.to_string())?;
-            let samples = stmt
-                .query_map(params![model, id], |r| {
-                    Ok((r.get::<_, String>(0)?, r.get::<_, Vec<u8>>(1)?))
-                })
-                .map_err(|error| error.to_string())?
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(|error| error.to_string())?;
-            let mut scores: std::collections::HashMap<String, f32> =
-                std::collections::HashMap::new();
-            for (person, sample) in samples {
-                let sample = decode_vector(&sample)?;
-                let score = query.iter().zip(sample).map(|(a, b)| a * b).sum::<f32>();
-                scores
-                    .entry(person)
-                    .and_modify(|prior| *prior = prior.max(score))
-                    .or_insert(score);
-            }
-            let mut ranking: Vec<_> = scores.into_iter().collect();
-            ranking.sort_by(|a, b| b.1.total_cmp(&a.1));
-            let selected = ranking.first().filter(|(_, score)| {
-                *score >= PERSON_MATCH_MIN
-                    && ranking
-                        .get(1)
-                        .is_none_or(|(_, other)| *score - *other >= PERSON_MATCH_MARGIN)
-            });
-            let selected_id = selected.map(|(person, _)| person.clone());
+            let selected_id = selected;
             if let Some(person) = selected_id {
                 // A provider label is an anonymous hint, not proof that all
                 // its utterances have one voice. Name only the utterance with
@@ -2101,6 +2198,16 @@ pub fn match_one_ready(db: &mut Connection, now: i64) -> Result<bool, String> {
     .map_err(|error| error.to_string())?;
     tx.commit().map_err(|error| error.to_string())?;
     Ok(true)
+}
+
+#[cfg(test)]
+pub fn match_one_ready(db: &mut Connection, now: i64) -> Result<bool, String> {
+    let Some(input) = prepare_match(db)? else {
+        return Ok(false);
+    };
+    let selected =
+        VoiceMatcher::default().select(&input, |after| match_sample_page(db, &input, after))?;
+    publish_match(db, &input, selected, now)
 }
 
 pub fn correct_text(
@@ -2295,6 +2402,121 @@ mod tests {
     use crate::cloud::AsrUtterance;
     use crate::events;
     use hear_protocol::{CloudProvider, EventSources};
+
+    #[test]
+    fn transient_voice_failures_retry_but_pressure_does_not_consume_attempts() {
+        let db = crate::Store::new(Connection::open_in_memory().unwrap())
+            .unwrap()
+            .db;
+        let id = Uuid::new_v4();
+        db.execute("INSERT INTO voice_observations(segment_id,speaker_key,source,started_ms,ended_ms,state,updated_ms) VALUES(?1,'speaker','microphone',0,3000,'processing',0)",[id.to_string()]).unwrap();
+        fail_voice(&db, id, "resource_deferred", 100).unwrap();
+        let row: (String, i64, i64) = db
+            .query_row(
+                "SELECT state,attempts,available_ms FROM voice_observations",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(row, ("pending".into(), 0, 5100));
+        db.execute("UPDATE voice_observations SET state='processing'", [])
+            .unwrap();
+        fail_voice(&db, id, "worker_timeout", 200).unwrap();
+        let row: (String, i64) = db
+            .query_row("SELECT state,attempts FROM voice_observations", [], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
+            .unwrap();
+        assert_eq!(row, ("pending".into(), 1));
+        db.execute("UPDATE voice_observations SET state='processing'", [])
+            .unwrap();
+        fail_voice(&db, id, "audio_quality", 300).unwrap();
+        assert_eq!(
+            db.query_row("SELECT state FROM voice_observations", [], |r| r
+                .get::<_, String>(0))
+                .unwrap(),
+            "unavailable"
+        );
+    }
+    #[test]
+    fn voice_scoring_cache_is_bounded_and_never_truncates_a_large_library() {
+        let mut vector = vec![0.; VOICE_DIM];
+        vector[0] = 1.;
+        let input = MatchInput {
+            generation: 1,
+            id: "q".into(),
+            bytes: encode_vector(&vector).unwrap(),
+            model: VOICE_MODEL_VERSION.into(),
+            denied: Default::default(),
+        };
+        let mut matcher = VoiceMatcher::default();
+        let mut calls = 0;
+        let result = matcher
+            .select(&input, |after| {
+                calls += 1;
+                let start = if after.is_empty() {
+                    0
+                } else {
+                    after.parse::<usize>().unwrap() + 1
+                };
+                Ok((start..(start + 256).min(4100))
+                    .map(|i| {
+                        let mut v = vec![0.; VOICE_DIM];
+                        v[usize::from(i != 4099)] = 1.;
+                        SampleRow {
+                            id: format!("{i:06}"),
+                            person: if i == 4099 { "winner" } else { "other" }.into(),
+                            bytes: encode_vector(&v).unwrap(),
+                        }
+                    })
+                    .collect())
+            })
+            .unwrap();
+        assert_eq!(result, Some("winner".into()));
+        assert!(calls > 16);
+        assert!(matcher.samples.len() <= 4096);
+        assert!(matcher.key.is_none());
+        let page = |after: &str| -> Result<Vec<SampleRow>, String> {
+            assert!(after.is_empty());
+            Ok(vec![SampleRow {
+                id: "a".into(),
+                person: "winner".into(),
+                bytes: input.bytes.clone(),
+            }])
+        };
+        matcher.select(&input, page).unwrap();
+        assert_eq!(
+            matcher
+                .select(&input, |_| panic!("cache should be reused"))
+                .unwrap(),
+            Some("winner".into())
+        );
+    }
+    #[test]
+    fn stale_voice_match_generation_cannot_publish() {
+        let mut db = crate::Store::new(Connection::open_in_memory().unwrap())
+            .unwrap()
+            .db;
+        let id = Uuid::new_v4();
+        let mut v = vec![0.; VOICE_DIM];
+        v[0] = 1.;
+        let bytes = encode_vector(&v).unwrap();
+        db.execute("INSERT INTO voice_observations(segment_id,speaker_key,source,started_ms,ended_ms,state,vector,model_version,updated_ms)
+          VALUES(?1,'s','microphone',0,3000,'ready',?2,?3,0)",params![id.to_string(),bytes,VOICE_MODEL_VERSION]).unwrap();
+        let input = prepare_match(&db).unwrap().unwrap();
+        db.execute("UPDATE identity_state SET generation=generation+1", [])
+            .unwrap();
+        assert!(!publish_match(&mut db, &input, Some("obsolete".into()), 1).unwrap());
+        assert_eq!(
+            db.query_row(
+                "SELECT matched_generation FROM voice_observations",
+                [],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+            0
+        );
+    }
 
     #[test]
     fn content_revision_survives_javascript_number_round_trip() {

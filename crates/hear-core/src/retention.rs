@@ -96,7 +96,7 @@ fn resolve_block(
     let has_segment: bool = tx
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM coarse_segments WHERE session_id=?1 AND source=?2
-             AND started_ms<?4 AND ended_ms>?3)",
+             AND started_ms<?4 AND ended_ms>?3) OR EXISTS(SELECT 1 FROM coarse_jobs WHERE session_id=?1 AND source=?2 AND started_ms<?4 AND ended_ms>?3)",
             params![session_id, source, started_ms, ended_ms],
             |row| row.get(0),
         )

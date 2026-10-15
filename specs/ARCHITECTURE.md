@@ -29,7 +29,7 @@ flowchart LR
 | CLI | [`crates/hear-cli/src/main.rs`](../crates/hear-cli/src/main.rs) | 查询、控制、修订、搜索、导出与清理的完整命令入口；与 GUI 共用请求协议。 |
 | 核心 | [`crates/hear-core/src/main.rs`](../crates/hear-core/src/main.rs) | 唯一 SQLite 写入者；持有采集监督、时间映射、媒体、两条云队列、声纹任务和权限/容量状态。登录项与按需服务争同一个 owner 锁。 |
 | 采集来源 | [`source_process.rs`](../crates/hear-core/src/source_process.rs)、[`record.rs`](../crates/hear-core/src/record.rs) | 每个来源以同一签名核心可执行文件的私有子命令运行；持有原生设备、有界缓冲及封块写入。只发布不可变媒体和 core 管理的 ingestion 日志，不访问业务库。 |
-| 本地推理 | [`crates/hear-worker/src/main.rs`](../crates/hear-worker/src/main.rs) | 常驻 Silero VAD + SenseVoice 粗转；另以受控 `embed` 子进程提取 CampPlus 声纹。只返回计算结果，不拥有数据库。 |
+| 本地推理 | [`crates/hear-worker/src/main.rs`](../crates/hear-worker/src/main.rs) | 轻量 `vad` 与重型 `recognize` 独立进程；`embed` 按需复用 CampPlus。三者共用有界帧协议，父 core 消失退出；只计算，不拥有数据库。 |
 | IPC 协议 | [`crates/hear-protocol/src/lib.rs`](../crates/hear-protocol/src/lib.rs) | 请求/响应、稳定 ID、预期修订、重复提交标识和协议版本。当前工作树版本为 15。 |
 | macOS 桥接 | [`src-tauri/native/`](../src-tauri/native/privacy.m)、[`crates/hear-core/native/`](../crates/hear-core/native/system_audio.m) | 登录项、权限、截图/OCR、系统声 API 等原生操作；业务数据仍由核心裁决。 |
 
@@ -69,8 +69,11 @@ flowchart LR
 flowchart TD
   C[两路回调] --> B[48 kHz 单声道短封块与真实时刻]
   B --> R[独立保留判断]
-  B --> V[16 kHz VAD + SenseVoice 粗转]
-  V --> K[候选区间]
+  B --> V[16 kHz 轻量 VAD]
+  V --> R
+  V --> J[持久 coarse_jobs]
+  J --> S[SenseVoice 粗转]
+  S --> K[候选区间]
   K --> Q1[持久 LLM 队列]
   Q1 --> E[命名事件 / 未整理投影]
   E --> Q2[持久 ASR 队列]
@@ -84,7 +87,17 @@ flowchart TD
   M[Mark / 评论 / 主动截图] --> T
 ```
 
-采集、保留、粗转、候选、两条云队列、声纹与 OCR 不是同一个阻塞链。采集热路径不能等待网络或模型；本地计算积压与云端失败由持久状态表达。`analysis_loop`、`cloud_loop`、`voice_loop`、`capture_supervisor` 分别在[核心](../crates/hear-core/src/main.rs)；事件算法见[核心处理算法](tech_docs/algorithms.md)。
+采集、保留、粗转、候选、两条云队列、声纹与 OCR 不是同一个阻塞链。采集热路径不能等待网络或模型；本地计算积压与云端失败由持久状态表达。`analysis_loop`、`coarse_loop`、`cloud_loop`、`voice_loop`、`capture_supervisor` 分别在[核心](../crates/hear-core/src/main.rs)；事件算法见[核心处理算法](tech_docs/algorithms.md)。
+
+VAD 先事务提交 `coarse_jobs` 的来源/session/16 kHz 样本区间与 `speech_active`，保留判断同时提交，不等待 SenseVoice。粗转任务从原有不可变封块重建输入，使用与 VAD 相同的逐块重采样；不新增另一份音频库。每来源独立追踪 worker 游标，重建或不连续时回放该来源最近连续人声尾部，已发布区间前缀不重复入队。清理使相交待办失效，发布前复核任务当前状态；all_data 墓碑也约束迟到 VAD 区间。空文字/粗转失败不回写为无人声。
+
+### 3.1 资源准入与模型寿命
+
+[`resources.rs`](../crates/hear-core/src/resources.rs) 是 core 内部的计算预算 owner，不拥有用户录制意图。每秒读取 macOS 内存压力/热状态/低功耗及电源状态、core 与直接子进程 physical footprint、可靠封块进展、最多 1024 项待办的音频秒下界/最老年龄、磁盘和控制延迟。warning 持续 10 秒降载，critical 即刻进入严重状态；健康持续 60 秒进入恢复，再 60 秒恢复正常，避免反复加载模型。
+
+8 GiB 档后台软/严重水位为 768/1024 MiB，≥16 GiB 为 1024/1536 MiB；粗转预留峰值 640 MiB、声纹 256 MiB，两者在低内存档不同时计算。粗转观测超过 768 MiB、声纹超过 384 MiB 或严重压力时，核心通过可取消 RPC 终止并回收该 worker，持久延期不消耗错误次数。输入时长仍独立限制。粗转/声纹空闲 30 秒释放，VAD 空闲 60 秒释放；不周期重启 core。后台水位是采样驱动的工程预算，并非 OS 强制内存上限。
+
+正常情况下两条云 provider 各自一个准入槽，压力下共享一次重任务机会；导出有独立预留和有界等待。VAD 积压时优先人声判断。粗转双来源交替，三个最新机会后保留一个最老机会；历史任务不会一直压在队尾。GUI/WebView、完整回调队列指标和组合态长时测量仍由最终读取/观测批次补齐，不将当前后台预算扩大为全应用内存承诺。
 
 ## 4. 采集与生命周期
 
@@ -132,3 +145,5 @@ flowchart TD
 `unilogs` 将各模块的结构化、脱敏事件写到受限滚动 JSONL；日志不是状态事实，也不包含原音频、正文、截图、向量或密钥。[日志实现](../crates/hear-core/src/unilogs.rs)。资源采样脚本按进程/PID 记录 CPU、内存、磁盘及能耗计数；进程存活或内存平台并不能替代音频覆盖、可回放和缺口检查。[`measure_macos.sh`](../scripts/measure_macos.sh)、[`report_macos_resources.py`](../scripts/report_macos_resources.py)。
 
 当前源码的短音频链路曾跑通，但 Batch 6 尚有说话人误并/漏认、设备/睡眠、长时资源、最终 GUI/CLI 和公证安装门槛。具体进度以 [plan.md](../plan.md) 和 [PRD 执行台账](prd/prd_0.1.md) 为准；文档存在不表示门槛通过。
+
+资源准入在普通推理边界让位：等待超过 1 秒、策略允许且释放当前空闲驻留后满足峰值预算的另一个模型可促使空闲模型卸载；活动推理不因公平性被中断。无任务、模型未就绪或被压力策略延期的任务不能占住让位权，低内存机器也不会被反复抢占的粗转饿死声纹。

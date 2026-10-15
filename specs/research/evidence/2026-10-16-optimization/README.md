@@ -10,3 +10,5 @@ All write tests use temporary isolated data. No personal recordings, transcripts
 - `batch-a-review.md`: fixed review contract, one confirmed repair, verification and independent review decisions.
 
 Native device behavior, long recording coverage, pressure/memory plateaus, speech holdout quality and whole UI integration remain separate mandatory gates. These database/media checks do not establish them.
+
+Batch C：`batch-c-review.md` 记录修复与最终三视角门禁；`batch-c-quality.json` 为公开固定输入、声纹复用、模型footprint、双源恢复/旧升级及最终签名原生短链聚合。170项core回归通过，不替代最终长时/硬件/真实质量验收。

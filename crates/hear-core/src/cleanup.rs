@@ -709,6 +709,14 @@ pub fn apply(
         )
         .map_err(|error| error.to_string())?;
     }
+    // Both raw-media and all-data clearing invalidate in-flight recognition
+    // derived from the selected audio. Publication rechecks this persistent state.
+    tx.execute(
+        "UPDATE coarse_jobs SET state='cancelled' WHERE started_ms<?2 AND ended_ms>?1
+      AND ((source='microphone' AND ?3&1!=0) OR (source='system' AND ?3&2!=0))",
+        params![scope.start, scope.end, scope.mask],
+    )
+    .map_err(|e| e.to_string())?;
     if scope.mode == CleanupMode::AllData {
         crate::moments::clear_all_data(tx, scope.start, scope.end, now)?;
         let gaps = {
@@ -926,6 +934,7 @@ pub fn apply(
             "voice_observations",
             "precise_segments",
             "coarse_segments",
+            "coarse_jobs",
         ] {
             let sql = format!(
                 "DELETE FROM {table} WHERE started_ms<?2 AND ended_ms>?1

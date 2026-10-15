@@ -17,59 +17,44 @@ const MAX_ACTIVE_SAMPLES: u64 = RATE as u64 * 20;
 #[derive(Deserialize)]
 struct WorkHeader {
     source: String,
+    session: String,
     start_sample: u64,
     samples: usize,
     flush: bool,
 }
 
 #[derive(Serialize)]
-struct WorkResult {
-    segments: Vec<RecognizedSegment>,
+struct VadResult {
+    segments: Vec<SpeechRegion>,
     speech_active: bool,
     error: Option<String>,
 }
 
 #[derive(Serialize)]
-struct RecognizedSegment {
+struct SpeechRegion {
     start_sample: u64,
     end_sample: u64,
-    text: String,
 }
 
 struct SourceSession {
+    session: String,
     vad: VoiceActivityDetector,
     base_sample: u64,
     next_sample: u64,
     speech_started_sample: Option<u64>,
 }
 
-struct Worker {
-    recognizer: OfflineRecognizer,
+struct VadWorker {
     vad_config: VadModelConfig,
     sessions: HashMap<String, SourceSession>,
 }
 
-impl Worker {
+impl VadWorker {
     fn new(model_dir: &Path) -> Result<Self, String> {
         let vad_path = model_dir.join("silero_vad.onnx");
-        let sense_dir = model_dir.join("sensevoice");
-        let model_path = sense_dir.join("model.int8.onnx");
-        let tokens_path = sense_dir.join("tokens.txt");
-        for path in [&vad_path, &model_path, &tokens_path] {
-            if !path.is_file() {
-                return Err(format!("missing model asset: {}", path.display()));
-            }
+        if !vad_path.is_file() {
+            return Err("missing VAD asset".to_owned());
         }
-        let mut recognizer_config = OfflineRecognizerConfig::default();
-        recognizer_config.model_config.sense_voice = OfflineSenseVoiceModelConfig {
-            model: Some(model_path.to_string_lossy().into_owned()),
-            language: Some("auto".to_owned()),
-            use_itn: true,
-        };
-        recognizer_config.model_config.tokens = Some(tokens_path.to_string_lossy().into_owned());
-        recognizer_config.model_config.num_threads = 2;
-        let recognizer = OfflineRecognizer::create(&recognizer_config)
-            .ok_or_else(|| "SenseVoice model could not load".to_owned())?;
         let vad_config = VadModelConfig {
             silero_vad: SileroVadModelConfig {
                 model: Some(vad_path.to_string_lossy().into_owned()),
@@ -84,31 +69,28 @@ impl Worker {
             ..Default::default()
         };
         Ok(Self {
-            recognizer,
             vad_config,
             sessions: HashMap::new(),
         })
     }
 
-    fn process(&mut self, header: WorkHeader, samples: &[f32]) -> WorkResult {
+    fn process(&mut self, header: WorkHeader, samples: &[f32]) -> VadResult {
         let source = header.source;
         if !matches!(source.as_str(), "microphone" | "system") {
-            return WorkResult {
+            return VadResult {
                 segments: vec![],
                 speech_active: false,
                 error: Some("invalid_source".to_owned()),
             };
         }
-        if self
-            .sessions
-            .get(&source)
-            .is_some_and(|session| session.next_sample != header.start_sample)
-        {
+        if self.sessions.get(&source).is_some_and(|session| {
+            session.next_sample != header.start_sample || session.session != header.session
+        }) {
             self.sessions.remove(&source);
         }
         if !self.sessions.contains_key(&source) {
             let Some(vad) = VoiceActivityDetector::create(&self.vad_config, 60.0) else {
-                return WorkResult {
+                return VadResult {
                     segments: vec![],
                     speech_active: false,
                     error: Some("vad_unavailable".to_owned()),
@@ -117,6 +99,7 @@ impl Worker {
             self.sessions.insert(
                 source.clone(),
                 SourceSession {
+                    session: header.session,
                     vad,
                     base_sample: header.start_sample,
                     next_sample: header.start_sample,
@@ -133,7 +116,7 @@ impl Worker {
             session.vad.accept_waveform(chunk);
             chunk_end = chunk_end.saturating_add(chunk.len() as u64);
             let before = segments.len();
-            Self::drain(&self.recognizer, session, &mut segments);
+            Self::drain(session, &mut segments);
             if session.vad.detected() {
                 if segments.len() != before || session.speech_started_sample.is_none() {
                     session.speech_started_sample = Some(chunk_end);
@@ -142,7 +125,7 @@ impl Worker {
                     .is_some_and(|start| chunk_end.saturating_sub(start) >= MAX_ACTIVE_SAMPLES)
                 {
                     session.vad.flush();
-                    Self::drain(&self.recognizer, session, &mut segments);
+                    Self::drain(session, &mut segments);
                     session.speech_started_sample = None;
                 }
             } else {
@@ -152,7 +135,7 @@ impl Worker {
         session.next_sample += samples.len() as u64;
         if header.flush {
             session.vad.flush();
-            Self::drain(&self.recognizer, session, &mut segments);
+            Self::drain(session, &mut segments);
         }
         // `detected` describes the VAD state at the end of this block. An
         // utterance can already have been drained by then. Count only drained
@@ -166,34 +149,22 @@ impl Worker {
         if header.flush {
             self.sessions.remove(&source);
         }
-        WorkResult {
+        VadResult {
             segments,
             speech_active,
             error: None,
         }
     }
 
-    fn drain(
-        recognizer: &OfflineRecognizer,
-        session: &mut SourceSession,
-        output: &mut Vec<RecognizedSegment>,
-    ) {
+    fn drain(session: &mut SourceSession, output: &mut Vec<SpeechRegion>) {
         while let Some(segment) = session.vad.front() {
             let start_sample = session
                 .base_sample
                 .saturating_add(segment.start().max(0) as u64);
             let end_sample = start_sample + segment.n().max(0) as u64;
-            let stream = recognizer.create_stream();
-            stream.accept_waveform(RATE as i32, segment.samples());
-            recognizer.decode(&stream);
-            let text = stream
-                .get_result()
-                .map(|result| result.text)
-                .unwrap_or_default();
-            output.push(RecognizedSegment {
+            output.push(SpeechRegion {
                 start_sample,
                 end_sample,
-                text,
             });
             session.vad.pop();
         }
@@ -220,8 +191,8 @@ fn read_header<R: Read>(input: &mut R) -> Result<Option<WorkHeader>, String> {
         .map_err(|error| error.to_string())
 }
 
-fn serve(model_dir: &Path) -> Result<(), String> {
-    let mut worker = Worker::new(model_dir)?;
+fn serve_vad(model_dir: &Path) -> Result<(), String> {
+    let mut worker = VadWorker::new(model_dir)?;
     let stdin = io::stdin();
     let mut input = stdin.lock();
     let stdout = io::stdout();
@@ -230,26 +201,14 @@ fn serve(model_dir: &Path) -> Result<(), String> {
         if header.samples > MAX_SAMPLES {
             return Err("worker request audio exceeded limit".to_owned());
         }
-        let mut raw = vec![0u8; header.samples * 4];
-        input
-            .read_exact(&mut raw)
-            .map_err(|error| error.to_string())?;
-        let samples: Vec<f32> = raw
-            .chunks_exact(4)
-            .map(|bytes| f32::from_le_bytes(bytes.try_into().unwrap()))
-            .collect();
+        let samples = read_samples(&mut input, header.samples)?;
         let result = worker.process(header, &samples);
-        let body = serde_json::to_vec(&result).map_err(|error| error.to_string())?;
-        output
-            .write_all(&(body.len() as u32).to_le_bytes())
-            .and_then(|()| output.write_all(&body))
-            .and_then(|()| output.flush())
-            .map_err(|error| error.to_string())?;
+        write_result(&mut output, &result)?;
     }
     Ok(())
 }
 
-fn embed(model_path: &Path) -> Result<(), String> {
+fn serve_embeddings(model_path: &Path) -> Result<(), String> {
     let config = SpeakerEmbeddingExtractorConfig {
         model: Some(model_path.to_string_lossy().into_owned()),
         num_threads: 1,
@@ -259,59 +218,130 @@ fn embed(model_path: &Path) -> Result<(), String> {
     let extractor = SpeakerEmbeddingExtractor::create(&config)
         .ok_or_else(|| "speaker model could not load".to_owned())?;
     let mut input = io::stdin().lock();
-    let mut count = [0u8; 4];
-    input
-        .read_exact(&mut count)
-        .map_err(|error| error.to_string())?;
-    let count = u32::from_le_bytes(count) as usize;
-    if !(RATE as usize * 2..=RATE as usize * 15).contains(&count) {
-        return Err("speaker sample duration invalid".to_owned());
+    let mut output = io::stdout().lock();
+    while let Some(header) = read_header(&mut input)? {
+        if !(RATE as usize * 2..=RATE as usize * 15).contains(&header.samples) {
+            return Err("speaker sample duration invalid".into());
+        }
+        let samples = read_samples(&mut input, header.samples)?;
+        let stream = extractor
+            .create_stream()
+            .ok_or_else(|| "speaker stream unavailable".to_owned())?;
+        stream.accept_waveform(RATE as i32, &samples);
+        stream.input_finished();
+        if !extractor.is_ready(&stream) {
+            return Err("speaker sample is too short".to_owned());
+        }
+        let embedding = extractor
+            .compute(&stream)
+            .ok_or_else(|| "speaker embedding failed".to_owned())?;
+        if embedding.len() < 64 || embedding.iter().any(|value| !value.is_finite()) {
+            return Err("speaker embedding invalid".to_owned());
+        }
+        write_result(&mut output, &embedding)?;
     }
-    let mut bytes = vec![0u8; count * 4];
-    input
-        .read_exact(&mut bytes)
-        .map_err(|error| error.to_string())?;
-    let samples: Vec<f32> = bytes
+    Ok(())
+}
+
+fn recognizer(model_dir: &Path) -> Result<OfflineRecognizer, String> {
+    let mut config = OfflineRecognizerConfig::default();
+    config.model_config.sense_voice = OfflineSenseVoiceModelConfig {
+        model: Some(
+            model_dir
+                .join("sensevoice/model.int8.onnx")
+                .to_string_lossy()
+                .into_owned(),
+        ),
+        language: Some("auto".to_owned()),
+        use_itn: true,
+    };
+    config.model_config.tokens = Some(
+        model_dir
+            .join("sensevoice/tokens.txt")
+            .to_string_lossy()
+            .into_owned(),
+    );
+    config.model_config.num_threads = 2;
+    OfflineRecognizer::create(&config).ok_or_else(|| "SenseVoice model could not load".to_owned())
+}
+
+fn read_samples(input: &mut impl Read, count: usize) -> Result<Vec<f32>, String> {
+    if count > MAX_SAMPLES {
+        return Err("worker audio exceeded limit".into());
+    }
+    let mut raw = vec![0; count * 4];
+    input.read_exact(&mut raw).map_err(|e| e.to_string())?;
+    let samples: Vec<f32> = raw
         .chunks_exact(4)
-        .map(|piece| f32::from_le_bytes(piece.try_into().unwrap()))
+        .map(|v| f32::from_le_bytes(v.try_into().unwrap()))
         .collect();
-    if samples.iter().any(|sample| !sample.is_finite()) {
-        return Err("speaker sample is invalid".to_owned());
+    if samples.iter().any(|v| !v.is_finite()) {
+        return Err("nonfinite worker audio".into());
     }
-    let stream = extractor
-        .create_stream()
-        .ok_or_else(|| "speaker stream unavailable".to_owned())?;
-    stream.accept_waveform(RATE as i32, &samples);
-    stream.input_finished();
-    if !extractor.is_ready(&stream) {
-        return Err("speaker sample is too short".to_owned());
+    Ok(samples)
+}
+
+fn write_result(output: &mut impl Write, result: &impl Serialize) -> Result<(), String> {
+    let body = serde_json::to_vec(result).map_err(|e| e.to_string())?;
+    output
+        .write_all(&(body.len() as u32).to_le_bytes())
+        .and_then(|()| output.write_all(&body))
+        .and_then(|()| output.flush())
+        .map_err(|e| e.to_string())
+}
+
+fn serve_recognizer(model_dir: &Path) -> Result<(), String> {
+    let recognizer = recognizer(model_dir)?;
+    let mut input = io::stdin().lock();
+    let mut output = io::stdout().lock();
+    while let Some(header) = read_header(&mut input)? {
+        let samples = read_samples(&mut input, header.samples)?;
+        let stream = recognizer.create_stream();
+        stream.accept_waveform(RATE as i32, &samples);
+        recognizer.decode(&stream);
+        let text = stream.get_result().map(|r| r.text).unwrap_or_default();
+        write_result(&mut output, &text)?;
     }
-    let embedding = extractor
-        .compute(&stream)
-        .ok_or_else(|| "speaker embedding failed".to_owned())?;
-    if embedding.len() < 64 || embedding.iter().any(|value| !value.is_finite()) {
-        return Err("speaker embedding invalid".to_owned());
-    }
-    serde_json::to_writer(io::stdout().lock(), &embedding).map_err(|error| error.to_string())
+    Ok(())
 }
 
 fn run() -> Result<(), String> {
-    let args: Vec<_> = std::env::args().skip(1).collect();
+    let mut args: Vec<_> = std::env::args().skip(1).collect();
+    if args.len() >= 2 && args[args.len() - 2] == "--parent-pid" {
+        let parent: i32 = args
+            .pop()
+            .unwrap()
+            .parse()
+            .map_err(|_| "invalid parent PID")?;
+        args.pop();
+        if parent <= 1 {
+            return Err("invalid parent PID".into());
+        }
+        std::thread::spawn(move || {
+            loop {
+                if unsafe { libc::getppid() } != parent {
+                    std::process::exit(70);
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+        });
+    }
     match args.as_slice() {
-        [command, model_dir] if command == "serve" => serve(Path::new(model_dir)),
-        [command, model_path] if command == "embed" => embed(Path::new(model_path)),
+        [command, model_dir] if command == "vad" => serve_vad(Path::new(model_dir)),
+        [command, model_dir] if command == "recognize" => serve_recognizer(Path::new(model_dir)),
+        [command, model_path] if command == "embed" => serve_embeddings(Path::new(model_path)),
         [command, model_dir, wav] if command == "self-test" => {
-            let worker = Worker::new(Path::new(model_dir))?;
+            let recognizer = recognizer(Path::new(model_dir))?;
             let wave = Wave::read(wav).ok_or_else(|| "cannot read test WAV".to_owned())?;
-            let stream = worker.recognizer.create_stream();
+            let stream = recognizer.create_stream();
             stream.accept_waveform(wave.sample_rate(), wave.samples());
-            worker.recognizer.decode(&stream);
+            recognizer.decode(&stream);
             let result = stream.get_result().ok_or_else(|| "no result".to_owned())?;
             println!("{}", result.text);
             Ok(())
         }
         _ => Err(
-            "usage: hear-worker serve MODEL_DIR | embed MODEL_PATH | self-test MODEL_DIR WAV"
+            "usage: hear-worker vad MODEL_DIR | recognize MODEL_DIR | embed MODEL_PATH | self-test MODEL_DIR WAV"
                 .to_owned(),
         ),
     }
