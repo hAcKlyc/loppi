@@ -120,10 +120,12 @@ flowchart LR
 
 ## 7. 工程交接
 
-内部提交：A `d9fbd57`，B `27f9c27`，C `1ba00e6`，D `ba7e90e`；基线 `2c81ebd49601c85d89aa3529555aeddaa98d63f5`。最终集成修复和证据在本报告对应提交中，完整工作状态以台账为准。
+内部提交：A `d9fbd57`，B `27f9c27`，C `1ba00e6`，D `ba7e90e`，最终集成 `d6d57f4`；基线 `2c81ebd49601c85d89aa3529555aeddaa98d63f5`。最终集成修复和证据已提交，完整工作状态以台账为准。
 
-本机候选包：`target/release/bundle/macos/hear-final.app`。它没有安装到 `/Applications`。模型、录音和凭据不包含在应用包内。
+本机候选包：`target/release/bundle/macos/hear-final.app`。默认 `target/release/bundle/macos/hear.app` 已同步为同一签名候选，避免打开中间版本；两个包的核心 SHA 均为 `c341c02d…`。没有安装到 `/Applications`。模型、录音和凭据不包含在应用包内。
 
 升级使用追加式迁移，但不能据此直接降级二进制：旧 core 不认识新 journal、粗转待办和保留语义。回退必须先停组件、保存一致的数据库和媒体备份，再恢复匹配版本的整套备份。
+
+隔离试录进程均已结束，试录环境声文件已清理，只留无音频/文字正文的统计证据。
 
 与本任务无关的既有兔子素材压缩包、playground 文件、前轮产品研究及旧研究证据保持原样，未混入代码提交。

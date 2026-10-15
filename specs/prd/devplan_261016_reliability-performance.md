@@ -105,3 +105,5 @@ scope: "落实稳定性与性能研究方案的全部 P0/P1；保持现有交互
 - 2026-10-16：最终architecture确认F06原生枚举返回值单位错误（3个孩子漏计），主Agent在原适配层按PID数量修复；真实驻留子进程测试先红后绿，签名包独立计量中位比0.994/0.996。199workspace/24前端/4Python资源与采样、双路原生/锁库/强杀、实际模型恢复复验通过。旧候选环境声观察于约3614s主动结束，未完成2h，不作为最终资源门槛。算法文档已同步保留/重放语义，等待最终定向复核。
 
 - 2026-10-16：最终architecture完整候选+F06定向PASS，adversarial F06定向PASS，requirements R1与adversarial A1/onset保持PASS；三方代码门禁闭环。最终签名CLI四组通过，数据/代码哈希一致；实际资源采样标准median已校准0.994/0.996。工程实现形成内部稳定点，全部mandatory实机/长时门槛仍未通过；报告见 research/2026-10-16-hear-optimization-delivery.md，状态继续in-progress，不可发布。
+
+- 2026-10-16：最终集成内部提交 `d6d57f4411aece4a9c20bfa886cdac5b9178953a`。默认 release/bundle/macos/hear.app 与 hear-final.app 已同步同一最终签名候选并deep/strict验证；旧的本任务中间包移除，未安装到Applications。所有隔离试录进程已结束，旧环境声试录目录已清理，仅保留无正文统计证据。交接时整体状态仍in-progress：最终版本已知参考长跑、macOS13/8GiB、真实标注留出集与完整设备矩阵需要后续实际验收，不得发布。

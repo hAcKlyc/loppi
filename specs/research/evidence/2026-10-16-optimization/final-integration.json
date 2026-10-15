@@ -1,6 +1,6 @@
 {
   "baseline": "2c81ebd49601c85d89aa3529555aeddaa98d63f5",
-  "candidate": "ba7e90e plus final integration repairs; source hashes below",
+  "candidate": "d6d57f4411aece4a9c20bfa886cdac5b9178953a",
   "scope": "isolated data only; fixed public speech fixtures; no personal content or live cloud requests",
   "source_sha256": {
     "crates/hear-cli/src/main.rs": "24b219be988902e22678282a647d0a6ca0cf5f40145e59b4c59aea1942d59f35",
@@ -54,7 +54,10 @@
     "worker_sha256": "f58bd020ef89ce3f3b2c2fda7d9b5d186b22ac2051d98a24b328f02eb5ce657d",
     "desktop_sha256": "3d34e6d49b50056f2000f946f7820ebd36dcafbeab6eab7dee7df0db24df71e7",
     "codesign_deep_strict": "PASS",
-    "deployment_target": "13.0"
+    "deployment_target": "13.0",
+    "default_app": "target/release/bundle/macos/hear.app",
+    "default_app_identical_core_sha256": "c341c02d9853b35df566929959932104cd5cd58eeca32741a26c5600d629b756",
+    "default_app_codesign_deep_strict": "PASS"
   },
   "checks": {
     "workspace": {
@@ -1932,5 +1935,6 @@
     "final_architecture": "PASS full candidate + focused F06 repair",
     "release_acceptance": "UNVERIFIED; in-progress; do not publish",
     "post_verdict_formatting": "Removed trailing whitespace in verification script only; production code unchanged."
-  }
+  },
+  "cleanup": "All isolated recording processes stopped; superseded ambient data removed after numeric audit; personal data/core intent unchanged; obsolete task-created intermediate apps removed."
 }
