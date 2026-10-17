@@ -81,13 +81,6 @@ p {
 	min-height: 600px;
 	overflow: hidden;
 }
-.app-window-drag {
-	position: absolute;
-	top: 0;
-	left: 0;
-	width: var(--layout-sidebar-width);
-	height: 40px;
-}
 .sidebar {
 	display: flex;
 	flex-direction: column;
@@ -179,9 +172,12 @@ p {
 }
 .timeline-page,
 .page-container {
-	max-width: var(--layout-content-max);
+	--page-inline-padding: var(--space-13);
+	--page-top-padding: var(--space-13);
+	--page-max-width: var(--layout-content-max);
+	max-width: var(--page-max-width);
 	margin: 0 auto;
-	padding: var(--space-13) var(--space-13) 110px;
+	padding: var(--page-top-padding) var(--page-inline-padding) 110px;
 }
 .timeline-header {
 	display: flex;
@@ -331,8 +327,10 @@ p {
 	color: var(--color-brand);
 }
 .timeline-page {
-	max-width: var(--layout-timeline-max);
-	padding: var(--space-10) var(--space-10) var(--space-13);
+	--page-inline-padding: var(--space-10);
+	--page-top-padding: var(--space-10);
+	--page-max-width: var(--layout-timeline-max);
+	padding: var(--page-top-padding) var(--page-inline-padding) var(--space-13);
 }
 .timeline-page .date-header {
 	min-height: 80px;
@@ -1901,8 +1899,7 @@ body.floating-body .float-wrap {
 	}
 	.timeline-page,
 	.page-container {
-		padding-left: var(--space-9);
-		padding-right: var(--space-9);
+		--page-inline-padding: var(--space-9);
 	}
 	.detail-drawer {
 		width: 88vw;
@@ -2027,4 +2024,48 @@ body.floating-body .float-wrap {
 .entry-mode-options .active {
 	background: var(--color-brand-soft);
 	color: var(--color-brand);
+}
+
+/* The native self-only drag target includes the existing header whitespace.
+   Children keep their own hit targets, so text and controls never inherit drag. */
+.timeline-header,
+.page-heading {
+	position: relative;
+	z-index: 1;
+}
+.timeline-header {
+	z-index: var(--layer-calendar);
+}
+.timeline-header::before,
+.page-heading::before {
+	content: "";
+	position: absolute;
+	z-index: -1;
+	top: calc(-1 * var(--page-top-padding));
+	left: calc(
+		-1 *
+		(
+			var(--page-inline-padding) +
+			max(
+				0px,
+				(100vw - var(--layout-sidebar-width) - var(--page-max-width)) /
+				2
+			)
+		)
+	);
+	right: calc(
+		-1 *
+		(
+			var(--page-inline-padding) +
+			max(
+				0px,
+				(100vw - var(--layout-sidebar-width) - var(--page-max-width)) /
+				2
+			)
+		)
+	);
+	bottom: calc(-1 * var(--space-8));
+}
+.page-heading::before {
+	bottom: 0;
 }

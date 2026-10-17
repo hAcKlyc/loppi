@@ -130,8 +130,8 @@ export function TimelineView({
 
 	return (
 		<div className="timeline-page">
-			<header className="timeline-header">
-				<div className="date-header">
+			<header className="timeline-header" data-tauri-drag-region>
+				<div className="date-header" data-tauri-drag-region>
 					<div className="calendar-anchor">
 						<button
 							ref={calendarButton}
@@ -157,9 +157,13 @@ export function TimelineView({
 							/>
 						)}
 					</div>
-					<nav className="date-track" aria-label="按日期浏览">
+					<nav
+						className="date-track"
+						aria-label="按日期浏览"
+						data-tauri-drag-region
+					>
 						{dates.length === 0 && (
-							<div className="date-current">
+							<div data-tauri-drag-region className="date-current">
 								<strong>暂无记录</strong>
 							</div>
 						)}
@@ -167,7 +171,12 @@ export function TimelineView({
 							const key = dateInput(day);
 							const selected = key === selectedKey;
 							return selected ? (
-								<div key={key} className="date-current" aria-current="date">
+								<div
+									key={key}
+									data-tauri-drag-region
+									className="date-current"
+									aria-current="date"
+								>
 									<strong>{dateTitle(day)}</strong>
 									<span>
 										{weekdays[day.getDay()]}

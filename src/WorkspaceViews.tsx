@@ -171,7 +171,7 @@ export function QueueView({
 	};
 	return (
 		<section className="page-container">
-			<div className="page-heading">
+			<div className="page-heading" data-tauri-drag-region>
 				<h1>处理队列</h1>
 				<button
 					type="button"
@@ -388,7 +388,7 @@ export function PeopleView({
 	};
 	return (
 		<section className="page-container">
-			<div className="page-heading">
+			<div className="page-heading" data-tauri-drag-region>
 				<h1>人物库</h1>
 				<button
 					type="button"
@@ -871,7 +871,7 @@ export function SettingsView({
 	};
 	return (
 		<section className="page-container settings-page">
-			<div className="page-heading">
+			<div className="page-heading" data-tauri-drag-region>
 				<h1>设置</h1>
 			</div>
 			<h2>常驻入口</h2>

@@ -609,17 +609,18 @@ function App() {
 	});
 	return (
 		<div className="app-shell">
-			<div
-				className="app-window-drag"
-				data-tauri-drag-region
-				aria-hidden="true"
-			/>
-			<aside className="sidebar">
-				<div className="brand">
-					<img className="brand-symbol" src={appIcon} alt="" />
+			<aside className="sidebar" data-tauri-drag-region>
+				<div className="brand" data-tauri-drag-region>
+					<img
+						className="brand-symbol"
+						src={appIcon}
+						alt=""
+						draggable={false}
+						data-tauri-drag-region
+					/>
 					<strong>hear</strong>
 				</div>
-				<nav aria-label="主导航">
+				<nav aria-label="主导航" data-tauri-drag-region>
 					{(
 						[
 							[
