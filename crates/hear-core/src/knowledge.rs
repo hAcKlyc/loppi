@@ -52,6 +52,16 @@ pub fn init(db: &Connection) -> Result<(), String> {
            PRIMARY KEY(speaker_scope,speaker_label)
          );
          CREATE INDEX IF NOT EXISTS speaker_groups_group ON speaker_groups(group_id);
+         CREATE TABLE IF NOT EXISTS local_speaker_assignments (
+           segment_id TEXT PRIMARY KEY REFERENCES precise_segments(id) ON DELETE CASCADE,
+           group_id TEXT NOT NULL,
+           updated_ms INTEGER NOT NULL
+         );
+         CREATE TRIGGER IF NOT EXISTS precise_delete_local_speaker AFTER DELETE ON precise_segments BEGIN
+           DELETE FROM local_speaker_assignments WHERE segment_id=old.id;
+         END;
+         CREATE INDEX IF NOT EXISTS local_speaker_assignments_group
+           ON local_speaker_assignments(group_id);
          CREATE TABLE IF NOT EXISTS voice_samples (
            id TEXT PRIMARY KEY,
            person_id TEXT NOT NULL REFERENCES people(id),
@@ -85,9 +95,18 @@ pub fn init(db: &Connection) -> Result<(), String> {
            ON speaker_bindings(current_segment_id) WHERE state='active';
          DROP VIEW IF EXISTS precise_identity_projection;
          DROP VIEW IF EXISTS precise_speaker_projection;
+         DROP VIEW IF EXISTS precise_group_membership;
+         CREATE VIEW precise_group_membership AS
+           SELECT segment_id,group_id FROM local_speaker_assignments
+           UNION ALL
+           SELECT p.id AS segment_id,g.group_id FROM precise_segments p
+           LEFT JOIN speaker_groups g ON g.speaker_scope=p.speaker_scope
+             AND g.speaker_label=p.speaker_label
+           WHERE NOT EXISTS(SELECT 1 FROM local_speaker_assignments a WHERE a.segment_id=p.id);
          CREATE VIEW precise_speaker_projection AS
            SELECT p.id AS segment_id,
-             CASE WHEN g.group_id IS NOT NULL AND (
+             CASE WHEN a.group_id IS NOT NULL THEN a.group_id
+             WHEN g.group_id IS NOT NULL AND (
                (SELECT sum(x.ended_ms-x.started_ms) FROM precise_segments x
                 WHERE x.speaker_scope=p.speaker_scope AND x.speaker_label=p.speaker_label)>=15000
                OR (SELECT sum(x.ended_ms-x.started_ms) FROM precise_segments x
@@ -96,6 +115,7 @@ pub fn init(db: &Connection) -> Result<(), String> {
                      WHERE x.speaker_scope=p.speaker_scope)
              ) THEN g.group_id ELSE NULL END AS speaker
            FROM precise_segments p
+           LEFT JOIN local_speaker_assignments a ON a.segment_id=p.id
            LEFT JOIN speaker_groups g ON g.speaker_scope=p.speaker_scope
              AND g.speaker_label=p.speaker_label;
          CREATE VIEW precise_identity_projection AS
@@ -325,8 +345,7 @@ fn legacy_segment_revision_part(
         .query_row(
             "SELECT p.source,p.started_ms,p.ended_ms,p.text,p.speaker_scope,
          coalesce(p.speaker_label,''),coalesce(g.group_id,'') FROM precise_segments p
-         LEFT JOIN speaker_groups g ON g.speaker_scope=p.speaker_scope
-           AND g.speaker_label=p.speaker_label WHERE p.id=?1",
+         LEFT JOIN precise_group_membership g ON g.segment_id=p.id WHERE p.id=?1",
             params![id.to_string()],
             |r| {
                 Ok((
@@ -375,8 +394,8 @@ fn revision_parts(
     let mut output = std::collections::HashMap::new();
     let mut stmt = db.prepare("SELECT p.id,p.source,p.started_ms,p.ended_ms,p.text,p.speaker_scope,
       coalesce(p.speaker_label,''),coalesce(g.group_id,'') FROM precise_segments p
-      JOIN cloud_tasks t ON t.id=p.task_id LEFT JOIN speaker_groups g
-      ON g.speaker_scope=p.speaker_scope AND g.speaker_label=p.speaker_label
+      JOIN cloud_tasks t ON t.id=p.task_id LEFT JOIN precise_group_membership g
+      ON g.segment_id=p.id
       WHERE p.id IN (SELECT value FROM json_each(?1)) AND t.state='complete' AND
       ((t.target_kind='event' AND EXISTS(SELECT 1 FROM named_events e WHERE e.id=t.target_id
         AND e.deleted_ms IS NULL AND t.target_version=printf('%d:%d:%d',e.source_mask,e.started_ms,e.ended_ms)))
@@ -443,7 +462,7 @@ fn group_revision(db: &Connection, group: &str) -> Result<i64, String> {
     revision_part(&mut hash, group);
     let mut after = String::new();
     loop {
-        let ids=db.prepare("SELECT p.id FROM precise_segments p JOIN speaker_groups g ON g.speaker_scope=p.speaker_scope AND g.speaker_label=p.speaker_label WHERE g.group_id=?1 AND p.id>?2 ORDER BY p.id LIMIT 256").map_err(|e|e.to_string())?
+        let ids=db.prepare("SELECT p.id FROM precise_segments p JOIN precise_group_membership g ON g.segment_id=p.id WHERE g.group_id=?1 AND p.id>?2 ORDER BY p.id LIMIT 256").map_err(|e|e.to_string())?
           .query_map(params![group,after],|r|r.get::<_,String>(0)).map_err(|e|e.to_string())?.collect::<Result<Vec<_>,_>>().map_err(|e|e.to_string())?;
         if ids.is_empty() {
             break;
@@ -508,9 +527,7 @@ pub fn object_revision(db: &Connection, kind: &str, id: Uuid) -> Result<i64, Str
         "speaker_group" => {
             let group: String = db
                 .query_row(
-                    "SELECT g.group_id FROM precise_segments p JOIN speaker_groups g
-                 ON g.speaker_scope=p.speaker_scope AND g.speaker_label=p.speaker_label
-                 WHERE p.id=?1",
+                    "SELECT group_id FROM precise_group_membership WHERE segment_id=?1",
                     params![id.to_string()],
                     |r| r.get(0),
                 )
@@ -1216,35 +1233,25 @@ fn current_scope_segments(
     segment_id: Uuid,
     entire: bool,
 ) -> Result<Vec<(Uuid, String, i64, i64)>, String> {
-    let seed: Option<(String, Option<String>)> = db
-        .query_row(
-            "SELECT speaker_scope,speaker_label FROM precise_segments WHERE id=?1",
-            params![segment_id.to_string()],
-            |r| Ok((r.get(0)?, r.get(1)?)),
-        )
-        .optional()
-        .map_err(|error| error.to_string())?;
-    let Some((scope, label)) = seed else {
-        return Err("precise segment not found".to_owned());
-    };
-    let Some(label) = label else {
-        return Err("speaker is unknown".to_owned());
-    };
+    if !entire {
+        let (source, start, end) =
+            visible_segment(db, segment_id)?.ok_or("segment is no longer current")?;
+        return Ok(vec![(segment_id, source, start, end)]);
+    }
     let group: String = db
         .query_row(
-            "SELECT group_id FROM speaker_groups WHERE speaker_scope=?1 AND speaker_label=?2",
-            params![scope, label],
+            "SELECT group_id FROM precise_group_membership WHERE segment_id=?1",
+            [segment_id.to_string()],
             |r| r.get(0),
         )
-        .map_err(|error| error.to_string())?;
+        .map_err(|_| "speaker is unknown".to_owned())?;
     let mut stmt = db
         .prepare(
-            "SELECT id,source,started_ms,ended_ms FROM precise_segments
-         WHERE (speaker_scope,speaker_label) IN (
-           SELECT speaker_scope,speaker_label FROM speaker_groups WHERE group_id=?1)
-         ORDER BY started_ms,id",
+            "SELECT p.id,p.source,p.started_ms,p.ended_ms FROM precise_segments p
+         JOIN precise_group_membership g ON g.segment_id=p.id
+         WHERE g.group_id=?1 ORDER BY p.started_ms,p.id",
         )
-        .map_err(|error| error.to_string())?;
+        .map_err(|e| e.to_string())?;
     let candidates = stmt
         .query_map(params![group], |r| {
             let id: String = r.get(0)?;
@@ -1269,6 +1276,104 @@ fn current_scope_segments(
         return Err("speaker is no longer current".to_owned());
     }
     Ok(selected)
+}
+
+/// Complete, chronologically numbered candidates for the current ASR target/version.
+/// UI pagination must never determine the available identities or their names.
+pub fn session_speakers(
+    db: &Connection,
+    segment_id: Uuid,
+) -> Result<Vec<hear_protocol::LocalSpeaker>, String> {
+    if visible_segment(db, segment_id)?.is_none() {
+        return Err("segment is no longer current".into());
+    }
+    let mut stmt = db
+        .prepare(
+            "SELECT i.speaker,p.id,i.person_id FROM precise_segments p
+         JOIN cloud_tasks t ON t.id=p.task_id
+         JOIN precise_identity_projection i ON i.segment_id=p.id
+         JOIN precise_segments seed ON seed.id=?1
+         JOIN cloud_tasks st ON st.id=seed.task_id
+         WHERE t.target_kind=st.target_kind AND t.target_id=st.target_id
+         AND t.target_version=st.target_version AND t.state='complete'
+         AND i.speaker IS NOT NULL ORDER BY p.started_ms,p.id",
+        )
+        .map_err(|e| e.to_string())?;
+    let mut result: Vec<hear_protocol::LocalSpeaker> = Vec::new();
+    let mut indices = std::collections::HashMap::new();
+    for row in stmt
+        .query_map([segment_id.to_string()], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, Option<String>>(2)?,
+            ))
+        })
+        .map_err(|e| e.to_string())?
+    {
+        let (group, id, person) = row.map_err(|e| e.to_string())?;
+        if let Some(&index) = indices.get(&group) {
+            let speaker: &mut hear_protocol::LocalSpeaker = &mut result[index];
+            speaker.anonymous &= person.is_none();
+        } else {
+            indices.insert(group.clone(), result.len());
+            result.push(hear_protocol::LocalSpeaker {
+                name: format!("说话人 {}", result.len() + 1),
+                revision: group_revision(db, &group)?,
+                group_id: group,
+                segment_id: Uuid::parse_str(&id).map_err(|e| e.to_string())?,
+                anonymous: person.is_none(),
+            });
+        }
+    }
+    Ok(result)
+}
+
+/// Human grouping overrides the derived acoustic grouping for these exact utterances.
+/// Never reuse cloud label numbers to carry this decision into a new ASR version.
+pub fn assign_local_speaker(
+    tx: &Transaction<'_>,
+    segment_id: Uuid,
+    target_segment_id: Uuid,
+    entire: bool,
+    expected_revision: i64,
+    target_revision: i64,
+    now: i64,
+) -> Result<(), String> {
+    expect_revision(
+        tx,
+        if entire { "speaker_group" } else { "segment" },
+        segment_id,
+        expected_revision,
+    )?;
+    expect_revision(tx, "speaker_group", target_segment_id, target_revision)?;
+    let candidates = session_speakers(tx, segment_id)?;
+    let target = candidates
+        .iter()
+        .find(|s| s.segment_id == target_segment_id && s.anonymous)
+        .ok_or("target must be an anonymous speaker in the current session")?;
+    let source = current_scope_segments(tx, segment_id, entire)?;
+    let destination = current_scope_segments(tx, target_segment_id, true)?;
+    if destination.iter().any(|s| s.0 == segment_id) {
+        return Err("speaker is already in this group".into());
+    }
+    // Snapshot both sets before unbinding: that operation rebuilds acoustic groups.
+    let group = if target.group_id.starts_with("manual:") {
+        target.group_id.clone()
+    } else {
+        format!("manual:{}", Uuid::new_v4())
+    };
+    unbind_speaker(tx, segment_id, entire, now)?;
+    for (id, _, _, _) in source.iter().chain(destination.iter()) {
+        tx.execute(
+            "INSERT INTO local_speaker_assignments(segment_id,group_id,updated_ms)
+          VALUES(?1,?2,?3) ON CONFLICT(segment_id) DO UPDATE SET
+          group_id=excluded.group_id,updated_ms=excluded.updated_ms",
+            params![id.to_string(), group, now],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 pub fn bind_speaker(
@@ -1959,18 +2064,7 @@ fn reconcile_session_speaker(
     .map_err(|error| error.to_string())?;
     // A single-sentence correction is evidence against a conflicting merge,
     // but never an instruction to name every turn in the merged group.
-    let confirmed_group_person: Option<String> = tx
-        .query_row(
-            "SELECT sb.person_id FROM speaker_bindings sb JOIN precise_segments p
-         ON p.id=sb.current_segment_id JOIN speaker_groups g
-         ON g.speaker_scope=p.speaker_scope AND g.speaker_label=p.speaker_label
-         WHERE g.group_id=?1 AND sb.state='active' AND sb.origin='manual'
-           AND sb.apply_scope='group' LIMIT 1",
-            params![winner],
-            |r| r.get(0),
-        )
-        .optional()
-        .map_err(|error| error.to_string())?;
+    let confirmed_group_person = confirmed_group_person(tx, winner)?;
     if let Some(person) = confirmed_group_person {
         apply_group_binding(tx, winner, None, &person, "automatic", now)?;
     }
@@ -2052,6 +2146,21 @@ fn rebuild_for_segment(tx: &Transaction<'_>, segment_id: Uuid, now: i64) -> Resu
     rebuild_speaker_groups(tx, &target.0, &target.1, &target.2, now)
 }
 
+// Both acoustic reconciliation and background matching must read human scope
+// through effective membership, never the provider group a correction replaced.
+fn confirmed_group_person(db: &Connection, group: &str) -> Result<Option<String>, String> {
+    db.query_row(
+        "SELECT sb.person_id FROM speaker_bindings sb
+         JOIN precise_group_membership g ON g.segment_id=sb.current_segment_id
+         WHERE g.group_id=?1 AND sb.state='active' AND sb.origin='manual'
+         AND sb.apply_scope='group' LIMIT 1",
+        [group],
+        |r| r.get(0),
+    )
+    .optional()
+    .map_err(|e| e.to_string())
+}
+
 fn apply_group_binding(
     tx: &Transaction<'_>,
     group: &str,
@@ -2063,10 +2172,12 @@ fn apply_group_binding(
     let mut stmt=tx.prepare(
         "SELECT p.id,p.source,p.started_ms,p.ended_ms FROM precise_segments p
          JOIN speaker_groups g ON g.speaker_scope=p.speaker_scope AND g.speaker_label=p.speaker_label
-         WHERE g.group_id=?1 ORDER BY p.started_ms,p.id"
+         WHERE (p.id=?2 OR (?2 IS NULL AND g.group_id=?1
+           AND NOT EXISTS(SELECT 1 FROM local_speaker_assignments a WHERE a.segment_id=p.id)))
+         ORDER BY p.started_ms,p.id"
     ).map_err(|error|error.to_string())?;
     let segments = stmt
-        .query_map(params![group], |r| {
+        .query_map(params![group, only_segment.map(|id| id.to_string())], |r| {
             Ok((
                 r.get::<_, String>(0)?,
                 r.get::<_, String>(1)?,
@@ -2315,14 +2426,7 @@ pub fn publish_match(
                 |r| r.get(0),
             )
             .map_err(|error| error.to_string())?;
-        let manual_person: Option<String>=tx.query_row(
-            "SELECT DISTINCT sb.person_id FROM speaker_bindings sb
-              JOIN precise_segments p ON p.id=sb.current_segment_id
-              JOIN speaker_groups g ON g.speaker_scope=p.speaker_scope AND g.speaker_label=p.speaker_label
-              WHERE g.group_id=?1 AND sb.state='active' AND sb.origin='manual'
-              AND sb.apply_scope='group' LIMIT 1",
-            params![group],|r|r.get(0)
-        ).optional().map_err(|error|error.to_string())?;
+        let manual_person = confirmed_group_person(&tx, &group)?;
         let manual: i64 = tx
             .query_row(
                 "SELECT EXISTS(SELECT 1 FROM speaker_bindings
@@ -2561,6 +2665,231 @@ mod tests {
     use crate::cloud::AsrUtterance;
     use crate::events;
     use hear_protocol::{CloudProvider, EventSources};
+
+    fn assign_test(
+        db: &mut Connection,
+        source: Uuid,
+        target: Uuid,
+        entire: bool,
+    ) -> Result<(), String> {
+        let source_revision =
+            object_revision(db, if entire { "speaker_group" } else { "segment" }, source)?;
+        let target_revision = object_revision(db, "speaker_group", target)?;
+        let tx = db.transaction().unwrap();
+        assign_local_speaker(
+            &tx,
+            source,
+            target,
+            entire,
+            source_revision,
+            target_revision,
+            70000,
+        )?;
+        tx.commit().map_err(|e| e.to_string())
+    }
+
+    #[test]
+    fn manual_local_speaker_assignment_respects_sentence_scope_and_survives_rebuild() {
+        let (mut db, event, segments) = speaker_merge_fixture(&[
+            ("A", 0, 4000),
+            ("A", 4000, 8000),
+            ("B", 8000, 12000),
+            ("B", 12000, 16000),
+        ]);
+        let before = segments[0].speaker_revision;
+        assign_test(&mut db, segments[0].id, segments[2].id, false).unwrap();
+        let detail = events::event_detail(&db, event, 0, 20).unwrap();
+        assert_eq!(
+            detail.precise_segments[0].speaker,
+            detail.precise_segments[2].speaker
+        );
+        assert_ne!(
+            detail.precise_segments[1].speaker,
+            detail.precise_segments[2].speaker
+        );
+        assert_ne!(before, detail.precise_segments[1].speaker_revision);
+        assert!(people(&db).unwrap().is_empty());
+        // Reopen the schema and re-run automatic grouping, as on application restart.
+        init(&db).unwrap();
+        let tx = db.transaction().unwrap();
+        rebuild_for_segment(&tx, segments[0].id, 71000).unwrap();
+        tx.commit().unwrap();
+        let detail = events::event_detail(&db, event, 0, 20).unwrap();
+        assert_eq!(
+            detail.precise_segments[0].speaker,
+            detail.precise_segments[2].speaker
+        );
+        assert_ne!(
+            detail.precise_segments[1].speaker,
+            detail.precise_segments[2].speaker
+        );
+        // Later whole-group naming follows the corrected group, not the provider label.
+        let tx = db.transaction().unwrap();
+        let person = create_person(&tx, "本场人物", 72000).unwrap();
+        bind_speaker(&tx, segments[0].id, person, true, 72001).unwrap();
+        tx.commit().unwrap();
+        let detail = events::event_detail(&db, event, 0, 20).unwrap();
+        for i in [0, 2, 3] {
+            assert_eq!(detail.precise_segments[i].person_id, Some(person));
+        }
+        assert!(detail.precise_segments[1].person_id.is_none());
+        assert_eq!(people(&db).unwrap()[0].sample_count, 0);
+        // A later background match with no person hit must not inherit the old A label's name.
+        let mut other_voice = vec![0.0; VOICE_DIM];
+        other_voice[1] = 1.0;
+        db.execute(
+            "UPDATE voice_observations SET state='ready',vector=?2,model_version=?3,
+          matched_generation=0 WHERE segment_id=?1",
+            params![
+                segments[1].id.to_string(),
+                encode_vector(&other_voice).unwrap(),
+                "campplus-zh-v1"
+            ],
+        )
+        .unwrap();
+        assert!(match_one_ready(&mut db, 73000).unwrap());
+        let detail = events::event_detail(&db, event, 0, 20).unwrap();
+        assert!(
+            detail.precise_segments[1].person_id.is_none(),
+            "old acoustic group leaked the manually corrected group's identity"
+        );
+        // Explicit delete trigger also works when SQLite foreign keys are not enabled.
+        db.execute(
+            "DELETE FROM precise_segments WHERE id=?1",
+            [segments[0].id.to_string()],
+        )
+        .unwrap();
+        let count: i64 = db
+            .query_row(
+                "SELECT count(*) FROM local_speaker_assignments WHERE segment_id=?1",
+                [segments[0].id.to_string()],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn manual_local_speaker_merge_validates_both_revisions_and_session_boundaries() {
+        let (mut db, event, segments) = speaker_merge_fixture(&[
+            ("A", 0, 4000),
+            ("A", 4000, 8000),
+            ("B", 8000, 12000),
+            ("B", 12000, 16000),
+        ]);
+        let tx = db.transaction().unwrap();
+        assert!(
+            assign_local_speaker(
+                &tx,
+                segments[0].id,
+                segments[2].id,
+                true,
+                segments[0].speaker_revision + 1,
+                segments[2].speaker_revision,
+                70000
+            )
+            .unwrap_err()
+            .contains("revision_conflict")
+        );
+        assert!(
+            assign_local_speaker(
+                &tx,
+                segments[0].id,
+                segments[2].id,
+                true,
+                segments[0].speaker_revision,
+                segments[2].speaker_revision + 1,
+                70000
+            )
+            .unwrap_err()
+            .contains("revision_conflict")
+        );
+        tx.rollback().unwrap();
+        // A named target is not an anonymous merge destination.
+        let tx = db.transaction().unwrap();
+        let person = create_person(&tx, "已有姓名", 70000).unwrap();
+        bind_speaker(&tx, segments[2].id, person, false, 70001).unwrap();
+        tx.commit().unwrap();
+        assert!(assign_test(&mut db, segments[0].id, segments[2].id, true).is_err());
+        let tx = db.transaction().unwrap();
+        unbind_speaker(&tx, segments[2].id, false, 70002).unwrap();
+        tx.commit().unwrap();
+        assign_test(&mut db, segments[0].id, segments[2].id, true).unwrap();
+        let detail = events::event_detail(&db, event, 0, 20).unwrap();
+        assert!(
+            detail
+                .precise_segments
+                .iter()
+                .all(|s| s.speaker == detail.precise_segments[0].speaker)
+        );
+        // A separately targeted event using the same cloud labels cannot be chosen.
+        db.execute("INSERT INTO audio_blocks(id,session_id,source,started_ms,ended_ms,sample_start,frames,bytes,media_path,retention_decision,analysis_state,speech_active)
+          VALUES('other-audio','session','microphone',60000,100000,2832000,1920000,100,'media/microphone/other.opus','retain','complete',1)",[]).unwrap();
+        let other = events::create_event(
+            &mut db,
+            60000,
+            100000,
+            "另一场",
+            EventSources::Microphone,
+            80000,
+        )
+        .unwrap();
+        let task = events::take_task(&mut db, CloudProvider::Asr, 80001)
+            .unwrap()
+            .unwrap();
+        events::publish_asr(
+            &mut db,
+            &task,
+            &[AsrUtterance {
+                start_ms: 0,
+                end_ms: 4000,
+                text: "另一场发言".into(),
+                speaker: Some("B".into()),
+            }],
+            80002,
+        )
+        .unwrap();
+        let other_segment = events::event_detail(&db, other, 0, 20)
+            .unwrap()
+            .precise_segments[0]
+            .id;
+        assert!(
+            assign_test(&mut db, segments[0].id, other_segment, true)
+                .unwrap_err()
+                .contains("current session")
+        );
+    }
+
+    #[test]
+    fn session_speaker_choices_include_unloaded_pages_and_do_not_cross_retranscription() {
+        let mut utterances = Vec::new();
+        for i in 0..105 {
+            utterances.push(("A", i * 400, i * 400 + 400));
+        }
+        utterances.push(("B", 43000, 47000));
+        let (mut db, event, segments) = speaker_merge_fixture(&utterances);
+        let speakers = session_speakers(&db, segments[0].id).unwrap();
+        assert_eq!(speakers.len(), 2);
+        assert_eq!(speakers[1].name, "说话人 2");
+        assert!(!segments.iter().any(|s| s.id == speakers[1].segment_id));
+        assign_test(&mut db, segments[0].id, speakers[1].segment_id, false).unwrap();
+        let tx = db.transaction().unwrap();
+        // Superseded output is no longer current and may not accept further corrections.
+        tx.execute(
+            "UPDATE cloud_tasks SET state='superseded' WHERE target_id=?1",
+            [event.to_string()],
+        )
+        .unwrap();
+        assert!(session_speakers(&tx, segments[0].id).is_err());
+        tx.commit().unwrap();
+        // New segments have no assignment: local decisions are tied to original utterance IDs.
+        let count: i64 = db
+            .query_row("SELECT count(*) FROM local_speaker_assignments", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(count, 2);
+    }
 
     #[test]
     fn common_and_rare_fts_plans_preserve_time_order_ranges_and_pagination() {

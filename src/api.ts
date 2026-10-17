@@ -221,6 +221,14 @@ export interface TimeGap {
 	reason: string;
 }
 
+export type LocalSpeaker = {
+	group_id: string;
+	segment_id: string;
+	name: string;
+	anonymous: boolean;
+	revision: number;
+};
+
 export interface Person {
 	id: string;
 	display_name: string;

@@ -480,7 +480,11 @@ export function PeopleView({
 								<>
 									<div>
 										<strong>{person.display_name}</strong>
-										<p>{person.sample_count} 个声纹样例</p>
+										<p>
+											{person.sample_count > 0
+												? `${person.sample_count} 个声纹样例`
+												: "待补充声纹"}
+										</p>
 									</div>
 									<button
 										type="button"

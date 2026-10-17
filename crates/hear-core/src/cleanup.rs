@@ -109,6 +109,13 @@ fn selection_signature(db: &Connection, start: i64, end: i64, mask: i64) -> Resu
           ((source='microphone' AND ?3&1!=0) OR (source='system' AND ?3&2!=0)) ORDER BY id",
         ),
         (
+            "local_speaker",
+            "SELECT a.segment_id||'|'||a.group_id||'|'||a.updated_ms
+             FROM local_speaker_assignments a JOIN precise_segments p ON p.id=a.segment_id
+             WHERE p.started_ms<?2 AND p.ended_ms>?1 AND
+             ((p.source='microphone' AND ?3&1!=0) OR (p.source='system' AND ?3&2!=0)) ORDER BY a.segment_id",
+        ),
+        (
             "event",
             "SELECT id||'|'||title||'|'||revision||'|'||coalesce(deleted_ms,0)
           FROM named_events WHERE started_ms<?2 AND ended_ms>?1 AND source_mask&?3!=0 ORDER BY id",

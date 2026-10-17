@@ -19,12 +19,13 @@ mockIPC(async(command,args)=>{
  if(command!=='core_request') return null;
  const r=args.request;
  if(r.type==='event_detail') return {type:'event',id:'event',event:item()};
+ if(r.type==='session_speakers') return {type:'session_speakers',speakers:[{group_id:'group-a',segment_id:'sentence-0',name:'说话人 1',anonymous:!assigned,revision:groupRevision},{group_id:'group-b',segment_id:'unloaded-sentence',name:'说话人 2',anonymous:true,revision:91}]};
  if(r.type==='moments') return {type:'moments',moments:[]};
  requests.push(r);
  if(delay) await wait(delay);
  if(failure){const message=failure;failure=null;revision++;groupRevision++;throw Error(message);}
  if(r.type==='bind_speaker') assigned=r.person_id;
- if(r.type==='create_and_bind_speaker'){assigned='created';people.push({id:assigned,display_name:r.display_name,sample_count:0,created_ms:base,revision:1});}
+ if(r.type==='create_and_bind_speaker'){assigned='created';people.push({id:assigned,display_name:r.display_name,sample_count:0,created_ms:base,revision:1});return {type:'person_changed',id:'mutation',person_id:assigned,sample_count:0};}
  if(r.type==='unbind_speaker') assigned=null;
  return {type:'ok'};
 });
@@ -54,17 +55,31 @@ window.runRegression=async()=>{
  check(panel().querySelector('input[type=radio]').getBoundingClientRect().width<=18,'范围控件被拉成全宽');
  check(button('确认').disabled,'未选择也可提交');
  check(document.activeElement===panel().querySelector('input[type=search]'),'搜索框未获得焦点');
- await input('  周研究员  ');await choose('创建人物');panel().querySelectorAll('input[type=radio]')[0].click();await close();
+ const geometry=panel().getBoundingClientRect(),anchor=chips()[1].getBoundingClientRect();
+ check(geometry.left>=anchor.right&&geometry.top>=0&&geometry.bottom<=innerHeight,'没有保持右侧且在视口内');
+ const searchGeometry=panel().querySelector('input[type=search]').getBoundingClientRect();
+ const idealTop=anchor.top+anchor.height/2-(searchGeometry.top-geometry.top+searchGeometry.height/2);
+ check(Math.abs(geometry.top-Math.max(12,Math.min(idealTop,innerHeight-geometry.height-12)))<1,'搜索行未对齐标签或底部未避让');
+ check([...panel().querySelectorAll('.speaker-picker-option')].every(b=>b.getBoundingClientRect().height<=36),'人物选项不是紧凑单行');
+ check(panel().querySelector('.speaker-picker-avatar').getBoundingClientRect().height<=20,'头像未缩小到文字行高');
+ check(!panel().textContent.includes('设置人物身份')&&!panel().textContent.includes('人物姓名')&&!panel().textContent.includes('按当前说话人分组'),'冗余文案未移除');
+ const optionNames=[...panel().querySelectorAll('.speaker-picker-option')].map(b=>b.textContent.trim());
+ check(optionNames.findIndex(t=>t.includes('陈老师'))<optionNames.findIndex(t=>t.includes('新建人物'))&&optionNames.findIndex(t=>t.includes('新建人物'))<optionNames.findIndex(t=>t.includes('说话人 2')),'候选顺序错误');
+ check(optionNames.some(t=>t.includes('林同学')&&t.includes('待补充声纹')),'没有标记无样例人物');
+ await choose('新建人物');check(document.activeElement===panel().querySelector('input[type=search]')&&button('确认').disabled,'新建入口未引导输入姓名');
+ await input('无匹配人物');check(Math.abs(panel().getBoundingClientRect().top-geometry.top)<1&&panel().getBoundingClientRect().height===geometry.height,'搜索导致浮层跳动');
+ await input('  周研究员  ');await choose('新建');panel().querySelectorAll('input[type=radio]')[0].click();await close();
  check(Math.abs(rows[2].getBoundingClientRect().top-rowTop)<1,'打开关闭导致正文位移');
  await open(2);
  check(panel().querySelector('input[type=search]').value===''&&panel().querySelectorAll('input[type=radio]')[1].checked,'新姓名或范围跨句残留');
  await choose('陈老师');await confirm();
  check(requests.at(-1).type==='bind_speaker'&&requests.at(-1).person_id==='person-a','旧的新姓名覆盖已有选择');
  check(requests.at(-1).entire_local_speaker&&requests.at(-1).expected_revision===33,'整组范围/revision错误');
- await open();await input('新人物');await choose('创建人物');await input('陈老师');
+ await open();await input('新人物');await choose('新建');await input('陈老师');
  check(!panel().querySelector('.speaker-picker-create'),'精确同名仍显示创建');
  check(button('确认').disabled,'改搜索词后旧选择仍生效');
- await close();await open();await input('  周研究员  ');await choose('创建人物');panel().querySelectorAll('input[type=radio]')[0].click();await confirm();
+ await close();await open();await input('  周研究员  ');await choose('新建');panel().querySelectorAll('input[type=radio]')[0].click();await confirm();
+ check(messages.includes('人物已保存 · 待补充声纹'),'建人成功但缺声纹未明确反馈');
  check(requests.at(-1).type==='create_and_bind_speaker'&&requests.at(-1).display_name==='周研究员'&&!requests.at(-1).entire_local_speaker&&requests.at(-1).expected_revision===7,'创建/单句提交错误');
  await open();panel().querySelectorAll('input[type=radio]')[0].click();await wait(20);button('取消人物归属').click();await wait(180);
  check(requests.at(-1).type==='unbind_speaker'&&!requests.at(-1).entire_local_speaker,'取消归属未使用明确范围');
@@ -83,6 +98,9 @@ window.runRegression=async()=>{
  await open();document.body.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}));await wait(80);check(!panel(),'点击外部没有关闭');
  await open();await input('不应保留');document.querySelector('[role=tab][aria-selected=false]').click();await wait(80);document.querySelector('[role=tab][aria-selected=false]').click();await wait(80);await open();check(panel().querySelector('input').value==='','切换页签仍保留草稿');await close();
  check(JSON.stringify([...document.querySelectorAll('.transcript-row p')].map(r=>r.textContent))===JSON.stringify(texts),'逐句正文发生变化');
+ await open();await choose('说话人 2');panel().querySelectorAll('input[type=radio]')[0].click();await wait(30);await confirm();
+ check(requests.at(-1).type==='assign_local_speaker'&&requests.at(-1).target_segment_id==='unloaded-sentence'&&requests.at(-1).target_revision===91&&!requests.at(-1).entire_local_speaker,'匿名单句归并未提交两端版本');
+ await open();await choose('说话人 2');await confirm();check(requests.at(-1).entire_local_speaker&&requests.at(-1).expected_revision===groupRevision,'匿名整组归并范围错误');
  // A rejected mutation must remain visible even after the entire drawer is closed.
  await open();await choose('陈老师');failure='测试保存失败';delay=100;button('确认').click();await wait(20);document.querySelector('button[aria-label=关闭详情]').click();await wait(250);check(messages.includes('测试保存失败'),'关闭详情后保存失败丢失');delay=0;closed=false;render();await wait(150);
  // Empty people, long names, and a scrollable library share the same picker.

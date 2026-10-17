@@ -274,6 +274,15 @@ enum ReviewCommand {
 
 #[derive(Subcommand)]
 enum SpeakerCommand {
+    List {
+        segment_id: Uuid,
+    },
+    AssignLocal {
+        segment_id: Uuid,
+        target_segment_id: Uuid,
+        #[arg(long)]
+        segment_only: bool,
+    },
     Bind {
         segment_id: Uuid,
         person_id: Uuid,
@@ -649,6 +658,25 @@ fn main() {
             },
         },
         Command::Speaker { action } => match action {
+            SpeakerCommand::List { segment_id } => Request::SessionSpeakers { segment_id },
+            SpeakerCommand::AssignLocal {
+                segment_id,
+                target_segment_id,
+                segment_only,
+            } => Request::AssignLocalSpeaker {
+                segment_id,
+                target_segment_id,
+                entire_local_speaker: !segment_only,
+                expected_revision: object_revision(
+                    if segment_only {
+                        "segment"
+                    } else {
+                        "speaker_group"
+                    },
+                    segment_id,
+                ),
+                target_revision: object_revision("speaker_group", target_segment_id),
+            },
             SpeakerCommand::Bind {
                 segment_id,
                 person_id,
@@ -789,6 +817,7 @@ fn main() {
             | Response::TranscriptionQueued { .. }
             | Response::EventsChanged { .. }
             | Response::TextChanged { .. }
+            | Response::SessionSpeakers { .. }
             | Response::People { .. }
             | Response::VoiceSamples { .. }
             | Response::ReviewItems { .. }

@@ -3,6 +3,7 @@ import {
 	type CoarseSegment,
 	type CoreResponse,
 	core,
+	type LocalSpeaker,
 	type Moment,
 	manualAsrSummary,
 	type Person,
@@ -107,18 +108,6 @@ function bestSegments(
 	].sort((a, b) => a.started_ms - b.started_ms);
 }
 
-function speakerLabels(segments: PreciseSegment[]): Map<string, string> {
-	const labels = new Map<string, string>();
-	for (const segment of [...segments].sort(
-		(a, b) => a.started_ms - b.started_ms,
-	)) {
-		if (segment.speaker && !labels.has(segment.speaker)) {
-			labels.set(segment.speaker, `说话人 ${labels.size + 1}`);
-		}
-	}
-	return labels;
-}
-
 function speakerName(
 	segment: PreciseSegment,
 	labels: Map<string, string>,
@@ -139,6 +128,7 @@ export function DetailDrawer({
 	refreshToken,
 }: Props) {
 	const [detail, setDetail] = useState<TimelineItem>(item);
+	const [localSpeakers, setLocalSpeakers] = useState<LocalSpeaker[]>([]);
 	const [detailReady, setDetailReady] = useState(false);
 	const [tab, setTab] = useState<"transcript" | "info">("transcript");
 	const [offset, setOffset] = useState(0);
@@ -225,6 +215,18 @@ export function DetailDrawer({
 						break;
 				}
 				if (!response) return;
+				const speakers = allPrecise[0]
+					? await core<{
+							type: "session_speakers";
+							id: string;
+							speakers: LocalSpeaker[];
+						}>({
+							type: "session_speakers",
+							segment_id: allPrecise[0].id,
+						})
+					: { speakers: [] };
+				if (token !== detailRequest.current) return;
+				setLocalSpeakers(speakers.speakers);
 				setPlayhead((current) =>
 					Math.max(
 						response.event.started_ms,
@@ -486,6 +488,7 @@ export function DetailDrawer({
 	) => {
 		setBusy(true);
 		try {
+			let creationMessage: string | null = null;
 			if (action.kind === "sample") {
 				await core({
 					type: "add_voice_sample",
@@ -502,13 +505,34 @@ export function DetailDrawer({
 				};
 				if (action.kind === "unbind")
 					await core({ type: "unbind_speaker", ...scope });
-				else if (action.choice.kind === "create")
+				else if (action.choice.kind === "local") {
+					const groupId = action.choice.groupId;
+					const target = localSpeakers.find(
+						(s) => s.group_id === groupId && s.anonymous,
+					);
+					if (!target) throw new Error("说话人已变化，请重新选择");
 					await core({
+						type: "assign_local_speaker",
+						target_segment_id: target.segment_id,
+						target_revision: target.revision,
+						...scope,
+					});
+				} else if (action.choice.kind === "create") {
+					const response = await core<{
+						type: "person_changed";
+						id: string;
+						sample_count: number;
+						person_id: string;
+					}>({
 						type: "create_and_bind_speaker",
 						display_name: action.choice.name,
 						...scope,
 					});
-				else
+					creationMessage =
+						response.sample_count > 0
+							? "人物与声纹已保存"
+							: "人物已保存 · 待补充声纹";
+				} else
 					await core({
 						type: "bind_speaker",
 						person_id: action.choice.personId,
@@ -518,11 +542,12 @@ export function DetailDrawer({
 			await load(offset);
 			onChanged();
 			onMessage(
-				action.kind === "sample"
-					? "声纹样例已保存"
-					: action.kind === "unbind"
-						? "已取消人物归属"
-						: "说话人已更新",
+				creationMessage ??
+					(action.kind === "sample"
+						? "声纹样例已保存"
+						: action.kind === "unbind"
+							? "已取消人物归属"
+							: "说话人已更新"),
 			);
 			setAssigning(null);
 		} catch (error) {
@@ -539,7 +564,7 @@ export function DetailDrawer({
 		transcriptSource === "coarse"
 			? detail.coarse_segments
 			: bestSegments(detail);
-	const labels = speakerLabels(detail.precise_segments);
+	const labels = new Map(localSpeakers.map((s) => [s.group_id, s.name]));
 	const manualStatus = manualAsrSummary(detail);
 	const queueRelevant =
 		(detail.id || detail.manual_range_id) &&
@@ -933,7 +958,8 @@ export function DetailDrawer({
 															key={segment.id}
 															anchor={speakerAnchor.current}
 															people={people}
-															name={speakerName(precise, labels)}
+															localSpeakers={localSpeakers}
+															currentGroup={precise.speaker}
 															personId={precise.person_id}
 															confirmed={precise.person_origin === "manual"}
 															onClose={() => setAssigning(null)}

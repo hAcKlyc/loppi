@@ -9,7 +9,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
-pub const PROTOCOL_VERSION: u32 = 16;
+pub const PROTOCOL_VERSION: u32 = 17;
 const MAX_RESPONSE_BYTES: u64 = 48 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -166,6 +166,16 @@ pub enum Request {
         kind: String,
         object_id: Uuid,
     },
+    SessionSpeakers {
+        segment_id: Uuid,
+    },
+    AssignLocalSpeaker {
+        segment_id: Uuid,
+        target_segment_id: Uuid,
+        entire_local_speaker: bool,
+        expected_revision: i64,
+        target_revision: i64,
+    },
     People,
     CreatePerson {
         display_name: String,
@@ -305,6 +315,8 @@ impl Request {
             Self::CorrectText { .. } => "correct_text",
             Self::RevertText { .. } => "revert_text",
             Self::ObjectRevision { .. } => "object_revision",
+            Self::SessionSpeakers { .. } => "session_speakers",
+            Self::AssignLocalSpeaker { .. } => "assign_local_speaker",
             Self::People => "people",
             Self::CreatePerson { .. } => "create_person",
             Self::CreateAndBindSpeaker { .. } => "create_and_bind_speaker",
@@ -560,6 +572,15 @@ pub struct PreciseSegment {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalSpeaker {
+    pub group_id: String,
+    pub segment_id: Uuid,
+    pub name: String,
+    pub anonymous: bool,
+    pub revision: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PersonView {
     pub id: Uuid,
     pub display_name: String,
@@ -675,6 +696,10 @@ pub enum Response {
         segment_id: Uuid,
         revision: i64,
     },
+    SessionSpeakers {
+        id: Uuid,
+        speakers: Vec<LocalSpeaker>,
+    },
     People {
         id: Uuid,
         people: Vec<PersonView>,
@@ -698,6 +723,8 @@ pub enum Response {
     },
     PersonChanged {
         id: Uuid,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        sample_count: Option<u32>,
         person_id: Uuid,
         revision: Option<i64>,
         deleted: bool,
@@ -955,6 +982,7 @@ fn send_with_policy(
         | Response::TranscriptionQueued { id, .. }
         | Response::EventsChanged { id, .. }
         | Response::TextChanged { id, .. }
+        | Response::SessionSpeakers { id, .. }
         | Response::People { id, .. }
         | Response::VoiceSamples { id, .. }
         | Response::ReviewItems { id, .. }

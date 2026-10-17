@@ -2539,6 +2539,60 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                     },
                 }
             }
+            Request::SessionSpeakers { segment_id } => {
+                let reader = shared.readers.snapshot()?;
+                match knowledge::session_speakers(&reader, segment_id) {
+                    Ok(speakers) => Response::SessionSpeakers {
+                        id: envelope.id,
+                        speakers,
+                    },
+                    Err(message) => Response::Error {
+                        id: envelope.id,
+                        code: "speaker_invalid".into(),
+                        message,
+                    },
+                }
+            }
+            Request::AssignLocalSpeaker {
+                segment_id,
+                target_segment_id,
+                entire_local_speaker,
+                expected_revision,
+                target_revision,
+            } => {
+                let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                match store.mutate_response(envelope.id, &mutation_fingerprint, |tx| {
+                    knowledge::assign_local_speaker(
+                        tx,
+                        segment_id,
+                        target_segment_id,
+                        entire_local_speaker,
+                        expected_revision,
+                        target_revision,
+                        now_ms()?,
+                    )?;
+                    Ok(Response::TextChanged {
+                        id: envelope.id,
+                        segment_id,
+                        revision: knowledge::object_revision(
+                            tx,
+                            if entire_local_speaker {
+                                "speaker_group"
+                            } else {
+                                "segment"
+                            },
+                            segment_id,
+                        )?,
+                    })
+                }) {
+                    Ok(response) => response,
+                    Err(error) => Response::Error {
+                        id: envelope.id,
+                        code: mutation_error_code(&error, "speaker_binding_invalid"),
+                        message: error,
+                    },
+                }
+            }
             Request::People => {
                 let reader = shared.readers.snapshot()?;
                 Response::People {
@@ -2948,6 +3002,7 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                 match store.mutate_response(envelope.id, &mutation_fingerprint, |tx| {
                     let person_id = knowledge::create_person(tx, &display_name, now_ms()?)?;
                     Ok(Response::PersonChanged {
+                        sample_count: None,
                         id: envelope.id,
                         person_id,
                         revision: Some(knowledge::object_revision(tx, "person", person_id)?),
@@ -2989,6 +3044,7 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                         now_ms()?,
                     )?;
                     Ok(Response::PersonChanged {
+                        sample_count: Some(tx.query_row("SELECT count(*) FROM voice_samples WHERE person_id=?1 AND revoked_ms IS NULL", [person_id.to_string()], |r| r.get(0)).map_err(|e| e.to_string())?),
                         id: envelope.id,
                         person_id,
                         revision: Some(knowledge::object_revision(tx, "person", person_id)?),
@@ -3013,6 +3069,7 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                     knowledge::expect_revision(tx, "person", person_id, expected_revision)?;
                     knowledge::rename_person(tx, person_id, &display_name, now_ms()?)?;
                     Ok(Response::PersonChanged {
+                        sample_count: None,
                         id: envelope.id,
                         person_id,
                         revision: Some(knowledge::object_revision(tx, "person", person_id)?),
@@ -3036,6 +3093,7 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                     knowledge::expect_revision(tx, "person", person_id, expected_revision)?;
                     knowledge::delete_person(tx, person_id)?;
                     Ok(Response::PersonChanged {
+                        sample_count: None,
                         id: envelope.id,
                         person_id,
                         revision: None,
@@ -3168,6 +3226,7 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                     knowledge::expect_revision(tx, "sample", sample_id, expected_revision)?;
                     let person_id = knowledge::remove_voice_sample(tx, sample_id, now_ms()?)?;
                     Ok(Response::PersonChanged {
+                        sample_count: None,
                         id: envelope.id,
                         person_id,
                         revision: Some(knowledge::object_revision(tx, "person", person_id)?),
@@ -4316,6 +4375,8 @@ impl Store {
             }
             Request::ObjectRevision { .. }
             | Request::People
+            | Request::SessionSpeakers { .. }
+            | Request::AssignLocalSpeaker { .. }
             | Request::CreatePerson { .. }
             | Request::CreateAndBindSpeaker { .. }
             | Request::RenamePerson { .. }

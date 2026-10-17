@@ -2070,6 +2070,7 @@ body.floating-body .float-wrap {
 	display: flex;
 	flex-direction: column;
 	width: min(352px, calc(100vw - 24px));
+	height: min(480px, calc(100dvh - 24px));
 	border-radius: var(--radius-control);
 	background: var(--color-canvas);
 	box-shadow: var(--shadow-popover);
@@ -2093,28 +2094,22 @@ body.floating-body .float-wrap {
 	font-size: var(--type-control);
 	font-weight: var(--weight-semibold);
 }
-.speaker-picker-heading p {
-	margin: 0;
-	color: var(--color-text-secondary);
-	font-size: var(--type-micro);
-	overflow-wrap: anywhere;
-}
+
 .speaker-picker-heading .icon-button {
 	flex: 0 0 28px;
 }
 .speaker-picker-body {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
 	min-height: 0;
 	overflow-y: auto;
 	overscroll-behavior: contain;
 	padding: var(--space-2) var(--space-7);
 }
-.speaker-picker-search {
-	display: block;
-	margin-bottom: var(--space-4);
-	font-size: var(--type-micro);
-	color: var(--color-text-secondary);
-}
+
 .speaker-picker-input {
+	flex-shrink: 0;
 	width: 100%;
 	min-width: 0;
 	border: 0;
@@ -2130,7 +2125,9 @@ body.floating-body .float-wrap {
 .speaker-picker-options {
 	display: grid;
 	gap: var(--space-2);
-	max-height: 172px;
+	flex: 1;
+	min-height: 96px;
+	align-content: start;
 	overflow-y: auto;
 	overscroll-behavior: contain;
 	margin: var(--space-5) calc(-1 * var(--space-2)) 0;
@@ -2142,8 +2139,8 @@ body.floating-body .float-wrap {
 	gap: var(--space-5);
 	width: 100%;
 	min-width: 0;
-	min-height: 40px;
-	padding: var(--space-4) var(--space-5);
+	min-height: 32px;
+	padding: var(--space-3) var(--space-5);
 	border: 0;
 	border-radius: var(--radius-sm);
 	background: transparent;
@@ -2160,13 +2157,15 @@ body.floating-body .float-wrap {
 .speaker-picker-option-name {
 	flex: 1;
 	min-width: 0;
-	overflow-wrap: anywhere;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 .speaker-picker-avatar {
 	display: grid;
 	place-items: center;
-	flex: 0 0 26px;
-	height: 26px;
+	flex: 0 0 1.4em;
+	height: 1.4em;
 	border-radius: 50%;
 	background: var(--color-surface);
 	color: var(--color-brand);
@@ -2184,6 +2183,7 @@ body.floating-body .float-wrap {
 	color: var(--color-text-secondary);
 }
 .speaker-picker-scope {
+	flex-shrink: 0;
 	min-width: 0;
 	margin: var(--space-7) 0 0;
 	padding: 0;
@@ -2216,12 +2216,7 @@ body.floating-body .float-wrap {
 	min-width: 0;
 	overflow-wrap: anywhere;
 }
-.speaker-picker-scope p {
-	margin: var(--space-3) 0 0 23px;
-	font-size: var(--type-micro);
-	line-height: 1.5;
-	color: var(--color-text-secondary);
-}
+
 .speaker-picker-secondary {
 	display: flex;
 	flex-wrap: wrap;
@@ -2287,4 +2282,11 @@ body.floating-body .float-wrap {
 	.speaker-picker button {
 		transition: none;
 	}
+}
+
+.speaker-picker-sample-status {
+	flex-shrink: 0;
+	white-space: nowrap;
+	color: var(--color-text-secondary);
+	font-size: var(--type-micro);
 }

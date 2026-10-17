@@ -1,10 +1,11 @@
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { Person } from "./api";
+import type { LocalSpeaker, Person } from "./api";
 
 export type SpeakerChoice =
 	| { kind: "existing"; personId: string }
-	| { kind: "create"; name: string };
+	| { kind: "create"; name: string }
+	| { kind: "local"; groupId: string };
 export type SpeakerAction =
 	| { kind: "bind"; choice: SpeakerChoice; entire: boolean }
 	| { kind: "unbind"; entire: boolean }
@@ -13,7 +14,8 @@ export type SpeakerAction =
 type Props = {
 	anchor: HTMLElement;
 	people: Person[];
-	name: string;
+	localSpeakers: LocalSpeaker[];
+	currentGroup: string | null;
 	personId: string | null;
 	confirmed: boolean;
 	onClose: () => void;
@@ -24,7 +26,8 @@ type Props = {
 export function SpeakerPicker({
 	anchor,
 	people,
-	name,
+	localSpeakers,
+	currentGroup,
 	personId,
 	confirmed,
 	onClose,
@@ -56,8 +59,15 @@ export function SpeakerPicker({
 	const validChoice =
 		choice?.kind === "create"
 			? canCreate && choice.name === trimmed
-			: choice?.kind === "existing" &&
-				people.some((person) => person.id === choice.personId);
+			: choice?.kind === "local"
+				? localSpeakers.some(
+						(s) =>
+							s.group_id === choice.groupId &&
+							s.anonymous &&
+							s.group_id !== currentGroup,
+					)
+				: choice?.kind === "existing" &&
+					people.some((person) => person.id === choice.personId);
 
 	useLayoutEffect(() => {
 		const element = panel.current;
@@ -68,15 +78,23 @@ export function SpeakerPicker({
 			const gap = 8;
 			const height = window.innerHeight;
 			const width = window.innerWidth;
-			const below = Math.max(0, height - rect.bottom - gap - margin);
-			const above = Math.max(0, rect.top - gap - margin);
-			const naturalHeight = element.scrollHeight;
-			const upwards = below < naturalHeight && above > below;
-			element.style.maxHeight = `${Math.max(0, upwards ? above : below)}px`;
+			element.style.maxHeight = `${height - margin * 2}px`;
 			const box = element.getBoundingClientRect();
-			element.style.left = `${Math.max(margin, Math.min(rect.left, width - box.width - margin))}px`;
-			element.style.top = `${upwards ? Math.max(margin, rect.top - gap - box.height) : rect.bottom + gap}px`;
-			element.dataset.side = upwards ? "above" : "below";
+			const right = rect.right + gap;
+			const left =
+				right + box.width <= width - margin
+					? right
+					: rect.left - gap - box.width >= margin
+						? rect.left - gap - box.width
+						: Math.max(margin, width - box.width - margin);
+			element.style.left = `${left}px`;
+			const searchBox = search.current?.getBoundingClientRect();
+			const searchOffset = searchBox
+				? searchBox.top - box.top + searchBox.height / 2
+				: 0;
+			const alignedTop = rect.top + rect.height / 2 - searchOffset;
+			element.style.top = `${Math.max(margin, Math.min(alignedTop, height - box.height - margin))}px`;
+			element.dataset.side = left >= rect.right ? "right" : "left";
 		};
 		const dismiss = (event: PointerEvent) => {
 			if (
@@ -138,7 +156,6 @@ export function SpeakerPicker({
 			className="speaker-picker"
 			role="dialog"
 			aria-labelledby={`${id}-title`}
-			aria-describedby={`${id}-description`}
 			aria-busy={pending}
 			onKeyDown={(event) => {
 				if (event.key === "Escape") {
@@ -168,7 +185,6 @@ export function SpeakerPicker({
 			<header className="speaker-picker-heading">
 				<div>
 					<h3 id={`${id}-title`}>指定人物</h3>
-					<p id={`${id}-description`}>为「{name}」设置人物身份</p>
 				</div>
 				<button
 					type="button"
@@ -181,12 +197,10 @@ export function SpeakerPicker({
 				</button>
 			</header>
 			<div className="speaker-picker-body">
-				<label className="speaker-picker-search" htmlFor={`${id}-search`}>
-					人物姓名
-				</label>
 				<input
 					ref={search}
 					id={`${id}-search`}
+					aria-label="搜索人物或输入新名字"
 					className="speaker-picker-input"
 					type="search"
 					placeholder="搜索人物或输入新名字…"
@@ -195,7 +209,11 @@ export function SpeakerPicker({
 					value={query}
 					onChange={(event) => {
 						setQuery(event.target.value);
-						setChoice(null);
+						setChoice((current) =>
+							current?.kind === "create"
+								? { kind: "create", name: event.target.value.trim() }
+								: null,
+						);
 						setError("");
 					}}
 				/>
@@ -218,16 +236,24 @@ export function SpeakerPicker({
 								<span className="speaker-picker-avatar" aria-hidden="true">
 									{Array.from(person.display_name)[0]}
 								</span>
-								<span className="speaker-picker-option-name">
+								<span
+									className="speaker-picker-option-name"
+									title={person.display_name}
+								>
 									{person.display_name}
 								</span>
+								{person.sample_count === 0 && (
+									<small className="speaker-picker-sample-status">
+										待补充声纹
+									</small>
+								)}
 								<span className="speaker-picker-check" aria-hidden="true">
 									{selected ? "✓" : ""}
 								</span>
 							</button>
 						);
 					})}
-					{canCreate && (
+					{(!trimmed || canCreate) && (
 						<button
 							type="button"
 							className="speaker-picker-option speaker-picker-create"
@@ -235,18 +261,54 @@ export function SpeakerPicker({
 							disabled={pending}
 							onClick={() => {
 								setChoice({ kind: "create", name: trimmed });
+								if (!trimmed) search.current?.focus();
 								setError("");
 							}}
 						>
 							<span aria-hidden="true">＋</span>
 							<span className="speaker-picker-option-name">
-								创建人物「{trimmed}」并指定
+								{trimmed
+									? `新建「${trimmed}」并建立声纹`
+									: "新建人物并建立声纹"}
 							</span>
 							<span className="speaker-picker-check" aria-hidden="true">
 								{choice?.kind === "create" ? "✓" : ""}
 							</span>
 						</button>
 					)}
+					{localSpeakers
+						.filter((s) => s.anonymous && s.name.includes(trimmed))
+						.map((speaker) => (
+							<button
+								key={speaker.group_id}
+								type="button"
+								className="speaker-picker-option speaker-picker-local"
+								aria-pressed={
+									choice?.kind === "local" &&
+									choice.groupId === speaker.group_id
+								}
+								disabled={pending || speaker.group_id === currentGroup}
+								onClick={() => {
+									setChoice({ kind: "local", groupId: speaker.group_id });
+									setError("");
+								}}
+							>
+								<span className="speaker-picker-avatar" aria-hidden="true">
+									{speaker.name.replace("说话人 ", "")}
+								</span>
+								<span className="speaker-picker-option-name">
+									{speaker.name}
+								</span>
+								<span className="speaker-picker-check" aria-hidden="true">
+									{speaker.group_id === currentGroup
+										? "·"
+										: choice?.kind === "local" &&
+												choice.groupId === speaker.group_id
+											? "✓"
+											: ""}
+								</span>
+							</button>
+						))}
 					{people.length === 0 && !trimmed && (
 						<p className="speaker-picker-empty">
 							还没有人物，输入姓名即可创建。
@@ -273,7 +335,6 @@ export function SpeakerPicker({
 						/>
 						<span>本场中该说话人的全部发言</span>
 					</label>
-					<p>按当前说话人分组应用，不影响其他场次。</p>
 				</fieldset>
 				{personId && (
 					<div className="speaker-picker-secondary">
