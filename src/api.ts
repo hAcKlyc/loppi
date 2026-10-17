@@ -181,6 +181,7 @@ export interface PreciseSegment extends CoarseSegment {
 }
 
 export interface TimelineItem {
+	summary?: string | null;
 	id: string | null;
 	manual_range_id: string | null;
 	started_ms: number;

@@ -2374,6 +2374,12 @@ pub fn correct_text(
     }
     let (source, start, end) = visible_segment(tx, segment_id)?
         .ok_or_else(|| "precise segment is no longer current".to_owned())?;
+    crate::events::invalidate_summaries(
+        tx,
+        start,
+        end,
+        if source == "microphone" { 1 } else { 2 },
+    )?;
     tx.execute(
         "UPDATE text_corrections SET state='reverted',current_segment_id=NULL,
           updated_ms=?2,revision=revision+1
@@ -3524,7 +3530,18 @@ mod tests {
         assert_eq!(seen, finish_revision(legacy));
         let tx = db.transaction().unwrap();
         expect_revision(&tx, "segment", segment, seen).unwrap();
+        tx.execute(
+            "UPDATE named_events SET summary='旧摘要' WHERE id=?1",
+            [event.to_string()],
+        )
+        .unwrap();
         correct_text(&tx, segment, "先改", 8003).unwrap();
+        assert!(
+            events::event_detail(&tx, event, 0, 10)
+                .unwrap()
+                .summary
+                .is_none()
+        );
         tx.commit().unwrap();
         let mut legacy = Sha256::new();
         revision_part(&mut legacy, "segment");

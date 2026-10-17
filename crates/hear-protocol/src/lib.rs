@@ -524,6 +524,9 @@ pub struct TimelineItem {
     pub manual_asr_source: Option<AudioSource>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preview: Option<TimelinePreview>,
+    /// LLM event summary; independent of transcript precision.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub recording_sources: Vec<AudioSource>,
     pub coarse_segments: Vec<CoarseSegment>,
@@ -1142,7 +1145,9 @@ mod tests {
         });
         let mut item: TimelineItem = serde_json::from_value(legacy.clone()).unwrap();
         assert!(item.preview.is_none());
+        assert!(item.summary.is_none());
         assert_eq!(serde_json::to_value(&item).unwrap(), legacy);
+        item.summary = Some("事件摘要".into());
         item.preview = Some(TimelinePreview {
             text: "摘录".into(),
             source: AudioSource::Microphone,
@@ -1150,6 +1155,7 @@ mod tests {
         });
         let wire = serde_json::to_value(&item).unwrap();
         assert_eq!(wire["preview"]["text"], "摘录");
+        assert_eq!(wire["summary"], "事件摘要");
         assert!(
             serde_json::from_value::<TimelineItem>(wire)
                 .unwrap()

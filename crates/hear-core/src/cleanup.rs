@@ -882,6 +882,22 @@ pub fn apply(
         )
         .map_err(|error| error.to_string())?;
     } else {
+        crate::events::invalidate_summaries(tx, scope.start, scope.end, scope.mask)?;
+        // Text cleanup removes whole overlapping sentences, which can extend
+        // beyond the requested interval and be evidence for a neighboring event.
+        for table in ["coarse_segments", "precise_segments"] {
+            tx.execute(
+                &format!(
+                    "UPDATE named_events SET summary=NULL WHERE summary IS NOT NULL
+                AND EXISTS(SELECT 1 FROM {table} s WHERE s.started_ms<?2 AND s.ended_ms>?1
+                AND s.started_ms<named_events.ended_ms AND s.ended_ms>named_events.started_ms
+                AND ((s.source='microphone' AND ?3&1!=0 AND named_events.source_mask&1!=0)
+                  OR (s.source='system' AND ?3&2!=0 AND named_events.source_mask&2!=0)))"
+                ),
+                params![scope.start, scope.end, scope.mask],
+            )
+            .map_err(|error| error.to_string())?;
+        }
         let affected_speaker_targets = {
             let mut stmt = tx
                 .prepare(
@@ -1123,6 +1139,81 @@ pub fn drain_deletions(db: &Connection, directory: &Path, now: i64) -> Result<u6
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn partial_cleanup_invalidates_summaries_using_a_removed_cross_boundary_sentence() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut store = crate::Store::new(Connection::open_in_memory().unwrap()).unwrap();
+        store
+            .db
+            .execute(
+                "INSERT INTO coarse_segments VALUES
+            ('sentence','block','session','microphone',1000,10000,'页面布局讨论','test')",
+                [],
+            )
+            .unwrap();
+        let mic = crate::events::create_event(
+            &mut store.db,
+            1000,
+            5000,
+            "讨论",
+            EventSources::Microphone,
+            20000,
+        )
+        .unwrap();
+        let other = crate::events::create_event(
+            &mut store.db,
+            1000,
+            5000,
+            "另一来源",
+            EventSources::System,
+            20000,
+        )
+        .unwrap();
+        store
+            .db
+            .execute("UPDATE named_events SET summary='原摘要'", [])
+            .unwrap();
+        let preview = preview(
+            &store.db,
+            6000,
+            7000,
+            EventSources::Microphone,
+            CleanupMode::AllData,
+            20000,
+        )
+        .unwrap();
+        let scope = verified_scope(&store.db, preview.token, true, 20000).unwrap();
+        let prepared = prepare_media(
+            directory.path(),
+            &scope,
+            originals(&store.db, &scope).unwrap(),
+        )
+        .unwrap();
+        let tx = store.db.transaction().unwrap();
+        apply(&tx, &scope, &prepared, 20001).unwrap();
+        tx.commit().unwrap();
+        assert!(
+            crate::events::event_detail(&store.db, mic, 0, 10)
+                .unwrap()
+                .summary
+                .is_none()
+        );
+        assert_eq!(
+            crate::events::event_detail(&store.db, other, 0, 10)
+                .unwrap()
+                .summary
+                .as_deref(),
+            Some("原摘要")
+        );
+        assert_eq!(
+            store
+                .db
+                .query_row::<i64, _, _>("SELECT count(*) FROM coarse_segments", [], |r| r.get(0))
+                .unwrap(),
+            0
+        );
+    }
 
     #[test]
     fn all_data_clear_trims_gap_history_without_erasing_other_source() {
@@ -1381,6 +1472,16 @@ mod tests {
                 [],
             )
             .unwrap();
+        let event =
+            crate::events::create_event(&mut store.db, 100, 2000, "讨论", EventSources::Both, 9999)
+                .unwrap();
+        store
+            .db
+            .execute(
+                "UPDATE named_events SET summary='两路内容摘要' WHERE id=?1",
+                [event.to_string()],
+            )
+            .unwrap();
         let preview = preview(
             &store.db,
             500,
@@ -1399,6 +1500,17 @@ mod tests {
         let tx = store.db.transaction().unwrap();
         apply(&tx, &scope, &prepared, 10001).unwrap();
         tx.commit().unwrap();
+        assert!(
+            store
+                .db
+                .query_row::<Option<String>, _, _>(
+                    "SELECT summary FROM named_events WHERE id=?1",
+                    [event.to_string()],
+                    |r| r.get(0)
+                )
+                .unwrap()
+                .is_none()
+        );
         drain_deletions(&store.db, directory.path(), 10002).unwrap();
         let mic_path: Option<String> = store
             .db
@@ -1457,6 +1569,22 @@ mod tests {
                 [],
             )
             .unwrap();
+        let event = crate::events::create_event(
+            &mut store.db,
+            100,
+            2000,
+            "讨论",
+            EventSources::Microphone,
+            9999,
+        )
+        .unwrap();
+        store
+            .db
+            .execute(
+                "UPDATE named_events SET summary='保留摘要' WHERE id=?1",
+                [event.to_string()],
+            )
+            .unwrap();
         let preview = preview(
             &store.db,
             0,
@@ -1477,6 +1605,18 @@ mod tests {
         let tx = store.db.transaction().unwrap();
         apply(&tx, &scope, &prepared, 10001).unwrap();
         tx.commit().unwrap();
+        assert_eq!(
+            store
+                .db
+                .query_row::<Option<String>, _, _>(
+                    "SELECT summary FROM named_events WHERE id=?1",
+                    [event.to_string()],
+                    |r| r.get(0)
+                )
+                .unwrap()
+                .as_deref(),
+            Some("保留摘要")
+        );
         let retained: i64 = store
             .db
             .query_row(

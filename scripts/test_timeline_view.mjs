@@ -15,7 +15,7 @@ const note={text:'现场笔记',ocr_text:null,kind:'comment'};
 test('hide coarse preserves moment clues without exposing hidden transcript', () => {
   assert.deepEqual(cardExcerpt(item,[note],true),{text:'现场笔记',label:'现场笔记'});
   assert.equal(cardExcerpt(item,[],false).label,'粗转 · 麦克风');
-  assert.equal(cardExcerpt({...item,id:'event'},[note],true).text,'原始摘录');
+  assert.equal(cardExcerpt({...item,id:'event'},[note],true).text,'暂无内容摘要，打开查看转录');
   assert.equal(cardExcerpt({...item,manual_range_id:'range',preview:{text:'修正后的精转',source:'system',is_precise:true}},[],true).label,'精转 · 电脑声音');
 });
 test('empty and legacy summaries use honest placeholders; screenshot text remains bounded', () => {
@@ -63,5 +63,21 @@ test('rendered live cards name the ongoing recording and use an open time range'
     assert.match(render(null), /<h3>未整理素材<\/h3>/);
     assert.doesNotMatch(render(null), /至今/);
     assert.match(render(state,{...live,id:'named',title:'项目讨论'}), /<h3>项目讨论<\/h3>/);
+    const summarized=render(null,{...live,id:'named',title:'项目讨论',summary:'讨论了页面布局，倾向保留色块。'});
+    assert.match(summarized,/内容摘要 · 麦克风/);
+    assert.match(summarized,/讨论了页面布局，倾向保留色块。/);
+    assert.doesNotMatch(summarized,/原始摘录/);
+    assert.match(render(null,{...live,id:'legacy',title:'历史事件'}),/暂无内容摘要，打开查看转录/);
   } finally { await server.close(); }
+});
+
+test('event cards use generated summary independently of transcript state and coarse filter', () => {
+  const event={...item,id:'event',sources:'microphone',summary:'比较了布局方案，倾向保留色块。'};
+  for(const hide of [true,false]) {
+    assert.deepEqual(cardExcerpt(event,[note],hide),{text:event.summary,label:'内容摘要 · 麦克风'});
+    for(const summary of [null,undefined,'  ']) {
+      assert.equal(cardExcerpt({...event,summary},[note],hide).text,'暂无内容摘要，打开查看转录');
+    }
+  }
+  assert.equal(cardExcerpt({...event,id:null},[],false).text,'原始摘录');
 });

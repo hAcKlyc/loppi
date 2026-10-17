@@ -1120,10 +1120,6 @@ fn process_cloud_task(
     }
     match task.provider {
         hear_protocol::CloudProvider::Llm => {
-            let input = {
-                let store = shared.store.lock().map_err(|e| e.to_string())?;
-                events::llm_input(&store.db, task)?
-            };
             let outbound = shared
                 .outbound_gate(task.provider)
                 .lock()
@@ -1142,6 +1138,12 @@ fn process_cloud_task(
                 events::defer_paused(&mut store.db, task, now)?;
                 return Ok(());
             }
+            // Capture prior-event summaries under the same gate as cleanup,
+            // including context outside this candidate's own time range.
+            let input = {
+                let store = shared.store.lock().map_err(|e| e.to_string())?;
+                events::llm_input(&store.db, task)?
+            };
             let key = active_cloud_credential(shared, task.provider)?;
             let meter = usage::Recorder::task(shared, task.provider, task.id)?;
             let output = cloud::chat(
@@ -1156,7 +1158,7 @@ fn process_cloud_task(
             let _event_gate = shared.asr_outbound.lock().map_err(|e| e.to_string())?;
             let count = {
                 let mut store = shared.store.lock().map_err(|e| e.to_string())?;
-                events::publish_fit(&mut store.db, task, output, now_ms()?)?
+                events::publish_fit_with_input(&mut store.db, task, &input, output, now_ms()?)?
             };
             let mut event = LogEvent::simple("events", LogLevel::Info, "fit_published");
             event.job_id = Some(task.id);

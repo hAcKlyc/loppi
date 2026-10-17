@@ -27,6 +27,14 @@ export function cardExcerpt(
 	moments: Moment[],
 	hideCoarse: boolean,
 ) {
+	if (item.id) {
+		if (item.summary?.trim())
+			return {
+				text: item.summary.trim(),
+				label: `内容摘要 · ${item.sources === "both" ? "双路声音" : item.sources === "system" ? "电脑声音" : "麦克风"}`,
+			};
+		return { text: "暂无内容摘要，打开查看转录", label: "" };
+	}
 	const showTranscript =
 		!hideCoarse || item.id !== null || item.manual_range_id !== null;
 	const preview = showTranscript ? item.preview : null;
