@@ -6,10 +6,13 @@ import {
 	type Moment,
 	manualAsrSummary,
 	processingLabel,
+	type Source,
 	type TimeGap,
 	type TimelineItem,
 	time,
 } from "./api";
+
+import { cardExcerpt, daySpan } from "./timeline-view";
 
 type Props = {
 	captureStatus: ReactNode;
@@ -89,7 +92,30 @@ export function TimelineView({
 					moment.anchor_ms < item.ended_ms,
 			),
 	);
-	const statusGaps = gaps.filter((gap) => gap.ended_ms > gap.started_ms);
+	const now = today.getTime();
+	const statusGaps = gaps.flatMap((gap) => {
+		const style = daySpan(gap.started_ms, gap.ended_ms, from, to, now);
+		return style
+			? [
+					{
+						...gap,
+						started_ms: Math.max(from, gap.started_ms),
+						ended_ms: Math.min(to, now, gap.ended_ms),
+						style,
+					},
+				]
+			: [];
+	});
+	const dayMoments = moments.filter(
+		(moment) =>
+			moment.anchor_ms >= from &&
+			moment.anchor_ms < to &&
+			moment.anchor_ms <= now,
+	);
+	const sources: { key: Source; label: string }[] = [
+		{ key: "microphone", label: "麦克风" },
+		{ key: "system", label: "电脑声音" },
+	];
 
 	return (
 		<div className="timeline-page">
@@ -157,42 +183,92 @@ export function TimelineView({
 				{captureStatus}
 			</header>
 
-			<section className="day-map" aria-label="这一天的事件分布">
-				<div className="day-map-track">
-					{statusGaps.map((gap) => (
-						<span
-							key={`${gap.source}-${gap.started_ms}-${gap.reason}`}
-							className="day-map-gap"
-							style={{
-								left: position(gap.started_ms),
-								width: `${Math.max(0.3, ((gap.ended_ms - gap.started_ms) / (to - from)) * 100)}%`,
-							}}
-							title={`${time(gap.started_ms)}—${time(gap.ended_ms)} · ${gapReason(gap.reason)} · ${gap.source === "microphone" ? "麦克风" : "电脑声音"}`}
-						/>
+			<section className="day-map" aria-label="当天内容范围与未记录时段">
+				<div className="day-map-heading">
+					<strong>记录分布</strong>
+					<div className="day-map-legend">
+						<span>
+							<i className="raw" />
+							未整理
+						</span>
+						<span>
+							<i className="organized" />
+							事件 / 精转范围
+						</span>
+						<span>
+							<i className="gap" />
+							未记录
+						</span>
+					</div>
+				</div>
+				<div className="day-map-plot">
+					{sources.map(({ key, label }) => (
+						<div className="day-map-row" key={key}>
+							<span className="day-map-source">{label}</span>
+							<div className="day-map-track">
+								{items
+									.filter(
+										(item) =>
+											item.processing_state !== "moment_only" &&
+											(item.sources === "both" || item.sources === key),
+									)
+									.map((item) => {
+										const style = daySpan(
+											item.started_ms,
+											item.ended_ms,
+											from,
+											to,
+											now,
+										);
+										if (!style) return null;
+										const title = `${time(Math.max(item.started_ms, from))}—${time(Math.min(item.ended_ms, to, now))} · ${item.title || (item.manual_range_id ? "精转范围" : "未整理素材")} · ${label}`;
+										return (
+											<button
+												key={`${item.id ?? item.manual_range_id ?? "raw"}-${item.started_ms}-${item.sources}`}
+												type="button"
+												className={`day-map-event ${item.id || item.manual_range_id ? "organized" : "raw"}`}
+												title={title}
+												aria-label={title}
+												style={style}
+												onClick={() => onSelect(item)}
+											/>
+										);
+									})}
+								{statusGaps
+									.filter((gap) => gap.source === key)
+									.map((gap) => (
+										<span
+											key={`${gap.started_ms}-${gap.reason}`}
+											className="day-map-gap"
+											style={gap.style}
+											title={`${time(gap.started_ms)}—${time(gap.ended_ms)} · ${gapReason(gap.reason)} · ${label}`}
+										/>
+									))}
+							</div>
+						</div>
 					))}
-					{moments.map((moment) => (
-						<span
-							key={moment.id}
-							className={`day-map-moment ${moment.kind}`}
-							style={{ left: position(moment.anchor_ms) }}
-							title={`${time(moment.anchor_ms)} · ${moment.kind === "mark" ? "重点" : moment.kind === "comment" ? "评论" : "截屏"}`}
-						/>
-					))}
-					{items
-						.filter((item) => item.id || item.manual_range_id)
-						.map((item) => (
-							<button
-								key={`${item.id ?? item.manual_range_id}-${item.started_ms}-${item.sources}`}
-								type="button"
-								className={`day-map-event ${item.manual_range_id ? "manual" : ""}`}
-								title={`${time(item.started_ms)}—${time(item.ended_ms)} ${item.title ?? "未命名事件"}`}
-								style={{
-									left: position(item.started_ms),
-									width: `${Math.max(1.1, ((Math.min(item.ended_ms, to) - Math.max(item.started_ms, from)) / (to - from)) * 100)}%`,
-								}}
-								onClick={() => onSelect(item)}
-							/>
-						))}
+					{dayMoments.length > 0 && (
+						<div className="day-map-row">
+							<span className="day-map-source">现场记录</span>
+							<div className="day-map-moments">
+								{dayMoments.map((moment) => (
+									<span
+										key={moment.id}
+										className={`day-map-moment ${moment.kind}`}
+										style={{ left: position(moment.anchor_ms) }}
+										title={`${time(moment.anchor_ms)} · ${moment.kind === "mark" ? "重点" : moment.kind === "comment" ? "笔记" : "截图"}`}
+									/>
+								))}
+							</div>
+						</div>
+					)}
+					{selectedKey === todayKey && (
+						<div className="day-map-now-track">
+							<span className="day-map-now" style={{ left: position(now) }}>
+								<span>现在 {time(now)}</span>
+							</span>
+						</div>
+					)}
 				</div>
 				<div className="day-map-hours">
 					<span>00:00</span>
@@ -201,10 +277,13 @@ export function TimelineView({
 					<span>18:00</span>
 					<span>24:00</span>
 				</div>
+				<p className="day-map-hint">
+					色块表示可查看的内容范围，范围内可能有空白。
+				</p>
 				{statusGaps.length > 0 && (
 					<details className="day-map-gap-details">
 						<summary>
-							未记录时段 <em>{statusGaps.length}</em>
+							未记录区间（按声音来源）<em>{statusGaps.length}</em>
 						</summary>
 						<div className="day-map-gap-list">
 							{statusGaps.map((gap) => (
@@ -221,7 +300,9 @@ export function TimelineView({
 			</section>
 
 			<div className="section-heading">
-				<h2>日程</h2>
+				<h2>
+					当天记录 <span className="record-count">{visible.length}</span>
+				</h2>
 				<div className="section-actions">
 					<button
 						type="button"
@@ -245,17 +326,13 @@ export function TimelineView({
 					</div>
 				) : (
 					visible.map((item) => {
-						const count = moments.filter(
+						const itemMoments = moments.filter(
 							(moment) =>
 								moment.anchor_ms >= item.started_ms &&
 								moment.anchor_ms < item.ended_ms,
-						).length;
-						const excerpt =
-							hideCoarse && !item.id && !item.manual_range_id
-								? ""
-								: (item.precise_segments[0]?.text ??
-									item.coarse_segments[0]?.text ??
-									"");
+						);
+						const count = itemMoments.length;
+						const excerpt = cardExcerpt(item, itemMoments, hideCoarse);
 						const manualStatus = manualAsrSummary(item);
 						return (
 							<div
@@ -282,22 +359,25 @@ export function TimelineView({
 										{item.title ||
 											(item.manual_range_id
 												? "未命名事件"
-												: hideCoarse
+												: hideCoarse || item.processing_state === "moment_only"
 													? "现场记录"
-													: "未整理")}
+													: "未整理素材")}
 									</h3>
-									{excerpt && <p>{excerpt}</p>}
+									<p className={excerpt.label ? "" : "event-card-placeholder"}>
+										{excerpt.text}
+									</p>
 									<div className="event-card-foot">
 										<span>
-											{item.processing_state === "moment_only"
-												? "时刻记录"
-												: item.sources === "both"
-													? "双路声音"
-													: item.sources === "microphone"
-														? "麦克风"
-														: "电脑声音"}
+											{excerpt.label ||
+												(item.processing_state === "moment_only"
+													? "时刻记录"
+													: item.sources === "both"
+														? "双路声音"
+														: item.sources === "microphone"
+															? "麦克风"
+															: "电脑声音")}
 										</span>
-										{count > 0 && <span>{count} 条记录</span>}
+										{count > 0 && <span>{count} 条现场记录</span>}
 										{manualStatus && (
 											<span className="event-card-task">{manualStatus}</span>
 										)}

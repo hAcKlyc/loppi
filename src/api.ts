@@ -194,6 +194,7 @@ export interface TimelineItem {
 	manual_asr_started_ms: number | null;
 	manual_asr_ended_ms: number | null;
 	manual_asr_source: Source | null;
+	preview?: { text: string; source: Source; is_precise: boolean } | null;
 	coarse_segments: CoarseSegment[];
 	precise_segments: PreciseSegment[];
 }

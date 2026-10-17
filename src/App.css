@@ -250,7 +250,7 @@ p {
 	gap: 3px;
 }
 .date-current strong {
-	font-size: var(--type-display);
+	font-size: var(--type-display-sm);
 	line-height: var(--leading-tight);
 	letter-spacing: var(--tracking-tight);
 	font-weight: var(--weight-bold);
@@ -272,25 +272,117 @@ p {
 .date-neighbor:hover {
 	color: var(--color-text-secondary);
 }
+.timeline-page {
+	padding: var(--space-10) var(--space-11) var(--space-13);
+}
+.timeline-page .date-header {
+	min-height: 78px;
+}
 .day-map {
-	margin-top: 30px;
+	margin-top: var(--space-8);
 	border: 1px solid var(--color-border);
 	border-radius: var(--radius-lg);
-	padding: 23px 26px 19px;
+	padding: var(--space-7) var(--space-8);
 	background: var(--color-surface);
 }
-.day-map-track {
-	height: 43px;
-	background: var(--color-sidebar);
-	border-radius: var(--radius-sm);
+.day-map-heading,
+.day-map-legend {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: var(--space-5) var(--space-7);
+}
+.day-map-heading {
+	justify-content: space-between;
+	margin-bottom: var(--space-8);
+	font-size: var(--type-meta);
+}
+.day-map-legend {
+	color: var(--color-text-muted);
+	font-size: var(--type-caption);
+}
+.day-map-legend span {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-3);
+}
+.day-map-legend i {
+	width: 12px;
+	height: 8px;
+	border-radius: var(--radius-xs);
+}
+.day-map-legend .raw,
+.day-map-event.raw {
+	background: var(--color-brand-border);
+}
+.day-map-legend .organized,
+.day-map-event.organized {
+	background: var(--color-comment);
+}
+.day-map-legend .gap,
+.day-map-gap {
+	background: repeating-linear-gradient(
+		135deg,
+		var(--color-border) 0 2px,
+		var(--color-surface) 2px 5px
+	);
+}
+.day-map-plot {
 	position: relative;
+}
+.day-map-row {
+	display: grid;
+	grid-template-columns: 64px minmax(0, 1fr);
+	align-items: center;
+	gap: var(--space-6);
+	margin-top: var(--space-5);
+}
+.day-map-source {
+	font-size: var(--type-caption);
+	color: var(--color-text-muted);
+}
+.day-map-track {
+	height: 29px;
+	position: relative;
+	background: var(--color-surface-subtle);
+	border-radius: var(--radius-xs);
+	overflow: hidden;
 }
 .day-map-gap {
 	position: absolute;
-	top: 0;
 	bottom: 0;
-	background: var(--color-border-strong);
-	border-radius: var(--radius-xs);
+	height: 5px;
+	min-width: 1px;
+}
+.day-map-now-track {
+	position: absolute;
+	inset: 0 0 0 76px;
+	pointer-events: none;
+}
+.day-map-now {
+	position: absolute;
+	top: -7px;
+	bottom: 0;
+	width: 1px;
+	background: var(--color-border-active);
+}
+.day-map-now > span {
+	position: absolute;
+	top: -15px;
+	right: 0;
+	white-space: nowrap;
+	font-size: var(--type-micro);
+	color: var(--color-text-muted);
+}
+.day-map-moments {
+	position: relative;
+	height: 13px;
+	overflow: hidden;
+}
+.day-map-hint {
+	margin: var(--space-6) 0 0;
+	color: var(--color-text-muted);
+	font-size: var(--type-caption);
 }
 .day-map-gap-details {
 	margin-top: 14px;
@@ -327,18 +419,18 @@ p {
 }
 .day-map-event {
 	position: absolute;
-	top: var(--space-3);
-	height: 31px;
+	top: 0;
+	height: 21px;
+	padding: 0;
 	border: 0;
-	border-radius: var(--radius-sm);
-	background: var(--color-brand-accent);
-	min-width: 5px;
+	border-radius: var(--radius-xs);
+	min-width: 2px;
 }
 .day-map-event:hover {
-	background: var(--color-brand-hover);
+	filter: brightness(0.92);
 }
-.day-map-event.manual {
-	opacity: 0.68;
+.day-map-event:focus-visible {
+	outline-offset: -2px;
 }
 .day-map-moment {
 	position: absolute;
@@ -359,7 +451,7 @@ p {
 .day-map-hours {
 	display: flex;
 	justify-content: space-between;
-	margin-top: 15px;
+	margin: var(--space-4) 0 0 76px;
 	color: var(--color-text-faint);
 	font-size: var(--type-caption);
 	font-variant-numeric: tabular-nums;
@@ -369,6 +461,15 @@ p {
 	align-items: center;
 	justify-content: space-between;
 	margin: 43px 0 18px;
+}
+.timeline-page .section-heading {
+	margin: var(--space-9) 0 var(--space-6);
+}
+.record-count {
+	margin-left: var(--space-3);
+	font-size: var(--type-meta);
+	font-weight: var(--weight-regular);
+	color: var(--color-text-muted);
 }
 .section-heading h2,
 .settings-page > h2 {
@@ -444,7 +545,7 @@ p {
 	border: 1px solid var(--color-border);
 	border-radius: var(--radius-lg);
 	background: var(--color-surface);
-	padding: var(--space-8) 22px;
+	padding: var(--space-6) var(--space-7);
 	box-shadow: var(--shadow-card);
 	color: inherit;
 }
@@ -467,23 +568,28 @@ p {
 }
 .event-card h3 {
 	font-size: var(--type-icon);
-	margin: 15px 0 var(--space-3);
+	margin: var(--space-3) 0 var(--space-2);
 	letter-spacing: var(--tracking-heading);
 }
 .event-card p {
 	color: var(--color-text-muted);
 	font-size: var(--type-meta);
 	line-height: var(--leading-body);
-	white-space: nowrap;
-	text-overflow: ellipsis;
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
 	overflow: hidden;
+	overflow-wrap: anywhere;
 	margin: 0;
 }
 .event-card-foot {
 	justify-content: flex-start;
 	flex-wrap: wrap;
-	margin-top: 17px;
+	margin-top: var(--space-4);
 	gap: 15px;
+}
+.event-card p.event-card-placeholder {
+	color: var(--color-text-faint);
 }
 .event-card-task {
 	color: var(--color-brand-accent);

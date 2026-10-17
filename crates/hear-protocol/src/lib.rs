@@ -493,6 +493,13 @@ pub struct CloudTaskView {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TimelinePreview {
+    pub text: String,
+    pub source: AudioSource,
+    pub is_precise: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimelineItem {
     pub id: Option<Uuid>,
     pub manual_range_id: Option<Uuid>,
@@ -507,6 +514,8 @@ pub struct TimelineItem {
     pub manual_asr_started_ms: Option<i64>,
     pub manual_asr_ended_ms: Option<i64>,
     pub manual_asr_source: Option<AudioSource>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preview: Option<TimelinePreview>,
     pub coarse_segments: Vec<CoarseSegment>,
     pub precise_segments: Vec<PreciseSegment>,
 }
@@ -1101,5 +1110,31 @@ mod tests {
         assert_eq!(value["tasks"][0]["id"], task_id.to_string());
         assert_eq!(value["tasks"][0]["source"], "system");
         assert_eq!(value["tasks"][0]["state"], "pending");
+    }
+    #[test]
+    fn timeline_preview_is_optional_for_existing_clients_and_cores() {
+        let legacy = serde_json::json!({
+            "id":null,"manual_range_id":null,"started_ms":0,"ended_ms":1000,
+            "title":null,"sources":"microphone","revision":null,"fit_state":null,
+            "processing_state":"unorganized","manual_asr_state":null,
+            "manual_asr_started_ms":null,"manual_asr_ended_ms":null,"manual_asr_source":null,
+            "coarse_segments":[],"precise_segments":[]
+        });
+        let mut item: TimelineItem = serde_json::from_value(legacy.clone()).unwrap();
+        assert!(item.preview.is_none());
+        assert_eq!(serde_json::to_value(&item).unwrap(), legacy);
+        item.preview = Some(TimelinePreview {
+            text: "摘录".into(),
+            source: AudioSource::Microphone,
+            is_precise: false,
+        });
+        let wire = serde_json::to_value(&item).unwrap();
+        assert_eq!(wire["preview"]["text"], "摘录");
+        assert!(
+            serde_json::from_value::<TimelineItem>(wire)
+                .unwrap()
+                .preview
+                .is_some()
+        );
     }
 }

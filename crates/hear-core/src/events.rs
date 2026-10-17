@@ -2,7 +2,7 @@
 //! coarse text. Candidate windows are scheduling inputs, never user events.
 use hear_protocol::{
     AudioSource, CloudProvider, CloudQueueState, CloudTaskView, CoarseSegment, EventSources,
-    PreciseSegment, TimeGap, TimelineItem,
+    PreciseSegment, TimeGap, TimelineItem, TimelinePreview,
 };
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use sha2::{Digest, Sha256};
@@ -1461,6 +1461,14 @@ pub fn timeline(db: &Connection, start: i64, end: i64) -> Result<Vec<TimelineIte
             manual_asr_started_ms: None,
             manual_asr_ended_ms: None,
             manual_asr_source: None,
+            preview: timeline_preview(
+                db,
+                a.max(start),
+                b.min(end),
+                mask,
+                Some((&id, &asr_version(mask, a, b))),
+                None,
+            )?,
             coarse_segments: Vec::new(),
             precise_segments: Vec::new(),
         });
@@ -1531,8 +1539,71 @@ pub fn timeline(db: &Connection, start: i64, end: i64) -> Result<Vec<TimelineIte
         });
         output.push(unorganized(db, a, b, if mask == 0 { 3 } else { mask })?);
     }
+    for item in output.iter_mut().filter(|item| item.id.is_none()) {
+        let mask = match item.sources {
+            EventSources::Microphone => 1,
+            EventSources::System => 2,
+            EventSources::Both => 3,
+        };
+        item.preview = timeline_preview(
+            db,
+            item.started_ms,
+            item.ended_ms,
+            mask,
+            None,
+            item.manual_range_id
+                .as_ref()
+                .map(Uuid::to_string)
+                .as_deref(),
+        )?;
+    }
     output.sort_by(|a, b| b.started_ms.cmp(&a.started_ms));
     Ok(output)
+}
+
+// The list gets one bounded excerpt, never a full transcript or a second IPC per card.
+// Reuse detail readers so current task versions and manual text corrections agree.
+fn timeline_preview(
+    db: &Connection,
+    start: i64,
+    end: i64,
+    mask: i64,
+    event: Option<(&str, &str)>,
+    manual_id: Option<&str>,
+) -> Result<Option<TimelinePreview>, String> {
+    let mut offset = 0;
+    loop {
+        let precise = if let Some((id, version)) = event {
+            precise_for(db, "event", id, version, start, end, 1, offset)?
+        } else {
+            range_precise_for(db, start, end, mask, 1, offset, manual_id)?
+        };
+        let Some(segment) = precise.into_iter().next() else {
+            break;
+        };
+        if !segment.text.trim().is_empty() {
+            return Ok(Some(bounded_preview(&segment.text, segment.source, true)));
+        }
+        offset += 1;
+    }
+    Ok(coarse_for(db, start, end, mask, 1, 0)?
+        .into_iter()
+        .next()
+        .map(|segment| bounded_preview(&segment.text, segment.source, false)))
+}
+
+fn bounded_preview(text: &str, source: AudioSource, is_precise: bool) -> TimelinePreview {
+    let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut chars = normalized.chars();
+    let mut text: String = chars.by_ref().take(160).collect();
+    if chars.next().is_some() {
+        text.push('…');
+    }
+    TimelinePreview {
+        text,
+        source,
+        is_precise,
+    }
 }
 
 pub fn timeline_gaps(
@@ -1668,6 +1739,7 @@ fn unorganized(db: &Connection, start: i64, end: i64, mask: i64) -> Result<Timel
                 AudioSource::Microphone
             }
         }),
+        preview: None,
         coarse_segments: Vec::new(),
         precise_segments: Vec::new(),
     })
@@ -1750,6 +1822,7 @@ pub fn event_detail(
         manual_asr_started_ms: None,
         manual_asr_ended_ms: None,
         manual_asr_source: None,
+        preview: None,
         coarse_segments: coarse_for(db, start, end, mask, limit, offset)?,
         precise_segments: precise_for(
             db,
@@ -3720,6 +3793,15 @@ mod tests {
         let first_segment = event_detail(&db, event, 0, 10).unwrap().precise_segments[0].id;
         let tx = db.transaction().unwrap();
         crate::knowledge::correct_text(&tx, first_segment, "人工修正", 7_003).unwrap();
+        let preview = timeline(&tx, 0, 10_000)
+            .unwrap()
+            .into_iter()
+            .find(|item| item.id == Some(event))
+            .unwrap()
+            .preview
+            .unwrap();
+        assert_eq!(preview.text, "人工修正");
+        assert!(preview.is_precise);
         retranscribe_event_in(&tx, event, 1, 7_004).unwrap();
         tx.commit().unwrap();
         assert_eq!(
@@ -3736,6 +3818,15 @@ mod tests {
         assert_eq!(
             publish_asr(&mut db, &first, &[utterance.clone()], 7_005).unwrap(),
             0
+        );
+        assert!(
+            timeline(&db, 0, 10_000)
+                .unwrap()
+                .into_iter()
+                .find(|item| item.id == Some(event))
+                .unwrap()
+                .preview
+                .is_none()
         );
         let second = take_task(&mut db, CloudProvider::Asr, 7_006)
             .unwrap()
@@ -4580,6 +4671,29 @@ mod tests {
     }
 
     #[test]
+    fn timeline_preview_is_unicode_bounded_and_source_scoped() {
+        let db = db();
+        coarse(&db, "microphone", 1_000, 2_000, &"你好🙂".repeat(100));
+        db.execute("INSERT INTO coarse_segments VALUES(?1,'block','session','system',500,900,'电脑文字','test')", params![Uuid::new_v4().to_string()]).unwrap();
+        let mic = timeline_preview(&db, 0, 3_000, 1, None, None)
+            .unwrap()
+            .unwrap();
+        assert_eq!(mic.text.chars().count(), 161);
+        assert!(mic.text.ends_with('…'));
+        assert_eq!(mic.source, AudioSource::Microphone);
+        let system = timeline_preview(&db, 0, 3_000, 2, None, None)
+            .unwrap()
+            .unwrap();
+        assert_eq!(system.text, "电脑文字");
+        assert_eq!(system.source, AudioSource::System);
+        assert!(
+            timeline_preview(&db, 2_000, 3_000, 1, None, None)
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
     fn day_timeline_is_a_summary_and_detail_pages_transcript_in_time_order() {
         let mut db = db();
         let now = 10_000_000;
@@ -4596,7 +4710,33 @@ mod tests {
         )
         .unwrap();
         let summary = timeline(&db, now - 110_000, now).unwrap();
-        assert!(summary.iter().all(|item| item.coarse_segments.is_empty()));
+        assert!(
+            summary
+                .iter()
+                .all(|item| item.coarse_segments.is_empty() && item.precise_segments.is_empty())
+        );
+        let preview = summary
+            .iter()
+            .find(|item| item.id == Some(id))
+            .unwrap()
+            .preview
+            .as_ref()
+            .unwrap();
+        assert_eq!(preview.text, "第一句");
+        assert!(!preview.is_precise);
+        // A day slice must not pick a transcript outside its displayed bounds.
+        let sliced = timeline(&db, now - 95_000, now).unwrap();
+        assert_eq!(
+            sliced
+                .iter()
+                .find(|item| item.id == Some(id))
+                .unwrap()
+                .preview
+                .as_ref()
+                .unwrap()
+                .text,
+            "第二句"
+        );
         let first = event_detail(&db, id, 0, 1).unwrap();
         let second = event_detail(&db, id, 1, 1).unwrap();
         assert_eq!(first.coarse_segments[0].text, "第一句");
@@ -4740,6 +4880,26 @@ mod tests {
             7_002,
         )
         .unwrap();
+        let summary = timeline(&db, 0, 10_000).unwrap();
+        let preview = summary
+            .iter()
+            .find(|item| item.manual_range_id == Some(first))
+            .unwrap()
+            .preview
+            .as_ref()
+            .unwrap();
+        assert_eq!(preview.text, "一句话");
+        assert!(preview.is_precise);
+        assert!(
+            timeline_preview(&db, 0, 10_000, 2, None, Some(&first.to_string()))
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            timeline_preview(&db, 0, 10_000, 1, None, Some(&Uuid::new_v4().to_string()))
+                .unwrap()
+                .is_none()
+        );
         db.execute(
             "UPDATE cloud_tasks SET processor_version='volc-standard-v3-wav-old'
              WHERE id=?1",
