@@ -1,0 +1,48 @@
+# 云用量与成本统计
+
+统计页位于处理队列的「统计数据」。范围为包含今天的 7/30/90 个本地自然日，默认 30 天；转录图显示独立受理次数/成本，LLM 图显示输入/输出/缓存 Token/成本。图例可独立显隐，缓存是输入子集，Token 曲线不堆叠。零调用、统计启用前和部分缺失分别表达；非零小额不格式化成零。
+
+## Owner 和记录边界
+
+`hear-core/src/usage.rs` 复用 Store 唯一写入者及 readers 快照。`cloud.rs` 在发起实际调用前登记身份、价格和待确认记录，在业务 JSON/时间轴校验之前保存响应中的白名单计量。网络 IO 不持 Store 锁，不改变队列调度和采集 owner。配置连接验证也纳入消耗，标记 verification，无业务任务 ID。
+
+- `usage_models` 区分 capability（llm/asr）与 vendor（deepseek/volcengine），保存具体 API 模型/资源标识。
+- `usage_prices` 是不可变完整价格版本，包含官方来源、核实日期、币种、分母、峰谷及日历规则。新版只能新增 revision；旧记录继续引用旧版本。
+- `usage_requests` 保存实际外发身份、随机连接引用（无密钥）、远端 ID、UTC 发生时间、用量、受理/完整性、价格版本、选中档位和纳元金额。响应模型名只作供应商返回事实，不推断未返回的具体版本。
+- `usage_meta` 保存首次启用时间；不从已有任务数或日志伪造历史用量。升级前已经提交的 ASR 查询不追记成新调用。
+
+LLM 每次实际外发新建记录；ASR 使用模型/连接身份/远端请求 ID 唯一约束归并同一识别请求，轮询或恢复不会重复计费。新远端请求或新账户为独立记录。重新提交尚未受理的同一请求恢复为 unknown；查询获得用量只幂等更新原记录。
+
+网络请求和 SQLite 不能组成分布式事务：外发意图写入后崩溃、丢失响应、用量持久化失败都可能留下 unknown。只显示已知小计和缺失数量，不宣称账单级完整，不为找回统计额外调用付费模型。明确 HTTP 入站拒绝可标 rejected/零；供应商不明确结果保留 unknown。业务处理失败、人工修改或数据清理不抹去已经发生的消耗。外发前登记失败会阻止本次请求；收到供应商响应后的统计写入失败只记录固定诊断事件，不覆盖业务结果或触发额外付费重试。
+
+普通时间范围的清理只删除内容事实，统计元数据继续保留。90 天是显示限制，不是记录 TTL；删除整个应用数据目录会同时清除统计。记录不包含转录、音频、提示词、响应正文或密钥。
+
+## 当前价格与计算（2026-10-17 核实）
+
+权威版本配置：`crates/hear-core/src/usage-prices.json`，`official-cny-2026-10-17-v1`，从本次核实日起适用。
+
+| 服务 | 缓存输入 / 百万 Token | 非缓存输入 / 百万 Token | 输出 / 百万 Token | 音频 / 小时 |
+|---|---:|---:|---:|---:|
+| DeepSeek Flash 空闲 | ¥0.02 | ¥1 | ¥4 | — |
+| DeepSeek Flash 高峰 | ¥0.04 | ¥2 | ¥8 | — |
+| DeepSeek V4 Pro 空闲 | ¥0.15 | ¥4.5 | ¥13.5 | — |
+| DeepSeek V4 Pro 高峰 | ¥0.30 | ¥9 | ¥27 | — |
+| 豆包录音文件识别 2.0 `volc.seedasr.auc` | — | — | — | ¥0.8 |
+
+[DeepSeek 人民币价格](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/)；[火山计费说明](https://docs.volcengine.com/docs/DoubaoVoice/Billinginstructions-21?lang=zh)。不要将同页旧大模型标准版 ¥2.3/h 错配给当前 2.0 资源。
+
+DeepSeek 高峰按北京时间周一到周五 09:00–12:00 / 14:00–18:00，周末和中国节假日为空闲。2026 放假日来自[国务院通知](https://www.beijing.gov.cn/cs/gncs/zcwj/202603/t20260327_4568275.html)；周末调休上班仍按供应商的周末空闲规则。价格档位按请求发出时刻固定，这是可复现的本地估算口径，并非供应商跨档结算保证。未来未核实日历年份的工作日高峰候选时段保留未知价格；供应商改价或年度日历更新时新增版本，不静默套旧规则。
+
+LLM 计量来自 [Chat Completions usage](https://api-docs.deepseek.com/api/create-chat-completion/)：`prompt_tokens` 已包含 cache hit，`prompt_cache_hit_tokens` 与 `prompt_tokens_details.cached_tokens` 是同义字段，不叠加；输出使用 completion_tokens（不再加其 reasoning 子集）。缺字段或 cache > input 为部分数据。
+
+`C = ((input - cached) × input_rate + cached × cache_rate + output × output_rate) / 1,000,000`。
+
+ASR 优先使用 `audio_info.duration` 毫秒；尚未返回时以已提交音频时长估算。生产 Ogg 路径由 assemble_ogg 按 task 范围逐帧生成，包含中间静音，其确切编码时长等于该范围；连接验证是 1 秒 WAV。这里不是拿转录句段首尾推算时长。`C = audio_ms × hourly_rate / 3,600,000`，保持毫秒比例的估算，不擅自发明供应商未明确的秒级舍入方向。
+
+计算使用 i128 中间值，存 i64 CNY 纳元，最终渲染才显示到小数位。无套餐/免费额度/合同折扣抵扣，不读取账户余额。不混加其他币种；未来新增供应商时必须登记其真实单位和货币并补齐归一化/计价适配及测试。
+
+## 查询与前端
+
+协议 v16：`usage_statistics { boundaries }`，边界为 UI 按本地自然日生成的 UTC 毫秒时间戳（8/31/91 个）；core 校验数量、单调性及 20–28h 日跨度，兼容 DST，不信任任意全表范围。使用时间索引逐日聚合，返回覆盖状态、已知小计和缺失数量。CLI `hear cloud usage --boundaries <逗号分隔时间戳>` 与 GUI 共用同一协议。
+
+前端不接触价格计算。统计页每 30 秒更新，切换范围或卸载后迟到响应不能覆盖新选择。日期切换保留图例状态；成本独立右轴，全部隐藏时提示选指标；图表键盘日期滑块提供对应数值和可访问提示。

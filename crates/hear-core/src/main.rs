@@ -44,6 +44,7 @@ mod source_process;
 mod storage;
 mod system_audio;
 mod unilogs;
+mod usage;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum LaunchMode {
@@ -1142,7 +1143,15 @@ fn process_cloud_task(
                 return Ok(());
             }
             let key = active_cloud_credential(shared, task.provider)?;
-            let output = cloud::chat(&key, &task.model_id, events::FIT_SYSTEM, &input, deadline)?;
+            let meter = usage::Recorder::task(shared, task.provider, task.id)?;
+            let output = cloud::chat(
+                &key,
+                &task.model_id,
+                events::FIT_SYSTEM,
+                &input,
+                deadline,
+                &meter,
+            )?;
             drop(outbound);
             let _event_gate = shared.asr_outbound.lock().map_err(|e| e.to_string())?;
             let count = {
@@ -1173,7 +1182,8 @@ fn process_cloud_task(
                     return Ok(());
                 }
                 let key = active_cloud_credential(shared, task.provider)?;
-                cloud::query_audio(&key, task.remote_id, deadline)?
+                let meter = usage::Recorder::task(shared, task.provider, task.id)?;
+                cloud::query_audio(&key, task.remote_id, deadline, &meter)?
             };
             match query {
                 cloud::AsrQuery::Complete(utterances) => {
@@ -1229,12 +1239,15 @@ fn process_cloud_task(
                         let store = shared.store.lock().map_err(|e| e.to_string())?;
                         events::mark_submit_intent(&store.db, task, now_ms()?)?;
                     }
+                    let meter = usage::Recorder::task(shared, task.provider, task.id)?;
                     cloud::submit_audio(
                         &key,
                         task.remote_id,
                         &ogg,
                         cloud::AsrAudioFormat::Ogg,
+                        task.end - task.start,
                         deadline,
+                        &meter,
                     )?;
                     let store = shared.store.lock().map_err(|e| e.to_string())?;
                     events::asr_wait(&store.db, task, now_ms()?).map_err(Into::into)
@@ -2012,6 +2025,13 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
         }
     } else {
         match envelope.request {
+            Request::UsageStatistics { boundaries } => {
+                let reader = shared.readers.snapshot()?;
+                Response::UsageStatistics {
+                    id: envelope.id,
+                    statistics: usage::statistics(&reader, &boundaries)?,
+                }
+            }
             Request::CloudStatus => {
                 let queues = {
                     let reader = shared.readers.snapshot()?;
@@ -2066,9 +2086,12 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                         message: "select a supported cloud model".to_owned(),
                     }
                 } else {
+                    let meter = usage::Recorder::verification(shared);
                     let verified = match provider {
-                        hear_protocol::CloudProvider::Llm => cloud::verify_llm(&api_key, &chosen),
-                        hear_protocol::CloudProvider::Asr => cloud::verify_asr(&api_key),
+                        hear_protocol::CloudProvider::Llm => {
+                            cloud::verify_llm(&api_key, &chosen, &meter)
+                        }
+                        hear_protocol::CloudProvider::Asr => cloud::verify_asr(&api_key, &meter),
                     };
                     match verified.and_then(|()| cloud::save_credential(provider, &api_key)) {
                         Ok(reference) => {
@@ -3613,6 +3636,7 @@ impl Store {
         .map_err(|error| error.to_string())?;
         storage::init(&db)?;
         events::init(&db)?;
+        usage::init(&db, now_ms()?)?;
         moments::init(&db)?;
         cleanup::init(&db)?;
         ingestion::init(&db)?;
@@ -4267,6 +4291,7 @@ impl Store {
                 unreachable!("handled by IPC dispatcher")
             }
             Request::CloudStatus
+            | Request::UsageStatistics { .. }
             | Request::CloudTasks { .. }
             | Request::ConfigureCloud { .. }
             | Request::SetCloudPaused { .. }

@@ -27,6 +27,7 @@ import {
 	type EntrySnapshot,
 	getEntrySnapshot,
 } from "./entry-api";
+import { UsageStatisticsView } from "./UsageStatistics";
 
 type Mutation = (
 	request: { type: string; [key: string]: unknown },
@@ -70,6 +71,8 @@ export function QueueView({
 	onRefresh: () => Promise<void>;
 	onMutate: Mutation;
 }) {
+	const [queueTab, setQueueTab] = useState<"queue" | "statistics">("queue");
+	const [statisticsRefresh, setStatisticsRefresh] = useState(0);
 	const [activeReview, setActiveReview] = useState<string | null>(null);
 	const [candidates, setCandidates] = useState<PreciseSegment[]>([]);
 	const [finding, setFinding] = useState(false);
@@ -173,150 +176,181 @@ export function QueueView({
 				<button
 					type="button"
 					className="quiet-button"
-					onClick={() => void onRefresh()}
+					onClick={() => {
+						setStatisticsRefresh((value) => value + 1);
+						void onRefresh();
+					}}
 				>
 					刷新
 				</button>
 			</div>
-			<div className="queue-grid">
-				{queues.map((queue) => (
-					<div className="panel-card" key={queue.provider}>
-						<div className="panel-header">
-							<div>
-								<h2>{queue.provider === "llm" ? "事件整理" : "精确转录"}</h2>
-								<p>
-									{queue.configured
-										? queue.paused
-											? "已暂停"
-											: "运行中"
-										: "尚未配置"}
-								</p>
+			<nav className="detail-tabs queue-tabs" aria-label="处理队列页面">
+				<button
+					type="button"
+					className={queueTab === "queue" ? "active" : ""}
+					aria-pressed={queueTab === "queue"}
+					onClick={() => setQueueTab("queue")}
+				>
+					队列
+				</button>
+				<button
+					type="button"
+					className={queueTab === "statistics" ? "active" : ""}
+					aria-pressed={queueTab === "statistics"}
+					onClick={() => setQueueTab("statistics")}
+				>
+					统计数据
+				</button>
+			</nav>
+			{queueTab === "statistics" ? (
+				<UsageStatisticsView refresh={statisticsRefresh} />
+			) : (
+				<>
+					<div className="queue-grid">
+						{queues.map((queue) => (
+							<div className="panel-card" key={queue.provider}>
+								<div className="panel-header">
+									<div>
+										<h2>
+											{queue.provider === "llm" ? "事件整理" : "精确转录"}
+										</h2>
+										<p>
+											{queue.configured
+												? queue.paused
+													? "已暂停"
+													: "运行中"
+												: "尚未配置"}
+										</p>
+									</div>
+									<button
+										type="button"
+										className={`switch ${!queue.paused && queue.configured ? "on" : ""}`}
+										aria-label={`${queue.paused ? "继续" : "暂停"}${queue.provider === "llm" ? "事件整理" : "精确转录"}`}
+										disabled={busy || !queue.configured}
+										onClick={() =>
+											void onMutate(
+												{
+													type: "set_cloud_paused",
+													provider: queue.provider,
+													paused: !queue.paused,
+												},
+												queue.paused ? "队列已继续" : "队列已暂停",
+											)
+										}
+									/>
+								</div>
+								<div className="queue-counts">
+									<span>
+										{queue.pending}
+										<small>待处理</small>
+									</span>
+									<span>
+										{queue.processing}
+										<small>处理中</small>
+									</span>
+									<span>
+										{queue.failed}
+										<small>失败</small>
+									</span>
+								</div>
 							</div>
-							<button
-								type="button"
-								className={`switch ${!queue.paused && queue.configured ? "on" : ""}`}
-								aria-label={`${queue.paused ? "继续" : "暂停"}${queue.provider === "llm" ? "事件整理" : "精确转录"}`}
-								disabled={busy || !queue.configured}
-								onClick={() =>
-									void onMutate(
-										{
-											type: "set_cloud_paused",
-											provider: queue.provider,
-											paused: !queue.paused,
-										},
-										queue.paused ? "队列已继续" : "队列已暂停",
-									)
-								}
-							/>
-						</div>
-						<div className="queue-counts">
-							<span>
-								{queue.pending}
-								<small>待处理</small>
-							</span>
-							<span>
-								{queue.processing}
-								<small>处理中</small>
-							</span>
-							<span>
-								{queue.failed}
-								<small>失败</small>
-							</span>
-						</div>
+						))}
 					</div>
-				))}
-			</div>
-			<div className="section-heading">
-				<h2>任务</h2>
-			</div>
-			<div className="panel-card list-panel">
-				{tasks.length === 0 ? (
-					<div className="list-empty">暂无任务</div>
-				) : (
-					tasks.map((task) => (
-						<div className="task-row" key={task.id}>
-							<div>
-								<strong>
-									{task.provider === "llm" ? "事件整理" : "精确转录"} ·{" "}
-									{taskRange(task)}
-								</strong>
-								<p title={task.error_code ?? undefined}>{taskStatus(task)}</p>
-							</div>
-							{task.state === "failed" && (
+					<div className="section-heading">
+						<h2>任务</h2>
+					</div>
+					<div className="panel-card list-panel">
+						{tasks.length === 0 ? (
+							<div className="list-empty">暂无任务</div>
+						) : (
+							tasks.map((task) => (
+								<div className="task-row" key={task.id}>
+									<div>
+										<strong>
+											{task.provider === "llm" ? "事件整理" : "精确转录"} ·{" "}
+											{taskRange(task)}
+										</strong>
+										<p title={task.error_code ?? undefined}>
+											{taskStatus(task)}
+										</p>
+									</div>
+									{task.state === "failed" && (
+										<button
+											type="button"
+											className="quiet-button"
+											onClick={() =>
+												void onMutate(
+													{ type: "retry_cloud_task", task_id: task.id },
+													"任务已重新排队",
+												)
+											}
+										>
+											重试
+										</button>
+									)}
+								</div>
+							))
+						)}
+					</div>
+					<div className="section-heading">
+						<h2>待核对</h2>
+						<span className="review-count">{reviews.length} 条</span>
+					</div>
+					<div className="panel-card list-panel">
+						{reviews.length === 0 && (
+							<div className="list-empty">没有待核对的修正</div>
+						)}
+						{reviews.map((review) => (
+							<div className="review-row" key={review.id}>
+								<div>
+									<strong>
+										{review.kind === "text" ? "文字修正" : "人物归属"} ·{" "}
+										{time(review.started_ms)}
+									</strong>
+									<p>{review.text || review.person_name || "原归属"}</p>
+								</div>
 								<button
 									type="button"
 									className="quiet-button"
-									onClick={() =>
-										void onMutate(
-											{ type: "retry_cloud_task", task_id: task.id },
-											"任务已重新排队",
-										)
-									}
+									onClick={() => void findCandidates(review)}
 								>
-									重试
+									核对
 								</button>
-							)}
-						</div>
-					))
-				)}
-			</div>
-			<div className="section-heading">
-				<h2>待核对</h2>
-				<span className="review-count">{reviews.length} 条</span>
-			</div>
-			<div className="panel-card list-panel">
-				{reviews.length === 0 && (
-					<div className="list-empty">没有待核对的修正</div>
-				)}
-				{reviews.map((review) => (
-					<div className="review-row" key={review.id}>
-						<div>
-							<strong>
-								{review.kind === "text" ? "文字修正" : "人物归属"} ·{" "}
-								{time(review.started_ms)}
-							</strong>
-							<p>{review.text || review.person_name || "原归属"}</p>
-						</div>
-						<button
-							type="button"
-							className="quiet-button"
-							onClick={() => void findCandidates(review)}
-						>
-							核对
-						</button>
-						{activeReview === review.id && (
-							<div className="review-candidates">
-								{finding && <span>正在查找当前句段…</span>}
-								{reviewError && (
-									<span className="inline-error">{reviewError}</span>
+								{activeReview === review.id && (
+									<div className="review-candidates">
+										{finding && <span>正在查找当前句段…</span>}
+										{reviewError && (
+											<span className="inline-error">{reviewError}</span>
+										)}
+										{!finding && candidates.length === 0 && (
+											<span>没有可对应的精转句段</span>
+										)}
+										{candidates.map((segment) => (
+											<button
+												type="button"
+												key={segment.id}
+												onClick={() => void resolve(review, segment.id)}
+											>
+												<time>{time(segment.started_ms)}</time>
+												<span>{segment.text}</span>
+											</button>
+										))}
+										<button
+											type="button"
+											className="review-dismiss"
+											onClick={() => void resolve(review, null)}
+										>
+											{review.kind === "text"
+												? "放弃这条文字修正"
+												: "放弃这条人物归属"}
+										</button>
+									</div>
 								)}
-								{!finding && candidates.length === 0 && (
-									<span>没有可对应的精转句段</span>
-								)}
-								{candidates.map((segment) => (
-									<button
-										type="button"
-										key={segment.id}
-										onClick={() => void resolve(review, segment.id)}
-									>
-										<time>{time(segment.started_ms)}</time>
-										<span>{segment.text}</span>
-									</button>
-								))}
-								<button
-									type="button"
-									className="review-dismiss"
-									onClick={() => void resolve(review, null)}
-								>
-									{review.kind === "text"
-										? "放弃这条文字修正"
-										: "放弃这条人物归属"}
-								</button>
 							</div>
-						)}
+						))}
 					</div>
-				))}
-			</div>
+				</>
+			)}
 		</section>
 	);
 }

@@ -1,0 +1,16 @@
+{
+  "revision": "official-cny-2026-10-17-v1",
+  "verified_on": "2026-10-17",
+  "currency": "CNY",
+  "effective_from_ms": 1792166400000,
+  "deepseek_source": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/",
+  "asr_source": "https://docs.volcengine.com/docs/DoubaoVoice/Billinginstructions-21?lang=zh",
+  "calendar_source": "https://www.beijing.gov.cn/cs/gncs/zcwj/202603/t20260327_4568275.html",
+  "calendar_year": "2026",
+  "holidays": [["01-01","01-03"],["02-15","02-23"],["04-04","04-06"],["05-01","05-05"],["06-19","06-21"],["09-25","09-27"],["10-01","10-07"]],
+  "models": [
+    {"id":"volcengine:volc.seedasr.auc","capability":"asr","vendor":"volcengine","api_model":"volc.seedasr.auc","name":"豆包录音文件识别 2.0","audio_hour_nano":800000000},
+    {"id":"deepseek:deepseek-flash","capability":"llm","vendor":"deepseek","api_model":"deepseek-flash","name":"DeepSeek Flash","input_million_nano":1000000000,"cached_million_nano":20000000,"output_million_nano":4000000000},
+    {"id":"deepseek:deepseek-v4-pro","capability":"llm","vendor":"deepseek","api_model":"deepseek-v4-pro","name":"DeepSeek V4 Pro","input_million_nano":4500000000,"cached_million_nano":150000000,"output_million_nano":13500000000}
+  ]
+}

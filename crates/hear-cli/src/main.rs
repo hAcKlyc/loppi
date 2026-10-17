@@ -167,6 +167,10 @@ enum ModelCommand {
 #[derive(Subcommand)]
 enum CloudCommand {
     Status,
+    Usage {
+        #[arg(long, value_delimiter = ',')]
+        boundaries: Vec<i64>,
+    },
     Tasks {
         provider: Provider,
         #[arg(long, default_value_t = 50)]
@@ -451,6 +455,7 @@ fn main() {
         Command::Quit => Request::Quit,
         Command::Cloud { action } => match action {
             CloudCommand::Status => Request::CloudStatus,
+            CloudCommand::Usage { boundaries } => Request::UsageStatistics { boundaries },
             CloudCommand::Tasks { provider, limit } => Request::CloudTasks {
                 provider: provider.into(),
                 limit,
@@ -774,6 +779,7 @@ fn main() {
             | Response::Models { .. }
             | Response::ProbeResult { .. }
             | Response::RecordTestResult { .. }
+            | Response::UsageStatistics { .. }
             | Response::CloudStatus { .. }
             | Response::CloudTasks { .. }
             | Response::Timeline { .. }

@@ -9,7 +9,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
-pub const PROTOCOL_VERSION: u32 = 15;
+pub const PROTOCOL_VERSION: u32 = 16;
 const MAX_RESPONSE_BYTES: u64 = 48 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -62,6 +62,9 @@ pub enum Request {
         expected_revision: i64,
     },
     CloudStatus,
+    UsageStatistics {
+        boundaries: Vec<i64>,
+    },
     CloudTasks {
         provider: CloudProvider,
         limit: u16,
@@ -280,6 +283,7 @@ impl Request {
             Self::SetSource { .. } => "set_source",
             Self::SetAudioLimit { .. } => "set_audio_limit",
             Self::CloudStatus => "cloud_status",
+            Self::UsageStatistics { .. } => "usage_statistics",
             Self::CloudTasks { .. } => "cloud_tasks",
             Self::ConfigureCloud { .. } => "configure_cloud",
             Self::SetCloudPaused { .. } => "set_cloud_paused",
@@ -625,6 +629,10 @@ pub enum Response {
         id: Uuid,
         entries: Vec<LogRecord>,
     },
+    UsageStatistics {
+        id: Uuid,
+        statistics: UsageStatistics,
+    },
     CloudStatus {
         id: Uuid,
         queues: Vec<CloudQueueState>,
@@ -934,6 +942,7 @@ fn send_with_policy(
         | Response::ProbeResult { id, .. }
         | Response::RecordTestResult { id, .. }
         | Response::Logs { id, .. }
+        | Response::UsageStatistics { id, .. }
         | Response::CloudStatus { id, .. }
         | Response::CloudTasks { id, .. }
         | Response::Timeline { id, .. }
@@ -1166,4 +1175,29 @@ mod tests {
             matches!(serde_json::from_value::<Response>(serde_json::to_value(response).unwrap()).unwrap(), Response::CalendarDays { days, .. } if days == vec![0])
         );
     }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct UsageSeries {
+    pub requests: i64,
+    pub count: i64,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+    pub cached_tokens: i64,
+    pub cost_nano: i64,
+    pub incomplete: i64,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UsageDay {
+    pub started_ms: i64,
+    pub covered: bool,
+    pub partial: bool,
+    pub asr: UsageSeries,
+    pub llm: UsageSeries,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UsageStatistics {
+    pub started_ms: i64,
+    pub currency: String,
+    pub days: Vec<UsageDay>,
 }

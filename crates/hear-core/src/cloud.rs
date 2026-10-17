@@ -1,5 +1,6 @@
 //! Supplier adapters. Network calls run outside the Store lock. No request or
 //! response body, credential, or transcript is written to diagnostic logs.
+use crate::usage::Meter;
 use base64::Engine;
 use hear_protocol::CloudProvider;
 use security_framework::os::macos::keychain::SecKeychain;
@@ -166,13 +167,14 @@ fn parse_body(response: ureq::Response) -> Result<Value, String> {
     serde_json::from_slice(&bytes).map_err(|_| "provider_invalid_json".to_owned())
 }
 
-pub fn verify_llm(key: &str, model: &str) -> Result<(), String> {
+pub fn verify_llm(key: &str, model: &str, meter: &dyn Meter) -> Result<(), String> {
     let result = chat(
         key,
         model,
         "Return only JSON with {\"ok\":true}. This is a connectivity check; no user data is included.",
         "Return JSON with ok true.",
         Instant::now() + Duration::from_secs(60),
+        meter,
     )?;
     if result.get("ok").and_then(Value::as_bool) == Some(true) {
         Ok(())
@@ -187,6 +189,7 @@ pub fn chat(
     system: &str,
     user: &str,
     deadline: Instant,
+    meter: &dyn Meter,
 ) -> Result<Value, Failure> {
     let body = json!({
         "model": model,
@@ -197,14 +200,41 @@ pub fn chat(
             {"role":"user","content":user}
         ]
     });
-    let response = json_response(
-        agent()
-            .post(DEEPSEEK_URL)
-            .timeout(remaining(deadline)?)
-            .set("Authorization", &format!("Bearer {key}"))
-            .set("Content-Type", "application/json")
-            .send_string(&body.to_string()),
+    let timeout = remaining(deadline)?;
+    let usage_id = meter.begin(model, None, None)?;
+    let response = metered_result(
+        meter,
+        &usage_id,
+        json_response(
+            agent()
+                .post(DEEPSEEK_URL)
+                .timeout(timeout)
+                .set("Authorization", &format!("Bearer {key}"))
+                .set("Content-Type", "application/json")
+                .send_string(&body.to_string()),
+        ),
     )?;
+    parse_metered_chat_content(meter, &usage_id, &response)
+}
+
+fn observe_usage(meter: &dyn Meter, result: Result<(), String>) {
+    // The response has already been paid for. A statistics failure cannot
+    // replace business output or make the task require another paid attempt.
+    if result.is_err() {
+        meter.observation_failed();
+    }
+}
+
+fn parse_metered_chat_content(
+    meter: &dyn Meter,
+    id: &str,
+    response: &Value,
+) -> Result<Value, Failure> {
+    observe_usage(meter, meter.llm_response(id, response));
+    parse_chat_content(response)
+}
+
+fn parse_chat_content(response: &Value) -> Result<Value, Failure> {
     let choice = response
         .get("choices")
         .and_then(Value::as_array)
@@ -259,7 +289,9 @@ pub fn submit_audio(
     request_id: Uuid,
     audio: &[u8],
     format: AsrAudioFormat,
+    duration_ms: i64,
     deadline: Instant,
+    meter: &dyn Meter,
 ) -> Result<(), Failure> {
     let (name, maximum, minimum) = match format {
         AsrAudioFormat::Wav => ("wav", 12_000_000, 44),
@@ -273,7 +305,14 @@ pub fn submit_audio(
         "audio": {"data":base64::engine::general_purpose::STANDARD.encode(audio),"format":name},
         "request": {"model_name":"bigmodel","enable_speaker_info":true,"show_utterances":true,"ssd_version":"300"}
     });
-    let (status, _, _) = volc_request(VOLC_SUBMIT, key, request_id, body, deadline)?;
+    remaining(deadline)?;
+    let usage_id = meter.begin(VOLC_RESOURCE, Some(request_id), Some(duration_ms))?;
+    let (status, _, response) = metered_result(
+        meter,
+        &usage_id,
+        volc_request(VOLC_SUBMIT, key, request_id, body, deadline),
+    )?;
+    observe_usage(meter, meter.asr_response(request_id, &status, &response));
     if status == "20000000" {
         Ok(())
     } else {
@@ -296,10 +335,26 @@ pub struct AsrUtterance {
     pub speaker: Option<String>,
 }
 
-pub fn query_audio(key: &str, request_id: Uuid, deadline: Instant) -> Result<AsrQuery, Failure> {
+pub fn query_audio(
+    key: &str,
+    request_id: Uuid,
+    deadline: Instant,
+    meter: &dyn Meter,
+) -> Result<AsrQuery, Failure> {
     let (status, message, response) =
         volc_request(VOLC_QUERY, key, request_id, json!({}), deadline)?;
-    parse_asr_query(&status, &message, &response)
+    parse_metered_asr_query(meter, request_id, &status, &message, &response)
+}
+
+fn parse_metered_asr_query(
+    meter: &dyn Meter,
+    request_id: Uuid,
+    status: &str,
+    message: &str,
+    response: &Value,
+) -> Result<AsrQuery, Failure> {
+    observe_usage(meter, meter.asr_response(request_id, status, response));
+    parse_asr_query(status, message, response)
 }
 
 fn parse_asr_query(status: &str, message: &str, response: &Value) -> Result<AsrQuery, Failure> {
@@ -429,7 +484,7 @@ fn split_long_asr_pauses(utterance: &AsrUtterance, item: &Value) -> Option<Vec<A
     Some(split)
 }
 
-pub fn verify_asr(key: &str) -> Result<(), String> {
+pub fn verify_asr(key: &str, meter: &dyn Meter) -> Result<(), String> {
     let mut wav = Vec::with_capacity(44 + 32_000);
     wav.extend_from_slice(b"RIFF");
     wav.extend_from_slice(&(32_036u32).to_le_bytes());
@@ -449,9 +504,17 @@ pub fn verify_asr(key: &str) -> Result<(), String> {
     }
     let request_id = Uuid::new_v4();
     let deadline = Instant::now() + Duration::from_secs(60);
-    submit_audio(key, request_id, &wav, AsrAudioFormat::Wav, deadline)?;
+    submit_audio(
+        key,
+        request_id,
+        &wav,
+        AsrAudioFormat::Wav,
+        1000,
+        deadline,
+        meter,
+    )?;
     loop {
-        match query_audio(key, request_id, deadline)? {
+        match query_audio(key, request_id, deadline, meter)? {
             AsrQuery::Complete(_) => return Ok(()),
             AsrQuery::Missing => return Err("provider_verification_task_missing".to_owned()),
             AsrQuery::Processing if Instant::now() < deadline => {
@@ -464,6 +527,63 @@ pub fn verify_asr(key: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn metering_failure_preserves_paid_output_and_original_rejection() {
+        use super::*;
+        use std::cell::Cell;
+        struct FailingMeter(Cell<usize>);
+        impl Meter for FailingMeter {
+            fn begin(&self, _: &str, _: Option<Uuid>, _: Option<i64>) -> Result<String, String> {
+                Err("storage_unavailable".into())
+            }
+            fn llm_response(&self, _: &str, _: &Value) -> Result<(), String> {
+                Err("storage_unavailable".into())
+            }
+            fn asr_response(&self, _: Uuid, _: &str, _: &Value) -> Result<(), String> {
+                Err("storage_unavailable".into())
+            }
+            fn rejected(&self, _: &str) -> Result<(), String> {
+                Err("storage_unavailable".into())
+            }
+            fn observation_failed(&self) {
+                self.0.set(self.0.get() + 1);
+            }
+        }
+        let meter = FailingMeter(Cell::new(0));
+        let response =
+            json!({"choices":[{"finish_reason":"stop","message":{"content":"{\"ok\":true}"}}]});
+        assert_eq!(
+            parse_metered_chat_content(&meter, "id", &response).unwrap(),
+            json!({"ok":true})
+        );
+        assert!(matches!(
+            parse_metered_asr_query(&meter, Uuid::new_v4(), "20000003", "", &json!({})).unwrap(),
+            AsrQuery::Complete(_)
+        ));
+        let failure = Failure {
+            code: "provider_http_429".into(),
+            retry_after_ms: Some(2000),
+        };
+        let rejected = metered_result::<()>(&meter, "id", Err(failure)).unwrap_err();
+        assert_eq!(rejected.code, "provider_http_429");
+        assert_eq!(rejected.retry_after_ms, Some(2000));
+        assert_eq!(meter.0.get(), 3);
+        // Preflight failure still stops before any network call.
+        assert_eq!(
+            chat(
+                "unused",
+                "deepseek-flash",
+                "",
+                "",
+                Instant::now() + Duration::from_secs(1),
+                &meter
+            )
+            .unwrap_err()
+            .code,
+            "storage_unavailable"
+        );
+    }
+
     #[test]
     fn asr_query_recognizes_current_and_legacy_missing_task_responses() {
         for (status, message) in [
@@ -673,4 +793,26 @@ mod tests {
             );
         }
     }
+}
+
+// Only explicit admission failures establish zero usage; transport/read failures stay unknown.
+fn metered_result<T>(
+    meter: &dyn Meter,
+    id: &str,
+    result: Result<T, Failure>,
+) -> Result<T, Failure> {
+    if let Err(error) = &result {
+        if matches!(
+            error.code.as_str(),
+            "provider_http_400"
+                | "provider_http_401"
+                | "provider_http_403"
+                | "provider_http_404"
+                | "provider_http_422"
+                | "provider_http_429"
+        ) {
+            observe_usage(meter, meter.rejected(id));
+        }
+    }
+    result
 }
