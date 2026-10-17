@@ -17,6 +17,30 @@
 	--capture-ink: var(--color-warning-strong);
 	--capture-wash: var(--color-warning-soft);
 }
+.capture-status-control {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: var(--space-6);
+	padding: 0;
+	border: 0;
+	border-radius: var(--radius-xl);
+	background: transparent;
+	text-align: left;
+}
+.capture-status-control:disabled {
+	opacity: 1;
+}
+/* Button descendants are flattened by native accessibility trees. Keep the
+   live status outside the button, and expose it as its description as well. */
+.capture-status-announcement {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
 .capture-status-rabbit {
 	position: relative;
 	display: block;
@@ -27,9 +51,6 @@
 	border: 0;
 	border-radius: var(--radius-xl);
 	background: transparent;
-}
-.capture-status-rabbit:disabled {
-	opacity: 1;
 }
 .capture-status-rabbit:before {
 	content: "";
@@ -69,6 +90,13 @@
 	justify-items: start;
 	gap: var(--space-2);
 	min-width: 112px;
+	transition: opacity var(--motion-fast);
+}
+.capture-status-control:hover .capture-status-copy,
+.capture-status-control:focus-visible .capture-status-copy,
+.capture-status-control:has(.capture-control-overlay[data-persistent="true"])
+	.capture-status-copy {
+	opacity: 0;
 }
 .capture-status-copy strong {
 	font-size: var(--type-lead);
@@ -81,12 +109,13 @@
 	font-size: var(--type-caption);
 	line-height: var(--leading-body);
 }
-.capture-rabbit-overlay {
+.capture-control-overlay {
 	position: absolute;
 	inset: 0;
 	display: flex;
 	align-items: center;
 	justify-content: center;
+	gap: var(--space-4);
 	border-radius: inherit;
 	background: var(--entry-control-overlay);
 	color: var(--entry-control-ink);
@@ -95,12 +124,12 @@
 	opacity: 0;
 	transition: opacity 120ms;
 }
-.capture-status-rabbit:hover .capture-rabbit-overlay,
-.capture-status-rabbit:focus-visible .capture-rabbit-overlay,
-.capture-rabbit-overlay[data-persistent="true"] {
+.capture-status-control:hover .capture-control-overlay,
+.capture-status-control:focus-visible .capture-control-overlay,
+.capture-control-overlay[data-persistent="true"] {
 	opacity: 1;
 }
-.capture-rabbit-overlay svg {
+.capture-control-overlay svg {
 	width: 28px;
 	height: 28px;
 }
@@ -111,7 +140,7 @@
 	z-index: var(--layer-floating-menu);
 	width: 300px;
 	padding: var(--space-6) var(--space-7);
-	border: 1px solid var(--color-warning-border);
+	border: 1px solid transparent;
 	border-radius: var(--radius-md);
 	background: var(--color-warning-surface);
 	color: var(--color-warning-strong);
@@ -121,7 +150,8 @@
 	overflow-wrap: anywhere;
 }
 @media (prefers-reduced-motion: reduce) {
-	.capture-rabbit-overlay {
+	.capture-control-overlay,
+	.capture-status-copy {
 		transition: none;
 	}
 }

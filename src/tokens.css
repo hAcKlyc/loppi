@@ -1,15 +1,21 @@
 :root {
 	/* Surfaces and text */
-	--color-canvas: #fbfcfa;
+	--color-canvas: #f0f3ee;
 	--color-surface: #fff;
-	--color-sidebar: #f2f5f1;
-	--color-surface-subtle: #f6faf5;
+	--color-sidebar: #e7ede3;
+	--color-surface-subtle: #f4f7f1;
 	--color-surface-hover: #edf5ed;
-	--color-surface-selected: #e3f0e5;
+	--color-surface-selected: #dce9d6;
+	--color-surface-selected-hover: #d1e2c9;
+	--color-surface-card-hover: #fafcf8;
+	--color-control: #e8eee3;
+	--color-control-hover: #dde7d7;
+	--color-recording-surface: #e0eddd;
+	--color-recording-surface-hover: #d9e8d5;
 	--color-text: #25352e;
 	--color-text-strong: #304b38;
 	--color-text-secondary: #556b5d;
-	--color-text-muted: #64786a;
+	--color-text-muted: #586a5d;
 	--color-text-faint: #819286;
 	--color-border: #e4eae3;
 	--color-border-subtle: #edf1eb;
@@ -56,14 +62,9 @@
 	--entry-control-ink: #fff7df;
 	--entry-rabbit-shadow: #0e25194d;
 	--entry-rabbit-hover-shadow: #9acfac55;
-	--entry-surface-border: #b4dfb810;
-	--entry-action-border: #b4dfb814;
 	--entry-feedback: #18261e;
 	--entry-feedback-ink: #e6efdf;
-	--entry-feedback-border: #b4dfb817;
-	--entry-menu-border: #b4dfb820;
 	--entry-menu-shadow: #0e251933;
-	--entry-comment-border: #b4dfb824;
 	--entry-comment-focus-border: #b4dfb852;
 
 	/* Typography: native macOS fonts with a compact, readable hierarchy. */
@@ -118,9 +119,6 @@
 	--radius-xl: 20px;
 	--radius-pill: 999px;
 
-	--shadow-nav: 0 3px 17px #1a38200b;
-	--shadow-card: 0 4px 20px #18342206;
-	--shadow-card-hover: 0 10px 25px #1a442112;
 	--shadow-popover: 0 14px 48px #1a37241c;
 	--shadow-control: 0 1px 3px #192e1730;
 	--shadow-drawer: -16px 0 45px #13261525;

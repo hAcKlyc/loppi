@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { userError } from "./api";
 import { type CaptureStatusAction, captureStatusView } from "./capture-status";
 import {
@@ -101,6 +101,7 @@ export function CaptureStatus({
 	const view = captureStatusView(snapshot);
 	const { busy, uncertain, feedback, actionLabel, perform } = control;
 	const appearance = entryAppearance(snapshot);
+	const statusId = useId();
 	return (
 		<div className="capture-status-wrap">
 			<section
@@ -110,7 +111,7 @@ export function CaptureStatus({
 			>
 				<button
 					type="button"
-					className="capture-status-rabbit"
+					className="capture-status-control"
 					disabled={busy || (!view.action && !uncertain)}
 					onClick={() => void perform()}
 					aria-busy={busy}
@@ -120,28 +121,40 @@ export function CaptureStatus({
 							: `${actionLabel}${["pause", "resume", "start"].includes(view.action ?? "") ? "记录" : ""}`
 					}
 					title={actionLabel}
+					aria-describedby={statusId}
 				>
-					<Rabbit state={appearance} action={null} />
+					<span className="capture-status-rabbit">
+						<Rabbit state={appearance} action={null} />
+					</span>
+					<span className="capture-status-copy">
+						<strong>{view.label}</strong>
+						<span>{view.subtitle}</span>
+					</span>
 					<span
-						className="capture-rabbit-overlay"
+						className="capture-control-overlay"
 						data-persistent={busy || uncertain}
 						aria-hidden="true"
 					>
 						{!busy &&
 						!uncertain &&
 						["pause", "resume", "start"].includes(view.action ?? "") ? (
-							<ControlIcon pause={view.action === "pause"} />
+							<>
+								<ControlIcon pause={view.action === "pause"} />
+								<span>{actionLabel}记录</span>
+							</>
 						) : (
 							actionLabel
 						)}
 					</span>
 				</button>
-				<div className="capture-status-copy">
-					<strong role="status" aria-live="polite">
-						{view.label}
-					</strong>
-					<span>{view.subtitle}</span>
-				</div>
+				<span
+					id={statusId}
+					className="capture-status-announcement"
+					role="status"
+					aria-live="polite"
+				>
+					{view.label}，{view.subtitle}
+				</span>
 			</section>
 			{feedback && (
 				<div className="capture-status-feedback" role="alert">

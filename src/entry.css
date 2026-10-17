@@ -79,7 +79,6 @@
 	bottom: 0;
 	background: var(--entry-surface);
 	border-radius: 0 0 26px 26px;
-	box-shadow: inset 0 0 0 1px var(--entry-surface-border);
 	display: flex;
 	align-items: flex-start;
 	padding: calc(var(--entry-band) + 24px) 18px 26px 20px;
@@ -142,7 +141,6 @@
 	border-radius: 18px;
 	color: var(--entry-text);
 	background: var(--entry-action);
-	box-shadow: inset 0 0 0 1px var(--entry-action-border);
 	transition: background 120ms;
 }
 .notch-actions button:hover,
@@ -181,7 +179,7 @@
 	min-height: 86px;
 	max-height: 86px;
 	overflow-y: auto;
-	border: 1px solid var(--entry-comment-border);
+	border: 1px solid transparent;
 	border-radius: 14px;
 	padding: 10px 12px;
 	background: var(--entry-action);
@@ -193,6 +191,8 @@
 	user-select: text;
 }
 .entry-root .notch-composer textarea:focus {
+	outline: 2px solid var(--entry-accent);
+	outline-offset: 1px;
 	border-color: var(--entry-comment-focus-border);
 	box-shadow: none;
 }
@@ -235,7 +235,7 @@
 	right: 8px;
 	background: var(--entry-feedback);
 	color: var(--entry-feedback-ink);
-	border: 1px solid var(--entry-feedback-border);
+	border: 1px solid transparent;
 	border-radius: 12px;
 	padding: 8px 10px;
 	text-align: center;
@@ -272,7 +272,7 @@
 	flex-direction: column;
 	gap: 4px;
 	background: var(--entry-menu);
-	border: 1px solid var(--entry-menu-border);
+	border: 1px solid transparent;
 	border-radius: 20px;
 	box-shadow: 0 4px 12px var(--entry-menu-shadow);
 }
