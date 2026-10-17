@@ -1,22 +1,25 @@
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useCallback, useRef, useState } from "react";
 import {
-	addDays,
 	dateTitle,
 	dayBounds,
 	type Moment,
 	manualAsrSummary,
 	processingLabel,
+	type ServiceState,
 	type Source,
 	type TimeGap,
 	type TimelineItem,
 	time,
 } from "./api";
 
-import { cardExcerpt, daySpan } from "./timeline-view";
+import { RecordCalendar } from "./RecordCalendar";
+import { cardExcerpt, daySpan, headerDays, liveCard } from "./timeline-view";
 
 type Props = {
 	captureStatus: ReactNode;
 	date: Date;
+	recordedDays: number[] | null;
+	recordingState: ServiceState | null;
 	items: TimelineItem[];
 	gaps: TimeGap[];
 	moments: Moment[];
@@ -59,6 +62,8 @@ function gapReason(reason: string): string {
 export function TimelineView({
 	captureStatus,
 	date,
+	recordedDays,
+	recordingState,
 	items,
 	gaps,
 	moments,
@@ -73,11 +78,17 @@ export function TimelineView({
 	const today = new Date();
 	const todayKey = dateInput(today);
 	const selectedKey = dateInput(date);
-	const dates =
-		selectedKey === todayKey
-			? [date, addDays(date, -1), addDays(date, -2)]
-			: [addDays(date, 1), date, addDays(date, -1)];
 	const [from, to] = dayBounds(date);
+	const dates = headerDays(
+		recordedDays ?? (items.length ? [from] : []),
+		from,
+	).map((ms) => new Date(ms));
+	const activeItem = liveCard(items, recordingState, date, today.getTime());
+	const calendarButton = useRef<HTMLButtonElement>(null);
+	const closeCalendar = useCallback(() => {
+		setCalendarOpen(false);
+		calendarButton.current?.focus();
+	}, []);
 	const position = (ms: number) =>
 		`${Math.max(0, Math.min(100, ((ms - from) / (to - from)) * 100))}%`;
 	const sorted = [...items].sort((a, b) => b.started_ms - a.started_ms);
@@ -123,6 +134,9 @@ export function TimelineView({
 				<div className="date-header">
 					<div className="calendar-anchor">
 						<button
+							ref={calendarButton}
+							aria-expanded={calendarOpen}
+							aria-haspopup="dialog"
 							className="calendar-button"
 							type="button"
 							title="选择日期"
@@ -135,26 +149,20 @@ export function TimelineView({
 							</svg>
 						</button>
 						{calendarOpen && (
-							<div className="calendar-popover">
-								<label htmlFor="jump-date">跳转日期</label>
-								<input
-									id="jump-date"
-									type="date"
-									max={todayKey}
-									value={selectedKey}
-									onChange={(event) => {
-										const [year, month, day] = event.target.value
-											.split("-")
-											.map(Number);
-										if (year && month && day)
-											onDate(new Date(year, month - 1, day));
-										setCalendarOpen(false);
-									}}
-								/>
-							</div>
+							<RecordCalendar
+								date={date}
+								days={recordedDays}
+								onDate={onDate}
+								onClose={closeCalendar}
+							/>
 						)}
 					</div>
 					<nav className="date-track" aria-label="按日期浏览">
+						{dates.length === 0 && (
+							<div className="date-current">
+								<strong>暂无记录</strong>
+							</div>
+						)}
 						{dates.map((day) => {
 							const key = dateInput(day);
 							const selected = key === selectedKey;
@@ -277,26 +285,6 @@ export function TimelineView({
 					<span>18:00</span>
 					<span>24:00</span>
 				</div>
-				<p className="day-map-hint">
-					色块表示可查看的内容范围，范围内可能有空白。
-				</p>
-				{statusGaps.length > 0 && (
-					<details className="day-map-gap-details">
-						<summary>
-							未记录区间（按声音来源）<em>{statusGaps.length}</em>
-						</summary>
-						<div className="day-map-gap-list">
-							{statusGaps.map((gap) => (
-								<span key={`${gap.source}-${gap.started_ms}-${gap.reason}`}>
-									<i />
-									{time(gap.started_ms)}—{time(gap.ended_ms)}{" "}
-									{gapReason(gap.reason)} ·{" "}
-									{gap.source === "microphone" ? "麦克风" : "电脑声音"}
-								</span>
-							))}
-						</div>
-					</details>
-				)}
 			</section>
 
 			<div className="section-heading">
@@ -334,6 +322,16 @@ export function TimelineView({
 						const count = itemMoments.length;
 						const excerpt = cardExcerpt(item, itemMoments, hideCoarse);
 						const manualStatus = manualAsrSummary(item);
+						const live = item === activeItem;
+						const sourceLabel =
+							excerpt.label ||
+							(item.processing_state === "moment_only"
+								? "时刻记录"
+								: item.sources === "both"
+									? "双路声音"
+									: item.sources === "microphone"
+										? "麦克风"
+										: "电脑声音");
 						return (
 							<div
 								className="event-line"
@@ -342,7 +340,7 @@ export function TimelineView({
 								<time>{time(item.started_ms)}</time>
 								<button
 									type="button"
-									className={`event-card ${item.id || item.manual_range_id ? "named" : ""}`}
+									className={`event-card ${item.id || item.manual_range_id ? "named" : ""} ${live ? "is-recording" : ""}`}
 									onClick={() => onSelect(item)}
 								>
 									<div className="event-card-meta">
@@ -353,7 +351,20 @@ export function TimelineView({
 												? ""
 												: ` — ${time(item.ended_ms)}`}
 										</span>
-										<span>{processingLabel(item.processing_state)}</span>
+										<span className="event-card-source">{sourceLabel}</span>
+										{count > 0 && <span>{count} 条现场记录</span>}
+										{manualStatus && (
+											<span className="event-card-task" title={manualStatus}>
+												{manualStatus}
+											</span>
+										)}
+										<span
+											className={`event-card-state ${live ? "recording-label" : ""}`}
+										>
+											{live
+												? "正在记录"
+												: processingLabel(item.processing_state)}
+										</span>
 									</div>
 									<h3>
 										{item.title ||
@@ -366,22 +377,6 @@ export function TimelineView({
 									<p className={excerpt.label ? "" : "event-card-placeholder"}>
 										{excerpt.text}
 									</p>
-									<div className="event-card-foot">
-										<span>
-											{excerpt.label ||
-												(item.processing_state === "moment_only"
-													? "时刻记录"
-													: item.sources === "both"
-														? "双路声音"
-														: item.sources === "microphone"
-															? "麦克风"
-															: "电脑声音")}
-										</span>
-										{count > 0 && <span>{count} 条现场记录</span>}
-										{manualStatus && (
-											<span className="event-card-task">{manualStatus}</span>
-										)}
-									</div>
 								</button>
 							</div>
 						);

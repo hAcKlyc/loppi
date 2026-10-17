@@ -54,3 +54,41 @@ export function cardExcerpt(
 		label: "",
 	};
 }
+
+export function monthBoundaries(date: Date): number[] {
+	const year = date.getFullYear(),
+		month = date.getMonth();
+	const count = new Date(year, month + 1, 0).getDate();
+	return Array.from({ length: count + 1 }, (_, day) =>
+		new Date(year, month, day + 1).getTime(),
+	);
+}
+
+export function headerDays(days: number[], selected: number): number[] {
+	const sorted = [...new Set(days)].sort((a, b) => b - a);
+	const index = sorted.indexOf(selected);
+	if (index < 0) return sorted.slice(0, 3);
+	return sorted.slice(Math.max(0, index - 1), Math.max(0, index - 1) + 3);
+}
+
+export function liveCard(
+	items: TimelineItem[],
+	state: import("./api").ServiceState | null,
+	date: Date,
+	now: number,
+): TimelineItem | null {
+	if (
+		state?.capture_state !== "recording" ||
+		state.paused_intent ||
+		state.storage_paused ||
+		date.toDateString() !== new Date(now).toDateString()
+	)
+		return null;
+	const newest = [...items].sort((a, b) => b.started_ms - a.started_ms)[0];
+	return newest?.recording_sources?.some(
+		(source) =>
+			state[`${source}_phase`] === "recording" && state[`${source}_recording`],
+	)
+		? newest
+		: null;
+}

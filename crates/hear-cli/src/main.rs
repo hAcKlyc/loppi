@@ -777,6 +777,7 @@ fn main() {
             | Response::CloudStatus { .. }
             | Response::CloudTasks { .. }
             | Response::Timeline { .. }
+            | Response::CalendarDays { .. }
             | Response::Event { .. }
             | Response::Accepted { .. }
             | Response::TranscriptionQueued { .. }

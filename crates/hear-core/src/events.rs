@@ -1293,6 +1293,71 @@ fn visible_manual_ranges(
         .map_err(|error| error.to_string())
 }
 
+/// Calendar uses explicit local-midnight boundaries from the client, so DST and
+/// timezone changes do not silently turn this into a UTC-day index.
+pub fn calendar_days(db: &Connection, boundaries: &[i64], now: i64) -> Result<Vec<i64>, String> {
+    if !(2..=32).contains(&boundaries.len())
+        || boundaries
+            .windows(2)
+            .any(|pair| !matches!(pair[1].checked_sub(pair[0]), Some(82_800_000..=90_000_000)))
+    {
+        return Err("invalid calendar boundaries".into());
+    }
+    let mut query = db.prepare("SELECT EXISTS(
+        SELECT 1 FROM audio_blocks WHERE media_path IS NOT NULL AND started_ms<?2 AND ended_ms>?1
+        UNION ALL SELECT 1 FROM coarse_segments WHERE started_ms<?2 AND ended_ms>?1
+        UNION ALL SELECT 1 FROM named_events WHERE deleted_ms IS NULL AND started_ms<?2 AND ended_ms>?1
+        UNION ALL SELECT 1 FROM moments WHERE anchor_ms>=?1 AND anchor_ms<?2
+    )").map_err(|e| e.to_string())?;
+    let mut days = Vec::new();
+    for pair in boundaries.windows(2) {
+        if pair[0] > now {
+            continue;
+        }
+        let has_material: bool = query
+            .query_row(params![pair[0], pair[1]], |row| row.get(0))
+            .map_err(|e| e.to_string())?;
+        if has_material || !visible_manual_ranges(db, pair[0], pair[1])?.is_empty() {
+            days.push(pair[0]);
+        }
+    }
+    Ok(days)
+}
+
+/// An open source session's confirmed tail must actually belong to the item.
+/// Global recording alone cannot make a completed or historical card live.
+pub fn mark_recording_items(
+    db: &Connection,
+    items: &mut [TimelineItem],
+    active: &[AudioSource],
+    now: i64,
+) -> Result<(), String> {
+    for source in active {
+        let name = if *source == AudioSource::Microphone {
+            "microphone"
+        } else {
+            "system"
+        };
+        let tail: Option<i64> = db.query_row("SELECT max(last_confirmed_ms) FROM recording_sessions WHERE state='open' AND source=?1", params![name], |row| row.get(0)).map_err(|e| e.to_string())?;
+        let Some(tail) = tail.filter(|tail| *tail <= now && now.saturating_sub(*tail) <= 30_000)
+        else {
+            continue;
+        };
+        if let Some(item) = items.iter_mut().find(|item| {
+            item.processing_state != "moment_only"
+                && item.started_ms < tail
+                && item.ended_ms >= tail
+                && (item.sources == EventSources::Both
+                    || (item.sources == EventSources::Microphone
+                        && *source == AudioSource::Microphone)
+                    || (item.sources == EventSources::System && *source == AudioSource::System))
+        }) {
+            item.recording_sources.push(*source);
+        }
+    }
+    Ok(())
+}
+
 pub fn timeline(db: &Connection, start: i64, end: i64) -> Result<Vec<TimelineItem>, String> {
     validate_range(start, end)?;
     let mut statement = db
@@ -1461,6 +1526,7 @@ pub fn timeline(db: &Connection, start: i64, end: i64) -> Result<Vec<TimelineIte
             manual_asr_started_ms: None,
             manual_asr_ended_ms: None,
             manual_asr_source: None,
+            recording_sources: Vec::new(),
             preview: timeline_preview(
                 db,
                 a.max(start),
@@ -1739,6 +1805,7 @@ fn unorganized(db: &Connection, start: i64, end: i64, mask: i64) -> Result<Timel
                 AudioSource::Microphone
             }
         }),
+        recording_sources: Vec::new(),
         preview: None,
         coarse_segments: Vec::new(),
         precise_segments: Vec::new(),
@@ -1822,6 +1889,7 @@ pub fn event_detail(
         manual_asr_started_ms: None,
         manual_asr_ended_ms: None,
         manual_asr_source: None,
+        recording_sources: Vec::new(),
         preview: None,
         coarse_segments: coarse_for(db, start, end, mask, limit, offset)?,
         precise_segments: precise_for(
@@ -4668,6 +4736,61 @@ mod tests {
                 .unwrap()
                 .is_some()
         );
+    }
+
+    #[test]
+    fn calendar_days_include_cross_day_material_and_notes_but_not_gaps_or_cleared_ranges() {
+        let db = db();
+        let day = 86_400_000;
+        let bounds = [0, day, day * 2, day * 3, day * 4];
+        media(&db, "cross", day - 1_000, day + 1_000);
+        db.execute(
+            "INSERT INTO moments(id,kind,anchor_ms,created_ms) VALUES(?1,'mark',?2,?2)",
+            params![Uuid::new_v4().to_string(), day * 2 + 1],
+        )
+        .unwrap();
+        db.execute("INSERT INTO manual_ranges(id,started_ms,ended_ms,source_mask,revision) VALUES(?1,?2,?3,1,1)", params![Uuid::new_v4().to_string(), day * 3 + 10, day * 3 + 20]).unwrap();
+        db.execute("INSERT INTO media_gaps(id,source,started_ms,ended_ms,reason) VALUES ('calendar-gap','microphone',?1,?2,'manual_pause')",params![day*3,day*4]).unwrap();
+        assert_eq!(
+            calendar_days(&db, &bounds, day * 4).unwrap(),
+            vec![0, day, day * 2]
+        );
+        assert_eq!(calendar_days(&db, &bounds, day - 1).unwrap(), vec![0]);
+        db.execute("DELETE FROM audio_blocks", []).unwrap();
+        assert_eq!(calendar_days(&db, &bounds, day * 4).unwrap(), vec![day * 2]);
+        assert!(calendar_days(&db, &[0, 0], day).is_err());
+        assert!(calendar_days(&db, &[i64::MIN, i64::MAX], day).is_err());
+        assert!(calendar_days(&db, &[0; 33], day).is_err());
+        // 23/25-hour local days are valid; exact midnight belongs only to the next day.
+        assert!(calendar_days(&db, &[0, 82_800_000, 172_800_000], day * 4).is_ok());
+    }
+
+    #[test]
+    fn recording_projection_requires_active_source_and_current_confirmed_tail() {
+        let db = db();
+        media(&db, "live", 1_000, 6_000);
+        db.execute(
+            "INSERT INTO recording_sessions VALUES('session','microphone',1000,6000,NULL,'open')",
+            [],
+        )
+        .unwrap();
+        let mut items = timeline(&db, 0, 10_000).unwrap();
+        mark_recording_items(&db, &mut items, &[AudioSource::Microphone], 7_000).unwrap();
+        assert_eq!(items[0].recording_sources, vec![AudioSource::Microphone]);
+        for (active, now) in [
+            (vec![], 7_000),
+            (vec![AudioSource::System], 7_000),
+            (vec![AudioSource::Microphone], 40_000),
+        ] {
+            let mut items = timeline(&db, 0, 10_000).unwrap();
+            mark_recording_items(&db, &mut items, &active, now).unwrap();
+            assert!(items[0].recording_sources.is_empty());
+        }
+        db.execute("UPDATE recording_sessions SET state='complete'", [])
+            .unwrap();
+        let mut items = timeline(&db, 0, 10_000).unwrap();
+        mark_recording_items(&db, &mut items, &[AudioSource::Microphone], 7_000).unwrap();
+        assert!(items[0].recording_sources.is_empty());
     }
 
     #[test]

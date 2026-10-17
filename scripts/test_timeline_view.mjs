@@ -25,3 +25,24 @@ test('empty and legacy summaries use honest placeholders; screenshot text remain
   assert.equal(Array.from(result.text).length,161);
   assert.equal(result.label,'截图文字');
 });
+
+const { monthBoundaries, headerDays, liveCard } = await import('../src/timeline-view.ts');
+test('monthly dates respect leap years, year boundaries and recorded-day-only navigation', () => {
+  assert.equal(monthBoundaries(new Date(2024,1,12)).length,30);
+  assert.equal(monthBoundaries(new Date(2025,1,12)).length,29);
+  const dec=monthBoundaries(new Date(2025,11,12));
+  assert.equal(new Date(dec.at(-1)).getFullYear(),2026);
+  assert.deepEqual(headerDays([1,4,7,10,10],4),[7,4,1]);
+  assert.deepEqual(headerDays([],4),[]);
+});
+test('only newest matching live card glows; pause, errors, history and other sources do not', () => {
+  const date=new Date(2026,9,17), now=date.getTime()+18*3600000;
+  const live={...item,started_ms:now-10000,recording_sources:['microphone']};
+  const state={capture_state:'recording',paused_intent:false,storage_paused:false,microphone_phase:'recording',microphone_recording:true,system_phase:'idle',system_recording:false};
+  assert.equal(liveCard([live],state,date,now),live);
+  assert.equal(liveCard([live],{...state,paused_intent:true},date,now),null);
+  assert.equal(liveCard([live],null,date,now),null);
+  assert.equal(liveCard([live],state,new Date(2026,9,16),now),null);
+  assert.equal(liveCard([{...live,recording_sources:['system']}],state,date,now),null);
+  assert.equal(liveCard([live,{...live,started_ms:now,recording_sources:[]}],state,date,now),null);
+});

@@ -22,6 +22,7 @@ import { CaptureStatus, useCaptureControl } from "./CaptureStatus";
 import { DetailDrawer } from "./DetailDrawer";
 import { type EntrySnapshot, getEntrySnapshot } from "./entry-api";
 import { TimelineView } from "./TimelineView";
+import { monthBoundaries } from "./timeline-view";
 import { PeopleView, QueueView, SettingsView } from "./WorkspaceViews";
 import "./App.css";
 
@@ -50,6 +51,7 @@ function App() {
 	const [date, setDate] = useState(() => new Date());
 	const [hideCoarse, setHideCoarse] = useState(false);
 	const [items, setItems] = useState<TimelineItem[]>([]);
+	const [recordedDays, setRecordedDays] = useState<number[] | null>(null);
 	const [gaps, setGaps] = useState<TimeGap[]>([]);
 	const [dayMoments, setDayMoments] = useState<Moment[]>([]);
 	const [loading, setLoading] = useState(true);
@@ -121,18 +123,36 @@ function App() {
 		}
 	}, [acceptSnapshot]);
 
+	const selectDate = useCallback((next: Date) => {
+		++timelineRequest.current;
+		setItems([]);
+		setGaps([]);
+		setDayMoments([]);
+		setRecordedDays(null);
+		setLoading(true);
+		setDate(next);
+	}, []);
+
 	const refreshTimeline = useCallback(
 		async (showLoading = false) => {
 			const request = ++timelineRequest.current;
 			if (showLoading) setLoading(true);
 			try {
 				const [from_ms, to_ms] = dayBounds(date);
+				const calendar = core<{
+					type: "calendar_days";
+					id: string;
+					days: number[];
+				}>({ type: "calendar_days", boundaries: monthBoundaries(date) }).catch(
+					() => null,
+				);
 				const response = await core<{
 					type: "timeline";
 					id: string;
 					items: TimelineItem[];
 					gaps: TimeGap[];
 				}>({ type: "timeline", from_ms, to_ms });
+				const available = await calendar;
 				const all: Moment[] = [];
 				while (true) {
 					const page = await core<{
@@ -151,6 +171,10 @@ function App() {
 				}
 				if (request === timelineRequest.current) {
 					setItems(response.items);
+					setRecordedDays(available?.days ?? null);
+					if (response.items.length === 0 && available?.days.length) {
+						selectDate(new Date(available.days[available.days.length - 1]));
+					}
 					setGaps(response.gaps);
 					setDayMoments(all);
 					setSelected((current) => {
@@ -202,6 +226,7 @@ function App() {
 				if (request === timelineRequest.current) {
 					if (showLoading) {
 						setItems([]);
+						setRecordedDays(null);
 						setGaps([]);
 						setDayMoments([]);
 					}
@@ -211,7 +236,7 @@ function App() {
 				if (request === timelineRequest.current) setLoading(false);
 			}
 		},
-		[date],
+		[date, selectDate],
 	);
 
 	const contextInFlight = useRef<Promise<void> | null>(null);
@@ -327,9 +352,25 @@ function App() {
 		}, 5000);
 		return () => window.clearInterval(timer);
 	}, [refreshStatus, refreshContext]);
+	// A pause/resume or source restart invalidates the prior session's live
+	// projection, including responses already in flight. Reuse the timeline
+	// request sequence; the status snapshot alone cannot re-light an old card.
+	const recordingObservation = JSON.stringify([
+		snapshot?.error,
+		state?.revision,
+		state?.capture_state,
+		state?.microphone_phase,
+		state?.system_phase,
+		state?.microphone_recording,
+		state?.system_recording,
+	]);
 	useEffect(() => {
-		void refreshTimeline(true);
-	}, [refreshTimeline]);
+		void recordingObservation;
+		setItems((current) =>
+			current.map((item) => ({ ...item, recording_sources: [] })),
+		);
+		void refreshTimeline();
+	}, [refreshTimeline, recordingObservation]);
 	useEffect(() => {
 		if (page === "queue") void refreshTasks();
 	}, [page, refreshTasks]);
@@ -630,13 +671,15 @@ function App() {
 							<CaptureStatus snapshot={snapshot} control={captureControl} />
 						}
 						date={date}
+						recordedDays={recordedDays}
+						recordingState={snapshot?.error ? null : state}
 						items={items}
 						gaps={gaps}
 						moments={dayMoments}
 						loading={loading}
 						hideCoarse={hideCoarse}
 						onHideCoarse={setHideCoarse}
-						onDate={setDate}
+						onDate={selectDate}
 						onSelect={setSelected}
 						onCreate={() => openForm({ mode: "create" })}
 					/>

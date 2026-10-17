@@ -83,6 +83,9 @@ pub enum Request {
         from_ms: i64,
         to_ms: i64,
     },
+    CalendarDays {
+        boundaries: Vec<i64>,
+    },
     EventDetail {
         event_id: Uuid,
         offset: u32,
@@ -283,6 +286,7 @@ impl Request {
             Self::RetryCloudTask { .. } => "retry_cloud_task",
             Self::ProcessNow => "process_now",
             Self::Timeline { .. } => "timeline",
+            Self::CalendarDays { .. } => "calendar_days",
             Self::EventDetail { .. } => "event_detail",
             Self::RangeDetail { .. } => "range_detail",
             Self::PlaybackChunk { .. } => "playback_chunk",
@@ -516,6 +520,8 @@ pub struct TimelineItem {
     pub manual_asr_source: Option<AudioSource>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preview: Option<TimelinePreview>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub recording_sources: Vec<AudioSource>,
     pub coarse_segments: Vec<CoarseSegment>,
     pub precise_segments: Vec<PreciseSegment>,
 }
@@ -631,6 +637,10 @@ pub enum Response {
         id: Uuid,
         items: Vec<TimelineItem>,
         gaps: Vec<TimeGap>,
+    },
+    CalendarDays {
+        id: Uuid,
+        days: Vec<i64>,
     },
     Event {
         id: Uuid,
@@ -927,6 +937,7 @@ fn send_with_policy(
         | Response::CloudStatus { id, .. }
         | Response::CloudTasks { id, .. }
         | Response::Timeline { id, .. }
+        | Response::CalendarDays { id, .. }
         | Response::Event { id, .. }
         | Response::Accepted { id, .. }
         | Response::TranscriptionQueued { id, .. }
@@ -1135,6 +1146,24 @@ mod tests {
                 .unwrap()
                 .preview
                 .is_some()
+        );
+    }
+    #[test]
+    fn calendar_projection_roundtrips_without_changing_timeline_requests() {
+        let request = Request::CalendarDays {
+            boundaries: vec![0, 86_400_000],
+        };
+        assert_eq!(request.name(), "calendar_days");
+        let wire = serde_json::to_value(&request).unwrap();
+        assert!(
+            matches!(serde_json::from_value::<Request>(wire).unwrap(), Request::CalendarDays { boundaries } if boundaries.len()==2)
+        );
+        let response = Response::CalendarDays {
+            id: Uuid::new_v4(),
+            days: vec![0],
+        };
+        assert!(
+            matches!(serde_json::from_value::<Response>(serde_json::to_value(response).unwrap()).unwrap(), Response::CalendarDays { days, .. } if days == vec![0])
         );
     }
 }

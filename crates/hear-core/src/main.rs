@@ -2163,15 +2163,43 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
             Request::Timeline { from_ms, to_ms } => {
                 let reader = shared.readers.snapshot()?;
                 match events::timeline(&reader, from_ms, to_ms) {
-                    Ok(items) => Response::Timeline {
-                        id: envelope.id,
-                        items,
-                        gaps: events::timeline_gaps(&reader, from_ms, to_ms, now_ms()?)?,
-                    },
+                    Ok(mut items) => {
+                        let now = now_ms()?;
+                        let state = shared.service_state()?;
+                        let mut active = Vec::new();
+                        if matches!(state.capture_state, CaptureState::Recording) {
+                            if state.microphone_phase == hear_protocol::SourcePhase::Recording {
+                                active.push(AudioSource::Microphone);
+                            }
+                            if state.system_phase == hear_protocol::SourcePhase::Recording {
+                                active.push(AudioSource::System);
+                            }
+                        }
+                        events::mark_recording_items(&reader, &mut items, &active, now)?;
+                        Response::Timeline {
+                            id: envelope.id,
+                            items,
+                            gaps: events::timeline_gaps(&reader, from_ms, to_ms, now)?,
+                        }
+                    }
                     Err(_) => Response::Error {
                         id: envelope.id,
                         code: "invalid_time_range".to_owned(),
                         message: "timeline range must be within one day".to_owned(),
+                    },
+                }
+            }
+            Request::CalendarDays { boundaries } => {
+                let reader = shared.readers.snapshot()?;
+                match events::calendar_days(&reader, &boundaries, now_ms()?) {
+                    Ok(days) => Response::CalendarDays {
+                        id: envelope.id,
+                        days,
+                    },
+                    Err(error) => Response::Error {
+                        id: envelope.id,
+                        code: "invalid_calendar_range".into(),
+                        message: error,
                     },
                 }
             }
@@ -4245,6 +4273,7 @@ impl Store {
             | Request::RetryCloudTask { .. }
             | Request::ProcessNow
             | Request::Timeline { .. }
+            | Request::CalendarDays { .. }
             | Request::EventDetail { .. }
             | Request::RangeDetail { .. }
             | Request::CreateEvent { .. }
