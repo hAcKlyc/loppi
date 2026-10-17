@@ -33,7 +33,9 @@ test('monthly dates respect leap years, year boundaries and recorded-day-only na
   const dec=monthBoundaries(new Date(2025,11,12));
   assert.equal(new Date(dec.at(-1)).getFullYear(),2026);
   assert.deepEqual(headerDays([1,4,7,10,10],4),[7,4,1]);
-  assert.deepEqual(headerDays([],4),[]);
+  assert.deepEqual(headerDays([],4),[4]);
+  assert.deepEqual(headerDays([1,4,7],1),[7,4,1]);
+  assert.deepEqual(headerDays([1,4,7],5),[7,5,4]);
 });
 test('only newest matching live card glows; pause, errors, history and other sources do not', () => {
   const date=new Date(2026,9,17), now=date.getTime()+18*3600000;
@@ -80,4 +82,20 @@ test('event cards use generated summary independently of transcript state and co
     }
   }
   assert.equal(cardExcerpt({...event,id:null},[],false).text,'原始摘录');
+});
+
+test('date header retains selected day while month availability is unknown or empty', async () => {
+  const { createServer } = await import('vite');
+  const { createElement } = await import('react');
+  const { renderToStaticMarkup } = await import('react-dom/server');
+  const server = await createServer({server:{middlewareMode:true},appType:'custom'});
+  try {
+    const { TimelineView } = await server.ssrLoadModule('/src/TimelineView.tsx');
+    for(const recordedDays of [null,[]]) {
+      const html=renderToStaticMarkup(createElement(TimelineView,{date:new Date(2026,9,7),recordedDays,items:[],gaps:[],moments:[],recordingState:null,loading:true,hideCoarse:false}));
+      assert.doesNotMatch(html,/暂无记录/);
+      assert.match(html,/aria-current="date"/);
+      assert.match(html,/10月7日/);
+    }
+  } finally { await server.close(); }
 });

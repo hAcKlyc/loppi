@@ -1,4 +1,10 @@
-import { type ReactNode, useCallback, useRef, useState } from "react";
+import {
+	type ReactNode,
+	useCallback,
+	useLayoutEffect,
+	useRef,
+	useState,
+} from "react";
 import {
 	dateTitle,
 	dayBounds,
@@ -83,6 +89,67 @@ export function TimelineView({
 		recordedDays ?? (items.length ? [from] : []),
 		from,
 	).map((ms) => new Date(ms));
+	const dateTrack = useRef<HTMLElement>(null);
+	const datePositions = useRef<{
+		target: string;
+		positions: Map<string, number>;
+	} | null>(null);
+	const chooseDate = (next: Date) => {
+		// Capture the currently painted positions, including an interrupted animation.
+		datePositions.current = {
+			target: dateInput(next),
+			positions: new Map(
+				Array.from(
+					dateTrack.current?.querySelectorAll<HTMLElement>("[data-date]") ?? [],
+				).map((node) => [
+					node.dataset.date ?? "",
+					node.getBoundingClientRect().left,
+				]),
+			),
+		};
+		onDate(next);
+	};
+	useLayoutEffect(() => {
+		const previous = datePositions.current;
+		datePositions.current = null;
+		if (
+			!previous ||
+			previous.target !== selectedKey ||
+			window.matchMedia("(prefers-reduced-motion: reduce)").matches
+		)
+			return;
+		const animations: Animation[] = [];
+		const motion = getComputedStyle(document.documentElement);
+		const duration = Number.parseFloat(
+			motion.getPropertyValue("--motion-layout"),
+		);
+		const easing = motion.getPropertyValue("--ease-standard").trim();
+		// Size transitions handle neighboring widths. FLIP handles a date leaving
+		// the three-day window, whose flex-layout removal otherwise jumps instantly.
+		for (const node of dateTrack.current?.querySelectorAll<HTMLElement>(
+			"[data-date]",
+		) ?? []) {
+			const left = previous.positions.get(node.dataset.date ?? "");
+			const frames =
+				left === undefined
+					? [{ opacity: 0 }, { opacity: 1 }]
+					: [
+							{
+								transform: `translateX(${left - node.getBoundingClientRect().left}px)`,
+							},
+							{ transform: "translateX(0)" },
+						];
+			animations.push(
+				node.animate(frames, {
+					duration,
+					easing,
+				}),
+			);
+		}
+		return () => {
+			for (const animation of animations) animation.cancel();
+		};
+	}, [selectedKey]);
 	const activeItem = liveCard(items, recordingState, date, today.getTime());
 	const calendarButton = useRef<HTMLButtonElement>(null);
 	const closeCalendar = useCallback(() => {
@@ -152,46 +219,38 @@ export function TimelineView({
 							<RecordCalendar
 								date={date}
 								days={recordedDays}
-								onDate={onDate}
+								onDate={chooseDate}
 								onClose={closeCalendar}
 							/>
 						)}
 					</div>
 					<nav
+						ref={dateTrack}
 						className="date-track"
 						aria-label="按日期浏览"
 						data-tauri-drag-region
 					>
-						{dates.length === 0 && (
-							<div data-tauri-drag-region className="date-current">
-								<strong>暂无记录</strong>
-							</div>
-						)}
 						{dates.map((day) => {
 							const key = dateInput(day);
 							const selected = key === selectedKey;
-							return selected ? (
-								<div
+							return (
+								<button
 									key={key}
-									data-tauri-drag-region
-									className="date-current"
-									aria-current="date"
+									data-date={key}
+									type="button"
+									className={`date-choice ${selected ? "date-current" : "date-neighbor"}`}
+									aria-current={selected ? "date" : undefined}
+									aria-label={`${dateTitle(day)}${selected ? "，已选中" : ""}`}
+									onClick={() => {
+										if (!selected) chooseDate(day);
+									}}
+									disabled={key > todayKey}
 								>
 									<strong>{dateTitle(day)}</strong>
-									<span>
+									<span aria-hidden={!selected}>
 										{weekdays[day.getDay()]}
 										{key === todayKey ? " · 今天" : ""}
 									</span>
-								</div>
-							) : (
-								<button
-									key={key}
-									type="button"
-									className="date-neighbor"
-									onClick={() => onDate(day)}
-									disabled={key > todayKey}
-								>
-									{dateTitle(day)}
 								</button>
 							);
 						})}

@@ -89,6 +89,8 @@ function App() {
 	const [commentAnchor, setCommentAnchor] = useState(0);
 	const [momentVersion, setMomentVersion] = useState(0);
 	const timelineRequest = useRef(0);
+	const selectedDay = useRef(dayBounds(date)[0]);
+	const initialDatePending = useRef(true);
 	const manualSelection = useRef<string | null>(null);
 
 	const message = (text: string) => {
@@ -124,17 +126,32 @@ function App() {
 	}, [acceptSnapshot]);
 
 	const selectDate = useCallback((next: Date) => {
+		initialDatePending.current = false;
+		const nextDay = dayBounds(next)[0];
+		if (nextDay === selectedDay.current) return;
+		const previous = new Date(selectedDay.current);
+		selectedDay.current = nextDay;
 		++timelineRequest.current;
+		// Month navigation survives a day change; it is not day-content state.
+		if (
+			previous.getFullYear() !== next.getFullYear() ||
+			previous.getMonth() !== next.getMonth()
+		) {
+			setRecordedDays(null);
+		}
 		setItems([]);
 		setGaps([]);
 		setDayMoments([]);
-		setRecordedDays(null);
+		setSelected(null);
+		manualSelection.current = null;
 		setLoading(true);
 		setDate(next);
 	}, []);
 
 	const refreshTimeline = useCallback(
 		async (showLoading = false) => {
+			// An old focus/poll callback must not claim a newer navigation request.
+			if (dayBounds(date)[0] !== selectedDay.current) return;
 			const request = ++timelineRequest.current;
 			if (showLoading) setLoading(true);
 			try {
@@ -170,11 +187,20 @@ function App() {
 					if (page.moments.length < 200) break;
 				}
 				if (request === timelineRequest.current) {
-					setItems(response.items);
-					setRecordedDays(available?.days ?? null);
-					if (response.items.length === 0 && available?.days.length) {
-						selectDate(new Date(available.days[available.days.length - 1]));
+					if (available) setRecordedDays(available.days);
+					if (initialDatePending.current) {
+						initialDatePending.current = false;
+						const latest = available?.days[available.days.length - 1];
+						if (
+							response.items.length === 0 &&
+							latest !== undefined &&
+							latest !== from_ms
+						) {
+							selectDate(new Date(latest));
+							return;
+						}
 					}
+					setItems(response.items);
 					setGaps(response.gaps);
 					setDayMoments(all);
 					setSelected((current) => {
@@ -226,7 +252,6 @@ function App() {
 				if (request === timelineRequest.current) {
 					if (showLoading) {
 						setItems([]);
-						setRecordedDays(null);
 						setGaps([]);
 						setDayMoments([]);
 					}

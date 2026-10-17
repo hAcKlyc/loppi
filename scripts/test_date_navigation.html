@@ -1,0 +1,77 @@
+<!-- Run npm run dev, open /scripts/test_date_navigation.html in a visible browser tab, then click the regression button. Uses mocked IPC only. -->
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>hear 日期切换回归</title>
+<div id="root"></div><aside style="position:fixed;bottom:8px;right:8px;z-index:10000;background:white;padding:12px;border-radius:12px;max-width:650px;font:13px system-ui"><button id="run">运行日期切换回归</button><output id="result">使用本地模拟数据，不连接录音或云端</output></aside>
+<script type="module">
+import React from 'react';
+import {createRoot} from 'react-dom/client';
+import {flushSync} from 'react-dom';
+import {mockIPC} from '@tauri-apps/api/mocks';
+import App from '/src/App.tsx';
+const NativeDate=Date, fixedNow=new NativeDate(2026,9,17,12).getTime();
+window.Date=class extends NativeDate {
+  constructor(...args){super(...(args.length?args:[fixedNow]));}
+  static now(){return fixedNow;}
+};
+const now=new Date(), y=now.getFullYear(), m=now.getMonth();
+const day=n=>new Date(y,m,n).getTime();
+const current=now.getDate();
+const older=Math.max(1,current-10), oldest=Math.max(1,current-11);
+const days=[day(oldest-1),day(oldest),day(older),day(current)];
+let failCalendar=false;
+const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+const state={revision:1,enabled_intent:true,paused_intent:true,storage_paused:false,microphone_enabled:true,system_enabled:true,capture_state:'paused',microphone_phase:'idle',system_phase:'idle',microphone_recording:false,system_recording:false};
+window.isTauri=true;
+mockIPC(async(command,args)=>{
+  if(command==='entry_snapshot') return {sequence:1,state,error:null,mode:'top',appearance:'sleeping',detail:null,control:'resume',notice:null};
+  if(command==='privacy_status') return {microphone:1,screen_and_system_audio:1,tap_required:false,tap_ready:true};
+  if(command==='login_item_status') return 1;
+  if(command!=='core_request') return null;
+  const r=args.request;
+  if(r.type==='calendar_days') {await wait(80);if(failCalendar){failCalendar=false;throw Error('simulated calendar failure')}return {type:r.type,days};}
+  if(r.type==='timeline') {
+    await wait(r.from_ms===day(older)?700:150);
+    const d=new Date(r.from_ms).getDate();
+    return {type:'timeline',gaps:[],items:[{id:`fixture-${d}`,manual_range_id:null,title:`日期 ${d} 的记录`,summary:'测试记录，用来核对日期与内容是否一致。',started_ms:r.from_ms+3600000,ended_ms:r.from_ms+7200000,sources:'microphone',revision:1,processing_state:'transcribed',recording_sources:[],preview:null,coarse_segments:[],precise_segments:[]}]};
+  }
+  if(r.type==='moments') return {type:r.type,moments:[]};
+  if(r.type==='cloud_status') return {type:r.type,queues:[]};
+  if(r.type==='people') return {type:r.type,people:[]};
+  if(r.type==='models') return {type:r.type,state:{phase:'ready',speaker_phase:'ready',progress_percent:100}};
+  return {type:r.type,state,items:[],tasks:[]};
+},{shouldMockEvents:true});
+createRoot(document.getElementById('root')).render(React.createElement(App));
+const assert=(condition,message)=>{if(!condition)throw Error(message)};
+const button=n=>[...document.querySelectorAll('.date-choice')].find(b=>b.querySelector('strong').textContent===`${m+1}月${n}日`);
+const frame=()=>Promise.race([new Promise(requestAnimationFrame),wait(1500).then(()=>{throw Error("浏览器未提供动画帧，请在可见的前台标签页运行")})]);
+document.getElementById('run').onclick=async()=>{
+  const output=document.getElementById('result');output.textContent='检查中…';
+  document.getElementById('run').disabled=true;
+  let falseEmpty=false;
+  const observer=new MutationObserver(()=>{if(document.querySelector('.date-track')?.textContent.includes('暂无记录'))falseEmpty=true;});
+  observer.observe(document.getElementById('root'),{subtree:true,childList:true,characterData:true});
+  try {
+    await wait(900);
+    assert(button(current)?.getAttribute('aria-current')==='date','初始选中日期错误');
+    const target=button(older), width=target.getBoundingClientRect().width;
+    target.click();await frame();await wait(70);
+    assert(button(older)===target,'选中时替换了日期 DOM');
+    assert(button(current)&&button(oldest),'加载时清空了月导航');
+    const middle=target.getBoundingClientRect().width;
+    if(!matchMedia('(prefers-reduced-motion: reduce)').matches) assert(middle>width&&middle<172.8,'没有连续的中间尺寸');
+    const sliding=button(oldest), beforeLeft=sliding.getBoundingClientRect().left;
+    flushSync(()=>sliding.click());
+    const firstLeft=sliding.getBoundingClientRect().left;
+    if(!matchMedia('(prefers-reduced-motion: reduce)').matches) assert(Math.abs(firstLeft-beforeLeft)<3,'三日窗口滚动时出现位置跳变');
+    await wait(900);
+    assert(button(oldest).getAttribute('aria-current')==='date','快速切换被旧请求覆盖');
+    assert(document.querySelector('.event-list h3')?.textContent===`日期 ${oldest} 的记录`,'内容与日期不一致');
+    failCalendar=true;button(older).click();await wait(900);
+    assert(document.querySelectorAll('.date-choice').length===3,'月请求失败丢失已有日期');
+    document.querySelector('.calendar-button').click();await frame();await wait(50);
+    document.querySelector(`[aria-label="${y}年${m+1}月${oldest}日"]`).click();await wait(900);
+    assert(button(oldest).getAttribute('aria-current')==='date','日历选日未保留选中日期');
+    assert(!falseEmpty,'出现暂无记录闪烁');
+    output.textContent=`PASS：DOM 连续；尺寸 ${width.toFixed(1)} → ${middle.toFixed(1)}；四日期窗口位移、快速切换、过期响应、月请求失败、日历选日均通过。`;
+  } catch(error){output.textContent=`FAIL：${error.message}`;} finally{observer.disconnect();document.getElementById('run').disabled=false;}
+};
+</script></html>
