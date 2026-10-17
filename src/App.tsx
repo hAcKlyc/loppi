@@ -21,9 +21,10 @@ import appIcon from "./assets/rabbit/app-icon-square.png";
 import { CaptureStatus, useCaptureControl } from "./CaptureStatus";
 import { DetailDrawer } from "./DetailDrawer";
 import { type EntrySnapshot, getEntrySnapshot } from "./entry-api";
+import { PeopleView } from "./PeopleView";
 import { TimelineView } from "./TimelineView";
 import { monthBoundaries } from "./timeline-view";
-import { PeopleView, QueueView, SettingsView } from "./WorkspaceViews";
+import { QueueView, SettingsView } from "./WorkspaceViews";
 import "./App.css";
 
 type Page = "timeline" | "queue" | "people" | "settings";

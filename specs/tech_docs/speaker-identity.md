@@ -37,6 +37,8 @@ flowchart LR
 
 ### 用户建档和样例
 
+人物详情通过 `VoiceSamples` 的增量字段 `parts` 取得实际样例成员时间段，`audio_available` 按既有原音保留索引检查。组合样例不能用包围范围代替成员范围。原音不可用时特征仍保留，GUI 禁用试听；运行时文件缺失和清理继续由 `playback_chunk` / `playback_valid` 校验。`SamplePlayback` 复用有界 `ContinuousPlayback`，逐片段播放而不播放间隔；切人、离页或删除时停止并释放。没有新增音频副本或声纹特征回传。
+
 用户新建或选择已有 Person，只有明确的 `speaker_bindings(origin='manual')` 可以授权补充声纹；自动命名不产生训练样本。姓名归属和声纹入库独立：无合格样例仍保存名字，显示“待补充声纹”。已有 `ready` 向量且带实测音质的数据立即提交后台筛选，尚未提取的在 `publish_voice` 时提交。姓名确认不等待全库比对；只有筛选通过才增加样例数。显式追加样例也不能绕过质量、去重、容量与人工证据检查。实现集中于 [`knowledge/enrollment.rs`](../../crates/hear-core/src/knowledge/enrollment.rs)。
 
 #### 短句组合与音质

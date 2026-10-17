@@ -65,6 +65,17 @@ fn combines_only_confirmed_short_speech_and_tracks_every_member() {
     );
     publish_voice(&mut db, &work, &vector(0), q(7200), 72001).unwrap();
     assert_eq!(count(&db, p), 1);
+    let samples = voice_samples(&db, p).unwrap();
+    assert_eq!(samples[0].parts.len(), 4);
+    assert_eq!(
+        samples[0]
+            .parts
+            .iter()
+            .map(|part| (part.started_ms, part.ended_ms))
+            .collect::<Vec<_>>(),
+        work.audio_ranges()
+    );
+    assert_eq!(samples[0].audio_available, Some(true));
     assert_eq!(
         db.query_row("SELECT count(*) FROM voice_sample_parts", [], |r| r
             .get::<_, i64>(0))
@@ -81,6 +92,23 @@ fn combines_only_confirmed_short_speech_and_tracks_every_member() {
         0,
         "late/replayed job cannot restore a revoked composite"
     );
+}
+
+#[test]
+fn sample_playability_tracks_retained_audio_without_deleting_voice_identity() {
+    let (mut db, _, s) = fixture(&[("A", 0, 1800), ("A", 2000, 3800), ("A", 4000, 5800)]);
+    let p = person(&mut db);
+    bind(&mut db, s[0].id, p, true);
+    publish_next(&mut db, 0, 5400);
+    let before = voice_samples(&db, p).unwrap();
+    assert_eq!(before[0].audio_available, Some(true));
+    db.execute("UPDATE audio_blocks SET media_path=NULL", [])
+        .unwrap();
+    let after = voice_samples(&db, p).unwrap();
+    assert_eq!(after.len(), 1);
+    assert_eq!(after[0].parts.len(), 3);
+    assert_eq!(after[0].audio_available, Some(false));
+    assert_eq!(after[0].revision, before[0].revision);
 }
 
 #[test]

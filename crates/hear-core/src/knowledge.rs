@@ -701,6 +701,8 @@ pub fn voice_samples(db: &Connection, person_id: Uuid) -> Result<Vec<VoiceSample
                 model_version: r.get(4)?,
                 created_ms: r.get(5)?,
                 revision: 0,
+                parts: Vec::new(),
+                audio_available: None,
             })
         })
         .map_err(|error| error.to_string())?
@@ -708,6 +710,47 @@ pub fn voice_samples(db: &Connection, person_id: Uuid) -> Result<Vec<VoiceSample
         .map_err(|error| error.to_string())?;
     for sample in &mut samples {
         sample.revision = object_revision(db, "sample", sample.id)?;
+        let mut parts = db
+            .prepare(
+                "SELECT p.started_ms,p.ended_ms FROM voice_sample_parts s
+          JOIN precise_segments p ON p.id=s.segment_id WHERE s.sample_id=?1
+          ORDER BY p.started_ms,p.ended_ms,p.id",
+            )
+            .map_err(|e| e.to_string())?;
+        sample.parts = parts
+            .query_map([sample.id.to_string()], |r| {
+                Ok(hear_protocol::VoiceSamplePart {
+                    started_ms: r.get(0)?,
+                    ended_ms: r.get(1)?,
+                })
+            })
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
+        if sample.parts.is_empty() {
+            sample.parts.push(hear_protocol::VoiceSamplePart {
+                started_ms: sample.started_ms,
+                ended_ms: sample.ended_ms,
+            });
+        }
+        let source = match sample.source {
+            AudioSource::Microphone => "microphone",
+            AudioSource::System => "system",
+        };
+        let mut available = true;
+        for part in &sample.parts {
+            if !crate::events::utterance_has_retained_audio(
+                db,
+                source,
+                part.started_ms,
+                part.ended_ms,
+                false,
+            )? {
+                available = false;
+                break;
+            }
+        }
+        sample.audio_available = Some(available);
     }
     Ok(samples)
 }

@@ -1,3 +1,4 @@
+@import "./people-settings.css";
 @import "./tokens.css";
 
 :root {
@@ -798,8 +799,7 @@ p {
 }
 .panel-header,
 .setting-row,
-.task-row,
-.person-row {
+.task-row {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
@@ -817,8 +817,7 @@ p {
 }
 .panel-header p,
 .setting-row p,
-.task-row p,
-.person-row p {
+.task-row p {
 	color: var(--color-text-muted);
 	font-size: var(--type-caption);
 	margin: var(--space-2) 0 0;
@@ -842,13 +841,13 @@ p {
 	border-radius: 50%;
 	background: var(--color-surface);
 	box-shadow: var(--shadow-control);
-	transition: left var(--motion-standard) var(--ease-standard);
+	transition: transform var(--motion-standard) var(--ease-standard);
 }
 .switch.on {
 	background: var(--color-brand-accent);
 }
 .switch.on:after {
-	left: 21px;
+	transform: translateX(18px);
 }
 .queue-counts {
 	display: flex;
@@ -870,17 +869,14 @@ p {
 	padding-top: 5px;
 	padding-bottom: 5px;
 }
-.task-row,
-.person-row {
+.task-row {
 	padding: 17px 0;
 	border-bottom: 1px solid var(--color-border-subtle);
 }
-.task-row:last-child,
-.person-row:last-child {
+.task-row:last-child {
 	border-bottom: 0;
 }
 .task-row strong,
-.person-row strong,
 .setting-row strong {
 	font-size: var(--type-body);
 	font-weight: var(--weight-strong);
@@ -895,34 +891,6 @@ p {
 	color: var(--color-brand-accent);
 	font-weight: var(--weight-strong);
 	flex: none;
-}
-.person-row > div {
-	margin-right: auto;
-}
-.person-entry:not(:last-child) {
-	border-bottom: 1px solid var(--color-border-subtle);
-}
-.person-entry .person-row {
-	border-bottom: 0;
-}
-.sample-list {
-	padding: 0 0 var(--space-7) 55px;
-	color: var(--color-text-secondary);
-	font-size: var(--type-meta);
-}
-.sample-row {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	padding: 7px 0;
-}
-.person-delete-confirm {
-	display: flex;
-	align-items: center;
-	gap: var(--space-5);
-	padding: 0 0 var(--space-7) 55px;
-	color: var(--color-warning);
-	font-size: var(--type-meta);
 }
 .sample-action {
 	border: 0;
@@ -986,21 +954,6 @@ p {
 	border: 0;
 	color: var(--color-warning);
 }
-.person-edit-row {
-	display: flex;
-	align-items: center;
-	gap: 9px;
-	flex: 1;
-}
-.person-edit-row input {
-	flex: 1;
-	min-width: 80px;
-	border: 1px solid transparent;
-	background: var(--color-surface-subtle);
-	color: var(--color-text-strong);
-	border-radius: var(--radius-sm);
-	padding: 9px;
-}
 .settings-page > h2 {
 	margin: 35px 0 13px;
 	font-size: var(--type-lead);
@@ -1019,23 +972,6 @@ p {
 .cloud-config {
 	display: grid;
 	gap: 15px;
-}
-.cloud-switcher {
-	display: flex;
-	gap: var(--space-4);
-}
-.cloud-switcher button {
-	border: 0;
-	border-radius: var(--radius-sm);
-	background: var(--color-sidebar);
-	color: var(--color-text-secondary);
-	padding: var(--space-4) 17px;
-	font-size: var(--type-meta);
-}
-.cloud-switcher button.active {
-	background: var(--color-surface-selected);
-	color: var(--color-brand);
-	font-weight: var(--weight-strong);
 }
 .cloud-provider-row {
 	display: grid;
@@ -2006,17 +1942,6 @@ body.floating-body .float-wrap {
 	.float-menu {
 		transition: none;
 	}
-}
-.entry-mode-options {
-	border: 0;
-	padding: 0;
-	margin: 0;
-	display: flex;
-	gap: 8px;
-}
-.entry-mode-options .active {
-	background: var(--color-brand-soft);
-	color: var(--color-brand);
 }
 
 /* The native self-only drag target includes the existing header whitespace.

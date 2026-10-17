@@ -3155,7 +3155,7 @@ pub fn publish_asr(
     Ok(utterances.len())
 }
 
-fn utterance_has_retained_audio(
+pub(crate) fn utterance_has_retained_audio(
     db: &Connection,
     source: &str,
     start: i64,

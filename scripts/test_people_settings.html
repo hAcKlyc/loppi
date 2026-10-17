@@ -1,0 +1,51 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>hear 人物与设置交互验证</title>
+<div id="root"></div><aside style="position:fixed;bottom:8px;left:8px;z-index:101;background:white;padding:10px;font:12px system-ui"><button id="run">运行交互回归</button><output id="result">模拟数据，不连接真实人物、密钥或音频</output></aside>
+<script type="module">
+import React,{useState} from 'react';import{createRoot}from'react-dom/client';import{mockIPC}from'@tauri-apps/api/mocks';import{PeopleView}from'/src/PeopleView.tsx';import{SettingsView}from'/src/WorkspaceViews.tsx';import'/src/App.css';
+const h=React.createElement,wait=ms=>new Promise(r=>setTimeout(r,ms)),base=new Date(2026,9,18,14,10).getTime();
+let people=[{id:'a',display_name:'陈老师',sample_count:2,revision:1,created_ms:base},{id:'b',display_name:'周同学',sample_count:0,revision:1,created_ms:base}];
+let samples=[{id:'s1',person_id:'a',source:'microphone',started_ms:base,ended_ms:base+7600,parts:[{started_ms:base,ended_ms:base+3600},{started_ms:base+4000,ended_ms:base+7600}],audio_available:true,revision:1},{id:'s2',person_id:'a',source:'system',started_ms:base-3600000,ended_ms:base-3594000,parts:[],audio_available:false,revision:1}];
+let requests=[],mutations=[],delay=0,fail=false,readFail=false,configureFail=false,setView,refresh,login=1;
+const state={revision:1,microphone_enabled:true,system_enabled:true,microphone_recording:true,system_recording:true,audio_limit_bytes:10737418240,audio_used_bytes:805306368};
+window.isTauri=true;
+class FakeAudioContext { constructor(){this.origin=performance.now();this.destination={};}get currentTime(){return(performance.now()-this.origin)/100;}resume(){return Promise.resolve();}suspend(){return Promise.resolve();}close(){return Promise.resolve();}decodeAudioData(bytes){const data=JSON.parse(new TextDecoder().decode(bytes));return Promise.resolve({numberOfChannels:1,sampleRate:48000,duration:data.duration});}createBufferSource(){let timer;const ctx=this;return{buffer:null,onended:null,connect(){},disconnect(){},stop(){clearTimeout(timer)},start(at){timer=setTimeout(()=>this.onended?.(),Math.max(0,(at+this.buffer.duration-ctx.currentTime)*100));}}}}
+window.AudioContext=FakeAudioContext;
+mockIPC(async(command,args)=>{
+ if(command==='entry_snapshot')return{mode:'floating'};
+ if(command==='entry_mode')return null;
+ if(command==='register_login_item'){login=1;return null;}if(command==='unregister_login_item'){login=0;return null;}
+ if(command!=='core_request')return 0;
+ const r=args.request;requests.push(r);
+ if(r.type==='voice_samples'){const answer=samples.filter(s=>s.person_id===r.person_id);await wait(delay);if(readFail)throw Error('样例加载失败');return{type:'voice_samples',id:r.id,samples:answer};}
+ if(r.type==='playback_chunk')return{type:'playback_chunk',id:r.id,has_audio:true,next_audio_ms:null,generation:1,wav_base64:btoa(JSON.stringify({duration:(r.to_ms-r.from_ms)/1000}))};
+ if(r.type==='playback_valid')return{type:'playback_valid',id:r.id,valid:true};
+ throw Error('unexpected '+r.type);
+});
+function App(){const[view,sv]=useState('people'),[version,update]=useState(0),[busy,sb]=useState(false);setView=sv;refresh=()=>update(x=>x+1);
+ const mutate=async r=>{mutations.push(r);sb(true);await wait(45);try{if(fail||(r.type==='configure_cloud'&&configureFail))return false;if(r.type==='create_person')people=[...people,{id:'new',display_name:r.display_name,sample_count:0,revision:1,created_ms:base}];if(r.type==='rename_person')people=people.map(p=>p.id===r.person_id?{...p,display_name:r.display_name,revision:p.revision+1}:p);if(r.type==='delete_person')people=people.filter(p=>p.id!==r.person_id);if(r.type==='remove_voice_sample'){samples=samples.filter(s=>s.id!==r.sample_id);people=people.map(p=>({...p,sample_count:samples.filter(s=>s.person_id===p.id).length,revision:p.revision+1}));}if(r.type==='set_source')state[r.source==='system'?'system_enabled':'microphone_enabled']=r.enabled;refresh();return true;}finally{sb(false)}};
+ return h('div',{className:'app-shell'},h('aside',{className:'sidebar'},h('div',{className:'brand'},'hear'),h('nav',null,...['people','settings'].map(v=>h('button',{key:v,className:view===v?'active':'',onClick:()=>sv(v)},v==='people'?'人物库':'设置')))),h('main',{className:'main-area'},view==='people'?h(PeopleView,{people,busy,onMutate:mutate}):h(SettingsView,{date:new Date(base),state,queues:[{provider:'llm',configured:true},{provider:'asr',configured:true}],selection:null,privacy:{microphone:3,tap_required:true,tap_ready:true,screen_and_system_audio:1},loginStatus:login,models:{phase:'ready',speaker_phase:'ready',progress_percent:100},busy,onStatus:async()=>{},onContext:async()=>refresh(),onTimeline:async()=>{},onMutate:mutate,onMessage:()=>{}})));
+}
+createRoot(document.getElementById('root')).render(h(App));
+const click=async el=>{if(!el)throw Error('未找到按钮');el.click();await wait(80)};
+const button=text=>[...document.querySelectorAll('main button'),...document.querySelectorAll('button')].find(b=>b.textContent.trim()===text);
+const input=async(el,value)=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,value);el.dispatchEvent(new Event('input',{bubbles:true}));await wait(20)};
+window.runRegression=async()=>{let n=0;const out=document.getElementById('result'),check=(v,m)=>{if(!v)throw Error(m);n++};out.textContent='验证中…';try{
+ await wait(120);check(document.querySelectorAll('.people-list-row').length===2,'人物列表');check(!button('编辑')&&!button('样例')&&!button('删除'),'列表不应包含行内操作');
+ await click(button('新建人物'));check(document.querySelector('dialog[open]'),'创建模态');await input(document.querySelector('dialog input'),'林研究员');await click(button('创建人物'));check(!document.querySelector('dialog[open]')&&people.length===3,'创建完成关闭');
+ await click(document.querySelector('.people-list-row'));check(document.querySelector('.person-profile'),'整行进入详情');check(document.querySelectorAll('.sample-play-button').length===2,'展示全部声纹');check(document.querySelectorAll('.sample-play-button')[1].disabled,'无原音禁用播放');
+ await click(document.querySelector('.person-name-button'));await input(document.querySelector('.person-name-editor input'),'陈教授');await click(button('保存'));check(document.querySelector('.person-name-button').textContent.includes('陈教授'),'行内名称保存');
+ await click(document.querySelector('.sample-play-button'));await wait(850);const chunks=requests.filter(r=>r.type==='playback_chunk');check(chunks.length===2&&chunks[0].from_ms===base&&chunks[0].to_ms===base+3600&&chunks[1].from_ms===base+4000&&chunks[1].to_ms===base+7600,'组合播放不包含间隔');
+ await click(document.querySelector('.sample-play-button'));await click(button('人物库'));await wait(800);check(requests.filter(r=>r.type==='playback_chunk').length===3,'返回必须终止后续片段');
+ delay=200;await click(document.querySelector('.people-list-row'));await click(button('人物库'));await click(document.querySelectorAll('.people-list-row')[1]);await wait(250);check(document.querySelector('.person-name-button').textContent.includes('周同学')&&document.querySelectorAll('.voice-sample-row').length===0,'旧人物加载不能串行');delay=0;
+ await click(button('人物库'));await click(document.querySelector('.people-list-row'));await click(document.querySelector('[aria-label="删除样例 1"]'));await click(button('取消'));check(samples.length===2,'取消不删除');await click(document.querySelector('[aria-label="删除样例 1"]'));await click(button('确认删除'));check(samples.length===1&&document.querySelectorAll('.voice-sample-row').length===1,'样本删除刷新');
+ await click(button('删除人物'));check(document.querySelector('dialog').textContent.includes('历史转录'),'人物删除说明');await click(button('取消'));check(people.length===3,'人物取消不删除');
+ await click(button('人物库'));readFail=true;await click(document.querySelector('.people-list-row'));check(document.querySelector('[role="alert"]'),'加载错误显示');readFail=false;await click(button('重试'));check(document.querySelectorAll('.voice-sample-row').length===1,'加载重试');
+ await click(button('人物库'));await click([...document.querySelectorAll('.people-list-row')].find(b=>b.textContent.includes('林研究员')));await click(button('删除人物'));await click(button('确认删除'));check(people.length===2&&!document.querySelector('.person-profile'),'确认删除人物后返回列表');
+ setView('settings');await wait(140);check(document.querySelectorAll('[role=switch]').length===3,'三个标准开关');await click(document.querySelector('[aria-label="麦克风"]'));check(document.querySelector('[aria-label="麦克风"]').getAttribute('aria-checked')==='false','开关反映保存状态');fail=true;await click(document.querySelector('[aria-label="电脑声音"]'));check(document.querySelector('[aria-label="电脑声音"]').getAttribute('aria-checked')==='true','失败开关保持事实');fail=false;
+ check(document.querySelectorAll('.segmented-options input[type=radio]').length===4,'互斥选项使用radio');let key=document.querySelector('input[type=password]');check(key.value==='••••••••••••','已保存显示mask');key.focus();key.blur();await wait(80);check(!mutations.some(r=>r.type==='configure_cloud'),'未编辑mask不提交');key.focus();await input(key,'');key.blur();await wait(80);check(key.value==='••••••••••••'&&!mutations.some(r=>r.type==='configure_cloud'),'空值保留已保存密钥');
+ key.focus();await input(key,'test-key-llm');key.blur();await wait(140);check(mutations.filter(r=>r.type==='configure_cloud').length===1&&key.value==='••••••••••••','替换只提交一次并恢复mask');
+ await click([...document.querySelectorAll('.segmented-options input')].find(e=>e.value==='asr'));key=document.querySelector('input[type=password]');configureFail=true;key.focus();await input(key,'test-key-asr');key.blur();await wait(140);check(key.value==='test-key-asr'&&document.querySelector('.cloud-key-feedback').textContent.includes('原配置仍有效'),'失败保留输入与原配置');check(mutations.filter(r=>r.type==='configure_cloud').at(-1).provider==='asr','供应商绑定');check(mutations.filter(r=>r.type==='configure_cloud').every(r=>!r.api_key.includes('•')),'mask绝不出站');configureFail=false;
+ out.textContent=`PASS · ${n} 项交互检查`;return {passed:n};
+ }catch(e){out.textContent='FAIL · '+e.message;throw e}};
+document.getElementById('run').onclick=()=>void window.runRegression();
+</script></html>

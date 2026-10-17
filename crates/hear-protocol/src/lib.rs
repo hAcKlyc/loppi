@@ -590,6 +590,12 @@ pub struct PersonView {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceSamplePart {
+    pub started_ms: i64,
+    pub ended_ms: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VoiceSampleView {
     pub id: Uuid,
     pub person_id: Uuid,
@@ -599,6 +605,10 @@ pub struct VoiceSampleView {
     pub model_version: String,
     pub created_ms: i64,
     pub revision: i64,
+    #[serde(default)]
+    pub parts: Vec<VoiceSamplePart>,
+    #[serde(default)]
+    pub audio_available: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1059,6 +1069,14 @@ fn core_binary_path() -> Result<PathBuf, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn voice_sample_playback_metadata_is_additive() {
+        let old = serde_json::json!({"id":Uuid::new_v4(),"person_id":Uuid::new_v4(),"source":"microphone","started_ms":1000,"ended_ms":5000,"model_version":"campplus-zh-v1","created_ms":6000,"revision":1});
+        let view: VoiceSampleView = serde_json::from_value(old).unwrap();
+        assert!(view.parts.is_empty());
+        assert!(view.audio_available.is_none());
+    }
 
     #[test]
     fn playback_generation_is_additive_to_the_existing_chunk_response() {

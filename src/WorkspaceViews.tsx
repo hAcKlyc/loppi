@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
 	type CleanupPreview,
 	type CloudProvider,
@@ -11,7 +11,6 @@ import {
 	dateTitle,
 	dayBounds,
 	executeCleanup,
-	type Person,
 	type PreciseSegment,
 	type ReviewItem,
 	type ServiceState,
@@ -19,8 +18,9 @@ import {
 	type TimelineItem,
 	time,
 	userError,
-	type VoiceSample,
 } from "./api";
+import { CloudKeyInput } from "./CloudKeyInput";
+import { SegmentedOptions, Switch } from "./Controls";
 import { taskStatus } from "./cloud-task-status";
 import {
 	type EntryMode,
@@ -355,244 +355,6 @@ export function QueueView({
 	);
 }
 
-export function PeopleView({
-	people,
-	busy,
-	onMutate,
-}: {
-	people: Person[];
-	busy: boolean;
-	onMutate: Mutation;
-}) {
-	const [creating, setCreating] = useState(false);
-	const [editing, setEditing] = useState<string | null>(null);
-	const [name, setName] = useState("");
-	const [expanded, setExpanded] = useState<string | null>(null);
-	const [samples, setSamples] = useState<VoiceSample[]>([]);
-	const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
-	const loadSamples = async (personId: string) => {
-		try {
-			const response = await core<{
-				type: "voice_samples";
-				id: string;
-				samples: VoiceSample[];
-			}>({
-				type: "voice_samples",
-				person_id: personId,
-			});
-			setSamples(response.samples);
-			setExpanded(personId);
-		} catch {
-			setSamples([]);
-		}
-	};
-	return (
-		<section className="page-container">
-			<div className="page-heading" data-tauri-drag-region>
-				<h1>人物库</h1>
-				<button
-					type="button"
-					className="quiet-button"
-					onClick={() => {
-						setCreating(true);
-						setName("");
-					}}
-				>
-					＋ 新建人物
-				</button>
-			</div>
-			<div className="panel-card list-panel">
-				{creating && (
-					<div className="person-edit-row">
-						<input
-							aria-label="人物姓名"
-							value={name}
-							onChange={(event) => setName(event.target.value)}
-							placeholder="输入姓名"
-						/>
-						<button
-							type="button"
-							className="quiet-button"
-							onClick={() => setCreating(false)}
-						>
-							取消
-						</button>
-						<button
-							type="button"
-							className="primary-button"
-							disabled={busy || !name.trim()}
-							onClick={async () => {
-								const saved = await onMutate(
-									{ type: "create_person", display_name: name.trim() },
-									"人物已添加",
-								);
-								if (saved) setCreating(false);
-							}}
-						>
-							保存
-						</button>
-					</div>
-				)}
-				{people.length === 0 && !creating && (
-					<div className="list-empty">还没有人物。可在转录中为说话人命名。</div>
-				)}
-				{people.map((person) => (
-					<div className="person-entry" key={person.id}>
-						<div className="person-row">
-							<span className="person-avatar">
-								{person.display_name.slice(0, 1)}
-							</span>
-							{editing === person.id ? (
-								<div className="person-edit-row">
-									<input
-										aria-label="修改姓名"
-										value={name}
-										onChange={(event) => setName(event.target.value)}
-									/>
-									<button
-										type="button"
-										className="quiet-button"
-										onClick={() => setEditing(null)}
-									>
-										取消
-									</button>
-									<button
-										type="button"
-										className="primary-button"
-										disabled={busy || !name.trim()}
-										onClick={async () => {
-											const saved = await onMutate(
-												{
-													type: "rename_person",
-													person_id: person.id,
-													display_name: name.trim(),
-													expected_revision: person.revision,
-												},
-												"姓名已更新",
-											);
-											if (saved) setEditing(null);
-										}}
-									>
-										保存
-									</button>
-								</div>
-							) : (
-								<>
-									<div>
-										<strong>{person.display_name}</strong>
-										<p>
-											{person.sample_count > 0
-												? `${person.sample_count} 个声纹样例`
-												: "待补充声纹"}
-										</p>
-									</div>
-									<button
-										type="button"
-										className="quiet-button"
-										onClick={() => {
-											setEditing(person.id);
-											setName(person.display_name);
-										}}
-									>
-										编辑
-									</button>
-									<button
-										type="button"
-										className="quiet-button"
-										onClick={() =>
-											expanded === person.id
-												? setExpanded(null)
-												: void loadSamples(person.id)
-										}
-									>
-										样例
-									</button>
-									<button
-										type="button"
-										className="text-action"
-										onClick={() => setConfirmDelete(person.id)}
-									>
-										删除
-									</button>
-								</>
-							)}
-						</div>
-						{expanded === person.id && (
-							<div className="sample-list">
-								{samples.length === 0 && <span>暂无可用样例</span>}
-								{samples.map((sample) => (
-									<div className="sample-row" key={sample.id}>
-										<span>
-											{new Date(sample.started_ms).toLocaleString("zh-CN")} ·{" "}
-											{sample.source === "system" ? "电脑声音" : "麦克风"}
-										</span>
-										<button
-											type="button"
-											className="text-action"
-											disabled={busy}
-											onClick={async () => {
-												if (
-													await onMutate(
-														{
-															type: "remove_voice_sample",
-															sample_id: sample.id,
-															expected_revision: sample.revision,
-														},
-														"声纹样例已移除",
-													)
-												)
-													await loadSamples(person.id);
-											}}
-										>
-											移除
-										</button>
-									</div>
-								))}
-							</div>
-						)}
-						{confirmDelete === person.id && (
-							<div className="person-delete-confirm">
-								<span>
-									删除 {person.display_name} 及其样例？历史转录仍保留。
-								</span>
-								<button
-									type="button"
-									className="quiet-button"
-									onClick={() => setConfirmDelete(null)}
-								>
-									取消
-								</button>
-								<button
-									type="button"
-									className="danger-button"
-									disabled={busy}
-									onClick={async () => {
-										if (
-											await onMutate(
-												{
-													type: "delete_person",
-													person_id: person.id,
-													expected_revision: person.revision,
-												},
-												"人物已删除",
-											)
-										) {
-											setConfirmDelete(null);
-											setExpanded(null);
-										}
-									}}
-								>
-									删除人物
-								</button>
-							</div>
-						)}
-					</div>
-				))}
-			</div>
-		</section>
-	);
-}
-
 export function SettingsView({
 	date,
 	state,
@@ -633,6 +395,7 @@ export function SettingsView({
 }) {
 	const [entryMode, setEntryMode] = useState<EntryMode>("top");
 	const [switchingEntry, setSwitchingEntry] = useState(false);
+	const [switchingLogin, setSwitchingLogin] = useState(false);
 	useEffect(() => {
 		let disposed = false;
 		const subscription = listen<EntrySnapshot>(
@@ -663,17 +426,6 @@ export function SettingsView({
 		}
 	};
 	const [provider, setProvider] = useState<CloudProvider>("llm");
-	const [apiKeys, setApiKeys] = useState<Record<CloudProvider, string>>({
-		llm: "",
-		asr: "",
-	});
-	const [savingProvider, setSavingProvider] = useState<CloudProvider | null>(
-		null,
-	);
-	const [failedProviders, setFailedProviders] = useState<
-		Record<CloudProvider, boolean>
-	>({ llm: false, asr: false });
-	const savingCloud = useRef(false);
 	const cloudConfigured = queues.find(
 		(queue) => queue.provider === provider,
 	)?.configured;
@@ -736,40 +488,6 @@ export function SettingsView({
 		)
 			throw new Error("请选择有效的时间范围");
 		return { from_ms, to_ms, sources };
-	};
-
-	const configureCloud = async (
-		selected: CloudProvider,
-		enteredKey: string,
-	) => {
-		const key = enteredKey.trim();
-		if (!key) {
-			setApiKeys((current) => ({ ...current, [selected]: "" }));
-			return;
-		}
-		if (savingCloud.current) return;
-		savingCloud.current = true;
-		setSavingProvider(selected);
-		setFailedProviders((current) => ({ ...current, [selected]: false }));
-		try {
-			const saved = await onMutate(
-				{
-					type: "configure_cloud",
-					provider: selected,
-					api_key: key,
-					model: selected === "llm" ? "deepseek-flash" : null,
-				},
-				selected === "llm" ? "DeepSeek 已配置" : "火山引擎已配置",
-			);
-			if (saved) {
-				setApiKeys((current) => ({ ...current, [selected]: "" }));
-			} else {
-				setFailedProviders((current) => ({ ...current, [selected]: true }));
-			}
-		} finally {
-			savingCloud.current = false;
-			setSavingProvider(null);
-		}
 	};
 
 	const preview = async () => {
@@ -885,32 +603,16 @@ export function SettingsView({
 						<strong>兔子的位置</strong>
 						<p>切换入口，保留当前倾听状态</p>
 					</div>
-					<fieldset className="entry-mode-options" aria-label="常驻入口模式">
-						<button
-							type="button"
-							className={
-								entryMode === "top" ? "quiet-button active" : "quiet-button"
-							}
-							aria-pressed={entryMode === "top"}
-							disabled={switchingEntry}
-							onClick={() => void changeEntryMode("top")}
-						>
-							顶部
-						</button>
-						<button
-							type="button"
-							className={
-								entryMode === "floating"
-									? "quiet-button active"
-									: "quiet-button"
-							}
-							aria-pressed={entryMode === "floating"}
-							disabled={switchingEntry}
-							onClick={() => void changeEntryMode("floating")}
-						>
-							悬浮兔子
-						</button>
-					</fieldset>
+					<SegmentedOptions
+						label="常驻入口模式"
+						value={entryMode}
+						options={[
+							{ value: "top", label: "顶部" },
+							{ value: "floating", label: "悬浮兔子" },
+						]}
+						disabled={switchingEntry}
+						onChange={(mode) => void changeEntryMode(mode)}
+					/>
 				</div>
 			</div>
 			<h2>记录</h2>
@@ -926,24 +628,26 @@ export function SettingsView({
 									: "未开启"}
 						</p>
 					</div>
-					<button
-						type="button"
-						className="quiet-button"
-						onClick={async () => {
+					<Switch
+						label="登录时启动"
+						checked={loginStatus === 1 || loginStatus === 2}
+						disabled={switchingLogin || loginStatus === null}
+						onChange={async () => {
+							setSwitchingLogin(true);
 							try {
 								await invoke(
-									loginStatus === 1
+									loginStatus === 1 || loginStatus === 2
 										? "unregister_login_item"
 										: "register_login_item",
 								);
 								await onContext();
 							} catch (error) {
 								onMessage(userError(error));
+							} finally {
+								setSwitchingLogin(false);
 							}
 						}}
-					>
-						{loginStatus === 1 ? "关闭" : "开启"}
-					</button>
+					/>
 				</div>
 				<div className="setting-row">
 					<div>
@@ -957,11 +661,11 @@ export function SettingsView({
 						</p>
 					</div>
 					{privacy?.microphone === 3 ? (
-						<button
-							type="button"
-							className="quiet-button"
-							disabled={busy}
-							onClick={() =>
+						<Switch
+							label="麦克风"
+							checked={state?.microphone_enabled ?? false}
+							disabled={busy || !state}
+							onChange={() =>
 								void onMutate(
 									{
 										type: "set_source",
@@ -972,9 +676,7 @@ export function SettingsView({
 									"声音来源已更新",
 								)
 							}
-						>
-							{state?.microphone_enabled ? "关闭" : "开启"}
-						</button>
+						/>
 					) : (
 						<button
 							type="button"
@@ -1019,24 +721,22 @@ export function SettingsView({
 							</button>
 						)}
 						{state && (
-							<button
-								type="button"
-								className="quiet-button"
-								disabled={busy}
-								onClick={() =>
+							<Switch
+								label="电脑声音"
+								checked={state.system_enabled}
+								disabled={busy || authorizingAudio}
+								onChange={() =>
 									void onMutate(
 										{
 											type: "set_source",
 											source: "system",
-											enabled: !state?.system_enabled,
-											expected_revision: state?.revision,
+											enabled: !state.system_enabled,
+											expected_revision: state.revision,
 										},
 										"声音来源已更新",
 									)
 								}
-							>
-								{state?.system_enabled ? "关闭" : "开启"}
-							</button>
+							/>
 						)}
 						{!privacy?.tap_required && !systemAudioReady && (
 							<button
@@ -1129,24 +829,16 @@ export function SettingsView({
 			</div>
 			<h2>云端能力</h2>
 			<div className="panel-card cloud-config">
-				<div className="cloud-switcher">
-					<button
-						type="button"
-						className={provider === "llm" ? "active" : ""}
-						aria-pressed={provider === "llm"}
-						onClick={() => selectProvider("llm")}
-					>
-						LLM
-					</button>
-					<button
-						type="button"
-						className={provider === "asr" ? "active" : ""}
-						aria-pressed={provider === "asr"}
-						onClick={() => selectProvider("asr")}
-					>
-						ASR
-					</button>
-				</div>
+				<SegmentedOptions
+					label="云端服务"
+					value={provider}
+					options={[
+						{ value: "llm", label: "LLM" },
+						{ value: "asr", label: "ASR" },
+					]}
+					disabled={busy}
+					onChange={selectProvider}
+				/>
 				<div className="cloud-provider-row">
 					<div className="cloud-provider-info">
 						<div className="cloud-provider-heading">
@@ -1165,50 +857,13 @@ export function SettingsView({
 								: "语音识别 · volc.seedasr.auc"}
 						</span>
 					</div>
-					<label className="cloud-provider-key">
-						API Key
-						<input
-							type="password"
-							autoComplete="off"
-							value={apiKeys[provider]}
-							disabled={busy}
-							aria-invalid={failedProviders[provider]}
-							aria-describedby="cloud-key-feedback"
-							onChange={(event) => {
-								setApiKeys((current) => ({
-									...current,
-									[provider]: event.target.value,
-								}));
-								setFailedProviders((current) => ({
-									...current,
-									[provider]: false,
-								}));
-							}}
-							onKeyDown={(event) => {
-								if (event.key === "Enter") {
-									event.preventDefault();
-									event.currentTarget.blur();
-								}
-							}}
-							onBlur={(event) =>
-								void configureCloud(provider, event.currentTarget.value)
-							}
-							placeholder={cloudConfigured ? "输入新密钥以更换" : "输入密钥"}
-						/>
-						<span
-							id="cloud-key-feedback"
-							className={`cloud-key-feedback${failedProviders[provider] ? " error" : ""}`}
-							aria-live="polite"
-						>
-							{savingProvider === provider
-								? "正在验证…"
-								: failedProviders[provider]
-									? cloudConfigured
-										? "新密钥未保存，原配置仍有效"
-										: "验证未通过，密钥未保存"
-									: "按回车或离开输入框后验证"}
-						</span>
-					</label>
+					<CloudKeyInput
+						key={provider}
+						provider={provider}
+						configured={cloudConfigured}
+						busy={busy}
+						onMutate={onMutate}
+					/>
 				</div>
 			</div>
 			<h2>数据</h2>

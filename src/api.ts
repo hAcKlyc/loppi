@@ -246,6 +246,8 @@ export interface VoiceSample {
 	model_version: string;
 	created_ms: number;
 	revision: number;
+	parts?: { started_ms: number; ended_ms: number }[];
+	audio_available?: boolean | null;
 }
 
 export interface ReviewItem {
