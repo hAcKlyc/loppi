@@ -99,3 +99,30 @@ test('date header retains selected day while month availability is unknown or em
     }
   } finally { await server.close(); }
 });
+
+
+test('coarse filtering preserves the active recording and its excerpt, but not paused or historical coarse cards', async () => {
+  const { createServer } = await import('vite');
+  const { createElement } = await import('react');
+  const { renderToStaticMarkup } = await import('react-dom/server');
+  const server = await createServer({server:{middlewareMode:true},appType:'custom'});
+  try {
+    const { TimelineView } = await server.ssrLoadModule('/src/TimelineView.tsx');
+    const date=new Date(), now=date.getTime();
+    const live={...item,title:null,started_ms:now-10000,ended_ms:now,processing_state:'pending_fit',sources:'microphone',recording_sources:['microphone']};
+    const history={...live,started_ms:now-30000,ended_ms:now-20000,recording_sources:[],preview:{...item.preview,text:'历史粗转摘录'}};
+    const state={capture_state:'recording',paused_intent:false,storage_paused:false,microphone_phase:'recording',microphone_recording:true};
+    const render=(recordingState,hideCoarse=true,selected=date)=>renderToStaticMarkup(createElement(TimelineView,{date:selected,items:[history,live],gaps:[],moments:[],recordingState,loading:false,hideCoarse}));
+    const active=render(state);
+    assert.match(active, /<h3>实时记录内容<\/h3>/);
+    assert.match(active, /至今/);
+    assert.match(active, /原始摘录/);
+    assert.doesNotMatch(active, /历史粗转摘录/);
+    assert.match(render(state,false), /历史粗转摘录/);
+    for(const html of [render(null),render({...state,paused_intent:true}),render(state,true,new Date(now-86400000))]) {
+      assert.doesNotMatch(html, /<h3>实时记录内容<\/h3>/);
+      assert.match(html, /粗转内容已隐藏/);
+      assert.doesNotMatch(html, /原始摘录/);
+    }
+  } finally { await server.close(); }
+});

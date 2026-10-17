@@ -49,7 +49,7 @@ function errorText(error: unknown): string {
 function App() {
 	const [page, setPage] = useState<Page>("timeline");
 	const [date, setDate] = useState(() => new Date());
-	const [hideCoarse, setHideCoarse] = useState(false);
+	const [hideCoarse, setHideCoarse] = useState(true);
 	const [items, setItems] = useState<TimelineItem[]>([]);
 	const [recordedDays, setRecordedDays] = useState<number[] | null>(null);
 	const [gaps, setGaps] = useState<TimeGap[]>([]);

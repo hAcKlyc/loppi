@@ -162,6 +162,7 @@ export function TimelineView({
 	const visible = sorted.filter(
 		(item) =>
 			!hideCoarse ||
+			item === activeItem ||
 			item.id !== null ||
 			item.manual_range_id !== null ||
 			moments.some(
@@ -395,9 +396,9 @@ export function TimelineView({
 								moment.anchor_ms < item.ended_ms,
 						);
 						const count = itemMoments.length;
-						const excerpt = cardExcerpt(item, itemMoments, hideCoarse);
-						const manualStatus = manualAsrSummary(item);
 						const live = item === activeItem;
+						const excerpt = cardExcerpt(item, itemMoments, hideCoarse && !live);
+						const manualStatus = manualAsrSummary(item);
 						const sourceLabel =
 							excerpt.label ||
 							(item.processing_state === "moment_only"
