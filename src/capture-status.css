@@ -7,7 +7,7 @@
 	--capture-wash: var(--color-sidebar);
 	display: flex;
 	align-items: center;
-	gap: var(--space-7);
+	gap: var(--space-6);
 }
 .capture-status.recording {
 	--capture-ink: var(--color-brand);
@@ -20,9 +20,9 @@
 .capture-status-rabbit {
 	position: relative;
 	display: block;
-	width: 96px;
-	height: 96px;
-	flex: 0 0 96px;
+	width: var(--layout-capture-rabbit);
+	height: var(--layout-capture-rabbit);
+	flex: 0 0 var(--layout-capture-rabbit);
 	padding: 0;
 	border: 0;
 	border-radius: var(--radius-xl);
@@ -68,7 +68,7 @@
 	display: grid;
 	justify-items: start;
 	gap: var(--space-2);
-	min-width: 122px;
+	min-width: 112px;
 }
 .capture-status-copy strong {
 	font-size: var(--type-lead);

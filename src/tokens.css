@@ -80,6 +80,7 @@
 	--type-heading-sm: 20px;
 	--type-heading: 22px;
 	--type-title: 26px;
+	--type-date: 32px;
 	--type-display-sm: 38px;
 	--type-display: 42px;
 	--weight-regular: 400;
@@ -140,9 +141,14 @@
 	--layer-toast: 50;
 	--layer-image-preview: 100;
 
-	--layout-sidebar-width: 208px;
+	--layout-sidebar-width: 184px;
 	--layout-sidebar-compact-width: 104px;
 	--layout-content-max: 1170px;
+	--layout-timeline-max: 1104px;
+	--layout-timeline-gutter: 68px;
+	--layout-timeline-rail: 55px;
+	--layout-map-label: 64px;
+	--layout-capture-rabbit: 72px;
 	--layout-drawer-width: min(80vw, 1420px);
 	--layout-modal-width: min(92vw, 505px);
 	--layout-floating-safe-area: 160px;

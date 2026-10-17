@@ -194,19 +194,24 @@ export function TimelineView({
 			<section className="day-map" aria-label="当天内容范围与未记录时段">
 				<div className="day-map-heading">
 					<strong>记录分布</strong>
-					<div className="day-map-legend">
-						<span>
-							<i className="raw" />
-							未整理
-						</span>
-						<span>
-							<i className="organized" />
-							事件 / 精转范围
-						</span>
-						<span>
-							<i className="gap" />
-							未记录
-						</span>
+					<div className="day-map-key">
+						<div className="day-map-legend">
+							<span>
+								<i className="raw" />
+								未整理
+							</span>
+							<span>
+								<i className="organized" />
+								事件 / 精转范围
+							</span>
+							<span>
+								<i className="gap" />
+								未记录
+							</span>
+						</div>
+						{selectedKey === todayKey && (
+							<span className="day-map-clock">现在 {time(now)}</span>
+						)}
 					</div>
 				</div>
 				<div className="day-map-plot">
@@ -272,9 +277,7 @@ export function TimelineView({
 					)}
 					{selectedKey === todayKey && (
 						<div className="day-map-now-track">
-							<span className="day-map-now" style={{ left: position(now) }}>
-								<span>现在 {time(now)}</span>
-							</span>
+							<span className="day-map-now" style={{ left: position(now) }} />
 						</div>
 					)}
 				</div>
@@ -294,13 +297,17 @@ export function TimelineView({
 				<div className="section-actions">
 					<button
 						type="button"
-						className={`quiet-button ${hideCoarse ? "active" : ""}`}
+						className={`quiet-button coarse-filter ${hideCoarse ? "active" : ""}`}
 						aria-pressed={hideCoarse}
 						onClick={() => onHideCoarse(!hideCoarse)}
 					>
 						{hideCoarse ? "显示粗转" : "隐藏粗转"}
 					</button>
-					<button type="button" className="quiet-button" onClick={onCreate}>
+					<button
+						type="button"
+						className="quiet-button create-event"
+						onClick={onCreate}
+					>
 						＋ 新建事件
 					</button>
 				</div>
@@ -359,7 +366,7 @@ export function TimelineView({
 											</span>
 										)}
 										<span
-											className={`event-card-state ${live ? "recording-label" : ""}`}
+											className={`event-card-state ${live ? "recording-label" : ["fit_failed", "asr_failed"].includes(item.processing_state) ? "is-failed" : ""}`}
 										>
 											{live
 												? "正在记录"

@@ -622,23 +622,50 @@ function App() {
 				<nav aria-label="主导航">
 					{(
 						[
-							["timeline", "时间线", "▥"],
-							["queue", "处理队列", "◴"],
-							["people", "人物库", "♙"],
-							["settings", "设置", "⚙"],
+							[
+								"timeline",
+								"时间线",
+								"M8 4v16M12 6h8M12 12h6M12 18h8M4 6h.01M4 12h.01M4 18h.01",
+							],
+							["queue", "处理队列", "M20 12a8 8 0 1 1-8-8M12 7v5l3 2M17 3v6h6"],
+							[
+								"people",
+								"人物库",
+								"M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM4 21v-2a8 8 0 0 1 16 0v2",
+							],
+							[
+								"settings",
+								"设置",
+								"M4 7h3m6 0h7M4 17h7m6 0h3M13 7a3 3 0 1 1-6 0 3 3 0 0 1 6 0ZM17 17a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z",
+							],
 						] as const
 					).map(([id, label, icon]) => (
 						<button
 							key={id}
 							type="button"
 							className={`nav-button ${page === id ? "active" : ""}`}
+							aria-label={label}
+							aria-current={page === id ? "page" : undefined}
+							title={label}
 							onClick={() => {
 								setPage(id);
 								setDataAction(null);
 								setSelected(null);
 							}}
 						>
-							<span className="nav-icon">{icon}</span>
+							<span className="nav-icon" aria-hidden="true">
+								<svg
+									aria-hidden="true"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									strokeWidth="1.6"
+									strokeLinecap="round"
+									strokeLinejoin="round"
+								>
+									<path d={icon} />
+								</svg>
+							</span>
 							<span>{label}</span>
 							{id === "queue" && queues.some((queue) => queue.failed > 0) && (
 								<i />
