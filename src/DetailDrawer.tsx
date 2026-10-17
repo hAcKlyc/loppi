@@ -548,6 +548,18 @@ export function DetailDrawer({
 					: "电脑声音";
 	const shortEvent = detail.ended_ms - detail.started_ms < 60_000;
 	const crossesDay = !sameLocalDay(detail.started_ms, detail.ended_ms);
+	const playbackProgress =
+		detail.ended_ms > detail.started_ms
+			? Math.max(
+					0,
+					Math.min(
+						100,
+						((playhead - detail.started_ms) /
+							(detail.ended_ms - detail.started_ms)) *
+							100,
+					),
+				)
+			: 0;
 
 	return (
 		<div className="drawer-layer">
@@ -641,6 +653,9 @@ export function DetailDrawer({
 							<div className="player-timeline">
 								<input
 									className="player-track"
+									style={{
+										background: `linear-gradient(to right, var(--color-brand) ${playbackProgress}%, var(--color-brand-border) ${playbackProgress}%)`,
+									}}
 									type="range"
 									min={detail.started_ms}
 									max={detail.ended_ms}
@@ -655,7 +670,7 @@ export function DetailDrawer({
 									}}
 								/>
 								<span>
-									{wallClock(playhead, true, crossesDay)} /{" "}
+									当前位置 {wallClock(playhead, true, crossesDay)} /{" "}
 									{wallClock(detail.ended_ms, true, crossesDay)}
 								</span>
 							</div>
@@ -674,33 +689,31 @@ export function DetailDrawer({
 								<option value="system">电脑声音</option>
 							</select>
 						</div>
-						<div className="detail-tabs" role="tablist">
-							<button
-								type="button"
-								role="tab"
-								aria-selected={tab === "transcript"}
-								className={tab === "transcript" ? "active" : ""}
-								onClick={() => setTab("transcript")}
-							>
-								文本转录
-							</button>
-							<button
-								type="button"
-								role="tab"
-								aria-selected={tab === "info"}
-								className={tab === "info" ? "active" : ""}
-								onClick={() => setTab("info")}
-							>
-								音频信息
-							</button>
-						</div>
-						{tab === "transcript" ? (
-							<div
-								className={`transcript-list${crossesDay ? " crosses-day" : ""}`}
-							>
-								{detail.coarse_segments.length > 0 &&
-									detail.precise_segments.length > 0 && (
-										<div className="transcript-toolbar">
+						<div className="detail-toolbar">
+							<div className="detail-tabs" role="tablist" aria-label="详情内容">
+								<button
+									type="button"
+									role="tab"
+									aria-selected={tab === "transcript"}
+									className={tab === "transcript" ? "active" : ""}
+									onClick={() => setTab("transcript")}
+								>
+									文本转录
+								</button>
+								<button
+									type="button"
+									role="tab"
+									aria-selected={tab === "info"}
+									className={tab === "info" ? "active" : ""}
+									onClick={() => setTab("info")}
+								>
+									音频信息
+								</button>
+							</div>
+							{tab === "transcript" && (
+								<div className="transcript-toolbar">
+									{detail.coarse_segments.length > 0 &&
+										detail.precise_segments.length > 0 && (
 											<button
 												type="button"
 												className="quiet-button"
@@ -714,13 +727,11 @@ export function DetailDrawer({
 													? "查看本地粗转"
 													: "返回精转"}
 											</button>
-										</div>
-									)}
-								{!detail.id &&
-									!detail.manual_range_id &&
-									detail.processing_state !== "moment_only" &&
-									segments.length > 0 && (
-										<div className="transcript-toolbar">
+										)}
+									{!detail.id &&
+										!detail.manual_range_id &&
+										detail.processing_state !== "moment_only" &&
+										segments.length > 0 && (
 											<button
 												type="button"
 												className="quiet-button"
@@ -728,8 +739,15 @@ export function DetailDrawer({
 											>
 												选择范围精转
 											</button>
-										</div>
-									)}
+										)}
+								</div>
+							)}
+						</div>
+						{tab === "transcript" ? (
+							<div
+								className={`detail-scroll transcript-list${crossesDay ? " crosses-day" : ""}`}
+								key="transcript"
+							>
 								{segments.length === 0 && (
 									<div className="detail-empty">
 										<strong>还没有转录文字</strong>
@@ -752,12 +770,21 @@ export function DetailDrawer({
 								{segments.map((segment) => {
 									const precise =
 										"revision" in segment ? (segment as PreciseSegment) : null;
+									const current =
+										playhead >= segment.started_ms &&
+										playhead < segment.ended_ms &&
+										playhead < detail.ended_ms &&
+										(playSource === "both" || playSource === segment.source);
 									return (
-										<div className="transcript-row" key={segment.id}>
+										<div
+											className={`transcript-row${current ? " is-current" : ""}`}
+											aria-current={current ? "time" : undefined}
+											key={segment.id}
+										>
 											<button
 												type="button"
 												className="transcript-time"
-												title="定位音频"
+												title={current ? "当前位置 · 点击回听" : "从这里播放"}
 												onClick={() => playFrom(segment.started_ms)}
 											>
 												{wallClock(segment.started_ms, true, crossesDay)}
@@ -977,7 +1004,7 @@ export function DetailDrawer({
 								)}
 							</div>
 						) : (
-							<div className="information-panel">
+							<div className="detail-scroll information-panel" key="info">
 								<div>
 									<span>时间范围</span>
 									<strong>
@@ -1133,9 +1160,6 @@ export function DetailDrawer({
 							))}
 						</div>
 						<div className="note-composer">
-							<div className="note-anchor">
-								关联 {wallClock(anchor, true, crossesDay)} 的录音
-							</div>
 							<textarea
 								aria-label="写一条笔记"
 								placeholder="写一条笔记…"
