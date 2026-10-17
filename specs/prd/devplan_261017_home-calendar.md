@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: implemented
 updated: 2026-10-17
 ---
 # 首页卡片收紧、录制反馈与有记录日期导航
@@ -26,7 +26,7 @@ updated: 2026-10-17
 - [x] 数据投影与测试
 - [x] 卡片/月历/动效与前端验证
 - [x] requirements + adversarial，最终architecture
-- [ ] 签名构建、真机验证、提交与关闭台账
+- [x] 签名构建、真机验证、提交与关闭台账
 ### Review契约
 - mode repair，base 4b1776e（本轮开始HEAD）。三路required；Phase1固定快照，最终architecture。
 - in-scope: src/App.tsx, src/TimelineView.tsx, src/RecordCalendar.tsx, src/timeline-view.ts, src/api.ts, src/App.css, src/tokens.css（如需）, crates/hear-core/src/events.rs, crates/hear-core/src/main.rs, crates/hear-protocol/src/lib.rs, crates/hear-cli/src/main.rs（响应穷举适配）, scripts/test_timeline_view.mjs, specs/DESIGN.md, 本台账。
@@ -42,3 +42,4 @@ updated: 2026-10-17
 
 - 2026-10-17：修复后typecheck/lint通过；完整App浏览器验证挂起旧查询→暂停→恢复→释放旧响应、来源重启两条路径，旧卡片均不亮。adversarial定向复核PASS，最终architecture PASS，无剩余阻塞项。
 - 2026-10-17：最终签名构建成功，签名校验通过。旧GUI/core退出，新包GUI 6208、core 6213及两路采集6223/6224运行，status确认双路recording。真机月历验证10月1/6/7/17可选、空日/未来日禁用；选择7日显示历史记录且无流光，返回17日最新卡片正在记录且浅绿流光可见。顶部仅17/7/6日；元信息同首行；分布底部两行已删除。已留在今天首页。截图：home-calendar-final.png、home-live-final.png，位于本会话visualizations目录。mandatory全部关闭；仅动效强度主观偏好保留advisory。
+- 2026-10-17：实现提交e43a555。逐条复核四项需求、反向边界与mandatory证据全部满足；最终HEAD共同静态门禁typecheck/lint/cargo check --workspace通过，单批次最终review后生产代码未变化。无中间态机制或待决策；清理自建浏览器fixture和服务，保留原有未跟踪design/playground/research资料。原子交付完成。
