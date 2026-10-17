@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: implemented
 updated: 2026-10-17
 ---
 # 录音详情第一轮布局优化
@@ -33,7 +33,7 @@ updated: 2026-10-17
   - [x] 实现布局/反馈
   - [x] 自验证、浏览器烟测与需求核对
   - [x] requirements/adversarial + final architecture review
-  - [ ] 提交与最终台账
+  - [x] 提交与最终台账
 
 ### 当前批次 Review 基线
 - Batch base：407575e3130e7af21570ebefb8fcd56aa430669b
@@ -69,3 +69,6 @@ updated: 2026-10-17
 
 - 2026-10-17：用户追加样式后的定向 requirements/adversarial/final architecture 均 PASS；窄窗旧截图被新760×540截图及翻页检查替代，唯一证据缺口关闭。无阻塞发现、无新增架构机制。
 - 2026-10-17：整体范围复核完成：五项目标与两次样式追加要求均覆盖，原有数据/时间/操作语义保持，无临时产品分支。静态检查、构建、针对性浏览器验证与playback回归证据均有效；本轮前端交付无未关闭mandatory验收项。
+
+- 2026-10-17：Batch 1 提交 83fb54a；最终HEAD typecheck/lint再次通过，与已构建/浏览器验证/review候选的产品代码完全一致。标记implemented。本轮仅前端源码交付，未重新安装桌面应用；预览为实际组件配合合成数据，不代表原生录音验证。
+- 用户当前正在查看临时浏览器预览，保留其本机测试服务器与隔离样本供继续调整；未将测试桥接或样本写入产品源码。既有其它未跟踪文件保持原样。
