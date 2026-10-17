@@ -3302,7 +3302,7 @@ pub fn voice_manifest(
     start: i64,
     end: i64,
 ) -> Result<(CloudTask, Vec<AudioPart>), String> {
-    if end - start < 2_000 || end - start > 15_000 || !matches!(source, "microphone" | "system") {
+    if end - start < 400 || end - start > 15_000 || !matches!(source, "microphone" | "system") {
         return Err("speaker audio range unsuitable".to_owned());
     }
     if !utterance_has_retained_audio(db, source, start, end, false)? {
@@ -3346,6 +3346,23 @@ pub fn voice_pcm_16k(
         return Err("speaker audio level unsuitable".to_owned());
     }
     Ok(samples)
+}
+
+/// Concatenate only explicitly selected speech ranges; intervening audio is never included.
+pub fn voice_input_16k(
+    directory: &Path,
+    manifests: &[(CloudTask, Vec<AudioPart>)],
+    composite: bool,
+) -> Result<Vec<f32>, String> {
+    let mut pcm = Vec::new();
+    for (task, parts) in manifests {
+        let piece = voice_pcm_16k(directory, task, parts)?;
+        if composite && piece.iter().filter(|v| v.abs() >= 0.98).count() * 100 > piece.len() {
+            return Err("speaker audio level unsuitable".into());
+        }
+        pcm.extend(piece);
+    }
+    Ok(pcm)
 }
 
 pub fn recover_asr_entry(entry: &std::fs::DirEntry) {

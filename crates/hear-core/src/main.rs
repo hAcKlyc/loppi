@@ -950,6 +950,37 @@ fn voice_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
         if shared.resources.unload(resources::Work::Voice) {
             matcher.clear();
         }
+        let enrolled = (|| -> Result<bool, String> {
+            let input =
+                knowledge::prepare_enrollment(&shared.store.lock().map_err(|e| e.to_string())?.db)?;
+            let Some(input) = input else {
+                return Ok(false);
+            };
+            let allowed = matcher.allows_enrollment(&input.matching, &input.person, |after| {
+                knowledge::match_sample_page(
+                    &shared.store.lock().map_err(|e| e.to_string())?.db,
+                    &input.matching,
+                    after,
+                )
+            })?;
+            knowledge::publish_enrollment(
+                &mut shared.store.lock().map_err(|e| e.to_string())?.db,
+                &input,
+                allowed,
+                now,
+            )
+        })();
+        match enrolled {
+            Ok(true) => {
+                shared.resources.no_work(resources::Work::Voice);
+                continue;
+            }
+            Err(_) => {
+                thread::sleep(Duration::from_secs(2));
+                continue;
+            }
+            Ok(false) => {}
+        }
         let matched = (|| -> Result<bool, String> {
             let input =
                 knowledge::prepare_match(&shared.store.lock().map_err(|e| e.to_string())?.db)?;
@@ -990,7 +1021,7 @@ fn voice_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
             thread::sleep(Duration::from_secs(2));
             continue;
         }
-        let available=shared.store.lock().ok().and_then(|s|s.db.query_row("SELECT EXISTS(SELECT 1 FROM voice_observations WHERE state='pending' AND available_ms<=?1)",[now],|r|r.get::<_,bool>(0)).ok()).unwrap_or(false);
+        let available=shared.store.lock().ok().and_then(|s|s.db.query_row("SELECT EXISTS(SELECT 1 FROM voice_observations WHERE state='pending' AND available_ms<=?1 UNION ALL SELECT 1 FROM voice_enrollments WHERE state='pending' AND vector IS NULL AND available_ms<=?1)",[now],|r|r.get::<_,bool>(0)).ok()).unwrap_or(false);
         if !available {
             shared.resources.no_work(resources::Work::Voice);
             thread::sleep(Duration::from_secs(1));
@@ -1015,11 +1046,20 @@ fn voice_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
                     .lock()
                     .map_err(|error| error.to_string())
                     .and_then(|store| {
-                        events::voice_manifest(&store.db, &work.source, work.start, work.end)
+                        work.audio_ranges()
+                            .into_iter()
+                            .map(|(start, end)| {
+                                events::voice_manifest(&store.db, &work.source, start, end)
+                            })
+                            .collect::<Result<Vec<_>, String>>()
                     });
-                let result: Result<Vec<f32>, String> = manifest
-                    .and_then(|(task, parts)| {
-                        events::voice_pcm_16k(&shared.directory, &task, &parts)
+                let result: Result<(Vec<f32>, Option<knowledge::VoiceQuality>), String> = manifest
+                    .and_then(|manifests| {
+                        events::voice_input_16k(
+                            &shared.directory,
+                            &manifests,
+                            work.enrollment.is_some(),
+                        )
                     })
                     .and_then(|pcm| {
                         if worker.is_none() {
@@ -1033,28 +1073,37 @@ fn voice_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
                                 .managed(&shared.resources, resources::Work::Voice),
                             );
                         }
-                        worker.as_mut().unwrap().request(
-                            "microphone",
-                            "voice",
-                            0,
-                            &pcm,
-                            true,
-                            Duration::from_secs(30),
-                            &|| {
-                                stop.load(Ordering::Acquire)
-                                    || shared.resources.cancel(resources::Work::Voice)
-                            },
-                        )
+                        let quality = knowledge::enrollment_quality(&pcm);
+                        if work.enrollment.is_some() && quality.is_none() {
+                            return Err("speaker audio level unsuitable".into());
+                        }
+                        worker
+                            .as_mut()
+                            .unwrap()
+                            .request(
+                                "microphone",
+                                "voice",
+                                0,
+                                &pcm,
+                                true,
+                                Duration::from_secs(30),
+                                &|| {
+                                    stop.load(Ordering::Acquire)
+                                        || shared.resources.cancel(resources::Work::Voice)
+                                },
+                            )
+                            .map(|vector| (vector, quality))
                     });
                 let mut event = LogEvent::simple("identity", LogLevel::Info, "voice_processed");
                 event.job_id = Some(work.segment_id);
                 match result {
-                    Ok(vector) => {
+                    Ok((vector, quality)) => {
                         if let Ok(mut store) = shared.store.lock() {
                             if knowledge::publish_voice(
                                 &mut store.db,
                                 &work,
                                 &vector,
+                                quality,
                                 now_ms().unwrap_or(now),
                             )
                             .is_err()
@@ -4605,7 +4654,7 @@ mod tests {
             "audio_unavailable"
         );
         assert_eq!(
-            voice_error_code(&events::voice_manifest(&db, "microphone", 0, 1_000).unwrap_err()),
+            voice_error_code(&events::voice_manifest(&db, "microphone", 0, 300).unwrap_err()),
             "audio_quality"
         );
 

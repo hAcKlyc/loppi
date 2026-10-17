@@ -1,3 +1,6 @@
+mod enrollment;
+pub use enrollment::{VoiceQuality, enrollment_quality, prepare_enrollment, publish_enrollment};
+
 use hear_protocol::{AudioSource, PersonView, ReviewItem, SearchHit, VoiceSampleView};
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use sha2::{Digest, Sha256};
@@ -294,6 +297,7 @@ pub fn init(db: &Connection) -> Result<(), String> {
       CREATE INDEX voice_samples_model_page ON voice_samples(model_version,id) WHERE revoked_ms IS NULL;
       CREATE INDEX voice_observations_unmatched ON voice_observations(matched_generation,updated_ms,segment_id) WHERE state='ready';")?;
     db.execute_batch("CREATE INDEX IF NOT EXISTS voice_samples_segment_revision ON voice_samples(segment_id,id) WHERE revoked_ms IS NULL;").map_err(|e|e.to_string())?;
+    enrollment::init(db)?;
     Ok(())
 }
 
@@ -367,7 +371,8 @@ fn legacy_segment_revision_part(
         "SELECT id||':'||person_id||':'||origin||':'||apply_scope||':'||state
          FROM speaker_bindings WHERE current_segment_id=?1 ORDER BY id",
         "SELECT id||':'||person_id FROM voice_samples
-         WHERE segment_id=?1 AND revoked_ms IS NULL ORDER BY id",
+         WHERE (segment_id=?1 OR id IN(SELECT sample_id FROM voice_sample_parts WHERE segment_id=?1))
+           AND revoked_ms IS NULL ORDER BY id",
     ] {
         let mut stmt = db.prepare(sql).map_err(|error| error.to_string())?;
         for item in stmt
@@ -430,7 +435,10 @@ fn revision_parts(
     for sql in [
         "SELECT current_segment_id,id||':'||state||':'||revision||':'||text FROM text_corrections WHERE current_segment_id IN(SELECT value FROM json_each(?1)) ORDER BY current_segment_id,id",
         "SELECT current_segment_id,id||':'||person_id||':'||origin||':'||apply_scope||':'||state FROM speaker_bindings WHERE current_segment_id IN(SELECT value FROM json_each(?1)) ORDER BY current_segment_id,id",
-        "SELECT segment_id,id||':'||person_id FROM voice_samples WHERE segment_id IN(SELECT value FROM json_each(?1)) AND revoked_ms IS NULL ORDER BY segment_id,id",
+        "SELECT p.segment_id,s.id||':'||s.person_id FROM voice_samples s JOIN
+          (SELECT id AS sample_id,segment_id FROM voice_samples WHERE segment_id IN(SELECT value FROM json_each(?1))
+           UNION SELECT sample_id,segment_id FROM voice_sample_parts WHERE segment_id IN(SELECT value FROM json_each(?1))) p
+          ON p.sample_id=s.id WHERE s.revoked_ms IS NULL ORDER BY p.segment_id,s.id",
     ] {
         let mut stmt = db.prepare(sql).map_err(|e| e.to_string())?;
         for row in stmt
@@ -1394,7 +1402,9 @@ pub fn bind_speaker(
         return Err("person not found".to_owned());
     }
     let mut samples_revoked = false;
-    for (id, source, start, end) in current_scope_segments(tx, segment_id, entire)? {
+    let selected = current_scope_segments(tx, segment_id, entire)?;
+    let selected_ids: Vec<_> = selected.iter().map(|s| s.0).collect();
+    for (id, source, start, end) in selected {
         let previous: Option<String> = tx
             .query_row(
                 "SELECT person_id FROM speaker_bindings WHERE current_segment_id=?1
@@ -1454,6 +1464,7 @@ pub fn bind_speaker(
         )
         .map_err(|error| error.to_string())?;
     }
+    enrollment::queue_short_samples(tx, &selected_ids, person_id, now)?;
     rebuild_for_segment(tx, segment_id, now)?;
     Ok(())
 }
@@ -1516,50 +1527,7 @@ fn maybe_add_sample(
     person_id: Uuid,
     now: i64,
 ) -> Result<bool, String> {
-    let row: Option<(String, i64, i64, Vec<u8>, String)> = tx
-        .query_row(
-            "SELECT source,started_ms,ended_ms,vector,model_version FROM voice_observations
-         WHERE segment_id=?1 AND state='ready' AND ended_ms-started_ms>=3000",
-            params![segment_id.to_string()],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
-        )
-        .optional()
-        .map_err(|error| error.to_string())?;
-    let Some((source, start, end, vector, model)) = row else {
-        return Ok(false);
-    };
-    let existing: i64 = tx
-        .query_row(
-            "SELECT count(*) FROM voice_samples WHERE person_id=?1
-      AND segment_id=?2 AND revoked_ms IS NULL",
-            params![person_id.to_string(), segment_id.to_string()],
-            |r| r.get(0),
-        )
-        .map_err(|error| error.to_string())?;
-    if existing > 0 {
-        return Ok(false);
-    }
-    tx.execute(
-        "INSERT INTO voice_samples VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,NULL)",
-        params![
-            Uuid::new_v4().to_string(),
-            person_id.to_string(),
-            segment_id.to_string(),
-            source,
-            start,
-            end,
-            vector,
-            model,
-            now
-        ],
-    )
-    .map_err(|error| error.to_string())?;
-    tx.execute(
-        "UPDATE identity_state SET generation=generation+1 WHERE id=1",
-        [],
-    )
-    .map_err(|error| error.to_string())?;
-    Ok(true)
+    enrollment::add_single(tx, segment_id, person_id, now)
 }
 
 pub fn add_voice_sample(tx: &Transaction<'_>, segment_id: Uuid, now: i64) -> Result<(), String> {
@@ -1633,9 +1601,24 @@ pub struct VoiceWork {
     pub source: String,
     pub start: i64,
     pub end: i64,
+    pub enrollment: Option<enrollment::EnrollmentWork>,
+}
+
+impl VoiceWork {
+    pub fn audio_ranges(&self) -> Vec<(i64, i64)> {
+        match &self.enrollment {
+            Some(work) => work.parts.iter().map(|p| (p.start, p.end)).collect(),
+            None => vec![(self.start, self.end)],
+        }
+    }
 }
 
 pub fn recover_voice(db: &Connection) -> Result<(), String> {
+    db.execute(
+        "UPDATE voice_enrollments SET state='pending' WHERE state='processing'",
+        [],
+    )
+    .map_err(|e| e.to_string())?;
     db.execute(
         "UPDATE voice_observations SET state='pending' WHERE state='processing'",
         [],
@@ -1645,6 +1628,15 @@ pub fn recover_voice(db: &Connection) -> Result<(), String> {
 }
 
 pub fn take_voice(db: &mut Connection, now: i64) -> Result<Option<VoiceWork>, String> {
+    if let Some(work) = enrollment::take(db, now)? {
+        return Ok(Some(VoiceWork {
+            segment_id: work.id,
+            source: work.source.clone(),
+            start: work.parts[0].start,
+            end: work.parts.last().unwrap().end,
+            enrollment: Some(work),
+        }));
+    }
     let tx = db.transaction().map_err(|error| error.to_string())?;
     let row: Option<(String, String, i64, i64)> = tx
         .query_row(
@@ -1703,6 +1695,7 @@ pub fn take_voice(db: &mut Connection, now: i64) -> Result<Option<VoiceWork>, St
         source,
         start,
         end,
+        enrollment: None,
     }))
 }
 
@@ -1714,6 +1707,7 @@ pub fn fail_voice(db: &Connection, id: Uuid, error_code: &str, now: i64) -> Resu
         _ => "worker_failed",
     };
     let transient = matches!(code, "worker_failed" | "worker_timeout") || deferred;
+    enrollment::fail(db, id, code, now)?;
     db.execute("UPDATE voice_observations SET state=CASE WHEN ?4 AND (attempts<3 OR ?5) THEN 'pending' ELSE 'unavailable' END,
       attempts=attempts+CASE WHEN ?5 THEN 0 ELSE 1 END,available_ms=?3+min(300000,5000*(1<<min(attempts,6))),error_code=?2,
       updated_ms=?3 WHERE segment_id=?1 AND state='processing'",params![id.to_string(),code,now,transient,deferred]).map_err(|e|e.to_string())?;
@@ -1765,9 +1759,13 @@ pub fn publish_voice(
     db: &mut Connection,
     work: &VoiceWork,
     vector: &[f32],
+    quality: Option<VoiceQuality>,
     now: i64,
 ) -> Result<(), String> {
     let bytes = encode_vector(vector)?;
+    if let Some(enrollment) = &work.enrollment {
+        return enrollment::publish(db, enrollment, &bytes, quality, now);
+    }
     let tx = db.transaction().map_err(|error| error.to_string())?;
     if visible_segment(&tx, work.segment_id)?.as_ref()
         != Some(&(work.source.clone(), work.start, work.end))
@@ -1781,13 +1779,30 @@ pub fn publish_voice(
         tx.commit().map_err(|error| error.to_string())?;
         return Ok(());
     }
-    tx.execute(
-        "UPDATE voice_observations SET state='ready',vector=?2,
+    let updated = tx
+        .execute(
+            "UPDATE voice_observations SET state='ready',vector=?2,
       model_version=?3,error_code=NULL,matched_generation=0,updated_ms=?4
       WHERE segment_id=?1 AND state='processing'",
-        params![work.segment_id.to_string(), bytes, VOICE_MODEL_VERSION, now],
+            params![work.segment_id.to_string(), bytes, VOICE_MODEL_VERSION, now],
+        )
+        .map_err(|error| error.to_string())?;
+    if updated == 0 {
+        return Ok(());
+    }
+    let quality = quality.unwrap_or(VoiceQuality {
+        voiced_ms: 0,
+        score: 0,
+    });
+    tx.execute(
+        "INSERT OR REPLACE INTO voice_observation_quality VALUES(?1,?2,?3)",
+        params![
+            work.segment_id.to_string(),
+            quality.voiced_ms,
+            quality.score
+        ],
     )
-    .map_err(|error| error.to_string())?;
+    .map_err(|e| e.to_string())?;
     let manual: Option<String> = tx
         .query_row(
             "SELECT person_id FROM speaker_bindings
@@ -2328,8 +2343,39 @@ impl VoiceMatcher {
     pub fn select(
         &mut self,
         input: &MatchInput,
-        mut page: impl FnMut(&str) -> Result<Vec<SampleRow>, String>,
+        page: impl FnMut(&str) -> Result<Vec<SampleRow>, String>,
     ) -> Result<Option<String>, String> {
+        let ranking = self.rank(input, page)?;
+        Ok(ranking
+            .first()
+            .filter(|(_, value)| {
+                *value >= PERSON_MATCH_MIN
+                    && ranking
+                        .get(1)
+                        .is_none_or(|(_, other)| *value - *other >= PERSON_MATCH_MARGIN)
+            })
+            .map(|(person, _)| person.clone()))
+    }
+    pub fn allows_enrollment(
+        &mut self,
+        input: &MatchInput,
+        person: &str,
+        page: impl FnMut(&str) -> Result<Vec<SampleRow>, String>,
+    ) -> Result<bool, String> {
+        let ranking = self.rank(input, page)?;
+        Ok(ranking.first().is_none_or(|(first, score)| {
+            *score < PERSON_MATCH_MIN
+                || (first == person
+                    && ranking.get(1).is_none_or(|(_, other)| {
+                        *other < PERSON_MATCH_MIN || *score - *other >= PERSON_MATCH_MARGIN
+                    }))
+        }))
+    }
+    fn rank(
+        &mut self,
+        input: &MatchInput,
+        mut page: impl FnMut(&str) -> Result<Vec<SampleRow>, String>,
+    ) -> Result<Vec<(String, f32)>, String> {
         let query = decode_vector(&input.bytes)?;
         let mut ranking: Vec<(String, f32)> = Vec::with_capacity(3);
         let mut score = |person: &str, sample: &[f32]| {
@@ -2378,15 +2424,7 @@ impl VoiceMatcher {
                 self.key = Some(key);
             }
         }
-        Ok(ranking
-            .first()
-            .filter(|(_, value)| {
-                *value >= PERSON_MATCH_MIN
-                    && ranking
-                        .get(1)
-                        .is_none_or(|(_, other)| *value - *other >= PERSON_MATCH_MARGIN)
-            })
-            .map(|(person, _)| person.clone()))
+        Ok(ranking)
     }
 }
 
@@ -2665,6 +2703,26 @@ mod tests {
     use crate::cloud::AsrUtterance;
     use crate::events;
     use hear_protocol::{CloudProvider, EventSources};
+
+    fn publish_voice(
+        db: &mut Connection,
+        work: &VoiceWork,
+        vector: &[f32],
+        now: i64,
+    ) -> Result<(), String> {
+        let ms = work.end - work.start;
+        super::publish_voice(
+            db,
+            work,
+            vector,
+            Some(VoiceQuality {
+                voiced_ms: ms,
+                score: ms.min(10000),
+            }),
+            now,
+        )?;
+        enrollment::drain_enrollment(db, now)
+    }
 
     fn assign_test(
         db: &mut Connection,
@@ -3497,7 +3555,7 @@ mod tests {
         assert_ne!(regrouped[0].speaker, regrouped[3].speaker);
     }
 
-    fn speaker_merge_fixture(
+    pub(super) fn speaker_merge_fixture(
         utterances: &[(&str, i64, i64)],
     ) -> (Connection, Uuid, Vec<hear_protocol::PreciseSegment>) {
         let mut db = crate::Store::new(Connection::open_in_memory().unwrap())
@@ -4213,6 +4271,7 @@ mod tests {
         let replacement = create_person(&tx, "李四", 9007).unwrap();
         bind_speaker(&tx, first_segment, replacement, false, 9007).unwrap();
         tx.commit().unwrap();
+        enrollment::drain_enrollment(&mut db, 9007).unwrap();
         let listed = people(&db).unwrap();
         assert_eq!(
             listed

@@ -97,6 +97,12 @@ fn selection_signature(db: &Connection, start: i64, end: i64, mask: i64) -> Resu
           ((source='microphone' AND ?3&1!=0) OR (source='system' AND ?3&2!=0)) ORDER BY id",
         ),
         (
+            "enrollment",
+            "SELECT id||'|'||state||'|'||updated_ms FROM voice_enrollments
+          WHERE started_ms<?2 AND ended_ms>?1 AND
+          ((source='microphone' AND ?3&1!=0) OR (source='system' AND ?3&2!=0)) ORDER BY id",
+        ),
+        (
             "observation",
             "SELECT segment_id||'|'||state||'|'||updated_ms FROM voice_observations
           WHERE started_ms<?2 AND ended_ms>?1 AND
@@ -225,7 +231,7 @@ pub fn preview(
     )? as u64;
     let voice_extractions_awaiting_audio = count(
         db,
-        "SELECT count(*) FROM voice_observations WHERE state IN ('pending','processing')
+        "SELECT count(*) FROM (SELECT source,started_ms,ended_ms,state FROM voice_observations UNION ALL SELECT source,started_ms,ended_ms,state FROM voice_enrollments WHERE vector IS NULL) WHERE state IN ('pending','processing')
          AND started_ms<?2 AND ended_ms>?1 AND
          ((source='microphone' AND ?3&1!=0) OR (source='system' AND ?3&2!=0))",
         start,
@@ -871,6 +877,7 @@ pub fn apply(
     let source_filter = "(source IS NULL OR (source='microphone' AND ?3&1!=0)
       OR (source='system' AND ?3&2!=0))";
     if scope.mode == CleanupMode::RawAudio {
+        tx.execute("UPDATE voice_enrollments SET state='unavailable',error_code='audio_unavailable',updated_ms=?4 WHERE vector IS NULL AND state IN('pending','processing') AND started_ms<?2 AND ended_ms>?1 AND ((source='microphone' AND ?3&1!=0) OR (source='system' AND ?3&2!=0))",params![scope.start,scope.end,scope.mask,now]).map_err(|e|e.to_string())?;
         tx.execute(
             &format!(
                 "UPDATE cloud_tasks SET state='superseded',updated_ms=?4,
@@ -957,6 +964,7 @@ pub fn apply(
             "text_corrections",
             "speaker_bindings",
             "voice_samples",
+            "voice_enrollments",
             "voice_observations",
             "precise_segments",
             "coarse_segments",

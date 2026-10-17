@@ -544,7 +544,7 @@ export function DetailDrawer({
 			onMessage(
 				creationMessage ??
 					(action.kind === "sample"
-						? "声纹样例已保存"
+						? "已提交声纹筛选"
 						: action.kind === "unbind"
 							? "已取消人物归属"
 							: "说话人已更新"),
