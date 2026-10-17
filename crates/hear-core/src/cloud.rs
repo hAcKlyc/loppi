@@ -299,11 +299,19 @@ pub struct AsrUtterance {
 pub fn query_audio(key: &str, request_id: Uuid, deadline: Instant) -> Result<AsrQuery, Failure> {
     let (status, message, response) =
         volc_request(VOLC_QUERY, key, request_id, json!({}), deadline)?;
-    match status.as_str() {
+    parse_asr_query(&status, &message, &response)
+}
+
+fn parse_asr_query(status: &str, message: &str, response: &Value) -> Result<AsrQuery, Failure> {
+    match status {
         "20000001" | "20000002" => Ok(AsrQuery::Processing),
         "20000003" => Ok(AsrQuery::Complete(Vec::new())),
+        // Observed query response: "The task was not found for this application.
+        // Check the application and task ID." Keep submission/recovery decisions
+        // with the durable task owner, including prior submit attempts.
+        "45000092" => Ok(AsrQuery::Missing),
         "45000000" if message.contains("cannot find task") => Ok(AsrQuery::Missing),
-        "20000000" => parse_asr_result(&response)
+        "20000000" => parse_asr_result(response)
             .map(AsrQuery::Complete)
             .map_err(Into::into),
         _ => Err(format!("provider_status_{status}").into()),
@@ -456,6 +464,35 @@ pub fn verify_asr(key: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn asr_query_recognizes_current_and_legacy_missing_task_responses() {
+        for (status, message) in [
+            (
+                "45000092",
+                "The task was not found for this application. Check the application and task ID.",
+            ),
+            ("45000000", "cannot find task"),
+        ] {
+            assert!(matches!(
+                parse_asr_query(status, message, &json!({})),
+                Ok(AsrQuery::Missing)
+            ));
+        }
+        // A generic argument error must not trigger an audio submission.
+        assert_eq!(
+            parse_asr_query("45000000", "invalid resource", &json!({}))
+                .unwrap_err()
+                .code,
+            "provider_status_45000000"
+        );
+        assert!(matches!(
+            parse_asr_query("20000001", "", &json!({})),
+            Ok(AsrQuery::Processing)
+        ));
+        assert!(
+            matches!(parse_asr_query("20000003", "", &json!({})), Ok(AsrQuery::Complete(items)) if items.is_empty())
+        );
+    }
     use super::*;
 
     #[test]

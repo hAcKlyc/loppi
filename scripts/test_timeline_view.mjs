@@ -46,3 +46,22 @@ test('only newest matching live card glows; pause, errors, history and other sou
   assert.equal(liveCard([{...live,recording_sources:['system']}],state,date,now),null);
   assert.equal(liveCard([live,{...live,started_ms:now,recording_sources:[]}],state,date,now),null);
 });
+
+test('rendered live cards name the ongoing recording and use an open time range', async () => {
+  const { createServer } = await import('vite');
+  const { createElement } = await import('react');
+  const { renderToStaticMarkup } = await import('react-dom/server');
+  const server = await createServer({server:{middlewareMode:true},appType:'custom'});
+  try {
+    const { TimelineView } = await server.ssrLoadModule('/src/TimelineView.tsx');
+    const date=new Date(), now=date.getTime();
+    const live={...item,title:null,started_ms:now-10000,ended_ms:now,processing_state:'pending_fit',sources:'microphone',recording_sources:['microphone']};
+    const state={capture_state:'recording',paused_intent:false,storage_paused:false,microphone_phase:'recording',microphone_recording:true};
+    const render=(recordingState,entry=live)=>renderToStaticMarkup(createElement(TimelineView,{date,items:[entry],gaps:[],moments:[],recordingState,loading:false,hideCoarse:false}));
+    assert.match(render(state), /<h3>实时记录内容<\/h3>/);
+    assert.match(render(state), /至今/);
+    assert.match(render(null), /<h3>未整理素材<\/h3>/);
+    assert.doesNotMatch(render(null), /至今/);
+    assert.match(render(state,{...live,id:'named',title:'项目讨论'}), /<h3>项目讨论<\/h3>/);
+  } finally { await server.close(); }
+});

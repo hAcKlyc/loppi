@@ -349,7 +349,7 @@ export function TimelineView({
 											{item.ended_ms - item.started_ms < 60_000 &&
 											item.processing_state === "moment_only"
 												? ""
-												: ` — ${time(item.ended_ms)}`}
+												: ` — ${live ? "至今" : time(item.ended_ms)}`}
 										</span>
 										<span className="event-card-source">{sourceLabel}</span>
 										{count > 0 && <span>{count} 条现场记录</span>}
@@ -368,11 +368,14 @@ export function TimelineView({
 									</div>
 									<h3>
 										{item.title ||
-											(item.manual_range_id
-												? "未命名事件"
-												: hideCoarse || item.processing_state === "moment_only"
-													? "现场记录"
-													: "未整理素材")}
+											(live
+												? "实时记录内容"
+												: item.manual_range_id
+													? "未命名事件"
+													: hideCoarse ||
+															item.processing_state === "moment_only"
+														? "现场记录"
+														: "未整理素材")}
 									</h3>
 									<p className={excerpt.label ? "" : "event-card-placeholder"}>
 										{excerpt.text}

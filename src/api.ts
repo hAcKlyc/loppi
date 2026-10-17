@@ -72,7 +72,7 @@ export function processingLabel(value: string): string {
 		case "pending_fit":
 			return "待整理";
 		case "fit_failed":
-			return "整理失败";
+			return "事件整理失败";
 		case "pending_asr":
 			return "待精转";
 		case "transcribing":

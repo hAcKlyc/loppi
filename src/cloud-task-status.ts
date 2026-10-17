@@ -25,6 +25,8 @@ export function taskStatus(task: CloudTask): string {
 		return `${state} · 识别结果格式异常`;
 	if (reason === "invalid_fit_boundary")
 		return `${state} · 整理结果时间范围异常`;
+	if (reason === "provider_status_45000092")
+		return `${state} · 云端未找到识别任务，可重试`;
 	if (reason.startsWith("provider_http_429"))
 		return `${state} · 服务繁忙，请稍后重试`;
 	if (reason.startsWith("provider_")) return `${state} · 云端服务异常`;
