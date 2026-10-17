@@ -1131,8 +1131,7 @@ p {
 	background: var(--color-surface-selected-hover);
 }
 .icon-button:hover,
-.inline-editor button:hover,
-.speaker-popover button:hover {
+.inline-editor button:hover {
 	background: var(--color-control-hover);
 }
 .danger-button {
@@ -1443,48 +1442,19 @@ p {
 	padding: var(--space-5);
 	margin-top: 7px;
 }
-.inline-editor > div,
-.speaker-popover > div {
+.inline-editor > div {
 	display: flex;
 	justify-content: flex-end;
 	gap: var(--space-4);
 	margin-top: 7px;
 }
-.inline-editor button,
-.speaker-popover button {
+.inline-editor button {
 	padding: var(--space-3) var(--space-5);
 	border: 1px solid transparent;
 	border-radius: var(--radius-sm);
 	background: var(--color-control);
 	color: var(--color-brand-accent);
 	font-size: var(--type-micro);
-}
-.speaker-popover {
-	display: grid;
-	gap: var(--space-4);
-	margin-top: 9px;
-	border: 1px solid transparent;
-	border-radius: var(--radius-control);
-	padding: var(--space-6);
-	background: var(--color-canvas);
-	max-width: 350px;
-}
-.speaker-popover select,
-.speaker-popover input {
-	width: 100%;
-	border: 1px solid transparent;
-	background: var(--color-surface);
-	color: var(--color-text-strong);
-	border-radius: var(--radius-sm);
-	padding: 7px;
-	font-size: var(--type-caption);
-}
-.speaker-popover label {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	font-size: var(--type-micro);
-	color: var(--color-text-secondary);
 }
 .detail-empty {
 	text-align: center;
@@ -2091,4 +2061,230 @@ body.floating-body .float-wrap {
 }
 .page-heading::before {
 	bottom: 0;
+}
+
+/* Anchored identity editor. Text inputs and scope controls intentionally have separate sizing. */
+.speaker-picker {
+	position: fixed;
+	z-index: var(--layer-speaker-picker);
+	display: flex;
+	flex-direction: column;
+	width: min(352px, calc(100vw - 24px));
+	border-radius: var(--radius-control);
+	background: var(--color-canvas);
+	box-shadow: var(--shadow-popover);
+	color: var(--color-text);
+	font-size: var(--type-caption);
+	animation: speaker-picker-enter var(--motion-fast) var(--ease-standard);
+}
+.speaker-picker-heading {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: var(--space-6);
+	padding: var(--space-7) var(--space-7) var(--space-6);
+	flex-shrink: 0;
+}
+.speaker-picker-heading > div {
+	min-width: 0;
+}
+.speaker-picker-heading h3 {
+	margin: 0 0 var(--space-3);
+	font-size: var(--type-control);
+	font-weight: var(--weight-semibold);
+}
+.speaker-picker-heading p {
+	margin: 0;
+	color: var(--color-text-secondary);
+	font-size: var(--type-micro);
+	overflow-wrap: anywhere;
+}
+.speaker-picker-heading .icon-button {
+	flex: 0 0 28px;
+}
+.speaker-picker-body {
+	min-height: 0;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	padding: var(--space-2) var(--space-7);
+}
+.speaker-picker-search {
+	display: block;
+	margin-bottom: var(--space-4);
+	font-size: var(--type-micro);
+	color: var(--color-text-secondary);
+}
+.speaker-picker-input {
+	width: 100%;
+	min-width: 0;
+	border: 0;
+	border-radius: var(--radius-sm);
+	padding: var(--space-5) var(--space-6);
+	background: var(--color-surface);
+	color: var(--color-text);
+	font-size: var(--type-caption);
+}
+.speaker-picker-input::placeholder {
+	color: var(--color-text-faint);
+}
+.speaker-picker-options {
+	display: grid;
+	gap: var(--space-2);
+	max-height: 172px;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	margin: var(--space-5) calc(-1 * var(--space-2)) 0;
+	padding: var(--space-2);
+}
+.speaker-picker-option {
+	display: flex;
+	align-items: center;
+	gap: var(--space-5);
+	width: 100%;
+	min-width: 0;
+	min-height: 40px;
+	padding: var(--space-4) var(--space-5);
+	border: 0;
+	border-radius: var(--radius-sm);
+	background: transparent;
+	text-align: left;
+	color: var(--color-text);
+	font-size: var(--type-caption);
+}
+.speaker-picker-option:hover {
+	background: var(--color-control);
+}
+.speaker-picker-option[aria-pressed="true"] {
+	background: var(--color-surface-selected);
+}
+.speaker-picker-option-name {
+	flex: 1;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+.speaker-picker-avatar {
+	display: grid;
+	place-items: center;
+	flex: 0 0 26px;
+	height: 26px;
+	border-radius: 50%;
+	background: var(--color-surface);
+	color: var(--color-brand);
+	font-size: var(--type-micro);
+}
+.speaker-picker-check {
+	flex: 0 0 16px;
+	color: var(--color-brand);
+}
+.speaker-picker-create {
+	color: var(--color-brand);
+}
+.speaker-picker-empty {
+	margin: var(--space-3) 0;
+	color: var(--color-text-secondary);
+}
+.speaker-picker-scope {
+	min-width: 0;
+	margin: var(--space-7) 0 0;
+	padding: 0;
+	border: 0;
+}
+.speaker-picker-scope legend {
+	margin-bottom: var(--space-4);
+	padding: 0;
+	font-size: var(--type-micro);
+	font-weight: var(--weight-semibold);
+	color: var(--color-text-secondary);
+}
+.speaker-picker-scope label {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--space-4);
+	padding: var(--space-3) 0;
+	line-height: 1.5;
+	cursor: pointer;
+}
+.speaker-picker-scope input[type="radio"] {
+	flex: 0 0 15px;
+	width: 15px;
+	height: 15px;
+	margin: var(--space-2) 0 0;
+	padding: 0;
+	accent-color: var(--color-brand);
+}
+.speaker-picker-scope span {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+.speaker-picker-scope p {
+	margin: var(--space-3) 0 0 23px;
+	font-size: var(--type-micro);
+	line-height: 1.5;
+	color: var(--color-text-secondary);
+}
+.speaker-picker-secondary {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-4) var(--space-7);
+	margin-top: var(--space-6);
+}
+.speaker-picker-secondary button,
+.speaker-picker-cancel {
+	border: 0;
+	background: transparent;
+	color: var(--color-text-secondary);
+	font-size: var(--type-micro);
+	padding: var(--space-3) 0;
+}
+.speaker-picker-secondary button:hover {
+	color: var(--color-brand);
+}
+.speaker-picker-error {
+	margin: var(--space-6) 0 0;
+	padding: var(--space-5) var(--space-5);
+	border-radius: var(--radius-sm);
+	color: var(--color-danger);
+	background: var(--color-danger-surface);
+	line-height: 1.5;
+	overflow-wrap: anywhere;
+}
+.speaker-picker-footer {
+	display: flex;
+	justify-content: flex-end;
+	gap: var(--space-5);
+	padding: var(--space-6) var(--space-7) var(--space-7);
+	flex-shrink: 0;
+}
+.speaker-picker-cancel {
+	padding: var(--space-4) var(--space-6);
+	border-radius: var(--radius-sm);
+}
+.speaker-picker-cancel:hover {
+	background: var(--color-control);
+}
+.speaker-picker button {
+	transition:
+		background-color var(--motion-fast) var(--ease-standard),
+		transform var(--motion-fast) var(--ease-standard);
+}
+.speaker-picker button:active:not(:disabled) {
+	transform: scale(0.98);
+}
+@keyframes speaker-picker-enter {
+	from {
+		opacity: 0;
+		transform: translateY(4px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.speaker-picker {
+		animation: none;
+	}
+	.speaker-picker button {
+		transition: none;
+	}
 }

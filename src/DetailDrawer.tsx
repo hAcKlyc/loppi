@@ -15,6 +15,7 @@ import {
 } from "./api";
 
 import { type Chunk, ContinuousPlayback } from "./playback";
+import { type SpeakerAction, SpeakerPicker } from "./SpeakerPicker";
 
 type Props = {
 	item: TimelineItem;
@@ -145,9 +146,7 @@ export function DetailDrawer({
 	const [editing, setEditing] = useState<string | null>(null);
 	const [draft, setDraft] = useState("");
 	const [assigning, setAssigning] = useState<string | null>(null);
-	const [personId, setPersonId] = useState("");
-	const [newPersonName, setNewPersonName] = useState("");
-	const [entireSpeaker, setEntireSpeaker] = useState(true);
+	const speakerAnchor = useRef<HTMLButtonElement | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [infoError, setInfoError] = useState<string | null>(null);
 	const [moments, setMoments] = useState<Moment[]>([]);
@@ -481,43 +480,56 @@ export function DetailDrawer({
 		);
 	};
 
-	const bind = async (segment: PreciseSegment) => {
+	const updateSpeaker = async (
+		segment: PreciseSegment,
+		action: SpeakerAction,
+	) => {
 		setBusy(true);
 		try {
-			if (newPersonName.trim()) {
+			if (action.kind === "sample") {
 				await core({
-					type: "create_and_bind_speaker",
+					type: "add_voice_sample",
 					segment_id: segment.id,
-					display_name: newPersonName.trim(),
-					entire_local_speaker: entireSpeaker,
-					expected_revision: entireSpeaker
-						? segment.speaker_revision
-						: segment.revision,
+					expected_revision: segment.revision,
 				});
 			} else {
-				if (!personId) throw new Error("请选择人物或输入新名字");
-				await core({
-					type: "bind_speaker",
+				const scope = {
 					segment_id: segment.id,
-					person_id: personId,
-					entire_local_speaker: entireSpeaker,
-					expected_revision: entireSpeaker
+					entire_local_speaker: action.entire,
+					expected_revision: action.entire
 						? segment.speaker_revision
 						: segment.revision,
-				});
+				};
+				if (action.kind === "unbind")
+					await core({ type: "unbind_speaker", ...scope });
+				else if (action.choice.kind === "create")
+					await core({
+						type: "create_and_bind_speaker",
+						display_name: action.choice.name,
+						...scope,
+					});
+				else
+					await core({
+						type: "bind_speaker",
+						person_id: action.choice.personId,
+						...scope,
+					});
 			}
 			await load(offset);
 			onChanged();
-			onMessage("说话人已更新");
+			onMessage(
+				action.kind === "sample"
+					? "声纹样例已保存"
+					: action.kind === "unbind"
+						? "已取消人物归属"
+						: "说话人已更新",
+			);
 			setAssigning(null);
-			setNewPersonName("");
 		} catch (error) {
-			if (String(error).includes("revision_conflict")) {
-				await load(offset);
-				onMessage("内容已更新，请重新确认说话人");
-			} else {
-				onMessage(userError(error));
-			}
+			if (String(error).includes("revision_conflict")) await load(offset);
+			const message = userError(error);
+			onMessage(message);
+			throw new Error(message);
 		} finally {
 			setBusy(false);
 		}
@@ -694,6 +706,7 @@ export function DetailDrawer({
 								<button
 									type="button"
 									role="tab"
+									disabled={busy}
 									aria-selected={tab === "transcript"}
 									className={tab === "transcript" ? "active" : ""}
 									onClick={() => setTab("transcript")}
@@ -703,9 +716,13 @@ export function DetailDrawer({
 								<button
 									type="button"
 									role="tab"
+									disabled={busy}
 									aria-selected={tab === "info"}
 									className={tab === "info" ? "active" : ""}
-									onClick={() => setTab("info")}
+									onClick={() => {
+										setAssigning(null);
+										setTab("info");
+									}}
 								>
 									音频信息
 								</button>
@@ -717,11 +734,13 @@ export function DetailDrawer({
 											<button
 												type="button"
 												className="quiet-button"
-												onClick={() =>
+												disabled={busy}
+												onClick={() => {
+													setAssigning(null);
 													setTranscriptSource(
 														transcriptSource === "best" ? "coarse" : "best",
-													)
-												}
+													);
+												}}
 											>
 												{transcriptSource === "best"
 													? "查看本地粗转"
@@ -735,7 +754,10 @@ export function DetailDrawer({
 											<button
 												type="button"
 												className="quiet-button"
-												onClick={() => setTab("info")}
+												onClick={() => {
+													setAssigning(null);
+													setTab("info");
+												}}
 											>
 												选择范围精转
 											</button>
@@ -760,7 +782,10 @@ export function DetailDrawer({
 												<button
 													type="button"
 													className="secondary-button"
-													onClick={() => setTab("info")}
+													onClick={() => {
+														setAssigning(null);
+														setTab("info");
+													}}
 												>
 													选择范围精转
 												</button>
@@ -795,11 +820,14 @@ export function DetailDrawer({
 														<button
 															type="button"
 															className="speaker-chip"
-															onClick={() => {
+															aria-haspopup="dialog"
+															aria-expanded={assigning === segment.id}
+															disabled={busy}
+															onClick={(event) => {
+																speakerAnchor.current = event.currentTarget;
 																setAssigning(
 																	assigning === segment.id ? null : segment.id,
 																);
-																setPersonId(precise.person_id ?? "");
 															}}
 														>
 															{speakerName(precise, labels)}⌄
@@ -898,97 +926,22 @@ export function DetailDrawer({
 														</button>
 													</details>
 												)}
-												{assigning === segment.id && precise && (
-													<div className="speaker-popover">
-														<select
-															aria-label="已有的人物"
-															value={personId}
-															onChange={(event) =>
-																setPersonId(event.target.value)
+												{assigning === segment.id &&
+													precise &&
+													speakerAnchor.current && (
+														<SpeakerPicker
+															key={segment.id}
+															anchor={speakerAnchor.current}
+															people={people}
+															name={speakerName(precise, labels)}
+															personId={precise.person_id}
+															confirmed={precise.person_origin === "manual"}
+															onClose={() => setAssigning(null)}
+															onApply={(action) =>
+																updateSpeaker(precise, action)
 															}
-														>
-															<option value="">选择已有的人物</option>
-															{people.map((person) => (
-																<option key={person.id} value={person.id}>
-																	{person.display_name}
-																</option>
-															))}
-														</select>
-														<input
-															value={newPersonName}
-															onChange={(event) =>
-																setNewPersonName(event.target.value)
-															}
-															placeholder="或输入新人物姓名"
-															aria-label="新人物姓名"
 														/>
-														<label>
-															<input
-																type="checkbox"
-																checked={entireSpeaker}
-																onChange={(event) =>
-																	setEntireSpeaker(event.target.checked)
-																}
-															/>
-															应用于本场同一说话人
-														</label>
-														<div>
-															<button
-																type="button"
-																onClick={() => setAssigning(null)}
-															>
-																取消
-															</button>
-															<button
-																type="button"
-																disabled={busy}
-																onClick={() => void bind(precise)}
-															>
-																应用
-															</button>
-															{precise.person_id && (
-																<button
-																	type="button"
-																	disabled={busy}
-																	onClick={() =>
-																		void mutate(
-																			{
-																				type: "unbind_speaker",
-																				segment_id: precise.id,
-																				entire_local_speaker: entireSpeaker,
-																				expected_revision: entireSpeaker
-																					? precise.speaker_revision
-																					: precise.revision,
-																			},
-																			"已取消人物归属",
-																		)
-																	}
-																>
-																	取消归属
-																</button>
-															)}
-														</div>
-														{precise.person_id && (
-															<button
-																type="button"
-																className="sample-action"
-																disabled={busy}
-																onClick={() =>
-																	void mutate(
-																		{
-																			type: "add_voice_sample",
-																			segment_id: precise.id,
-																			expected_revision: precise.revision,
-																		},
-																		"声纹样例已保存",
-																	)
-																}
-															>
-																将这段声音加入人物样例
-															</button>
-														)}
-													</div>
-												)}
+													)}
 											</div>
 										</div>
 									);
