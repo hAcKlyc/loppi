@@ -14,7 +14,7 @@ import {
 	time,
 	userError,
 } from "./api";
-
+import { MomentList } from "./MomentList";
 import { type Chunk, ContinuousPlayback } from "./playback";
 import { type SpeakerAction, SpeakerPicker } from "./SpeakerPicker";
 
@@ -149,7 +149,7 @@ export function DetailDrawer({
 	const [playing, setPlaying] = useState(false);
 	const [playSource, setPlaySource] = useState<Sources>(item.sources);
 	const [shownImage, setShownImage] = useState<string | null>(null);
-	const [imageBusy, setImageBusy] = useState(false);
+	const [imageBusy, setImageBusy] = useState<string | null>(null);
 	const [asrFrom, setAsrFrom] = useState(
 		localDateTime(Math.ceil(item.started_ms / 1000) * 1000),
 	);
@@ -386,7 +386,8 @@ export function DetailDrawer({
 	};
 
 	const showScreenshot = async (id: string) => {
-		setImageBusy(true);
+		if (imageBusy !== null) return;
+		setImageBusy(id);
 		try {
 			const response = await core<{
 				type: "screenshot_data";
@@ -400,7 +401,7 @@ export function DetailDrawer({
 		} catch (error) {
 			onMessage(userError(error));
 		} finally {
-			setImageBusy(false);
+			setImageBusy(null);
 		}
 	};
 
@@ -1102,43 +1103,18 @@ export function DetailDrawer({
 						)}
 					</div>
 					<aside className="notes-panel">
-						<h3>现场笔记</h3>
-						<div className="notes-stream">
-							{moments.length === 0 && (
-								<div className="notes-empty">还没有笔记或重点标记</div>
-							)}
-							{moments.map((moment) => (
-								<div className={`note-message ${moment.kind}`} key={moment.id}>
-									<button
-										className="note-time"
-										type="button"
-										onClick={() => playFrom(moment.anchor_ms)}
-									>
-										{wallClock(moment.anchor_ms, true, crossesDay)}
-									</button>
-									{moment.kind === "mark" && <p>◆ 重点</p>}
-									{moment.kind === "comment" && <p>{moment.text}</p>}
-									{moment.kind === "screenshot" && (
-										<>
-											<button
-												type="button"
-												className="screenshot-card"
-												disabled={imageBusy}
-												onClick={() => void showScreenshot(moment.id)}
-											>
-												▧ 截屏 <span>查看画面</span>
-											</button>
-											{moment.ocr_text && (
-												<p className="ocr-excerpt">{moment.ocr_text}</p>
-											)}
-											{moment.ocr_state === "failed" && (
-												<small>图片已保存 · 文字识别失败</small>
-											)}
-										</>
-									)}
-								</div>
-							))}
+						<div className="notes-heading">
+							<h3>现场记录</h3>
+							<span>{moments.length} 条</span>
 						</div>
+						<p className="notes-hint">点击时间回听，点击截图查看画面</p>
+						<MomentList
+							moments={moments}
+							formatTime={(at) => wallClock(at, true, crossesDay)}
+							onPlay={playFrom}
+							onScreenshot={(id) => void showScreenshot(id)}
+							loadingImage={imageBusy}
+						/>
 						<div className="note-composer">
 							<textarea
 								aria-label="写一条笔记"
@@ -1146,13 +1122,26 @@ export function DetailDrawer({
 								value={note}
 								onChange={(event) => setNote(event.target.value)}
 							/>
-							<button
-								type="button"
-								disabled={busy || !note.trim()}
-								onClick={() => void sendNote()}
-							>
-								发送
-							</button>
+							<div className="note-composer-footer">
+								<span title="笔记关联到当前选择的回听位置">
+									笔记时间{" "}
+									{wallClock(
+										Math.max(
+											detail.started_ms,
+											Math.min(anchor, detail.ended_ms - 1),
+										),
+										true,
+										crossesDay,
+									)}
+								</span>
+								<button
+									type="button"
+									disabled={busy || !note.trim()}
+									onClick={() => void sendNote()}
+								>
+									保存笔记
+								</button>
+							</div>
 						</div>
 					</aside>
 				</div>
