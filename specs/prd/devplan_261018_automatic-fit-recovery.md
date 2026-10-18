@@ -57,3 +57,5 @@ updated: 2026-10-18
 - 2026-10-18：requirements/adversarial/architecture 三路独立审查均无代码阻塞，最终 architecture PASS；浏览器实际渲染确认录音与钥匙串错误同时可见。开始签名构建与独立安装恢复。
 
 - 2026-10-18 最终真机验收：签名构建通过，安装到 /Applications/hear.app，GUI/core 新 PID 58884/58893。原凭据未重存、未改 ACL；原两项 pending candidate 均 complete，分别关联 4/2 条事件，积压真实发布成功。revision 49→50 恢复原双路意图，CLI 与主窗均确认麦克风/电脑声音正在记录。mandatory 已全部关闭。代码审查与测试覆盖最终组合态；此前测试的代码无新增逻辑变更。
+
+- 提交：56e2ed6；后续首页光标组合版本再次部署后，双路录音仍正常，原积压任务保持完成。

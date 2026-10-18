@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: implemented
 updated: 2026-10-18
 ---
 # 首页记录分布悬停时间光标
@@ -26,7 +26,7 @@ updated: 2026-10-18
 ### 开发批次与行动清单
 - [x] 光标与映射、样式
 - [x] 单测/浏览器实测
-- [ ] 三路审查、提交
+- [x] 三路审查、提交
 - [x] 签名构建重启
 
 ### 当前批次 Review 基线
@@ -54,3 +54,5 @@ updated: 2026-10-18
 - 2026-10-18：requirements/adversarial/architecture 三路 fresh-context 审查全部通过，无阻塞和返修。adversarial 额外独立验证纽约真实 23/25 小时日的本地标签；architecture 确认装饰组件持有短暂状态、复用日边界和点击 owner，没有额外持久机制。
 
 - 2026-10-18：最终签名 App/DMG 构建通过，Apple 公证 Accepted（e991caeb-4a1b-4b34-93c2-ea97040ec049），staple/Gatekeeper 通过。旧进程退出后替换 /Applications/hear.app，revision 50→51 恢复原意图；CLI 与首页均确认双路正在记录。实际桌面轨道移动显示 17:54 竖线/标签，所有 mandatory 已关闭。用户随后追加点击位置传入详情的独立需求，将在下一批 devplan 实现，不修改本批契约。
+
+- 提交：2c275f4；单批完整代码已审查、测试并在安装版验证。整体门禁关闭，进入 implemented。
