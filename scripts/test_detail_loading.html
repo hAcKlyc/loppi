@@ -1,0 +1,55 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>hear 详情加载回归</title>
+<div id="root"></div><aside style="position:fixed;z-index:999;bottom:8px;left:8px;background:white;padding:8px"><button id="run">运行加载回归</button> <button id="preview">预览骨架</button> <output id="result">模拟延迟响应，不连接真实数据</output></aside>
+<script type="module">
+import React from 'react';import {createRoot} from 'react-dom/client';import {flushSync} from 'react-dom';
+import {DetailDrawer} from '/src/DetailDrawer.tsx';import '/src/App.css';
+const from=new Date(2026,9,18,15,46).getTime();
+const base={id:'fixture',manual_range_id:null,title:'详情加载体验',summary:null,started_ms:from,ended_ms:from+42*60000,sources:'microphone',processing_state:'partially_transcribed',recording_sources:[],coarse_segments:[],precise_segments:[]};
+const rows=Array.from({length:25},(_,i)=>({id:`row-${i}`,source:'microphone',started_ms:from+i*60000,ended_ms:from+(i+1)*60000,text:`第 ${i+1} 条模拟文字，用来检查加载与刷新。`}));
+let detailHold=null,momentsHold=null,detailFail=false,momentsFail=false,empty=false,withNote=false,version=0,opened=true,requests=[];
+function deferred(){let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve};}
+window.isTauri=true;
+window.__TAURI_INTERNALS__={invoke:async(command,{request})=>{
+ requests.push(request.type);
+ if(request.type==='event_detail'){if(detailHold)await detailHold.promise;if(detailFail)throw Error('模拟转录读取失败');return {type:'event',event:{...base,coarse_segments:empty?[]:rows}};}
+ if(request.type==='moments'){if(momentsHold)await momentsHold.promise;if(momentsFail)throw Error('模拟现场记录读取失败');return {type:'moments',moments:withNote?[{id:'note',kind:'comment',anchor_ms:from,text:'模拟现场笔记'}]:[]};}
+ throw Error('意外请求 '+request.type);
+}};
+const root=createRoot(document.getElementById('root'));
+function render(){flushSync(()=>root.render(opened?React.createElement(DetailDrawer,{item:base,initialAt:from+10*60000,people:[],refreshToken:version,onClose:()=>{opened=false;render()},onEdit:()=>{},onTools:()=>{},onQueue:()=>{},onDataAction:()=>{},onChanged:()=>{},onMessage:()=>{}}):null));}
+const frames=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+async function until(check){for(let i=0;i<200;i++){if(check())return;await new Promise(r=>setTimeout(r,10));}throw Error('等待结果超时');}
+const assert=(v,m)=>{if(!v)throw Error(m)},q=s=>document.querySelector(s),text=()=>q('#root').textContent;
+function reopen(){opened=false;render();opened=true;render();}
+function release(which){const d=which==='detail'?detailHold:momentsHold;if(which==='detail')detailHold=null;else momentsHold=null;d?.resolve();}
+function retry(scope){q(scope+' .detail-load-error button').click();}
+function preview(){detailFail=false;momentsFail=false;detailHold=deferred();momentsHold=deferred();reopen();}
+document.getElementById('preview').onclick=preview;
+preview();
+document.getElementById('run').onclick=async()=>{const output=q('#result');output.textContent='检查中…';try{
+ release('detail');release('moments');await frames();preview();await frames();
+ assert(document.querySelectorAll('.detail-skeleton').length===2,'首次加载缺少双区域骨架');
+ assert(!text().includes('还没有')&&!q('.notes-heading span'),'首次加载出现空文案或零条计数');
+ const bar=q('.skeleton-bar');assert(getComputedStyle(bar).animationName==='skeleton-pulse'||matchMedia('(prefers-reduced-motion: reduce)').matches,'骨架没有动画');
+ [...document.querySelectorAll('.detail-tabs button')].find(b=>b.textContent==='音频信息')?.click();await frames();
+ assert(!text().includes('尚无文字'),'音频信息加载前声称无文字');
+ [...document.querySelectorAll('button')].find(b=>b.textContent==='文本转录').click();await frames();
+ release('detail');await until(()=>q('.transcript-row'));await frames();
+ assert(!q('.transcript-list .detail-skeleton')&&q('.notes-panel .detail-skeleton'),'区域未独立结束加载');
+ assert(q('.transcript-row.is-current')?.textContent.includes('第 11 条'),'加载后定位选中态丢失');
+ release('moments');await until(()=>q('.notes-empty'));assert(q('.notes-heading span').textContent==='0 条','成功空响应未显示真实计数');
+ const list=q('.transcript-list');list.scrollTop=30;detailHold=deferred();momentsHold=deferred();version++;render();await frames();
+ assert(!q('.detail-skeleton')&&q('.transcript-row')&&list.scrollTop===30,'后台刷新覆盖内容或抢位置');
+ detailFail=true;momentsFail=true;release('detail');release('moments');await until(()=>document.querySelectorAll('.detail-load-error').length===2);
+ assert(q('.transcript-row')&&q('.notes-empty'),'后台失败清空已有结果');
+ detailFail=false;momentsFail=false;retry('.detail-main');retry('.notes-panel');await until(()=>!q('.detail-load-error'));
+ detailFail=true;reopen();await until(()=>q('.detail-main .detail-load-error'));assert(!q('.detail-skeleton')&&!text().includes('还没有'),'首次失败伪装为空或永久加载');
+ detailFail=false;detailHold=deferred();retry('.detail-main');await frames();assert(document.querySelectorAll('.detail-skeleton').length===2,'重试未恢复骨架');
+ momentsFail=true;release('detail');await until(()=>q('.notes-panel .detail-load-error'));assert(!q('.notes-panel .detail-skeleton')&&!q('.notes-heading span'),'现场记录失败显示骨架或零条');
+ momentsFail=false;momentsHold=deferred();retry('.notes-panel');await frames();assert(q('.notes-panel .detail-skeleton'),'现场记录重试缺少骨架');release('moments');await until(()=>q('.notes-empty'));
+ withNote=true;reopen();await until(()=>q('.moment-record.comment'));assert(text().includes('模拟现场笔记')&&q('.notes-heading span').textContent==='1 条','非空现场记录没有展示');withNote=false;
+ empty=true;reopen();await until(()=>q('.detail-empty'));assert(text().includes('还没有转录文字'),'成功空响应缺少真实空态');empty=false;
+ detailHold=deferred();reopen();await frames();const count=requests.length;opened=false;render();release('detail');await frames();assert(!q('.detail-drawer')&&requests.length===count,'关闭后的请求继续更新或加载现场记录');
+ preview();output.textContent='PASS：首次双区域骨架、音频信息、独立完成、定位选中态、真实空态、刷新保留、失败重试、关闭淘汰。';
+}catch(e){output.textContent='FAIL：'+e.message;}};
+</script></html>

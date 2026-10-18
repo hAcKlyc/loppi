@@ -123,6 +123,43 @@ function speakerName(
 	return segment.person_name || labels.get(segment.speaker ?? "") || "未确定";
 }
 
+function DetailSkeleton({ notes = false }: { notes?: boolean }) {
+	return (
+		<div
+			className={`detail-skeleton${notes ? " notes-stream" : ""}`}
+			role="status"
+			aria-label={notes ? "正在加载现场记录" : "正在加载转录文字"}
+			aria-busy="true"
+		>
+			{[0, 1, 2, 3].map((row) => (
+				<div
+					className={notes ? "skeleton-note" : "skeleton-transcript"}
+					key={row}
+					aria-hidden="true"
+				>
+					<span className="skeleton-bar skeleton-time" />
+					<div className="skeleton-copy">
+						<span className="skeleton-bar skeleton-meta" />
+						<span className="skeleton-bar" />
+						<span className="skeleton-bar skeleton-short" />
+					</div>
+				</div>
+			))}
+		</div>
+	);
+}
+
+function LoadError({ message, retry }: { message: string; retry: () => void }) {
+	return (
+		<div className="detail-load-error" role="alert">
+			<span>{message}</span>
+			<button type="button" className="quiet-button" onClick={retry}>
+				重新加载
+			</button>
+		</div>
+	);
+}
+
 export function DetailDrawer({
 	item,
 	initialAt,
@@ -139,6 +176,7 @@ export function DetailDrawer({
 	const [detail, setDetail] = useState<TimelineItem>(item);
 	const [localSpeakers, setLocalSpeakers] = useState<LocalSpeaker[]>([]);
 	const [detailReady, setDetailReady] = useState(false);
+	const [detailError, setDetailError] = useState<string | null>(null);
 	const [tab, setTab] = useState<"transcript" | "info">("transcript");
 	const offset = useRef(0);
 	const initialScroll = useRef(initialAt);
@@ -151,6 +189,8 @@ export function DetailDrawer({
 	const [busy, setBusy] = useState(false);
 	const [infoError, setInfoError] = useState<string | null>(null);
 	const [moments, setMoments] = useState<Moment[]>([]);
+	const [momentsReady, setMomentsReady] = useState(false);
+	const [momentsError, setMomentsError] = useState<string | null>(null);
 	const [transcriptSource, setTranscriptSource] = useState<"best" | "coarse">(
 		"best",
 	);
@@ -183,6 +223,7 @@ export function DetailDrawer({
 	const load = useCallback(
 		async (page: number) => {
 			const token = ++detailRequest.current;
+			setDetailError(null);
 			try {
 				const allCoarse: CoarseSegment[] = [];
 				const allPrecise: PreciseSegment[] = [];
@@ -279,7 +320,7 @@ export function DetailDrawer({
 				);
 				setInfoError(null);
 			} catch (error) {
-				if (token === detailRequest.current) setInfoError(userError(error));
+				if (token === detailRequest.current) setDetailError(userError(error));
 			}
 		},
 		[item.id, item.started_ms, item.ended_ms, item.sources],
@@ -316,6 +357,7 @@ export function DetailDrawer({
 
 	const loadMoments = useCallback(async () => {
 		const request = ++momentsRequest.current;
+		setMomentsError(null);
 		try {
 			const all: Moment[] = [];
 			while (true) {
@@ -330,12 +372,16 @@ export function DetailDrawer({
 					offset: all.length,
 					limit: 200,
 				});
+				if (request !== momentsRequest.current) return;
 				all.push(...response.moments);
 				if (response.moments.length < 200) break;
 			}
-			if (request === momentsRequest.current) setMoments(all);
+			if (request === momentsRequest.current) {
+				setMoments(all);
+				setMomentsReady(true);
+			}
 		} catch (error) {
-			if (request === momentsRequest.current) setInfoError(userError(error));
+			if (request === momentsRequest.current) setMomentsError(userError(error));
 		}
 	}, [detail.started_ms, detail.ended_ms]);
 
@@ -859,6 +905,12 @@ export function DetailDrawer({
 								</div>
 							)}
 						</div>
+						{detailError && (
+							<LoadError
+								message={`转录读取失败：${detailError}`}
+								retry={() => void load(offset.current)}
+							/>
+						)}
 						{tab === "transcript" ? (
 							<div
 								className={`detail-scroll transcript-list${crossesDay ? " crosses-day" : ""}`}
@@ -871,7 +923,8 @@ export function DetailDrawer({
 									initialScroll.current = undefined;
 								}}
 							>
-								{segments.length === 0 && (
+								{!detailReady && !detailError && <DetailSkeleton />}
+								{detailReady && segments.length === 0 && (
 									<div className="detail-empty">
 										<strong>还没有转录文字</strong>
 										{(detail.id || detail.manual_range_id) && (
@@ -893,7 +946,7 @@ export function DetailDrawer({
 											)}
 									</div>
 								)}
-								{segments.map((segment, index) => {
+								{(detailReady ? segments : []).map((segment, index) => {
 									const precise =
 										"revision" in segment ? (segment as PreciseSegment) : null;
 									const current =
@@ -1096,11 +1149,23 @@ export function DetailDrawer({
 								<div>
 									<span>文字</span>
 									<strong>
-										{detail.precise_segments.length > 0
-											? "精转"
-											: detail.coarse_segments.length > 0
-												? "本地粗转"
-												: "尚无文字"}
+										{!detailReady ? (
+											detailError ? (
+												"读取失败"
+											) : (
+												<span
+													className="skeleton-bar skeleton-meta"
+													role="status"
+													aria-label="正在加载文字信息"
+												/>
+											)
+										) : detail.precise_segments.length > 0 ? (
+											"精转"
+										) : detail.coarse_segments.length > 0 ? (
+											"本地粗转"
+										) : (
+											"尚无文字"
+										)}
 									</strong>
 								</div>
 								{infoError && <p className="inline-error">{infoError}</p>}
@@ -1191,16 +1256,37 @@ export function DetailDrawer({
 					<aside className="notes-panel">
 						<div className="notes-heading">
 							<h3>现场记录</h3>
-							<span>{moments.length} 条</span>
+							{momentsReady && <span>{moments.length} 条</span>}
 						</div>
 						<p className="notes-hint">点击时间回听，点击截图查看画面</p>
-						<MomentList
-							moments={moments}
-							formatTime={(at) => wallClock(at, true, crossesDay)}
-							onPlay={playFrom}
-							onScreenshot={(id) => void showScreenshot(id)}
-							loadingImage={imageBusy}
-						/>
+						{momentsError && (
+							<LoadError
+								message={`现场记录读取失败：${momentsError}`}
+								retry={() => void loadMoments()}
+							/>
+						)}
+						{!momentsReady && !detailReady && detailError ? (
+							<div className="notes-stream">
+								<LoadError
+									message="详情读取失败，现场记录暂未加载"
+									retry={() => void load(offset.current)}
+								/>
+							</div>
+						) : !momentsReady ? (
+							momentsError ? (
+								<div className="notes-stream" />
+							) : (
+								<DetailSkeleton notes />
+							)
+						) : (
+							<MomentList
+								moments={moments}
+								formatTime={(at) => wallClock(at, true, crossesDay)}
+								onPlay={playFrom}
+								onScreenshot={(id) => void showScreenshot(id)}
+								loadingImage={imageBusy}
+							/>
+						)}
 						<div className="note-composer">
 							<textarea
 								aria-label="写一条笔记"

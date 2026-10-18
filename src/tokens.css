@@ -132,6 +132,7 @@
 	--motion-fast: 120ms;
 	--motion-standard: 180ms;
 	--motion-layout: 300ms;
+	--motion-loading: 1400ms;
 	--ease-standard: cubic-bezier(0.2, 0.7, 0.2, 1);
 	--layer-map-marker: 2;
 	--layer-calendar: 15;
