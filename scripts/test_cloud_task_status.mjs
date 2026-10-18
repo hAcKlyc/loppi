@@ -20,8 +20,17 @@ test('ASR mapping and response errors are distinguished from transport failures'
  }
 });
 test('a stale error cannot make an active or complete task look failed', () => {
- for (const [state,label] of Object.entries({pending:'等待处理',processing:'处理中',submitted:'等待识别结果',complete:'已完成',no_transcript:'无可识别文字',superseded:'已由新范围替代'})) {
+ for (const [state,label] of Object.entries({processing:'处理中',complete:'已完成',no_transcript:'无可识别文字',superseded:'已由新范围替代'})) {
   assert.equal(taskStatus({state,error_code:'provider_unmapped_timing'}),label);
  }
  assert.equal(taskStatus({state:'failed',error_code:null}),'处理失败');
+});
+test('queued retries expose credential and transport failures instead of looking idle', () => {
+ for (const state of ['pending','submitted','failed']) {
+  assert.match(taskStatus({state,error_code:'keychain_read_-25293'}), /无法读取钥匙串密钥/);
+  assert.match(taskStatus({state,error_code:'keychain_read_-25308'}), /重新打开 hear/);
+ }
+ assert.equal(taskStatus({state:'pending',error_code:'provider_transport'}),'等待重试 · 云端服务异常');
+ assert.equal(taskStatus({state:'pending',error_code:null}),'等待处理');
+ assert.equal(taskStatus({state:'submitted',error_code:null}),'等待识别结果');
 });

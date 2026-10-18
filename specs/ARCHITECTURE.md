@@ -117,6 +117,8 @@ VAD 先事务提交 `coarse_jobs` 的来源/session/16 kHz 样本区间与 `spee
 
 云请求复用进程内 `ureq::Agent` 连接池，凭据仍逐请求附加。一次任务共享 60 秒预算，每次网络请求只获剩余时间（含响应体）；底层系统 DNS、Keychain 和不可取消文件 IO 是平台例外，预算耗尽后不再发起新请求。响应读取/截止失败作为瞬态错误保留原远端请求 ID，退避后先查询原请求。内部 Failure 只携带脱敏代码与 Retry-After 的秒数/HTTP-date 延迟，429（以及带该头的 503）把 provider 冷却下界写回原 cloud_queues，重启仍生效、不改 paused。二次退避附有任务 ID 派生的 0–20% 抖动；每四次领取中三次保留人工优先（其中一次最新优先）、一次按最旧待办，持续人工工作不会饿死历史自动任务。[云客户端](../crates/hear-core/src/cloud.rs)。
 
+Keychain 访问依赖运行进程与磁盘 bundle 的签名身份一致。发行构建脚本在编译前拒绝覆盖当前正在运行的构建目录 App；日常运行使用独立的 `/Applications/hear.app` 安装副本。后台读取仍禁止授权弹窗，不复制密钥或放宽 ACL。Core 重启及成功重新保存某 provider 凭据时，复用现有 cloud_tasks 唤醒对应凭据错误的 pending/submitted 任务；保留任务/远端请求 ID、provider 冷却与用户暂停，不重跑已完成或其他失败任务。凭据阻塞及普通重试作为现有任务事实的投影展示，不与“正在记录”互相覆盖。
+
 ## 5. 外发、修订与清理边界
 
 - DeepSeek 事件整理任务只见候选区间的粗文字、时间、来源及“检测到人声但无可用文字”等状态；其 JSON 仅是建议，核心检查边界、来源、冲突、人工优先级及任务版本。[`llm_input` / `publish_fit`](../crates/hear-core/src/events.rs)。

@@ -232,6 +232,17 @@ pub fn configured(db: &Connection) -> Result<bool, String> {
     .map_err(|error| error.to_string())
 }
 
+fn wake_credential_tasks(db: &Connection, provider: Option<CloudProvider>) -> Result<(), String> {
+    db.execute(
+        "UPDATE cloud_tasks SET next_attempt_ms=0
+         WHERE state IN ('pending','submitted') AND (?1 IS NULL OR provider=?1)
+           AND (error_code GLOB 'keychain_read_*' OR error_code='credential_missing')",
+        params![provider.map(provider_name)],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 pub fn set_configured_with_credential(
     db: &Connection,
     provider: CloudProvider,
@@ -249,6 +260,7 @@ pub fn set_configured_with_credential(
         params![provider_name(provider), reference],
     )
     .map_err(|error| error.to_string())?;
+    wake_credential_tasks(db, Some(provider))?;
     Ok(())
 }
 
@@ -536,7 +548,7 @@ pub fn refresh_candidates_in(tx: &Transaction<'_>, now: i64, force: bool) -> Res
     for mut candidate in candidates {
         if !force
             && now - candidate.end < CANDIDATE_POLICY.quiet_cut_ms
-            && candidate.end - candidate.start < CANDIDATE_POLICY.max_window_ms
+            && now - candidate.start < CANDIDATE_POLICY.max_window_ms
         {
             continue;
         }
@@ -1750,12 +1762,14 @@ fn unorganized(db: &Connection, start: i64, end: i64, mask: i64) -> Result<Timel
          source IN (CASE WHEN ?3&1!=0 THEN 'microphone' END, CASE WHEN ?3&2!=0 THEN 'system' END))",
         params![start,end,mask], |row| row.get(0),
     ).map_err(|error| error.to_string())?;
-    let status: Option<String> = db
+    let status: Option<(String, Option<String>)> = db
         .query_row(
-            "SELECT state FROM candidate_windows
-        WHERE started_ms < ?2 AND ended_ms > ?1 ORDER BY ended_ms DESC LIMIT 1",
+            "SELECT state,error_code FROM candidate_windows
+        WHERE started_ms < ?2 AND ended_ms > ?1
+        ORDER BY CASE WHEN state='failed' OR (state='pending' AND error_code IS NOT NULL)
+          THEN 0 ELSE 1 END, ended_ms DESC LIMIT 1",
             params![start, end],
-            |row| row.get(0),
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .optional()
         .map_err(|e| e.to_string())?;
@@ -1796,12 +1810,9 @@ fn unorganized(db: &Connection, start: i64, end: i64, mask: i64) -> Result<Timel
                 "moment_only"
             }
         } else {
-            match status.as_deref() {
-                Some("complete") => "unorganized",
-                Some("failed") => "fit_failed",
-                Some("processing") => "fitting",
-                _ => "pending_fit",
-            }
+            status.as_ref().map_or("pending_fit", |(state, error)| {
+                candidate_status(state, error.as_deref())
+            })
         }
         .to_owned(),
         manual_asr_state: manual_asr.as_ref().map(|task| task.0.clone()),
@@ -1821,30 +1832,51 @@ fn unorganized(db: &Connection, start: i64, end: i64, mask: i64) -> Result<Timel
     })
 }
 
+fn candidate_status(state: &str, error: Option<&str>) -> &'static str {
+    match state {
+        "failed" => "fit_failed",
+        "processing" => "fitting",
+        "complete" => "unorganized",
+        _ if error.is_some_and(credential_error) => "fit_credentials_unavailable",
+        _ if error.is_some() => "fit_retrying",
+        _ => "pending_fit",
+    }
+}
+
+fn credential_error(error: &str) -> bool {
+    error.starts_with("keychain_read_") || error == "credential_missing"
+}
+
 fn event_fit_state(db: &Connection, id: &str) -> Result<String, String> {
     let states: Vec<String> = {
         let mut stmt = db
             .prepare(
-                "SELECT DISTINCT c.state FROM event_candidate_links l
+                "SELECT DISTINCT c.state,c.error_code FROM event_candidate_links l
             JOIN candidate_windows c ON c.id=l.candidate_id WHERE l.event_id=?1",
             )
             .map_err(|e| e.to_string())?;
-        stmt.query_map(params![id], |row| row.get(0))
-            .map_err(|e| e.to_string())?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| e.to_string())?
+        stmt.query_map(params![id], |row| {
+            let state: String = row.get(0)?;
+            let error: Option<String> = row.get(1)?;
+            Ok(candidate_status(&state, error.as_deref()).to_owned())
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?
     };
     if states.is_empty() {
         return Ok("manual".to_owned());
     }
-    if states.iter().any(|s| s == "failed") {
-        return Ok("fit_failed".to_owned());
-    }
-    if states.iter().any(|s| s == "processing") {
-        return Ok("fitting".to_owned());
-    }
-    if states.iter().any(|s| s == "pending") {
-        return Ok("pending_fit".to_owned());
+    for state in [
+        "fit_failed",
+        "fit_credentials_unavailable",
+        "fit_retrying",
+        "fitting",
+        "pending_fit",
+    ] {
+        if states.iter().any(|s| s == state) {
+            return Ok(state.to_owned());
+        }
     }
     Ok("fitted".to_owned())
 }
@@ -2280,6 +2312,9 @@ pub struct CloudTask {
 
 pub fn recover_tasks(db: &mut Connection, now: i64) -> Result<(), String> {
     let tx = db.transaction().map_err(|e| e.to_string())?;
+    // A fresh signed process can recover access after an in-place bundle update.
+    // Recheck only credential-blocked work; retain provider/network backoff and pause.
+    wake_credential_tasks(&tx, None)?;
     tx.execute("UPDATE cloud_tasks SET state='pending',next_attempt_ms=?1 WHERE provider='llm' AND state='processing'",
         params![now]).map_err(|e|e.to_string())?;
     tx.execute(
@@ -3654,6 +3689,142 @@ mod tests {
     fn summary_result(task: &CloudTask, summary: serde_json::Value) -> serde_json::Value {
         serde_json::json!({"events":[{"start_ms":task.start,"end_ms":task.end,
             "title":"界面布局讨论","summary":summary,"sources":"microphone","merge_with_event_id":null}]})
+    }
+
+    #[test]
+    fn automatic_candidates_close_on_wall_clock_deadline_and_remain_idempotent() {
+        let mut db = db();
+        let start = 1_000;
+        let deadline = start + CANDIDATE_POLICY.max_window_ms;
+        // Real observed failure: the last sentence ends seven milliseconds short.
+        coarse(&db, "almost-thirty", start, deadline - 7, "持续讨论");
+        assert_eq!(refresh_candidates(&mut db, deadline - 1, false).unwrap(), 0);
+        assert_eq!(refresh_candidates(&mut db, deadline, false).unwrap(), 1);
+        assert_eq!(
+            refresh_candidates(&mut db, deadline + 15_000, false).unwrap(),
+            0
+        );
+        coarse(
+            &db,
+            "next-window",
+            deadline + 1,
+            deadline + 10_000,
+            "下一段",
+        );
+        assert_eq!(
+            refresh_candidates(&mut db, deadline + 10_001, false).unwrap(),
+            0
+        );
+        assert_eq!(
+            refresh_candidates(
+                &mut db,
+                deadline + 10_000 + CANDIDATE_POLICY.quiet_cut_ms,
+                false
+            )
+            .unwrap(),
+            1
+        );
+        let count: i64 = db
+            .query_row("SELECT count(*) FROM cloud_tasks", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn credential_backoff_is_visible_and_rechecked_after_restart_or_save() {
+        let (mut db, task) = summary_fixture();
+        task_failed(&db, &task, "keychain_read_-25293", 100_001).unwrap();
+        assert_eq!(
+            unorganized(&db, 0, 110_000, 1).unwrap().processing_state,
+            "fit_credentials_unavailable"
+        );
+        assert!(
+            take_task(&mut db, CloudProvider::Llm, 100_002)
+                .unwrap()
+                .is_none()
+        );
+        set_paused(&db, CloudProvider::Llm, true).unwrap();
+        recover_tasks(&mut db, 100_003).unwrap();
+        assert!(
+            take_task(&mut db, CloudProvider::Llm, 100_004)
+                .unwrap()
+                .is_none()
+        );
+        set_paused(&db, CloudProvider::Llm, false).unwrap();
+        let retried = take_task(&mut db, CloudProvider::Llm, 100_005)
+            .unwrap()
+            .unwrap();
+        assert_eq!(retried.id, task.id);
+        assert_eq!(
+            unorganized(&db, 0, 110_000, 1).unwrap().processing_state,
+            "fitting"
+        );
+        task_failed(&db, &retried, "credential_missing", 100_006).unwrap();
+        set_configured_with_credential(
+            &db,
+            CloudProvider::Llm,
+            "deepseek-flash",
+            "test:replacement",
+        )
+        .unwrap();
+        let retried = take_task(&mut db, CloudProvider::Llm, 100_007)
+            .unwrap()
+            .unwrap();
+        task_failed(&db, &retried, "provider_transport", 100_008).unwrap();
+        assert_eq!(
+            unorganized(&db, 0, 110_000, 1).unwrap().processing_state,
+            "fit_retrying"
+        );
+        recover_tasks(&mut db, 100_009).unwrap();
+        set_configured_with_credential(
+            &db,
+            CloudProvider::Llm,
+            "deepseek-flash",
+            "test:replacement",
+        )
+        .unwrap();
+        assert!(
+            take_task(&mut db, CloudProvider::Llm, 100_010)
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn newer_complete_candidate_does_not_hide_earlier_blocked_fit() {
+        let (mut db, task) = summary_fixture();
+        task_failed(&db, &task, "keychain_read_-25293", 100_001).unwrap();
+        db.execute(
+            "INSERT INTO candidate_windows VALUES ('newer',20000,30000,'hash','complete',NULL)",
+            [],
+        )
+        .unwrap();
+        assert_eq!(
+            unorganized(&db, 0, 110_000, 1).unwrap().processing_state,
+            "fit_credentials_unavailable"
+        );
+        let event = create_event(
+            &mut db,
+            1_000,
+            30_000,
+            "讨论",
+            EventSources::Microphone,
+            100_002,
+        )
+        .unwrap();
+        db.execute(
+            "INSERT INTO event_candidate_links VALUES (?1,0,?2)",
+            params![task.target_id, event.to_string()],
+        )
+        .unwrap();
+        assert_eq!(
+            event_fit_state(&db, &event.to_string()).unwrap(),
+            "fit_credentials_unavailable"
+        );
+        assert_eq!(
+            candidate_status("complete", Some("keychain_read_-25293")),
+            "unorganized"
+        );
     }
 
     #[test]
@@ -5877,7 +6048,15 @@ mod tests {
             .unwrap();
         mark_submit_intent(&db, &task, 7_002).unwrap();
         task_failed(&db, &task, "credential_missing", 7_003).unwrap();
-        let retry = take_task(&mut db, CloudProvider::Asr, 43_003)
+        set_configured_with_credential(&db, CloudProvider::Llm, "deepseek-flash", "test:other")
+            .unwrap();
+        assert!(
+            take_task(&mut db, CloudProvider::Asr, 7_004)
+                .unwrap()
+                .is_none()
+        );
+        recover_tasks(&mut db, 7_004).unwrap();
+        let retry = take_task(&mut db, CloudProvider::Asr, 7_005)
             .unwrap()
             .unwrap();
         assert_eq!(retry.remote_id, task.remote_id);

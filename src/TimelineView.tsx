@@ -399,6 +399,23 @@ export function TimelineView({
 						const live = item === activeItem;
 						const excerpt = cardExcerpt(item, itemMoments, hideCoarse && !live);
 						const manualStatus = manualAsrSummary(item);
+						const fitIssue =
+							item.fit_state &&
+							[
+								"fit_failed",
+								"fit_credentials_unavailable",
+								"fit_retrying",
+							].includes(item.fit_state)
+								? item.fit_state
+								: null;
+						const processingState = fitIssue ?? item.processing_state;
+						const processingIssue = [
+							"fit_failed",
+							"fit_credentials_unavailable",
+							"fit_retrying",
+							"asr_failed",
+							"analysis_failed",
+						].includes(processingState);
 						const sourceLabel =
 							excerpt.label ||
 							(item.processing_state === "moment_only"
@@ -434,12 +451,20 @@ export function TimelineView({
 												{manualStatus}
 											</span>
 										)}
+										{live && (
+											<span className="event-card-state recording-label">
+												正在记录
+											</span>
+										)}
 										<span
-											className={`event-card-state ${live ? "recording-label" : ["fit_failed", "asr_failed"].includes(item.processing_state) ? "is-failed" : ""}`}
+											className={`event-card-state ${processingIssue ? "is-failed" : ""}`}
+											title={
+												processingState === "fit_credentials_unavailable"
+													? "请重新打开 hear；若仍失败，请在设置中重新保存云端密钥"
+													: undefined
+											}
 										>
-											{live
-												? "正在记录"
-												: processingLabel(item.processing_state)}
+											{processingLabel(processingState)}
 										</span>
 									</div>
 									<h3>

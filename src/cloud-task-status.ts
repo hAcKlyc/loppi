@@ -10,9 +10,14 @@ export function taskStatus(task: CloudTask): string {
 		failed: "处理失败",
 		superseded: "已由新范围替代",
 	};
-	const state = states[task.state] ?? "状态待确认";
-	if (task.state !== "failed" || !task.error_code) return state;
+	const retrying =
+		(task.state === "pending" || task.state === "submitted") &&
+		!!task.error_code;
+	const state = retrying ? "等待重试" : (states[task.state] ?? "状态待确认");
+	if ((!retrying && task.state !== "failed") || !task.error_code) return state;
 	const reason = task.error_code;
+	if (reason.startsWith("keychain_read_"))
+		return `${state} · 无法读取钥匙串密钥，请重新打开 hear；若仍失败，请在设置中重新保存密钥`;
 	if (reason === "credential_missing" || reason === "provider_not_configured")
 		return `${state} · 请检查云端配置`;
 	if (reason === "audio_unavailable" || reason === "partial_audio")

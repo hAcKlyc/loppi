@@ -48,6 +48,8 @@ export function userError(error: unknown): string {
 		return "云端服务暂时无法验证，请稍后重试";
 	if (message.startsWith("keychain_save_"))
 		return "无法将密钥保存到系统钥匙串，请稍后重试";
+	if (message.startsWith("keychain_read_"))
+		return "无法读取系统钥匙串中的密钥，请重新打开 hear；若仍失败，请在设置中重新保存密钥";
 	if (code === "event_invalid") {
 		if (isEventStale(error)) {
 			return "事件已更新，请在时间线查看最新内容后再试";
@@ -73,6 +75,10 @@ export function processingLabel(value: string): string {
 			return "待整理";
 		case "fit_failed":
 			return "事件整理失败";
+		case "fit_credentials_unavailable":
+			return "整理受阻 · 无法读取密钥";
+		case "fit_retrying":
+			return "整理异常 · 等待重试";
 		case "analysis_failed":
 			return "本地语音分析失败";
 		case "settling_asr":

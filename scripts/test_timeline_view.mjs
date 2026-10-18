@@ -62,6 +62,15 @@ test('rendered live cards name the ongoing recording and use an open time range'
     const render=(recordingState,entry=live)=>renderToStaticMarkup(createElement(TimelineView,{date,items:[entry],gaps:[],moments:[],recordingState,loading:false,hideCoarse:false}));
     assert.match(render(state), /<h3>实时记录内容<\/h3>/);
     assert.match(render(state), /至今/);
+    assert.match(render(state), /待整理/);
+    for (const [processing_state, label] of Object.entries({fit_credentials_unavailable:'整理受阻 · 无法读取密钥',fit_retrying:'整理异常 · 等待重试',fit_failed:'事件整理失败',fitting:'整理中'})) {
+      const html=render(state,{...live,processing_state});
+      assert.match(html,/正在记录/);
+      assert.ok(html.includes(label));
+    }
+    const blockedNamed=render(state,{...live,id:'named',title:'讨论',processing_state:'transcribed',fit_state:'fit_credentials_unavailable'});
+    assert.match(blockedNamed,/正在记录/);
+    assert.match(blockedNamed,/整理受阻 · 无法读取密钥/);
     assert.match(render(null), /<h3>未整理素材<\/h3>/);
     assert.doesNotMatch(render(null), /至今/);
     assert.match(render(state,{...live,id:'named',title:'项目讨论'}), /<h3>项目讨论<\/h3>/);
