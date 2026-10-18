@@ -19,7 +19,13 @@ import {
 } from "./api";
 import { DayMapCursor } from "./DayMapCursor";
 import { RecordCalendar } from "./RecordCalendar";
-import { cardExcerpt, daySpan, headerDays, liveCard } from "./timeline-view";
+import {
+	cardExcerpt,
+	dayMapPoint,
+	daySpan,
+	headerDays,
+	liveCard,
+} from "./timeline-view";
 
 type Props = {
 	captureStatus: ReactNode;
@@ -33,7 +39,7 @@ type Props = {
 	hideCoarse: boolean;
 	onHideCoarse: (hide: boolean) => void;
 	onDate: (date: Date) => void;
-	onSelect: (item: TimelineItem) => void;
+	onSelect: (item: TimelineItem, at?: number) => void;
 	onCreate: () => void;
 };
 
@@ -312,7 +318,21 @@ export function TimelineView({
 												title={title}
 												aria-label={title}
 												style={style}
-												onClick={() => onSelect(item)}
+												onClick={(event) => {
+													const bounds =
+														event.currentTarget.parentElement?.getBoundingClientRect();
+													const point =
+														event.detail > 0 && bounds
+															? dayMapPoint(
+																	event.clientX,
+																	bounds.left,
+																	bounds.width,
+																	from,
+																	to,
+																)
+															: null;
+													onSelect(item, point?.at);
+												}}
 											/>
 										);
 									})}

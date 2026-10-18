@@ -69,7 +69,11 @@ function App() {
 		speaker_phase: string;
 		progress_percent: number;
 	} | null>(null);
-	const [selected, setSelected] = useState<TimelineItem | null>(null);
+	const [selection, setSelection] = useState<{
+		item: TimelineItem;
+		initialAt?: number;
+	} | null>(null);
+	const selected = selection?.item ?? null;
 	const [form, setForm] = useState<EventForm | null>(null);
 	const [tool, setTool] = useState<EventTool | null>(null);
 	const [splitAt, setSplitAt] = useState("");
@@ -143,7 +147,7 @@ function App() {
 		setItems([]);
 		setGaps([]);
 		setDayMoments([]);
-		setSelected(null);
+		setSelection(null);
 		manualSelection.current = null;
 		setLoading(true);
 		setDate(next);
@@ -204,29 +208,32 @@ function App() {
 					setItems(response.items);
 					setGaps(response.gaps);
 					setDayMoments(all);
-					setSelected((current) => {
+					setSelection((currentSelection) => {
+						const current = currentSelection?.item;
+						const preserveEntry = (item: TimelineItem | null) =>
+							item ? { item, initialAt: currentSelection?.initialAt } : null;
 						if (manualSelection.current) {
 							const preferred = response.items.find(
 								(next) => next.manual_range_id === manualSelection.current,
 							);
 							manualSelection.current = null;
-							if (preferred) return preferred;
+							if (preferred) return { item: preferred };
 						}
 						if (!current) return null;
 						if (current.id) {
-							return (
-								response.items.find((next) => next.id === current.id) ?? null
+							return preserveEntry(
+								response.items.find((next) => next.id === current.id) ?? null,
 							);
 						}
 						if (current.manual_range_id) {
-							return (
+							return preserveEntry(
 								response.items.find(
 									(next) =>
 										next.manual_range_id === current.manual_range_id &&
 										next.started_ms <=
 											(current.started_ms + current.ended_ms) / 2 &&
 										next.ended_ms > (current.started_ms + current.ended_ms) / 2,
-								) ?? null
+								) ?? null,
 							);
 						}
 						const remaining = response.items.find(
@@ -236,15 +243,15 @@ function App() {
 								next.started_ms <= current.started_ms &&
 								next.ended_ms >= current.ended_ms,
 						);
-						if (remaining) return remaining;
+						if (remaining) return preserveEntry(remaining);
 						const midpoint = (current.started_ms + current.ended_ms) / 2;
-						return (
+						return preserveEntry(
 							response.items.find(
 								(next) =>
 									next.started_ms <= midpoint &&
 									next.ended_ms > midpoint &&
 									next.sources === current.sources,
-							) ?? null
+							) ?? null,
 						);
 					});
 					setError(null);
@@ -476,7 +483,7 @@ function App() {
 			if (isEventStale(cause)) {
 				setForm(null);
 				setTool(null);
-				setSelected(null);
+				setSelection(null);
 				await refreshTimeline();
 			}
 			message(errorText(cause));
@@ -531,7 +538,7 @@ function App() {
 						sources,
 					};
 		if (await mutate(request, "事件已保存")) {
-			setSelected(null);
+			setSelection(null);
 			setForm(null);
 		}
 	};
@@ -594,7 +601,7 @@ function App() {
 			)
 		) {
 			setTool(null);
-			setSelected(null);
+			setSelection(null);
 		}
 	};
 
@@ -677,7 +684,7 @@ function App() {
 							onClick={() => {
 								setPage(id);
 								setDataAction(null);
-								setSelected(null);
+								setSelection(null);
 							}}
 						>
 							<span className="nav-icon" aria-hidden="true">
@@ -734,7 +741,7 @@ function App() {
 						hideCoarse={hideCoarse}
 						onHideCoarse={setHideCoarse}
 						onDate={selectDate}
-						onSelect={setSelected}
+						onSelect={(item, initialAt) => setSelection({ item, initialAt })}
 						onCreate={() => openForm({ mode: "create" })}
 					/>
 				)}
@@ -774,17 +781,18 @@ function App() {
 				<DetailDrawer
 					key={`${selected.id ?? selected.manual_range_id ?? "range"}-${selected.started_ms}-${selected.sources}`}
 					item={selected}
+					initialAt={selection?.initialAt}
 					people={people}
-					onClose={() => setSelected(null)}
+					onClose={() => setSelection(null)}
 					onEdit={(item) => openForm({ mode: "edit", item })}
 					onTools={openTools}
 					onQueue={() => {
-						setSelected(null);
+						setSelection(null);
 						setPage("queue");
 					}}
 					onDataAction={(kind, item) => {
 						setDataAction({ kind, item });
-						setSelected(null);
+						setSelection(null);
 						setPage("settings");
 					}}
 					onChanged={(rangeId) => {

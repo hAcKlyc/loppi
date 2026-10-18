@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+	useCallback,
+	useEffect,
+	useLayoutEffect,
+	useRef,
+	useState,
+} from "react";
 import {
 	type CoarseSegment,
 	type CoreResponse,
@@ -14,12 +20,14 @@ import {
 	time,
 	userError,
 } from "./api";
+import { entryTime, nearestSegmentIndex, pageCoversTime } from "./detail-entry";
 import { MomentList } from "./MomentList";
 import { type Chunk, ContinuousPlayback } from "./playback";
 import { type SpeakerAction, SpeakerPicker } from "./SpeakerPicker";
 
 type Props = {
 	item: TimelineItem;
+	initialAt?: number;
 	people: Person[];
 	onClose: () => void;
 	onEdit: (item: TimelineItem) => void;
@@ -117,6 +125,7 @@ function speakerName(
 
 export function DetailDrawer({
 	item,
+	initialAt,
 	people,
 	onClose,
 	onEdit,
@@ -131,7 +140,9 @@ export function DetailDrawer({
 	const [localSpeakers, setLocalSpeakers] = useState<LocalSpeaker[]>([]);
 	const [detailReady, setDetailReady] = useState(false);
 	const [tab, setTab] = useState<"transcript" | "info">("transcript");
-	const [offset, setOffset] = useState(0);
+	const offset = useRef(0);
+	const initialScroll = useRef(initialAt);
+	const transcriptRef = useRef<HTMLDivElement>(null);
 	const [hasMore, setHasMore] = useState(false);
 	const [editing, setEditing] = useState<string | null>(null);
 	const [draft, setDraft] = useState("");
@@ -144,8 +155,8 @@ export function DetailDrawer({
 		"best",
 	);
 	const [note, setNote] = useState("");
-	const [anchor, setAnchor] = useState(item.started_ms);
-	const [playhead, setPlayhead] = useState(item.started_ms);
+	const [anchor, setAnchor] = useState(() => entryTime(item, initialAt));
+	const [playhead, setPlayhead] = useState(() => entryTime(item, initialAt));
 	const [playing, setPlaying] = useState(false);
 	const [playSource, setPlaySource] = useState<Sources>(item.sources);
 	const [shownImage, setShownImage] = useState<string | null>(null);
@@ -180,10 +191,11 @@ export function DetailDrawer({
 					id: string;
 					event: TimelineItem;
 				} | null = null;
+				let loadedPage = 0;
 				for (let attempt = 0; attempt < 2; attempt++) {
 					allCoarse.length = 0;
 					allPrecise.length = 0;
-					for (let offset = 0; offset <= page; offset += 100) {
+					for (let offset = 0; ; offset += 100) {
 						const request = item.id
 							? {
 									type: "event_detail",
@@ -207,6 +219,21 @@ export function DetailDrawer({
 						if (token !== detailRequest.current) return;
 						allCoarse.push(...response.event.coarse_segments);
 						allPrecise.push(...response.event.precise_segments);
+						loadedPage = offset;
+						const target = initialScroll.current;
+						const covered =
+							target === undefined ||
+							(pageCoversTime(
+								response.event.coarse_segments,
+								entryTime(response.event, target),
+								100,
+							) &&
+								pageCoversTime(
+									response.event.precise_segments,
+									entryTime(response.event, target),
+									100,
+								));
+						if (offset >= page && covered) break;
 					}
 					if (
 						uniqueSegments(allCoarse).length === allCoarse.length &&
@@ -244,11 +271,11 @@ export function DetailDrawer({
 					coarse_segments: uniqueSegments(allCoarse),
 					precise_segments: uniqueSegments(allPrecise),
 				});
+				offset.current = loadedPage;
 				setDetailReady(true);
 				setHasMore(
-					response.event.coarse_segments.length +
-						response.event.precise_segments.length >=
-						100,
+					response.event.coarse_segments.length >= 100 ||
+						response.event.precise_segments.length >= 100,
 				);
 				setInfoError(null);
 			} catch (error) {
@@ -260,8 +287,8 @@ export function DetailDrawer({
 
 	useEffect(() => {
 		if (refreshToken >= 0 && editing === null && assigning === null)
-			void load(offset);
-	}, [load, refreshToken, offset, editing, assigning]);
+			void load(offset.current);
+	}, [load, refreshToken, editing, assigning]);
 	useEffect(() => {
 		const next = {
 			from: localDateTime(Math.ceil(item.started_ms / 1000) * 1000),
@@ -279,6 +306,13 @@ export function DetailDrawer({
 		);
 		asrDefaults.current = next;
 	}, [item.started_ms, item.ended_ms, item.sources]);
+
+	useEffect(
+		() => () => {
+			detailRequest.current += 1;
+		},
+		[],
+	);
 
 	const loadMoments = useCallback(async () => {
 		const request = ++momentsRequest.current;
@@ -365,6 +399,7 @@ export function DetailDrawer({
 		);
 	}, [detail.started_ms, detail.ended_ms]);
 	const playFrom = (at: number) => {
+		initialScroll.current = undefined;
 		at = Math.max(detail.started_ms, Math.min(at, detail.ended_ms - 1));
 		stopAudio();
 		setPlayhead(at);
@@ -423,7 +458,7 @@ export function DetailDrawer({
 		setBusy(true);
 		try {
 			const response = await core(request);
-			await load(offset);
+			await load(offset.current);
 			onChanged(
 				request.type === "transcribe_range" &&
 					!detail.id &&
@@ -551,7 +586,7 @@ export function DetailDrawer({
 						...scope,
 					});
 			}
-			await load(offset);
+			await load(offset.current);
 			onChanged();
 			onMessage(
 				creationMessage ??
@@ -563,7 +598,8 @@ export function DetailDrawer({
 			);
 			setAssigning(null);
 		} catch (error) {
-			if (String(error).includes("revision_conflict")) await load(offset);
+			if (String(error).includes("revision_conflict"))
+				await load(offset.current);
 			const message = userError(error);
 			onMessage(message);
 			throw new Error(message);
@@ -576,6 +612,25 @@ export function DetailDrawer({
 		transcriptSource === "coarse"
 			? detail.coarse_segments
 			: bestSegments(detail);
+	const positionedIndex =
+		!playing && playhead < detail.ended_ms
+			? nearestSegmentIndex(segments, playhead, playSource)
+			: -1;
+	useLayoutEffect(() => {
+		const at = initialScroll.current;
+		const list = transcriptRef.current;
+		if (at === undefined || !detailReady || !list) return;
+		const index = nearestSegmentIndex(
+			segments,
+			entryTime(detail, at),
+			playSource,
+		);
+		const row = list.querySelectorAll<HTMLElement>(".transcript-row")[index];
+		if (row)
+			list.scrollTop +=
+				row.getBoundingClientRect().top - list.getBoundingClientRect().top;
+		initialScroll.current = undefined;
+	}, [detailReady, detail, segments, playSource]);
 	const labels = new Map(localSpeakers.map((s) => [s.group_id, s.name]));
 	const manualStatus = manualAsrSummary(detail);
 	const queueRelevant =
@@ -714,6 +769,7 @@ export function DetailDrawer({
 									aria-valuetext={wallClock(playhead, true, crossesDay)}
 									onChange={(event) => {
 										const at = Number(event.target.value);
+										initialScroll.current = undefined;
 										setPlayhead(at);
 										setAnchor(at);
 										if (playing) playFrom(at);
@@ -807,6 +863,13 @@ export function DetailDrawer({
 							<div
 								className={`detail-scroll transcript-list${crossesDay ? " crosses-day" : ""}`}
 								key="transcript"
+								ref={transcriptRef}
+								onWheel={() => {
+									initialScroll.current = undefined;
+								}}
+								onPointerDown={() => {
+									initialScroll.current = undefined;
+								}}
 							>
 								{segments.length === 0 && (
 									<div className="detail-empty">
@@ -830,7 +893,7 @@ export function DetailDrawer({
 											)}
 									</div>
 								)}
-								{segments.map((segment) => {
+								{segments.map((segment, index) => {
 									const precise =
 										"revision" in segment ? (segment as PreciseSegment) : null;
 									const current =
@@ -840,14 +903,26 @@ export function DetailDrawer({
 										(playSource === "both" || playSource === segment.source);
 									return (
 										<div
-											className={`transcript-row${current ? " is-current" : ""}`}
-											aria-current={current ? "time" : undefined}
+											className={`transcript-row${current || index === positionedIndex ? " is-current" : ""}`}
+											aria-current={
+												current
+													? "time"
+													: index === positionedIndex
+														? true
+														: undefined
+											}
 											key={segment.id}
 										>
 											<button
 												type="button"
 												className="transcript-time"
-												title={current ? "当前位置 · 点击回听" : "从这里播放"}
+												title={
+													current
+														? "当前位置 · 点击回听"
+														: index === positionedIndex
+															? "定位到此处 · 点击回听"
+															: "从这里播放"
+												}
 												onClick={() => playFrom(segment.started_ms)}
 											>
 												{wallClock(segment.started_ms, true, crossesDay)}
@@ -989,7 +1064,7 @@ export function DetailDrawer({
 									<button
 										type="button"
 										className="load-more"
-										onClick={() => setOffset((current) => current + 100)}
+										onClick={() => void load(offset.current + 100)}
 									>
 										显示更多文字
 									</button>
