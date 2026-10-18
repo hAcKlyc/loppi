@@ -27,6 +27,7 @@ import {
 	type EntrySnapshot,
 	getEntrySnapshot,
 } from "./entry-api";
+import { LoadBoundary, LoadingSkeleton } from "./LoadingState";
 import { UsageStatisticsView } from "./UsageStatistics";
 
 type Mutation = (
@@ -57,6 +58,12 @@ function taskRange(task: CloudTask): string {
 }
 
 export function QueueView({
+	queuesReady = true,
+	queuesError,
+	tasksReady = true,
+	tasksError,
+	reviewsReady = true,
+	reviewsError,
 	queues,
 	tasks,
 	reviews,
@@ -65,6 +72,12 @@ export function QueueView({
 	onMutate,
 }: {
 	queues: CloudQueue[];
+	queuesReady?: boolean;
+	queuesError?: string;
+	tasksReady?: boolean;
+	tasksError?: string;
+	reviewsReady?: boolean;
+	reviewsError?: string;
 	tasks: CloudTask[];
 	reviews: ReviewItem[];
 	busy: boolean;
@@ -206,152 +219,180 @@ export function QueueView({
 				<UsageStatisticsView refresh={statisticsRefresh} />
 			) : (
 				<>
-					<div className="queue-grid">
-						{queues.map((queue) => (
-							<div className="panel-card" key={queue.provider}>
-								<div className="panel-header">
-									<div>
-										<h2>
-											{queue.provider === "llm" ? "事件与图片理解" : "精确转录"}
-										</h2>
-										<p>
-											{queue.configured
-												? queue.paused
-													? "已暂停"
-													: "运行中"
-												: "尚未配置"}
-										</p>
+					<LoadBoundary
+						ready={queuesReady}
+						error={queuesError}
+						retry={() => void onRefresh()}
+						label="队列状态"
+						rows={2}
+					>
+						<div className="queue-grid">
+							{queues.map((queue) => (
+								<div className="panel-card" key={queue.provider}>
+									<div className="panel-header">
+										<div>
+											<h2>
+												{queue.provider === "llm"
+													? "事件与图片理解"
+													: "精确转录"}
+											</h2>
+											<p>
+												{queue.configured
+													? queue.paused
+														? "已暂停"
+														: "运行中"
+													: "尚未配置"}
+											</p>
+										</div>
+										<button
+											type="button"
+											className={`switch ${!queue.paused && queue.configured ? "on" : ""}`}
+											aria-label={`${queue.paused ? "继续" : "暂停"}${queue.provider === "llm" ? "事件与图片理解" : "精确转录"}`}
+											disabled={busy || !queue.configured}
+											onClick={() =>
+												void onMutate(
+													{
+														type: "set_cloud_paused",
+														provider: queue.provider,
+														paused: !queue.paused,
+													},
+													queue.paused ? "队列已继续" : "队列已暂停",
+												)
+											}
+										/>
 									</div>
-									<button
-										type="button"
-										className={`switch ${!queue.paused && queue.configured ? "on" : ""}`}
-										aria-label={`${queue.paused ? "继续" : "暂停"}${queue.provider === "llm" ? "事件与图片理解" : "精确转录"}`}
-										disabled={busy || !queue.configured}
-										onClick={() =>
-											void onMutate(
-												{
-													type: "set_cloud_paused",
-													provider: queue.provider,
-													paused: !queue.paused,
-												},
-												queue.paused ? "队列已继续" : "队列已暂停",
-											)
-										}
-									/>
+									<div className="queue-counts">
+										<span>
+											{queue.pending}
+											<small>待处理</small>
+										</span>
+										<span>
+											{queue.processing}
+											<small>处理中</small>
+										</span>
+										<span>
+											{queue.failed}
+											<small>失败</small>
+										</span>
+									</div>
 								</div>
-								<div className="queue-counts">
-									<span>
-										{queue.pending}
-										<small>待处理</small>
-									</span>
-									<span>
-										{queue.processing}
-										<small>处理中</small>
-									</span>
-									<span>
-										{queue.failed}
-										<small>失败</small>
-									</span>
-								</div>
-							</div>
-						))}
-					</div>
+							))}
+						</div>
+					</LoadBoundary>
 					<div className="section-heading">
 						<h2>任务</h2>
 					</div>
 					<div className="panel-card list-panel">
-						{tasks.length === 0 ? (
-							<div className="list-empty">暂无任务</div>
-						) : (
-							tasks.map((task) => (
-								<div className="task-row" key={task.id}>
-									<div>
-										<strong>
-											{task.target_kind === "screenshot"
-												? "图片理解"
-												: task.provider === "llm"
-													? "事件整理"
-													: "精确转录"}{" "}
-											· {taskRange(task)}
-										</strong>
-										<p title={task.error_code ?? undefined}>
-											{taskStatus(task)}
-										</p>
+						<LoadBoundary
+							ready={tasksReady}
+							error={tasksError}
+							retry={() => void onRefresh()}
+							label="任务"
+						>
+							{tasks.length === 0 ? (
+								<div className="list-empty">暂无任务</div>
+							) : (
+								tasks.map((task) => (
+									<div className="task-row" key={task.id}>
+										<div>
+											<strong>
+												{task.target_kind === "screenshot"
+													? "图片理解"
+													: task.provider === "llm"
+														? "事件整理"
+														: "精确转录"}{" "}
+												· {taskRange(task)}
+											</strong>
+											<p title={task.error_code ?? undefined}>
+												{taskStatus(task)}
+											</p>
+										</div>
+										{task.state === "failed" && (
+											<button
+												type="button"
+												className="quiet-button"
+												onClick={() =>
+													void onMutate(
+														{ type: "retry_cloud_task", task_id: task.id },
+														"任务已重新排队",
+													)
+												}
+											>
+												重试
+											</button>
+										)}
 									</div>
-									{task.state === "failed" && (
-										<button
-											type="button"
-											className="quiet-button"
-											onClick={() =>
-												void onMutate(
-													{ type: "retry_cloud_task", task_id: task.id },
-													"任务已重新排队",
-												)
-											}
-										>
-											重试
-										</button>
-									)}
-								</div>
-							))
-						)}
+								))
+							)}
+						</LoadBoundary>
 					</div>
 					<div className="section-heading">
 						<h2>待核对</h2>
-						<span className="review-count">{reviews.length} 条</span>
+						{reviewsReady && (
+							<span className="review-count">{reviews.length} 条</span>
+						)}
 					</div>
 					<div className="panel-card list-panel">
-						{reviews.length === 0 && (
-							<div className="list-empty">没有待核对的修正</div>
-						)}
-						{reviews.map((review) => (
-							<div className="review-row" key={review.id}>
-								<div>
-									<strong>
-										{review.kind === "text" ? "文字修正" : "人物归属"} ·{" "}
-										{time(review.started_ms)}
-									</strong>
-									<p>{review.text || review.person_name || "原归属"}</p>
-								</div>
-								<button
-									type="button"
-									className="quiet-button"
-									onClick={() => void findCandidates(review)}
-								>
-									核对
-								</button>
-								{activeReview === review.id && (
-									<div className="review-candidates">
-										{finding && <span>正在查找当前句段…</span>}
-										{reviewError && (
-											<span className="inline-error">{reviewError}</span>
-										)}
-										{!finding && candidates.length === 0 && (
-											<span>没有可对应的精转句段</span>
-										)}
-										{candidates.map((segment) => (
+						<LoadBoundary
+							ready={reviewsReady}
+							error={reviewsError}
+							retry={() => void onRefresh()}
+							label="待核对记录"
+						>
+							{reviews.length === 0 && (
+								<div className="list-empty">没有待核对的修正</div>
+							)}
+							{reviews.map((review) => (
+								<div className="review-row" key={review.id}>
+									<div>
+										<strong>
+											{review.kind === "text" ? "文字修正" : "人物归属"} ·{" "}
+											{time(review.started_ms)}
+										</strong>
+										<p>{review.text || review.person_name || "原归属"}</p>
+									</div>
+									<button
+										type="button"
+										className="quiet-button"
+										onClick={() => void findCandidates(review)}
+									>
+										核对
+									</button>
+									{activeReview === review.id && (
+										<div className="review-candidates">
+											{finding && (
+												<LoadingSkeleton label="正在查找当前句段" rows={2} />
+											)}
+											{reviewError && (
+												<span className="inline-error">{reviewError}</span>
+											)}
+											{!finding && !reviewError && candidates.length === 0 && (
+												<span>没有可对应的精转句段</span>
+											)}
+											{candidates.map((segment) => (
+												<button
+													type="button"
+													key={segment.id}
+													onClick={() => void resolve(review, segment.id)}
+												>
+													<time>{time(segment.started_ms)}</time>
+													<span>{segment.text}</span>
+												</button>
+											))}
 											<button
 												type="button"
-												key={segment.id}
-												onClick={() => void resolve(review, segment.id)}
+												className="review-dismiss"
+												onClick={() => void resolve(review, null)}
 											>
-												<time>{time(segment.started_ms)}</time>
-												<span>{segment.text}</span>
+												{review.kind === "text"
+													? "放弃这条文字修正"
+													: "放弃这条人物归属"}
 											</button>
-										))}
-										<button
-											type="button"
-											className="review-dismiss"
-											onClick={() => void resolve(review, null)}
-										>
-											{review.kind === "text"
-												? "放弃这条文字修正"
-												: "放弃这条人物归属"}
-										</button>
-									</div>
-								)}
-							</div>
-						))}
+										</div>
+									)}
+								</div>
+							))}
+						</LoadBoundary>
 					</div>
 				</>
 			)}
@@ -360,6 +401,8 @@ export function QueueView({
 }
 
 export function SettingsView({
+	queuesReady = true,
+	loadErrors = {},
 	date,
 	state,
 	queues,
@@ -377,6 +420,10 @@ export function SettingsView({
 	date: Date;
 	state: ServiceState | null;
 	queues: CloudQueue[];
+	queuesReady?: boolean;
+	loadErrors?: Partial<
+		Record<"queues" | "models" | "privacy" | "login" | "state", string>
+	>;
 	selection: { kind: "export" | "cleanup"; item: TimelineItem } | null;
 	privacy: {
 		microphone: number;
@@ -397,27 +444,36 @@ export function SettingsView({
 	onMutate: Mutation;
 	onMessage: (message: string) => void;
 }) {
-	const [entryMode, setEntryMode] = useState<EntryMode>("top");
+	const [entryMode, setEntryMode] = useState<EntryMode | null>(null);
+	const [entryError, setEntryError] = useState("");
+	const [entryReload, setEntryReload] = useState(0);
 	const [switchingEntry, setSwitchingEntry] = useState(false);
 	const [switchingLogin, setSwitchingLogin] = useState(false);
 	useEffect(() => {
+		void entryReload;
 		let disposed = false;
 		const subscription = listen<EntrySnapshot>(
 			"hear-entry-snapshot",
 			(event) => {
-				if (!disposed) setEntryMode(event.payload.mode);
+				if (!disposed) {
+					setEntryMode(event.payload.mode);
+					setEntryError("");
+				}
 			},
 		);
+		setEntryError("");
 		void getEntrySnapshot()
 			.then((snapshot) => {
 				if (!disposed) setEntryMode(snapshot.mode);
 			})
-			.catch(() => {});
+			.catch((cause) => {
+				if (!disposed) setEntryError(userError(cause));
+			});
 		return () => {
 			disposed = true;
 			void subscription.then((unlisten) => unlisten());
 		};
-	}, []);
+	}, [entryReload]);
 	const changeEntryMode = async (mode: EntryMode) => {
 		setSwitchingEntry(true);
 		try {
@@ -602,280 +658,346 @@ export function SettingsView({
 			</div>
 			<h2>常驻入口</h2>
 			<div className="panel-card setting-panel">
-				<div className="setting-row">
-					<div>
-						<strong>兔子的位置</strong>
-						<p>切换入口，保留当前倾听状态</p>
+				<LoadBoundary
+					ready={entryMode !== null}
+					error={entryError}
+					retry={() => setEntryReload((v) => v + 1)}
+					label="兔子的位置"
+					rows={1}
+				>
+					<div className="setting-row">
+						<div>
+							<strong>兔子的位置</strong>
+							<p>切换入口，保留当前倾听状态</p>
+						</div>
+						<SegmentedOptions
+							label="常驻入口模式"
+							value={entryMode ?? "top"}
+							options={[
+								{ value: "top", label: "顶部" },
+								{ value: "floating", label: "悬浮兔子" },
+							]}
+							disabled={switchingEntry}
+							onChange={(mode) => void changeEntryMode(mode)}
+						/>
 					</div>
-					<SegmentedOptions
-						label="常驻入口模式"
-						value={entryMode}
-						options={[
-							{ value: "top", label: "顶部" },
-							{ value: "floating", label: "悬浮兔子" },
-						]}
-						disabled={switchingEntry}
-						onChange={(mode) => void changeEntryMode(mode)}
-					/>
-				</div>
+				</LoadBoundary>
 			</div>
 			<h2>记录</h2>
 			<div className="panel-card setting-panel">
-				<div className="setting-row">
-					<div>
-						<strong>登录时启动</strong>
-						<p>
-							{loginStatus === 1
-								? "已开启"
-								: loginStatus === 2
-									? "需要在系统设置中批准"
-									: "未开启"}
-						</p>
-					</div>
-					<Switch
-						label="登录时启动"
-						checked={loginStatus === 1 || loginStatus === 2}
-						disabled={switchingLogin || loginStatus === null}
-						onChange={async () => {
-							setSwitchingLogin(true);
-							try {
-								await invoke(
-									loginStatus === 1 || loginStatus === 2
-										? "unregister_login_item"
-										: "register_login_item",
-								);
-								await onContext();
-							} catch (error) {
-								onMessage(userError(error));
-							} finally {
-								setSwitchingLogin(false);
-							}
-						}}
-					/>
-				</div>
-				<div className="setting-row">
-					<div>
-						<strong>麦克风</strong>
-						<p>
-							{privacy?.microphone === 3
-								? state?.microphone_recording
-									? "录制中"
-									: "已授权"
-								: "需要系统授权"}
-						</p>
-					</div>
-					{privacy?.microphone === 3 ? (
+				<LoadBoundary
+					ready={loginStatus !== null}
+					error={loadErrors.login}
+					retry={() => void onContext()}
+					label="登录时启动"
+					rows={1}
+				>
+					<div className="setting-row">
+						<div>
+							<strong>登录时启动</strong>
+							<p>
+								{loginStatus === 1
+									? "已开启"
+									: loginStatus === 2
+										? "需要在系统设置中批准"
+										: "未开启"}
+							</p>
+						</div>
 						<Switch
-							label="麦克风"
-							checked={state?.microphone_enabled ?? false}
-							disabled={busy || !state}
-							onChange={() =>
-								void onMutate(
-									{
-										type: "set_source",
-										source: "microphone",
-										enabled: !state?.microphone_enabled,
-										expected_revision: state?.revision,
-									},
-									"声音来源已更新",
-								)
-							}
-						/>
-					) : (
-						<button
-							type="button"
-							className="quiet-button"
-							onClick={async () => {
-								await invoke("request_microphone_permission");
-								await onContext();
+							label="登录时启动"
+							checked={loginStatus === 1 || loginStatus === 2}
+							disabled={switchingLogin || loginStatus === null}
+							onChange={async () => {
+								setSwitchingLogin(true);
+								try {
+									await invoke(
+										loginStatus === 1 || loginStatus === 2
+											? "unregister_login_item"
+											: "register_login_item",
+									);
+									await onContext();
+								} catch (error) {
+									onMessage(userError(error));
+								} finally {
+									setSwitchingLogin(false);
+								}
 							}}
-						>
-							允许访问
-						</button>
-					)}
-				</div>
-				<div className="setting-row">
-					<div>
-						<strong>电脑声音</strong>
-						<p>
-							{state?.system_recording
-								? privacy?.tap_required && !privacy.tap_ready
-									? "录制中 · 待完成后台授权"
-									: "录制中"
-								: systemAudioReady
-									? privacy?.tap_required
-										? "已完成设置"
+						/>
+					</div>
+				</LoadBoundary>
+				<LoadBoundary
+					ready={privacy !== null && state !== null}
+					error={loadErrors.privacy || loadErrors.state}
+					retry={() => {
+						void onContext();
+						void onStatus();
+					}}
+					label="麦克风"
+					rows={1}
+				>
+					<div className="setting-row">
+						<div>
+							<strong>麦克风</strong>
+							<p>
+								{privacy?.microphone === 3
+									? state?.microphone_recording
+										? "录制中"
 										: "已授权"
 									: "需要系统授权"}
-						</p>
-					</div>
-					<div className="setting-actions">
-						{privacy?.tap_required && (
-							<button
-								type="button"
-								className="quiet-button"
-								disabled={authorizingAudio}
-								onClick={() => void authorizeSystemAudio()}
-							>
-								{authorizingAudio
-									? "等待授权…"
-									: privacy.tap_ready
-										? "重新验证"
-										: "完成授权"}
-							</button>
-						)}
-						{state && (
+							</p>
+						</div>
+						{privacy?.microphone === 3 ? (
 							<Switch
-								label="电脑声音"
-								checked={state.system_enabled}
-								disabled={busy || authorizingAudio}
+								label="麦克风"
+								checked={state?.microphone_enabled ?? false}
+								disabled={busy || !state}
 								onChange={() =>
 									void onMutate(
 										{
 											type: "set_source",
-											source: "system",
-											enabled: !state.system_enabled,
-											expected_revision: state.revision,
+											source: "microphone",
+											enabled: !state?.microphone_enabled,
+											expected_revision: state?.revision,
 										},
 										"声音来源已更新",
 									)
 								}
 							/>
-						)}
-						{!privacy?.tap_required && !systemAudioReady && (
+						) : (
 							<button
 								type="button"
 								className="quiet-button"
-								disabled={authorizingAudio}
-								onClick={() => void authorizeSystemAudio()}
+								onClick={async () => {
+									await invoke("request_microphone_permission");
+									await onContext();
+								}}
 							>
-								{authorizingAudio ? "等待系统授权…" : "允许访问"}
+								允许访问
 							</button>
 						)}
 					</div>
-				</div>
-				<div className="setting-row">
-					<div>
-						<strong>本地模型</strong>
-						<p>
-							{models?.phase === "ready"
-								? "语音识别已就绪"
-								: models?.phase === "downloading"
-									? `语音识别下载中 · ${models.progress_percent}%`
-									: "语音识别尚未就绪"}
-							{" · "}
-							{models?.speaker_phase === "ready"
-								? "声纹已就绪"
-								: models?.speaker_phase === "downloading"
-									? "声纹下载中"
-									: "声纹尚未就绪"}
-						</p>
+				</LoadBoundary>
+				<LoadBoundary
+					ready={privacy !== null && state !== null}
+					error={loadErrors.privacy || loadErrors.state}
+					retry={() => {
+						void onContext();
+						void onStatus();
+					}}
+					label="电脑声音"
+					rows={1}
+				>
+					<div className="setting-row">
+						<div>
+							<strong>电脑声音</strong>
+							<p>
+								{state?.system_recording
+									? privacy?.tap_required && !privacy.tap_ready
+										? "录制中 · 待完成后台授权"
+										: "录制中"
+									: systemAudioReady
+										? privacy?.tap_required
+											? "已完成设置"
+											: "已授权"
+										: "需要系统授权"}
+							</p>
+						</div>
+						<div className="setting-actions">
+							{privacy?.tap_required && (
+								<button
+									type="button"
+									className="quiet-button"
+									disabled={authorizingAudio}
+									onClick={() => void authorizeSystemAudio()}
+								>
+									{authorizingAudio
+										? "等待授权…"
+										: privacy.tap_ready
+											? "重新验证"
+											: "完成授权"}
+								</button>
+							)}
+							{state && (
+								<Switch
+									label="电脑声音"
+									checked={state.system_enabled}
+									disabled={busy || authorizingAudio}
+									onChange={() =>
+										void onMutate(
+											{
+												type: "set_source",
+												source: "system",
+												enabled: !state.system_enabled,
+												expected_revision: state.revision,
+											},
+											"声音来源已更新",
+										)
+									}
+								/>
+							)}
+							{!privacy?.tap_required && !systemAudioReady && (
+								<button
+									type="button"
+									className="quiet-button"
+									disabled={authorizingAudio}
+									onClick={() => void authorizeSystemAudio()}
+								>
+									{authorizingAudio ? "等待系统授权…" : "允许访问"}
+								</button>
+							)}
+						</div>
 					</div>
-					<button
-						type="button"
-						className="quiet-button"
-						disabled={busy}
-						onClick={() =>
-							void onMutate({ type: "prepare_models" }, "正在准备模型")
-						}
-					>
-						准备模型
-					</button>
-				</div>
-				<div className="setting-row">
-					<div>
-						<strong>音频存储上限</strong>
-						<p>
-							已用 {((state?.audio_used_bytes ?? 0) / 1_073_741_824).toFixed(2)}{" "}
-							GB
-							{state?.storage_paused
-								? " · 录音已暂停"
-								: state?.storage_warning
-									? " · 空间即将不足"
-									: ""}
-						</p>
-					</div>
-					<div className="setting-value-action">
-						<input
-							type="number"
-							min="0.0625"
-							max="1024"
-							step="0.25"
-							aria-label="音频存储上限，GB"
-							value={audioLimitGiB}
-							onChange={(event) => setAudioLimitGiB(event.target.value)}
-						/>
-						<span>GB</span>
+				</LoadBoundary>
+				<LoadBoundary
+					ready={models !== null}
+					error={loadErrors.models}
+					retry={() => void onContext()}
+					label="本地模型"
+					rows={1}
+				>
+					<div className="setting-row">
+						<div>
+							<strong>本地模型</strong>
+							<p>
+								{models?.phase === "ready"
+									? "语音识别已就绪"
+									: models?.phase === "downloading"
+										? `语音识别下载中 · ${models.progress_percent}%`
+										: "语音识别尚未就绪"}
+								{" · "}
+								{models?.speaker_phase === "ready"
+									? "声纹已就绪"
+									: models?.speaker_phase === "downloading"
+										? "声纹下载中"
+										: "声纹尚未就绪"}
+							</p>
+						</div>
 						<button
 							type="button"
 							className="quiet-button"
 							disabled={busy}
-							onClick={() => {
-								const value = Number(audioLimitGiB);
-								if (!Number.isFinite(value) || value < 0.0625 || value > 1024) {
-									onMessage("请输入 0.0625 至 1024 GB 的上限");
-									return;
-								}
-								void onMutate(
-									{
-										type: "set_audio_limit",
-										limit_bytes: Math.round(value * 1_073_741_824),
-										expected_revision: state?.revision,
-									},
-									"存储上限已更新",
-								);
-							}}
+							onClick={() =>
+								void onMutate({ type: "prepare_models" }, "正在准备模型")
+							}
 						>
-							保存
+							准备模型
 						</button>
 					</div>
-				</div>
+				</LoadBoundary>
+				<LoadBoundary
+					ready={state !== null}
+					error={loadErrors.state}
+					retry={() => void onStatus()}
+					label="音频存储上限"
+					rows={1}
+				>
+					<div className="setting-row">
+						<div>
+							<strong>音频存储上限</strong>
+							<p>
+								已用{" "}
+								{((state?.audio_used_bytes ?? 0) / 1_073_741_824).toFixed(2)} GB
+								{state?.storage_paused
+									? " · 录音已暂停"
+									: state?.storage_warning
+										? " · 空间即将不足"
+										: ""}
+							</p>
+						</div>
+						<div className="setting-value-action">
+							<input
+								type="number"
+								min="0.0625"
+								max="1024"
+								step="0.25"
+								aria-label="音频存储上限，GB"
+								value={audioLimitGiB}
+								onChange={(event) => setAudioLimitGiB(event.target.value)}
+							/>
+							<span>GB</span>
+							<button
+								type="button"
+								className="quiet-button"
+								disabled={busy}
+								onClick={() => {
+									const value = Number(audioLimitGiB);
+									if (
+										!Number.isFinite(value) ||
+										value < 0.0625 ||
+										value > 1024
+									) {
+										onMessage("请输入 0.0625 至 1024 GB 的上限");
+										return;
+									}
+									void onMutate(
+										{
+											type: "set_audio_limit",
+											limit_bytes: Math.round(value * 1_073_741_824),
+											expected_revision: state?.revision,
+										},
+										"存储上限已更新",
+									);
+								}}
+							>
+								保存
+							</button>
+						</div>
+					</div>
+				</LoadBoundary>
 			</div>
 			<h2>云端能力</h2>
-			<div className="panel-card cloud-config">
-				<SegmentedOptions
-					label="云端服务"
-					value={provider}
-					options={[
-						{ value: "llm", label: "LLM" },
-						{ value: "asr", label: "ASR" },
-					]}
-					disabled={busy}
-					onChange={selectProvider}
-				/>
-				<div className="cloud-provider-row">
-					<div className="cloud-provider-info">
-						<div className="cloud-provider-heading">
-							<strong>{provider === "llm" ? "DeepSeek" : "火山引擎"}</strong>
-							{cloudConfigured !== undefined && (
-								<span
-									className={`cloud-key-status${cloudConfigured ? " configured" : ""}`}
-								>
-									{cloudConfigured ? "已配置" : "未配置"}
-								</span>
-							)}
-						</div>
-						<span className="cloud-provider-meta">
-							{provider === "llm"
-								? "deepseek-flash · 自动整理事件与新截图"
-								: "语音识别 · volc.seedasr.auc"}
-						</span>
-					</div>
-					<CloudKeyInput
-						key={provider}
-						provider={provider}
-						configured={cloudConfigured}
-						busy={busy}
-						onMutate={onMutate}
+			<LoadBoundary
+				ready={queuesReady}
+				error={loadErrors.queues}
+				retry={() => void onContext()}
+				label="云端配置"
+				rows={2}
+			>
+				<div className="panel-card cloud-config">
+					<SegmentedOptions
+						label="云端服务"
+						value={provider}
+						options={[
+							{ value: "llm", label: "LLM" },
+							{ value: "asr", label: "ASR" },
+						]}
+						disabled={busy}
+						onChange={selectProvider}
 					/>
+					<div className="cloud-provider-row">
+						<div className="cloud-provider-info">
+							<div className="cloud-provider-heading">
+								<strong>{provider === "llm" ? "DeepSeek" : "火山引擎"}</strong>
+								{cloudConfigured !== undefined && (
+									<span
+										className={`cloud-key-status${cloudConfigured ? " configured" : ""}`}
+									>
+										{cloudConfigured ? "已配置" : "未配置"}
+									</span>
+								)}
+							</div>
+							<span className="cloud-provider-meta">
+								{provider === "llm"
+									? "deepseek-flash · 自动整理事件与新截图"
+									: "语音识别 · volc.seedasr.auc"}
+							</span>
+						</div>
+						<CloudKeyInput
+							key={provider}
+							provider={provider}
+							configured={cloudConfigured}
+							busy={busy}
+							onMutate={onMutate}
+						/>
+					</div>
+					{provider === "llm" && (
+						<p className="cloud-key-feedback">
+							配置后，新截图会发送给
+							DeepSeek，生成图片摘要和文字转录。未配置时仅在本机识别文字。
+						</p>
+					)}
 				</div>
-				{provider === "llm" && (
-					<p className="cloud-key-feedback">
-						配置后，新截图会发送给
-						DeepSeek，生成图片摘要和文字转录。未配置时仅在本机识别文字。
-					</p>
-				)}
-			</div>
+			</LoadBoundary>
 			<h2>数据</h2>
 			<div className="panel-card setting-panel">
 				<div className="setting-row">

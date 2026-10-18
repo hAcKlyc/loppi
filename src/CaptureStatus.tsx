@@ -6,6 +6,7 @@ import {
 	type EntrySnapshot,
 	entryAppearance,
 } from "./entry-api";
+import { LoadBoundary } from "./LoadingState";
 import { Rabbit } from "./Rabbit";
 import "./capture-status.css";
 
@@ -92,16 +93,35 @@ export function useCaptureControl({
 }
 
 export function CaptureStatus({
+	loadError,
+	onRetry,
 	snapshot,
 	control,
 }: {
 	snapshot: EntrySnapshot | null;
+	loadError?: string;
+	onRetry?: () => void;
 	control: ReturnType<typeof useCaptureControl>;
 }) {
 	const view = captureStatusView(snapshot);
 	const { busy, uncertain, feedback, actionLabel, perform } = control;
 	const appearance = entryAppearance(snapshot);
 	const statusId = useId();
+	if (!snapshot)
+		return (
+			<div className="capture-status-wrap">
+				<LoadBoundary
+					ready={false}
+					error={loadError}
+					retry={onRetry}
+					label="记录状态"
+					rows={1}
+					compact
+				>
+					{null}
+				</LoadBoundary>
+			</div>
+		);
 	return (
 		<div className="capture-status-wrap">
 			<section

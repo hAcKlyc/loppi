@@ -29,6 +29,9 @@ type Props = {
 	item: TimelineItem;
 	initialAt?: number;
 	people: Person[];
+	peopleReady?: boolean;
+	peopleError?: string;
+	onPeopleRetry?: () => void;
 	onClose: () => void;
 	onEdit: (item: TimelineItem) => void;
 	onTools: (item: TimelineItem) => void;
@@ -164,6 +167,9 @@ export function DetailDrawer({
 	item,
 	initialAt,
 	people,
+	peopleReady = true,
+	peopleError,
+	onPeopleRetry,
 	onClose,
 	onEdit,
 	onTools,
@@ -1096,6 +1102,9 @@ export function DetailDrawer({
 													precise &&
 													speakerAnchor.current && (
 														<SpeakerPicker
+															peopleReady={peopleReady}
+															peopleError={peopleError}
+															onPeopleRetry={onPeopleRetry}
 															key={segment.id}
 															anchor={speakerAnchor.current}
 															people={people}

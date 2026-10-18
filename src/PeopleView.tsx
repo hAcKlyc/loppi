@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { core, type Person, userError, type VoiceSample } from "./api";
 import { Icon, Modal } from "./Controls";
+import { LoadBoundary, LoadingSkeleton } from "./LoadingState";
 import { SamplePlayback, sampleParts } from "./sample-playback";
 
 type Mutation = (
@@ -9,10 +10,16 @@ type Mutation = (
 ) => Promise<boolean>;
 export function PeopleView({
 	people,
+	ready = true,
+	loadError,
+	onRetry,
 	busy,
 	onMutate,
 }: {
 	people: Person[];
+	ready?: boolean;
+	loadError?: string;
+	onRetry?: () => void;
 	busy: boolean;
 	onMutate: Mutation;
 }) {
@@ -44,32 +51,39 @@ export function PeopleView({
 						</button>
 					</div>
 					<div className="panel-card people-list">
-						{!people.length && (
-							<div className="list-empty">
-								还没有人物，可新建人物或在转录中为说话人命名。
-							</div>
-						)}
-						{people.map((p) => (
-							<button
-								type="button"
-								className="people-list-row"
-								key={p.id}
-								onClick={() => setSelected(p.id)}
-							>
-								<span className="person-avatar">
-									{Array.from(p.display_name)[0]}
-								</span>
-								<span className="people-list-info">
-									<strong>{p.display_name}</strong>
-									<small>
-										{p.sample_count
-											? `${p.sample_count} 个声纹样例`
-											: "待补充声纹"}
-									</small>
-								</span>
-								<Icon name="next" />
-							</button>
-						))}
+						<LoadBoundary
+							ready={ready}
+							error={loadError}
+							retry={onRetry}
+							label="人物库"
+						>
+							{!people.length && (
+								<div className="list-empty">
+									还没有人物，可新建人物或在转录中为说话人命名。
+								</div>
+							)}
+							{people.map((p) => (
+								<button
+									type="button"
+									className="people-list-row"
+									key={p.id}
+									onClick={() => setSelected(p.id)}
+								>
+									<span className="person-avatar">
+										{Array.from(p.display_name)[0]}
+									</span>
+									<span className="people-list-info">
+										<strong>{p.display_name}</strong>
+										<small>
+											{p.sample_count
+												? `${p.sample_count} 个声纹样例`
+												: "待补充声纹"}
+										</small>
+									</span>
+									<Icon name="next" />
+								</button>
+							))}
+						</LoadBoundary>
 					</div>
 				</>
 			)}
@@ -198,6 +212,7 @@ function PersonDetail({
 	}, []);
 	const load = useCallback(async () => {
 		const token = ++request.current;
+		setLoadError("");
 		try {
 			const result = await core<{
 				type: "voice_samples";
@@ -374,11 +389,7 @@ function PersonDetail({
 						</button>
 					</div>
 				)}
-				{!samples && !loadError && (
-					<div className="list-empty" role="status">
-						正在加载声纹…
-					</div>
-				)}
+				{!samples && !loadError && <LoadingSkeleton label="正在加载声纹样例" />}
 				{samples?.length === 0 && !loadError && (
 					<div className="list-empty">
 						暂无声纹样例。在转录中选择此人物，可从合格的声音建立声纹。

@@ -56,6 +56,9 @@ function App() {
 	const [gaps, setGaps] = useState<TimeGap[]>([]);
 	const [dayMoments, setDayMoments] = useState<Moment[]>([]);
 	const [loading, setLoading] = useState(true);
+	const [timelineReady, setTimelineReady] = useState(false);
+	const [timelineError, setTimelineError] = useState("");
+	const [statusError, setStatusError] = useState("");
 	const [snapshot, setSnapshot] = useState<EntrySnapshot | null>(null);
 	const state = snapshot?.state ?? null;
 	const [privacy, setPrivacy] = useState<PrivacyStatus | null>(null);
@@ -64,6 +67,22 @@ function App() {
 	const [tasks, setTasks] = useState<CloudTask[]>([]);
 	const [reviews, setReviews] = useState<ReviewItem[]>([]);
 	const [people, setPeople] = useState<Person[]>([]);
+	const [contextReady, setContextReady] = useState({
+		queues: false,
+		people: false,
+	});
+	const [contextErrors, setContextErrors] = useState({
+		queues: "",
+		people: "",
+		models: "",
+		privacy: "",
+		login: "",
+	});
+	const [tasksReady, setTasksReady] = useState(false);
+	const [reviewsReady, setReviewsReady] = useState(false);
+	const [tasksError, setTasksError] = useState("");
+	const [reviewsError, setReviewsError] = useState("");
+	const tasksRequest = useRef(0);
 	const [models, setModels] = useState<{
 		phase: string;
 		speaker_phase: string;
@@ -112,6 +131,7 @@ function App() {
 		);
 	}, []);
 	const refreshStatus = useCallback(async () => {
+		setStatusError("");
 		try {
 			if (isTauri()) {
 				acceptSnapshot(await getEntrySnapshot(true));
@@ -125,6 +145,7 @@ function App() {
 			setError(null);
 		} catch (cause) {
 			setError(errorText(cause));
+			setStatusError(errorText(cause));
 			// A local bridge failure is not a new host observation. Preserve the
 			// shared snapshot so main and entry cannot invent different states.
 		}
@@ -150,6 +171,8 @@ function App() {
 		setSelection(null);
 		manualSelection.current = null;
 		setLoading(true);
+		setTimelineReady(false);
+		setTimelineError("");
 		setDate(next);
 	}, []);
 
@@ -158,6 +181,7 @@ function App() {
 			// An old focus/poll callback must not claim a newer navigation request.
 			if (dayBounds(date)[0] !== selectedDay.current) return;
 			const request = ++timelineRequest.current;
+			setTimelineError("");
 			if (showLoading) setLoading(true);
 			try {
 				const [from_ms, to_ms] = dayBounds(date);
@@ -206,6 +230,7 @@ function App() {
 						}
 					}
 					setItems(response.items);
+					setTimelineReady(true);
 					setGaps(response.gaps);
 					setDayMoments(all);
 					setSelection((currentSelection) => {
@@ -257,14 +282,8 @@ function App() {
 					setError(null);
 				}
 			} catch (cause) {
-				if (request === timelineRequest.current) {
-					if (showLoading) {
-						setItems([]);
-						setGaps([]);
-						setDayMoments([]);
-					}
-					setError(errorText(cause));
-				}
+				if (request === timelineRequest.current)
+					setTimelineError(errorText(cause));
 			} finally {
 				if (request === timelineRequest.current) setLoading(false);
 			}
@@ -276,13 +295,35 @@ function App() {
 	const refreshContext = useCallback(() => {
 		if (contextInFlight.current) return contextInFlight.current;
 		const request = (async () => {
-			const results = await Promise.allSettled([
+			setContextErrors({
+				queues: "",
+				people: "",
+				models: "",
+				privacy: "",
+				login: "",
+			});
+			const failed = (key: keyof typeof contextErrors, cause: unknown) =>
+				setContextErrors((current) => ({
+					...current,
+					[key]: errorText(cause),
+				}));
+			await Promise.all([
 				core<{ type: "cloud_status"; id: string; queues: CloudQueue[] }>({
 					type: "cloud_status",
-				}),
+				})
+					.then((result) => {
+						setQueues(result.queues);
+						setContextReady((current) => ({ ...current, queues: true }));
+					})
+					.catch((cause) => failed("queues", cause)),
 				core<{ type: "people"; id: string; people: Person[] }>({
 					type: "people",
-				}),
+				})
+					.then((result) => {
+						setPeople(result.people);
+						setContextReady((current) => ({ ...current, people: true }));
+					})
+					.catch((cause) => failed("people", cause)),
 				core<{
 					type: "models";
 					id: string;
@@ -291,15 +332,16 @@ function App() {
 						speaker_phase: string;
 						progress_percent: number;
 					};
-				}>({ type: "models" }),
-				invoke<PrivacyStatus>("privacy_status"),
-				invoke<number>("login_item_status"),
+				}>({ type: "models" })
+					.then((result) => setModels(result.state))
+					.catch((cause) => failed("models", cause)),
+				invoke<PrivacyStatus>("privacy_status")
+					.then(setPrivacy)
+					.catch((cause) => failed("privacy", cause)),
+				invoke<number>("login_item_status")
+					.then(setLoginStatus)
+					.catch((cause) => failed("login", cause)),
 			]);
-			if (results[0].status === "fulfilled") setQueues(results[0].value.queues);
-			if (results[1].status === "fulfilled") setPeople(results[1].value.people);
-			if (results[2].status === "fulfilled") setModels(results[2].value.state);
-			if (results[3].status === "fulfilled") setPrivacy(results[3].value);
-			if (results[4].status === "fulfilled") setLoginStatus(results[4].value);
 		})();
 		contextInFlight.current = request;
 		void request.finally(() => {
@@ -309,38 +351,54 @@ function App() {
 	}, []);
 
 	const refreshTasks = useCallback(async () => {
-		const results = await Promise.allSettled([
-			core<{ type: "cloud_tasks"; id: string; tasks: CloudTask[] }>({
-				type: "cloud_tasks",
-				provider: "llm",
-				limit: 50,
-			}),
-			core<{ type: "cloud_tasks"; id: string; tasks: CloudTask[] }>({
-				type: "cloud_tasks",
-				provider: "asr",
-				limit: 50,
-			}),
+		const token = ++tasksRequest.current;
+		setTasksError("");
+		setReviewsError("");
+		await Promise.all([
+			Promise.all(
+				["llm", "asr"].map((provider) =>
+					core<{ type: "cloud_tasks"; id: string; tasks: CloudTask[] }>({
+						type: "cloud_tasks",
+						provider,
+						limit: 50,
+					}),
+				),
+			)
+				.then((results) => {
+					if (token !== tasksRequest.current) return;
+					setTasks(
+						results
+							.flatMap((result) => result.tasks)
+							.sort((a, b) => {
+								const rank = (state: string) =>
+									state === "failed"
+										? 0
+										: ["pending", "processing", "submitted"].includes(state)
+											? 1
+											: 2;
+								return (
+									rank(a.state) - rank(b.state) || b.started_ms - a.started_ms
+								);
+							}),
+					);
+					setTasksReady(true);
+				})
+				.catch((cause) => {
+					if (token === tasksRequest.current) setTasksError(errorText(cause));
+				}),
 			core<{ type: "review_items"; id: string; items: ReviewItem[] }>({
 				type: "review_items",
-			}),
-		]);
-		if (
-			results[0].status === "fulfilled" &&
-			results[1].status === "fulfilled"
-		) {
-			setTasks(
-				[...results[0].value.tasks, ...results[1].value.tasks].sort((a, b) => {
-					const rank = (state: string) =>
-						state === "failed"
-							? 0
-							: ["pending", "processing", "submitted"].includes(state)
-								? 1
-								: 2;
-					return rank(a.state) - rank(b.state) || b.started_ms - a.started_ms;
+			})
+				.then((result) => {
+					if (token === tasksRequest.current) {
+						setReviews(result.items);
+						setReviewsReady(true);
+					}
+				})
+				.catch((cause) => {
+					if (token === tasksRequest.current) setReviewsError(errorText(cause));
 				}),
-			);
-		}
-		if (results[2].status === "fulfilled") setReviews(results[2].value.items);
+		]);
 	}, []);
 
 	useEffect(() => {
@@ -729,7 +787,12 @@ function App() {
 				{page === "timeline" && (
 					<TimelineView
 						captureStatus={
-							<CaptureStatus snapshot={snapshot} control={captureControl} />
+							<CaptureStatus
+								snapshot={snapshot}
+								control={captureControl}
+								loadError={statusError}
+								onRetry={() => void refreshStatus()}
+							/>
 						}
 						date={date}
 						recordedDays={recordedDays}
@@ -737,7 +800,10 @@ function App() {
 						items={items}
 						gaps={gaps}
 						moments={dayMoments}
-						loading={loading}
+						loading={loading && !timelineReady}
+						ready={timelineReady}
+						loadError={timelineError}
+						onRetry={() => void refreshTimeline()}
 						hideCoarse={hideCoarse}
 						onHideCoarse={setHideCoarse}
 						onDate={selectDate}
@@ -747,19 +813,39 @@ function App() {
 				)}
 				{page === "queue" && (
 					<QueueView
+						queuesReady={contextReady.queues}
+						queuesError={contextErrors.queues}
+						tasksReady={tasksReady}
+						tasksError={tasksError}
+						reviewsReady={reviewsReady}
+						reviewsError={reviewsError}
 						queues={queues}
 						tasks={tasks}
 						reviews={reviews}
 						busy={busy}
-						onRefresh={refreshTasks}
+						onRefresh={async () => {
+							await Promise.all([refreshTasks(), refreshContext()]);
+						}}
 						onMutate={mutate}
 					/>
 				)}
 				{page === "people" && (
-					<PeopleView people={people} busy={busy} onMutate={mutate} />
+					<PeopleView
+						people={people}
+						ready={contextReady.people}
+						loadError={contextErrors.people}
+						onRetry={() => void refreshContext()}
+						busy={busy}
+						onMutate={mutate}
+					/>
 				)}
 				{page === "settings" && (
 					<SettingsView
+						queuesReady={contextReady.queues}
+						loadErrors={{
+							...contextErrors,
+							state: snapshot?.error || statusError,
+						}}
 						date={date}
 						state={state}
 						queues={queues}
@@ -783,6 +869,9 @@ function App() {
 					item={selected}
 					initialAt={selection?.initialAt}
 					people={people}
+					peopleReady={contextReady.people}
+					peopleError={contextErrors.people}
+					onPeopleRetry={() => void refreshContext()}
 					onClose={() => setSelection(null)}
 					onEdit={(item) => openForm({ mode: "edit", item })}
 					onTools={openTools}

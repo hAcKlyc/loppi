@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { core, userError } from "./api";
+import { LoadingSkeleton } from "./LoadingState";
 import {
 	type UsageStatistics as Statistics,
 	type UsageDay,
@@ -354,9 +355,7 @@ export function UsageStatisticsView({ refresh }: { refresh: number }) {
 				</p>
 			)}
 			{statistics && loadedRange !== range && !error && (
-				<div className="panel-card list-empty" role="status">
-					正在更新统计范围…
-				</div>
+				<LoadingSkeleton label="正在加载统计范围" rows={6} />
 			)}
 			{statistics ? (
 				<div className="usage-charts" hidden={loadedRange !== range}>
@@ -368,11 +367,7 @@ export function UsageStatisticsView({ refresh }: { refresh: number }) {
 					</p>
 				</div>
 			) : (
-				!error && (
-					<div className="panel-card list-empty" role="status">
-						正在加载统计数据…
-					</div>
-				)
+				!error && <LoadingSkeleton label="正在加载统计数据" rows={6} />
 			)}
 		</div>
 	);

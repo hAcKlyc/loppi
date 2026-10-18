@@ -1,6 +1,7 @@
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { LocalSpeaker, Person } from "./api";
+import { LoadBoundary } from "./LoadingState";
 
 export type SpeakerChoice =
 	| { kind: "existing"; personId: string }
@@ -14,6 +15,9 @@ export type SpeakerAction =
 type Props = {
 	anchor: HTMLElement;
 	people: Person[];
+	peopleReady?: boolean;
+	peopleError?: string;
+	onPeopleRetry?: () => void;
 	localSpeakers: LocalSpeaker[];
 	currentGroup: string | null;
 	personId: string | null;
@@ -26,6 +30,9 @@ type Props = {
 export function SpeakerPicker({
 	anchor,
 	people,
+	peopleReady = true,
+	peopleError,
+	onPeopleRetry,
 	localSpeakers,
 	currentGroup,
 	personId,
@@ -52,6 +59,7 @@ export function SpeakerPicker({
 		person.display_name.toLocaleLowerCase().includes(normalized),
 	);
 	const canCreate =
+		peopleReady &&
 		trimmed.length > 0 &&
 		!people.some(
 			(person) => person.display_name.trim().toLocaleLowerCase() === normalized,
@@ -205,7 +213,7 @@ export function SpeakerPicker({
 					type="search"
 					placeholder="搜索人物或输入新名字…"
 					autoComplete="off"
-					disabled={pending}
+					disabled={pending || !peopleReady}
 					value={query}
 					onChange={(event) => {
 						setQuery(event.target.value);
@@ -218,104 +226,115 @@ export function SpeakerPicker({
 					}}
 				/>
 				<div className="speaker-picker-options">
-					{matches.map((person) => {
-						const selected =
-							choice?.kind === "existing" && choice.personId === person.id;
-						return (
-							<button
-								key={person.id}
-								type="button"
-								className="speaker-picker-option"
-								aria-pressed={selected}
-								disabled={pending}
-								onClick={() => {
-									setChoice({ kind: "existing", personId: person.id });
-									setError("");
-								}}
-							>
-								<span className="speaker-picker-avatar" aria-hidden="true">
-									{Array.from(person.display_name)[0]}
-								</span>
-								<span
-									className="speaker-picker-option-name"
-									title={person.display_name}
+					<LoadBoundary
+						ready={peopleReady}
+						error={peopleError}
+						retry={onPeopleRetry}
+						label="人物"
+						rows={2}
+					>
+						{matches.map((person) => {
+							const selected =
+								choice?.kind === "existing" && choice.personId === person.id;
+							return (
+								<button
+									key={person.id}
+									type="button"
+									className="speaker-picker-option"
+									aria-pressed={selected}
+									disabled={pending || !peopleReady}
+									onClick={() => {
+										setChoice({ kind: "existing", personId: person.id });
+										setError("");
+									}}
 								>
-									{person.display_name}
-								</span>
-								{person.sample_count === 0 && (
-									<small className="speaker-picker-sample-status">
-										待补充声纹
-									</small>
-								)}
-								<span className="speaker-picker-check" aria-hidden="true">
-									{selected ? "✓" : ""}
-								</span>
-							</button>
-						);
-					})}
-					{(!trimmed || canCreate) && (
-						<button
-							type="button"
-							className="speaker-picker-option speaker-picker-create"
-							aria-pressed={choice?.kind === "create"}
-							disabled={pending}
-							onClick={() => {
-								setChoice({ kind: "create", name: trimmed });
-								if (!trimmed) search.current?.focus();
-								setError("");
-							}}
-						>
-							<span aria-hidden="true">＋</span>
-							<span className="speaker-picker-option-name">
-								{trimmed
-									? `新建「${trimmed}」并建立声纹`
-									: "新建人物并建立声纹"}
-							</span>
-							<span className="speaker-picker-check" aria-hidden="true">
-								{choice?.kind === "create" ? "✓" : ""}
-							</span>
-						</button>
-					)}
-					{localSpeakers
-						.filter((s) => s.anonymous && s.name.includes(trimmed))
-						.map((speaker) => (
+									<span className="speaker-picker-avatar" aria-hidden="true">
+										{Array.from(person.display_name)[0]}
+									</span>
+									<span
+										className="speaker-picker-option-name"
+										title={person.display_name}
+									>
+										{person.display_name}
+									</span>
+									{person.sample_count === 0 && (
+										<small className="speaker-picker-sample-status">
+											待补充声纹
+										</small>
+									)}
+									<span className="speaker-picker-check" aria-hidden="true">
+										{selected ? "✓" : ""}
+									</span>
+								</button>
+							);
+						})}
+						{(!trimmed || canCreate) && (
 							<button
-								key={speaker.group_id}
 								type="button"
-								className="speaker-picker-option speaker-picker-local"
-								aria-pressed={
-									choice?.kind === "local" &&
-									choice.groupId === speaker.group_id
-								}
-								disabled={pending || speaker.group_id === currentGroup}
+								className="speaker-picker-option speaker-picker-create"
+								aria-pressed={choice?.kind === "create"}
+								disabled={pending || !peopleReady}
 								onClick={() => {
-									setChoice({ kind: "local", groupId: speaker.group_id });
+									setChoice({ kind: "create", name: trimmed });
+									if (!trimmed) search.current?.focus();
 									setError("");
 								}}
 							>
-								<span className="speaker-picker-avatar" aria-hidden="true">
-									{speaker.name.replace("说话人 ", "")}
-								</span>
+								<span aria-hidden="true">＋</span>
 								<span className="speaker-picker-option-name">
-									{speaker.name}
+									{trimmed
+										? `新建「${trimmed}」并建立声纹`
+										: "新建人物并建立声纹"}
 								</span>
 								<span className="speaker-picker-check" aria-hidden="true">
-									{speaker.group_id === currentGroup
-										? "·"
-										: choice?.kind === "local" &&
-												choice.groupId === speaker.group_id
-											? "✓"
-											: ""}
+									{choice?.kind === "create" ? "✓" : ""}
 								</span>
 							</button>
-						))}
-					{people.length === 0 && !trimmed && (
-						<p className="speaker-picker-empty">
-							还没有人物，输入姓名即可创建。
-						</p>
-					)}
+						)}
+						{localSpeakers
+							.filter((s) => s.anonymous && s.name.includes(trimmed))
+							.map((speaker) => (
+								<button
+									key={speaker.group_id}
+									type="button"
+									className="speaker-picker-option speaker-picker-local"
+									aria-pressed={
+										choice?.kind === "local" &&
+										choice.groupId === speaker.group_id
+									}
+									disabled={pending || speaker.group_id === currentGroup}
+									onClick={() => {
+										setChoice({ kind: "local", groupId: speaker.group_id });
+										setError("");
+									}}
+								>
+									<span className="speaker-picker-avatar" aria-hidden="true">
+										{speaker.name.replace("说话人 ", "")}
+									</span>
+									<span className="speaker-picker-option-name">
+										{speaker.name}
+									</span>
+									<span className="speaker-picker-check" aria-hidden="true">
+										{speaker.group_id === currentGroup
+											? "·"
+											: choice?.kind === "local" &&
+													choice.groupId === speaker.group_id
+												? "✓"
+												: ""}
+									</span>
+								</button>
+							))}
+						{people.length === 0 && !trimmed && (
+							<p className="speaker-picker-empty">
+								还没有人物，输入姓名即可创建。
+							</p>
+						)}
+					</LoadBoundary>
 				</div>
-				<fieldset className="speaker-picker-scope" disabled={pending}>
+				<fieldset
+					className="speaker-picker-scope"
+					disabled={pending || !peopleReady}
+				>
 					<legend>应用范围</legend>
 					<label>
 						<input
@@ -340,7 +359,7 @@ export function SpeakerPicker({
 					<div className="speaker-picker-secondary">
 						<button
 							type="button"
-							disabled={pending}
+							disabled={pending || !peopleReady}
 							onClick={() => void apply({ kind: "unbind", entire })}
 						>
 							取消人物归属
@@ -377,7 +396,7 @@ export function SpeakerPicker({
 				<button
 					type="button"
 					className="primary-button"
-					disabled={pending || !validChoice}
+					disabled={pending || !peopleReady || !validChoice}
 					onClick={() => {
 						if (choice && validChoice)
 							void apply({ kind: "bind", choice, entire });

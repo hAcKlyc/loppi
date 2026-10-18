@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { core } from "./api";
+import { LoadingSkeleton } from "./LoadingState";
 import { monthBoundaries } from "./timeline-view";
 
 type Props = {
@@ -12,10 +13,15 @@ export function RecordCalendar({ date, days, onDate, onClose }: Props) {
 	const [month, setMonth] = useState(
 		() => new Date(date.getFullYear(), date.getMonth(), 1),
 	);
-	const [available, setAvailable] = useState<number[] | null>(null);
-	const [loading, setLoading] = useState(true);
+	const [result, setResult] = useState<{
+		month: number;
+		days: number[] | null;
+		error?: boolean;
+	} | null>(null);
 	const root = useRef<HTMLDivElement>(null);
 	const start = month.getTime();
+	const loading = result?.month !== start;
+	const available = result?.month === start ? result.days : null;
 	const currentMonth = new Date(
 		date.getFullYear(),
 		date.getMonth(),
@@ -23,25 +29,24 @@ export function RecordCalendar({ date, days, onDate, onClose }: Props) {
 	).getTime();
 	useEffect(() => {
 		let cancelled = false;
-		setAvailable(null);
 		if (start === currentMonth && days !== null) {
-			setAvailable(days);
-			setLoading(false);
+			setResult({ month: start, days });
 			return;
 		}
-		setLoading(true);
 		void core<{ type: "calendar_days"; id: string; days: number[] }>({
 			type: "calendar_days",
 			boundaries: monthBoundaries(new Date(start)),
 		})
 			.then((response) => {
-				if (!cancelled) setAvailable(response.days);
+				if (!cancelled) setResult({ month: start, days: response.days });
 			})
 			.catch(() => {
-				if (!cancelled) setAvailable(null);
-			})
-			.finally(() => {
-				if (!cancelled) setLoading(false);
+				if (!cancelled)
+					setResult((current) => ({
+						month: start,
+						days: current?.month === start ? current.days : null,
+						error: true,
+					}));
 			});
 		return () => {
 			cancelled = true;
@@ -115,47 +120,51 @@ export function RecordCalendar({ date, days, onDate, onClose }: Props) {
 					<span key={day}>{day}</span>
 				))}
 			</div>
-			<div className="calendar-grid" aria-busy={loading}>
-				{dates.map((day, index) => (
-					<button
-						key={day}
-						type="button"
-						style={index === 0 ? { gridColumnStart: offset + 1 } : undefined}
-						className={
-							day ===
-							new Date(
-								date.getFullYear(),
-								date.getMonth(),
-								date.getDate(),
-							).getTime()
-								? "selected"
-								: ""
-						}
-						aria-label={`${month.getFullYear()}年${month.getMonth() + 1}月${index + 1}日`}
-						aria-current={day === todayStart ? "date" : undefined}
-						aria-pressed={
-							day ===
-							new Date(
-								date.getFullYear(),
-								date.getMonth(),
-								date.getDate(),
-							).getTime()
-						}
-						disabled={loading || day > todayStart || !available?.includes(day)}
-						onClick={() => {
-							onDate(new Date(day));
-							onClose();
-						}}
-					>
-						{index + 1}
-					</button>
-				))}
-			</div>
 			{loading ? (
-				<p role="status">正在加载…</p>
-			) : available === null ? (
+				<LoadingSkeleton label="正在加载记录日期" rows={3} />
+			) : (
+				<div className="calendar-grid">
+					{dates.map((day, index) => (
+						<button
+							key={day}
+							type="button"
+							style={index === 0 ? { gridColumnStart: offset + 1 } : undefined}
+							className={
+								day ===
+								new Date(
+									date.getFullYear(),
+									date.getMonth(),
+									date.getDate(),
+								).getTime()
+									? "selected"
+									: ""
+							}
+							aria-label={`${month.getFullYear()}年${month.getMonth() + 1}月${index + 1}日`}
+							aria-current={day === todayStart ? "date" : undefined}
+							aria-pressed={
+								day ===
+								new Date(
+									date.getFullYear(),
+									date.getMonth(),
+									date.getDate(),
+								).getTime()
+							}
+							disabled={
+								loading || day > todayStart || !available?.includes(day)
+							}
+							onClick={() => {
+								onDate(new Date(day));
+								onClose();
+							}}
+						>
+							{index + 1}
+						</button>
+					))}
+				</div>
+			)}
+			{loading ? null : result?.error ? (
 				<p role="status">日期加载失败，请重新打开日历</p>
-			) : available.length === 0 ? (
+			) : available?.length === 0 ? (
 				<p>本月暂无记录</p>
 			) : null}
 		</div>

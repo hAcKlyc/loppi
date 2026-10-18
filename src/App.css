@@ -1507,6 +1507,23 @@ p {
 .detail-skeleton {
 	padding-top: var(--space-7);
 }
+.loading-skeleton {
+	width: 100%;
+	min-width: 0;
+	padding: var(--space-7);
+}
+.loading-skeleton-row {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-6);
+	padding: var(--space-6) 0;
+}
+.loading-skeleton.compact {
+	padding: 0;
+}
+.loading-skeleton.compact .loading-skeleton-row {
+	padding: var(--space-3) 0;
+}
 .skeleton-transcript {
 	display: grid;
 	grid-template-columns: 80px minmax(0, 1fr);

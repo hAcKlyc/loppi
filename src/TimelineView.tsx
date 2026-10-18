@@ -18,6 +18,7 @@ import {
 	time,
 } from "./api";
 import { DayMapCursor } from "./DayMapCursor";
+import { LoadBoundary } from "./LoadingState";
 import { RecordCalendar } from "./RecordCalendar";
 import {
 	cardExcerpt,
@@ -36,6 +37,9 @@ type Props = {
 	gaps: TimeGap[];
 	moments: Moment[];
 	loading: boolean;
+	ready?: boolean;
+	loadError?: string;
+	onRetry?: () => void;
 	hideCoarse: boolean;
 	onHideCoarse: (hide: boolean) => void;
 	onDate: (date: Date) => void;
@@ -80,6 +84,9 @@ export function TimelineView({
 	gaps,
 	moments,
 	loading,
+	ready = !loading,
+	loadError,
+	onRetry,
 	hideCoarse,
 	onHideCoarse,
 	onDate,
@@ -289,100 +296,109 @@ export function TimelineView({
 						)}
 					</div>
 				</div>
-				<div className="day-map-plot">
-					{sources.map(({ key, label }) => (
-						<div className="day-map-row" key={key}>
-							<span className="day-map-source">{label}</span>
-							<div className="day-map-track">
-								{items
-									.filter(
-										(item) =>
-											item.processing_state !== "moment_only" &&
-											(item.sources === "both" || item.sources === key),
-									)
-									.map((item) => {
-										const style = daySpan(
-											item.started_ms,
-											item.ended_ms,
-											from,
-											to,
-											now,
-										);
-										if (!style) return null;
-										const title = `${time(Math.max(item.started_ms, from))}—${time(Math.min(item.ended_ms, to, now))} · ${item.title || (item.manual_range_id ? "精转范围" : "未整理素材")} · ${label}`;
-										return (
-											<button
-												key={`${item.id ?? item.manual_range_id ?? "raw"}-${item.started_ms}-${item.sources}`}
-												type="button"
-												className={`day-map-event ${item.id || item.manual_range_id ? "organized" : "raw"}`}
-												title={title}
-												aria-label={title}
-												style={style}
-												onClick={(event) => {
-													const bounds =
-														event.currentTarget.parentElement?.getBoundingClientRect();
-													const point =
-														event.detail > 0 && bounds
-															? dayMapPoint(
-																	event.clientX,
-																	bounds.left,
-																	bounds.width,
-																	from,
-																	to,
-																)
-															: null;
-													onSelect(item, point?.at);
-												}}
+				<LoadBoundary
+					ready={ready}
+					error={loadError}
+					retry={onRetry}
+					label="记录分布"
+					rows={2}
+				>
+					<div className="day-map-plot">
+						{sources.map(({ key, label }) => (
+							<div className="day-map-row" key={key}>
+								<span className="day-map-source">{label}</span>
+								<div className="day-map-track">
+									{items
+										.filter(
+											(item) =>
+												item.processing_state !== "moment_only" &&
+												(item.sources === "both" || item.sources === key),
+										)
+										.map((item) => {
+											const style = daySpan(
+												item.started_ms,
+												item.ended_ms,
+												from,
+												to,
+												now,
+											);
+											if (!style) return null;
+											const title = `${time(Math.max(item.started_ms, from))}—${time(Math.min(item.ended_ms, to, now))} · ${item.title || (item.manual_range_id ? "精转范围" : "未整理素材")} · ${label}`;
+											return (
+												<button
+													key={`${item.id ?? item.manual_range_id ?? "raw"}-${item.started_ms}-${item.sources}`}
+													type="button"
+													className={`day-map-event ${item.id || item.manual_range_id ? "organized" : "raw"}`}
+													title={title}
+													aria-label={title}
+													style={style}
+													onClick={(event) => {
+														const bounds =
+															event.currentTarget.parentElement?.getBoundingClientRect();
+														const point =
+															event.detail > 0 && bounds
+																? dayMapPoint(
+																		event.clientX,
+																		bounds.left,
+																		bounds.width,
+																		from,
+																		to,
+																	)
+																: null;
+														onSelect(item, point?.at);
+													}}
+												/>
+											);
+										})}
+									{statusGaps
+										.filter((gap) => gap.source === key)
+										.map((gap) => (
+											<span
+												key={`${gap.started_ms}-${gap.reason}`}
+												className="day-map-gap"
+												style={gap.style}
+												title={`${time(gap.started_ms)}—${time(gap.ended_ms)} · ${gapReason(gap.reason)} · ${label}`}
 											/>
-										);
-									})}
-								{statusGaps
-									.filter((gap) => gap.source === key)
-									.map((gap) => (
+										))}
+								</div>
+							</div>
+						))}
+						{dayMoments.length > 0 && (
+							<div className="day-map-row">
+								<span className="day-map-source">现场记录</span>
+								<div className="day-map-moments">
+									{dayMoments.map((moment) => (
 										<span
-											key={`${gap.started_ms}-${gap.reason}`}
-											className="day-map-gap"
-											style={gap.style}
-											title={`${time(gap.started_ms)}—${time(gap.ended_ms)} · ${gapReason(gap.reason)} · ${label}`}
+											key={moment.id}
+											className={`day-map-moment ${moment.kind}`}
+											style={{ left: position(moment.anchor_ms) }}
+											title={`${time(moment.anchor_ms)} · ${moment.kind === "mark" ? "重点" : moment.kind === "comment" ? "笔记" : "截图"}`}
 										/>
 									))}
+								</div>
 							</div>
-						</div>
-					))}
-					{dayMoments.length > 0 && (
-						<div className="day-map-row">
-							<span className="day-map-source">现场记录</span>
-							<div className="day-map-moments">
-								{dayMoments.map((moment) => (
-									<span
-										key={moment.id}
-										className={`day-map-moment ${moment.kind}`}
-										style={{ left: position(moment.anchor_ms) }}
-										title={`${time(moment.anchor_ms)} · ${moment.kind === "mark" ? "重点" : moment.kind === "comment" ? "笔记" : "截图"}`}
-									/>
-								))}
+						)}
+						{selectedKey === todayKey && (
+							<div className="day-map-now-track">
+								<span className="day-map-now" style={{ left: position(now) }} />
 							</div>
-						</div>
-					)}
-					{selectedKey === todayKey && (
-						<div className="day-map-now-track">
-							<span className="day-map-now" style={{ left: position(now) }} />
-						</div>
-					)}
-					<DayMapCursor from={from} to={to} />
-				</div>
-				<div className="day-map-hours">
-					<span>00:00</span>
-					<span>06:00</span>
-					<span>12:00</span>
-					<span>18:00</span>
-					<span>24:00</span>
-				</div>
+						)}
+						<DayMapCursor from={from} to={to} />
+					</div>
+					<div className="day-map-hours">
+						<span>00:00</span>
+						<span>06:00</span>
+						<span>12:00</span>
+						<span>18:00</span>
+						<span>24:00</span>
+					</div>
+				</LoadBoundary>
 			</section>
 
 			<div className="section-heading">
 				<h2>
-					当天记录 <span className="record-count">{visible.length}</span>
+					当天记录{" "}
+					{ready && <span className="record-count">{visible.length}</span>}
 				</h2>
 				<div className="section-actions">
 					<button
@@ -403,110 +419,121 @@ export function TimelineView({
 				</div>
 			</div>
 			<div className="event-list">
-				{loading ? (
-					<div className="list-empty">正在加载…</div>
-				) : visible.length === 0 ? (
-					<div className="list-empty">
-						{sorted.length > 0 ? "粗转内容已隐藏" : "这一天还没有记录"}
-					</div>
-				) : (
-					visible.map((item) => {
-						const itemMoments = moments.filter(
-							(moment) =>
-								moment.anchor_ms >= item.started_ms &&
-								moment.anchor_ms < item.ended_ms,
-						);
-						const count = itemMoments.length;
-						const live = item === activeItem;
-						const excerpt = cardExcerpt(item, itemMoments, hideCoarse && !live);
-						const manualStatus = manualAsrSummary(item);
-						const fitIssue =
-							item.fit_state &&
-							[
+				<LoadBoundary
+					ready={ready}
+					error={loadError}
+					retry={onRetry}
+					label="当天记录"
+				>
+					{visible.length === 0 ? (
+						<div className="list-empty">
+							{sorted.length > 0 ? "粗转内容已隐藏" : "这一天还没有记录"}
+						</div>
+					) : (
+						visible.map((item) => {
+							const itemMoments = moments.filter(
+								(moment) =>
+									moment.anchor_ms >= item.started_ms &&
+									moment.anchor_ms < item.ended_ms,
+							);
+							const count = itemMoments.length;
+							const live = item === activeItem;
+							const excerpt = cardExcerpt(
+								item,
+								itemMoments,
+								hideCoarse && !live,
+							);
+							const manualStatus = manualAsrSummary(item);
+							const fitIssue =
+								item.fit_state &&
+								[
+									"fit_failed",
+									"fit_credentials_unavailable",
+									"fit_retrying",
+								].includes(item.fit_state)
+									? item.fit_state
+									: null;
+							const processingState = fitIssue ?? item.processing_state;
+							const processingIssue = [
 								"fit_failed",
 								"fit_credentials_unavailable",
 								"fit_retrying",
-							].includes(item.fit_state)
-								? item.fit_state
-								: null;
-						const processingState = fitIssue ?? item.processing_state;
-						const processingIssue = [
-							"fit_failed",
-							"fit_credentials_unavailable",
-							"fit_retrying",
-							"asr_failed",
-							"analysis_failed",
-						].includes(processingState);
-						const sourceLabel =
-							excerpt.label ||
-							(item.processing_state === "moment_only"
-								? "时刻记录"
-								: item.sources === "both"
-									? "双路声音"
-									: item.sources === "microphone"
-										? "麦克风"
-										: "电脑声音");
-						return (
-							<div
-								className="event-line"
-								key={`${item.id ?? item.manual_range_id ?? "unorganized"}-${item.started_ms}-${item.ended_ms}-${item.sources}`}
-							>
-								<time>{time(item.started_ms)}</time>
-								<button
-									type="button"
-									className={`event-card ${item.id || item.manual_range_id ? "named" : ""} ${live ? "is-recording" : ""}`}
-									onClick={() => onSelect(item)}
+								"asr_failed",
+								"analysis_failed",
+							].includes(processingState);
+							const sourceLabel =
+								excerpt.label ||
+								(item.processing_state === "moment_only"
+									? "时刻记录"
+									: item.sources === "both"
+										? "双路声音"
+										: item.sources === "microphone"
+											? "麦克风"
+											: "电脑声音");
+							return (
+								<div
+									className="event-line"
+									key={`${item.id ?? item.manual_range_id ?? "unorganized"}-${item.started_ms}-${item.ended_ms}-${item.sources}`}
 								>
-									<div className="event-card-meta">
-										<span>
-											{time(item.started_ms)}
-											{item.ended_ms - item.started_ms < 60_000 &&
-											item.processing_state === "moment_only"
-												? ""
-												: ` — ${live ? "至今" : time(item.ended_ms)}`}
-										</span>
-										<span className="event-card-source">{sourceLabel}</span>
-										{count > 0 && <span>{count} 条现场记录</span>}
-										{manualStatus && (
-											<span className="event-card-task" title={manualStatus}>
-												{manualStatus}
+									<time>{time(item.started_ms)}</time>
+									<button
+										type="button"
+										className={`event-card ${item.id || item.manual_range_id ? "named" : ""} ${live ? "is-recording" : ""}`}
+										onClick={() => onSelect(item)}
+									>
+										<div className="event-card-meta">
+											<span>
+												{time(item.started_ms)}
+												{item.ended_ms - item.started_ms < 60_000 &&
+												item.processing_state === "moment_only"
+													? ""
+													: ` — ${live ? "至今" : time(item.ended_ms)}`}
 											</span>
-										)}
-										{live && (
-											<span className="event-card-state recording-label">
-												正在记录
+											<span className="event-card-source">{sourceLabel}</span>
+											{count > 0 && <span>{count} 条现场记录</span>}
+											{manualStatus && (
+												<span className="event-card-task" title={manualStatus}>
+													{manualStatus}
+												</span>
+											)}
+											{live && (
+												<span className="event-card-state recording-label">
+													正在记录
+												</span>
+											)}
+											<span
+												className={`event-card-state ${processingIssue ? "is-failed" : ""}`}
+												title={
+													processingState === "fit_credentials_unavailable"
+														? "请重新打开 hear；若仍失败，请在设置中重新保存云端密钥"
+														: undefined
+												}
+											>
+												{processingLabel(processingState)}
 											</span>
-										)}
-										<span
-											className={`event-card-state ${processingIssue ? "is-failed" : ""}`}
-											title={
-												processingState === "fit_credentials_unavailable"
-													? "请重新打开 hear；若仍失败，请在设置中重新保存云端密钥"
-													: undefined
-											}
+										</div>
+										<h3>
+											{item.title ||
+												(live
+													? "实时记录内容"
+													: item.manual_range_id
+														? "未命名事件"
+														: hideCoarse ||
+																item.processing_state === "moment_only"
+															? "现场记录"
+															: "未整理素材")}
+										</h3>
+										<p
+											className={excerpt.label ? "" : "event-card-placeholder"}
 										>
-											{processingLabel(processingState)}
-										</span>
-									</div>
-									<h3>
-										{item.title ||
-											(live
-												? "实时记录内容"
-												: item.manual_range_id
-													? "未命名事件"
-													: hideCoarse ||
-															item.processing_state === "moment_only"
-														? "现场记录"
-														: "未整理素材")}
-									</h3>
-									<p className={excerpt.label ? "" : "event-card-placeholder"}>
-										{excerpt.text}
-									</p>
-								</button>
-							</div>
-						);
-					})
-				)}
+											{excerpt.text}
+										</p>
+									</button>
+								</div>
+							);
+						})
+					)}
+				</LoadBoundary>
 			</div>
 		</div>
 	);
