@@ -167,11 +167,19 @@ fn parse_body(response: ureq::Response) -> Result<Value, String> {
     serde_json::from_slice(&bytes).map_err(|_| "provider_invalid_json".to_owned())
 }
 
+const VERIFY_SYSTEM: &str = r#"This is a connectivity check; no user data is included.
+
+Output requirements:
+Return one JSON object with the required field ok set to the boolean true (not the string "true"). Do not include other fields, Markdown code fences, or explanatory text.
+Example output:
+{"ok":true}
+"#;
+
 pub fn verify_llm(key: &str, model: &str, meter: &dyn Meter) -> Result<(), String> {
     let result = chat(
         key,
         model,
-        "Return only JSON with {\"ok\":true}. This is a connectivity check; no user data is included.",
+        VERIFY_SYSTEM,
         "Return JSON with ok true.",
         Instant::now() + Duration::from_secs(60),
         meter,
@@ -593,6 +601,22 @@ pub fn verify_asr(key: &str, meter: &dyn Meter) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn prompt_output_example_passes_connectivity_response_parser() {
+        let example = VERIFY_SYSTEM
+            .lines()
+            .find(|line| line.starts_with("{\"ok\":"))
+            .unwrap();
+        let response = json!({"choices":[{"finish_reason":"stop","message":{"content":example}}]});
+        assert_eq!(
+            parse_chat_content(&response)
+                .unwrap()
+                .get("ok")
+                .and_then(Value::as_bool),
+            Some(true)
+        );
+    }
+
     #[test]
     fn screenshot_http_response_publishes_both_outputs_and_records_usage() {
         use crate::{events, moments};
