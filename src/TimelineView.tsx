@@ -17,7 +17,7 @@ import {
 	type TimelineItem,
 	time,
 } from "./api";
-
+import { DayMapCursor } from "./DayMapCursor";
 import { RecordCalendar } from "./RecordCalendar";
 import { cardExcerpt, daySpan, headerDays, liveCard } from "./timeline-view";
 
@@ -349,6 +349,7 @@ export function TimelineView({
 							<span className="day-map-now" style={{ left: position(now) }} />
 						</div>
 					)}
+					<DayMapCursor from={from} to={to} />
 				</div>
 				<div className="day-map-hours">
 					<span>00:00</span>

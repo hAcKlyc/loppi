@@ -1,0 +1,46 @@
+<!-- Open with Vite; synthetic data only. The button exercises browser pointer/layout lifecycle. -->
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>hear 时间光标回归</title>
+<div id="fixture" style="padding:24px;max-width:1250px;margin:auto"><div id="root"></div></div>
+<aside style="position:fixed;bottom:12px;right:12px;background:white;padding:12px;font:13px system-ui"><button id="run">运行光标回归</button> <output id="result">模拟记录，不连接录音或云端</output></aside>
+<script type="module">
+import React from 'react';
+import {createRoot} from 'react-dom/client';
+import {flushSync} from 'react-dom';
+import {TimelineView} from '/src/TimelineView.tsx';
+import '/src/App.css';
+const root=createRoot(document.getElementById('root'));
+let date=new Date(2026,9,17), selected=0;
+function render(){
+ const from=new Date(date.getFullYear(),date.getMonth(),date.getDate()).getTime(),to=new Date(date.getFullYear(),date.getMonth(),date.getDate()+1).getTime();
+ const item={id:'fixture',manual_range_id:null,title:'模拟记录',summary:'鼠标移动查看时间，点击色块仍打开原记录。',started_ms:from,ended_ms:to,sources:'both',processing_state:'transcribed',recording_sources:[],preview:null};
+ flushSync(()=>root.render(React.createElement(TimelineView,{date,recordedDays:[from],recordingState:null,items:[item],gaps:[],moments:[{id:'mark',anchor_ms:from+18*3600000,kind:'mark'}],loading:false,hideCoarse:false,onSelect:()=>{selected++},onDate:()=>{},onCreate:()=>{},onHideCoarse:()=>{}})));
+}
+render();
+const frames=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+const assert=(value,message)=>{if(!value)throw Error(message)};
+const track=()=>document.querySelector('.day-map-cursor-track');
+const label=()=>document.querySelector('.day-map-cursor-label');
+const plot=()=>document.querySelector('.day-map-plot');
+async function move(ratio){const box=track().getBoundingClientRect();plot().dispatchEvent(new PointerEvent('pointermove',{bubbles:true,pointerType:'mouse',clientX:box.left+box.width*ratio,clientY:box.top+8}));await frames()}
+function contained(){const box=track().getBoundingClientRect(),tag=label().getBoundingClientRect();assert(tag.left>=box.left-1&&tag.right<=box.right+1,'时间标签越过轨道边界')}
+document.getElementById('run').onclick=async()=>{
+ const output=document.getElementById('result');output.textContent='检查中…';
+ try{
+  await frames();
+  await move(0);assert(label().textContent==='00:00','左端时间错误');contained();
+  await move(1);assert(label().textContent==='24:00','右端显示成次日');contained();
+  await move((17*60+54)/1440);assert(label().textContent==='17:54','位置与时间不一致');
+  const box=track().getBoundingClientRect(),line=document.querySelector('.day-map-cursor-line').getBoundingClientRect();
+  assert(Math.abs(line.left-(box.left+box.width*(17*60+54)/1440))<1,'竖线与时间位置不一致');
+  document.elementFromPoint(line.left,box.top+8).click();assert(selected===1,'光标挡住了记录点击');
+  plot().dispatchEvent(new PointerEvent('pointerleave'));await frames();assert(!track().dataset.visible,'离开后未消失');
+  await move(.5);date=new Date(2026,9,16);render();await frames();assert(!track().dataset.visible,'切日保留旧光标');
+  await move(.5);document.getElementById('fixture').style.maxWidth='760px';await frames();assert(!track().dataset.visible,'宽度变化保留旧位置');
+  await move(0);contained();await move(1);contained();
+  window.dispatchEvent(new Event('blur'));await frames();assert(!track().dataset.visible,'失焦未清理');
+  await move(.5);plot().dispatchEvent(new PointerEvent('pointermove',{pointerType:'touch'}));await frames();assert(!track().dataset.visible,'触摸误显示悬停');
+  document.getElementById('fixture').style.maxWidth='1250px';await frames();await move((17*60+54)/1440);
+  output.textContent='PASS：时间、边界、跨轨道竖线、点击、离开、切日、缩放、失焦和触摸检查通过。';
+ }catch(error){output.textContent='FAIL：'+error.message}
+};
+</script></html>

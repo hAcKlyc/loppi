@@ -1,6 +1,18 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { daySpan, cardExcerpt } from '../src/timeline-view.ts';
+import { daySpan, cardExcerpt, dayMapPoint } from '../src/timeline-view.ts';
+
+test('hover cursor maps exact track position to local time and keeps the right edge at 24:00', () => {
+  const from = new Date(2026,9,18).getTime(), to = new Date(2026,9,19).getTime();
+  assert.equal(dayMapPoint(80,100,720,from,to).label,'00:00');
+  assert.equal(dayMapPoint(460,100,720,from,to).label,'12:00');
+  assert.equal(dayMapPoint(100+720*(17*60+54)/1440,100,720,from,to).label,'17:54');
+  assert.equal(dayMapPoint(850,100,720,from,to).label,'24:00');
+  assert.equal(dayMapPoint(850,100,720,from,to).x,720);
+  for (const args of [[NaN,100,720,from,to],[400,100,0,from,to],[400,100,720,to,from]]) assert.equal(dayMapPoint(...args),null);
+  // The local day range can be 23/25 hours; interpolation follows its actual duration.
+  for (const hours of [23,25]) assert.equal(dayMapPoint(460,100,720,from,from+hours*3600000).at,from+hours*1800000);
+});
 
 test('day spans clip cross-day and future ranges without inflating short durations', () => {
   assert.deepEqual(daySpan(-100, 250, 0, 1000, 600), {left:'0%',width:'25%'});

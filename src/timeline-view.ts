@@ -1,5 +1,31 @@
 import type { Moment, TimelineItem } from "./api";
 
+export function dayMapPoint(
+	clientX: number,
+	left: number,
+	width: number,
+	from: number,
+	to: number,
+) {
+	if (
+		![clientX, left, width, from, to].every(Number.isFinite) ||
+		width <= 0 ||
+		to <= from
+	)
+		return null;
+	const x = Math.max(0, Math.min(width, clientX - left));
+	const at = from + Math.round((x / width) * (to - from));
+	const date = new Date(at);
+	return {
+		x,
+		at,
+		label:
+			x === width
+				? "24:00"
+				: `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`,
+	};
+}
+
 /** Content spans are navigation ranges, not proof of continuous audio coverage. */
 export function daySpan(
 	start: number,

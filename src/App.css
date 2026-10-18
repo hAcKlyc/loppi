@@ -457,10 +457,44 @@ p {
 	height: 5px;
 	min-width: 1px;
 }
-.day-map-now-track {
+.day-map-now-track,
+.day-map-cursor-track {
 	position: absolute;
 	inset: 0 0 0 calc(var(--layout-map-label) + var(--space-6));
 	pointer-events: none;
+}
+.day-map-cursor-track {
+	z-index: var(--layer-map-marker);
+	opacity: 0;
+	transition: opacity var(--motion-fast) var(--ease-standard);
+}
+.day-map-cursor-track[data-visible="true"] {
+	opacity: 1;
+}
+.day-map-cursor-line {
+	position: absolute;
+	top: -4px;
+	bottom: 0;
+	left: 0;
+	width: 1px;
+	background: var(--color-brand);
+}
+.day-map-cursor-label {
+	position: absolute;
+	left: 0;
+	bottom: calc(100% + var(--space-2));
+	padding: var(--space-1) var(--space-3);
+	border-radius: var(--radius-xs);
+	background: var(--color-brand);
+	color: var(--color-surface);
+	font-size: var(--type-micro);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+@media (prefers-reduced-motion: reduce) {
+	.day-map-cursor-track {
+		transition: none;
+	}
 }
 .day-map-now {
 	position: absolute;
