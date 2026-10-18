@@ -319,6 +319,9 @@ export interface Moment {
 	text: string | null;
 	ocr_text: string | null;
 	ocr_state: "complete" | "failed" | null;
+	image_summary?: string | null;
+	image_transcript?: string | null;
+	image_state?: string | null;
 }
 
 export type CoreRequest = { type: string; [key: string]: unknown };

@@ -550,7 +550,7 @@ pub fn export(
             db,
             &spool,
             "moments.jsonl",
-            "SELECT id,kind,anchor_ms AS started_ms,created_ms,captured_ms,text,ocr_text,ocr_state
+            "SELECT id,kind,anchor_ms AS started_ms,created_ms,captured_ms,text,ocr_text,ocr_state,image_summary,image_transcript
              FROM moments WHERE anchor_ms>=?1 AND anchor_ms<?2 AND ?3>=0",
             start,
             end,
@@ -560,7 +560,8 @@ pub fn export(
                     json!({"id":row.get::<_,String>(0)?,"kind":row.get::<_,String>(1)?,
                 "anchor_ms":row.get::<_,i64>(2)?,"created_ms":row.get::<_,i64>(3)?,
                 "captured_ms":row.get::<_,Option<i64>>(4)?,"text":row.get::<_,Option<String>>(5)?,
-                "ocr_text":row.get::<_,Option<String>>(6)?,"ocr_state":row.get::<_,Option<String>>(7)?}),
+                "ocr_text":row.get::<_,Option<String>>(6)?,"ocr_state":row.get::<_,Option<String>>(7)?,
+                "image_summary":row.get::<_,Option<String>>(8)?,"image_transcript":row.get::<_,Option<String>>(9)?}),
                 )
             },
         )?;

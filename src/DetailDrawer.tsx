@@ -313,6 +313,17 @@ export function DetailDrawer({
 	}, [detailReady, loadMoments, refreshToken]);
 
 	useEffect(() => {
+		if (
+			!moments.some((moment) =>
+				["pending", "processing", "paused"].includes(moment.image_state ?? ""),
+			)
+		)
+			return;
+		const timer = window.setTimeout(() => void loadMoments(), 3000);
+		return () => window.clearTimeout(timer);
+	}, [moments, loadMoments]);
+
+	useEffect(() => {
 		const playback = new ContinuousPlayback(
 			(from, to, source) =>
 				core<CoreResponse & Chunk>({

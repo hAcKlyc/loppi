@@ -191,6 +191,51 @@ pub fn chat(
     deadline: Instant,
     meter: &dyn Meter,
 ) -> Result<Value, Failure> {
+    chat_content(
+        key,
+        model,
+        system,
+        json!(user),
+        deadline,
+        meter,
+        DEEPSEEK_URL,
+    )
+}
+
+pub fn describe_image(
+    key: &str,
+    model: &str,
+    png_base64: &str,
+    deadline: Instant,
+    meter: &dyn Meter,
+) -> Result<Value, Failure> {
+    chat_content(
+        key,
+        model,
+        crate::moments::IMAGE_SYSTEM,
+        image_content(png_base64),
+        deadline,
+        meter,
+        DEEPSEEK_URL,
+    )
+}
+
+fn image_content(png_base64: &str) -> Value {
+    json!([
+        {"type":"text","text":"请输出这张截图的摘要和完整 Markdown 文字转录。"},
+        {"type":"image_url","image_url":{"url":format!("data:image/png;base64,{png_base64}"),"detail":"original"}}
+    ])
+}
+
+fn chat_content(
+    key: &str,
+    model: &str,
+    system: &str,
+    user: Value,
+    deadline: Instant,
+    meter: &dyn Meter,
+    endpoint: &str,
+) -> Result<Value, Failure> {
     let body = json!({
         "model": model,
         "thinking": {"type":"disabled"},
@@ -207,7 +252,7 @@ pub fn chat(
         &usage_id,
         json_response(
             agent()
-                .post(DEEPSEEK_URL)
+                .post(endpoint)
                 .timeout(timeout)
                 .set("Authorization", &format!("Bearer {key}"))
                 .set("Content-Type", "application/json")
@@ -548,6 +593,150 @@ pub fn verify_asr(key: &str, meter: &dyn Meter) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn screenshot_http_response_publishes_both_outputs_and_records_usage() {
+        use crate::{events, moments};
+        use std::cell::Cell;
+        use std::io::{BufRead, BufReader, Write};
+        use std::net::TcpListener;
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let endpoint = format!("http://{}/chat/completions", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let mut reader = BufReader::new(&mut stream);
+            let mut size = 0;
+            loop {
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                if line == "\r\n" {
+                    break;
+                }
+                if let Some((name, value)) = line.split_once(':') {
+                    if name.eq_ignore_ascii_case("content-length") {
+                        size = value.trim().parse::<usize>().unwrap();
+                    }
+                }
+            }
+            let mut bytes = vec![0; size];
+            reader.read_exact(&mut bytes).unwrap();
+            let request: Value = serde_json::from_slice(&bytes).unwrap();
+            assert_eq!(
+                request["messages"][1]["content"][1]["image_url"]["detail"],
+                "original"
+            );
+            assert!(
+                request["messages"][1]["content"][1]["image_url"]["url"]
+                    .as_str()
+                    .unwrap()
+                    .starts_with("data:image/png;base64,")
+            );
+            assert_eq!(request["response_format"]["type"], "json_object");
+            let response=json!({"choices":[{"finish_reason":"stop","message":{"content":json!({"summary":"测试图摘要","transcript":"# Hello\n\n完整转录"}).to_string()}}],"usage":{"prompt_tokens":20,"completion_tokens":10}}).to_string();
+            write!(stream,"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",response.len(),response).unwrap();
+        });
+        struct TestMeter {
+            begun: Cell<bool>,
+            observed: Cell<bool>,
+        }
+        impl Meter for TestMeter {
+            fn begin(
+                &self,
+                model: &str,
+                _: Option<Uuid>,
+                _: Option<i64>,
+            ) -> Result<String, String> {
+                assert_eq!(model, "deepseek-flash");
+                self.begun.set(true);
+                Ok("test".into())
+            }
+            fn llm_response(&self, _: &str, response: &Value) -> Result<(), String> {
+                assert_eq!(response["usage"]["prompt_tokens"], 20);
+                self.observed.set(true);
+                Ok(())
+            }
+            fn asr_response(&self, _: Uuid, _: &str, _: &Value) -> Result<(), String> {
+                unreachable!()
+            }
+            fn rejected(&self, _: &str) -> Result<(), String> {
+                panic!("unexpected rejection")
+            }
+            fn observation_failed(&self) {
+                panic!("unexpected usage failure")
+            }
+        }
+        let meter = TestMeter {
+            begun: Cell::new(false),
+            observed: Cell::new(false),
+        };
+        let directory = tempfile::tempdir().unwrap();
+        let mut store = crate::Store::new(rusqlite::Connection::open_in_memory().unwrap()).unwrap();
+        events::set_configured_with_credential(
+            &store.db,
+            CloudProvider::Llm,
+            "deepseek-flash",
+            "deepseek:mock",
+        )
+        .unwrap();
+        let id = Uuid::new_v4();
+        let relative = std::path::PathBuf::from(format!("screenshots/{id}.png"));
+        std::fs::create_dir(directory.path().join("screenshots")).unwrap();
+        std::fs::write(
+            directory.path().join(&relative),
+            [137, 80, 78, 71, 13, 10, 26, 10],
+        )
+        .unwrap();
+        let tx = store.db.transaction().unwrap();
+        moments::save_capture(
+            &tx,
+            &moments::CaptureResult {
+                id,
+                relative,
+                triggered_ms: 1000,
+                captured_ms: 1001,
+                ocr_text: None,
+                ocr_state: "failed",
+            },
+            1002,
+        )
+        .unwrap();
+        tx.commit().unwrap();
+        let task = events::take_task(&mut store.db, CloudProvider::Llm, 2000)
+            .unwrap()
+            .unwrap();
+        let png = moments::image(&store.db, directory.path(), id).unwrap();
+        let output = chat_content(
+            "fake-test-key",
+            &task.model_id,
+            moments::IMAGE_SYSTEM,
+            image_content(&png),
+            Instant::now() + Duration::from_secs(5),
+            &meter,
+            &endpoint,
+        )
+        .unwrap();
+        moments::publish_image(&mut store.db, &task, output, 3000).unwrap();
+        let row = moments::list(&store.db, 0, 2000, 0, 20).unwrap().remove(0);
+        assert_eq!(row.image_summary.as_deref(), Some("测试图摘要"));
+        assert_eq!(row.image_transcript.as_deref(), Some("# Hello\n\n完整转录"));
+        assert_eq!(row.image_state.as_deref(), Some("complete"));
+        assert!(meter.begun.get() && meter.observed.get());
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn screenshot_request_contains_actual_image_and_original_detail() {
+        let input = image_content("iVBORw0KGgo=");
+        assert_eq!(input[1]["type"], "image_url");
+        assert_eq!(
+            input[1]["image_url"]["url"],
+            "data:image/png;base64,iVBORw0KGgo="
+        );
+        assert_eq!(input[1]["image_url"]["detail"], "original");
+    }
+
     #[test]
     fn metering_failure_preserves_paid_output_and_original_rejection() {
         use super::*;

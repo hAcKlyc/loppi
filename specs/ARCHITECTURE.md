@@ -19,7 +19,7 @@ flowchart LR
     Core -->|有界 stdin/stdout| Worker[hear-worker 本地模型]
     Core --> KC[macOS Keychain]
   end
-  Core -->|粗文字与时间| LLM[DeepSeek LLM]
+  Core -->|粗文字与时间 / 主动新截图| LLM[DeepSeek LLM]
   Core -->|事件范围音频| ASR[火山 ASR]
 ```
 
@@ -119,10 +119,11 @@ VAD 先事务提交 `coarse_jobs` 的来源/session/16 kHz 样本区间与 `spee
 
 ## 5. 外发、修订与清理边界
 
-- DeepSeek LLM 只见候选区间的粗文字、时间、来源及“检测到人声但无可用文字”等状态；其 JSON 仅是建议，核心检查边界、来源、冲突、人工优先级及任务版本。[`llm_input` / `publish_fit`](../crates/hear-core/src/events.rs)。
+- DeepSeek 事件整理任务只见候选区间的粗文字、时间、来源及“检测到人声但无可用文字”等状态；其 JSON 仅是建议，核心检查边界、来源、冲突、人工优先级及任务版本。[`llm_input` / `publish_fit`](../crates/hear-core/src/events.rs)。
 - 火山 ASR 只见被判定或人工指定需精转的音频；事件稳定后按来源及编码时长上限建持久任务，上传副本缩短已确认无语音的长空档。当前适配器是 `volc.seedasr.auc`，请求 speaker 信息、分句及 `ssd_version=300`。Keychain 的 LLM/ASR 凭据分别设置、分别暂停队列。[`cloud.rs`](../crates/hear-core/src/cloud.rs)。
 - 人工确认人物后，Core 在既有声纹循环中筛选单句/相邻短句组合样例，按质量、近似去重和每场/每人物限额入库。每个组合成员保留人工绑定证据；自动命名不回流训练。内部取样任务及证据表由 `knowledge/enrollment.rs` 管理，复用本地 worker 和清理屏障，详见[声纹入库策略](tech_docs/speaker-identity.md#短句组合与音质)。
-- 人物列表、声纹特征和截图不因上述两种云任务外发。云 speaker 标签只在单个物理 ASR 请求内有意义；本机负责同场合组和跨事件人物匹配。[说话人文档](tech_docs/speaker-identity.md)。
+- 已配置 LLM 时，用户新保存的截图通过同一个持久 LLM 队列直接发送原图，输出中文摘要与完整 Markdown 转录。仅 `save_capture` 创建 `screenshot` 任务；配置或启动不回填历史。暂停、恢复、失败重试、用量统计沿用现有任务机制。原图和本地 OCR 始终保留；`moments.image_summary/image_transcript` 原子发布并更新搜索，任务状态从 `cloud_tasks` 派生。读图/上传持有既有 LLM outbound gate，网络不持有 Store；只清原声不取消截图任务，全部数据清理后不能发布迟到结果。详情按需刷新待处理记录，Markdown 禁止 HTML、远程图片及活动链接。
+- 人物列表、声纹特征不因上述云任务外发。云 speaker 标签只在单个物理 ASR 请求内有意义；本机负责同场合组和跨事件人物匹配。[说话人文档](tech_docs/speaker-identity.md)。
 - 人工改事件范围、标题、句段文字或人物时检查对象当前修订；迟到云结果必须核对目标版本。人工文字以独立修订保存，重转后无法唯一映射的放入待核对。[`events.rs`](../crates/hear-core/src/events.rs)、[`knowledge.rs`](../crates/hear-core/src/knowledge.rs)。
 - 清理前先生成带范围/模式/内容签名的预览；`清除原始音频`保留文字和已提取的声纹特征，`清除全部数据`还删除范围内的文字、动作、关联声纹样例等并要求额外确认。逻辑墓碑先生效，再处理共享封块和物理删除。[`cleanup.rs`](../crates/hear-core/src/cleanup.rs)。
 

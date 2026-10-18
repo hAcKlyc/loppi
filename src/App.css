@@ -2306,3 +2306,43 @@ body.floating-body .float-wrap {
 	color: var(--color-text-secondary);
 	font-size: var(--type-micro);
 }
+
+.moment-markdown {
+	overflow-wrap: anywhere;
+	font-size: var(--type-meta);
+	line-height: var(--leading-body);
+	user-select: text;
+}
+.moment-markdown > :first-child {
+	margin-top: var(--space-5);
+}
+.moment-markdown h1,
+.moment-markdown h2,
+.moment-markdown h3 {
+	font-size: var(--type-body);
+}
+.moment-markdown pre {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+.moment-markdown ul,
+.moment-markdown ol {
+	padding-left: var(--space-8);
+}
+.moment-markdown table {
+	display: block;
+	max-width: 100%;
+	overflow-x: auto;
+	border-collapse: collapse;
+}
+.moment-markdown th,
+.moment-markdown td {
+	border: 1px solid var(--color-border);
+	padding: var(--space-2) var(--space-3);
+}
+.moment-ocr > button {
+	margin-top: var(--space-4);
+}
+.moment-ocr > [role="status"] {
+	display: block;
+}

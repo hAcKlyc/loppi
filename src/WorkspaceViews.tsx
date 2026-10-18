@@ -212,7 +212,7 @@ export function QueueView({
 								<div className="panel-header">
 									<div>
 										<h2>
-											{queue.provider === "llm" ? "事件整理" : "精确转录"}
+											{queue.provider === "llm" ? "事件与图片理解" : "精确转录"}
 										</h2>
 										<p>
 											{queue.configured
@@ -225,7 +225,7 @@ export function QueueView({
 									<button
 										type="button"
 										className={`switch ${!queue.paused && queue.configured ? "on" : ""}`}
-										aria-label={`${queue.paused ? "继续" : "暂停"}${queue.provider === "llm" ? "事件整理" : "精确转录"}`}
+										aria-label={`${queue.paused ? "继续" : "暂停"}${queue.provider === "llm" ? "事件与图片理解" : "精确转录"}`}
 										disabled={busy || !queue.configured}
 										onClick={() =>
 											void onMutate(
@@ -267,8 +267,12 @@ export function QueueView({
 								<div className="task-row" key={task.id}>
 									<div>
 										<strong>
-											{task.provider === "llm" ? "事件整理" : "精确转录"} ·{" "}
-											{taskRange(task)}
+											{task.target_kind === "screenshot"
+												? "图片理解"
+												: task.provider === "llm"
+													? "事件整理"
+													: "精确转录"}{" "}
+											· {taskRange(task)}
 										</strong>
 										<p title={task.error_code ?? undefined}>
 											{taskStatus(task)}
@@ -853,7 +857,7 @@ export function SettingsView({
 						</div>
 						<span className="cloud-provider-meta">
 							{provider === "llm"
-								? "deepseek-flash"
+								? "deepseek-flash · 自动整理事件与新截图"
 								: "语音识别 · volc.seedasr.auc"}
 						</span>
 					</div>
@@ -865,6 +869,12 @@ export function SettingsView({
 						onMutate={onMutate}
 					/>
 				</div>
+				{provider === "llm" && (
+					<p className="cloud-key-feedback">
+						配置后，新截图会发送给
+						DeepSeek，生成图片摘要和文字转录。未配置时仅在本机识别文字。
+					</p>
+				)}
 			</div>
 			<h2>数据</h2>
 			<div className="panel-card setting-panel">

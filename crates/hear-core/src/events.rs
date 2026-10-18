@@ -27,7 +27,71 @@ const ASR_ADAPTER_VERSION: &str = asr::VERSION;
 const ASR_WINDOW_MS: i64 = 15 * 60 * 1000;
 pub(crate) const MAX_ASR_INTERIOR_SILENCE_MS: i64 = 3_000;
 
+// Rebuild the CHECK constraint once while preserving task IDs and all references.
+// legacy_alter_table keeps existing dependent views bound to the final table name.
+fn init_cloud_tasks(db: &Connection) -> Result<(), String> {
+    const SCHEMA: &str = r#"CREATE TABLE IF NOT EXISTS cloud_tasks (
+            id TEXT PRIMARY KEY,
+            provider TEXT NOT NULL CHECK(provider IN ('llm','asr')),
+            target_kind TEXT NOT NULL CHECK(target_kind IN ('candidate','event','range','screenshot')),
+            target_id TEXT NOT NULL,
+            target_version TEXT NOT NULL,
+            model_id TEXT NOT NULL,
+            processor_version TEXT NOT NULL,
+            started_ms INTEGER NOT NULL,
+            ended_ms INTEGER NOT NULL,
+            source TEXT,
+            manual INTEGER NOT NULL DEFAULT 0,
+            state TEXT NOT NULL CHECK(state IN ('pending','processing','submitted','complete','failed','superseded')),
+            attempts INTEGER NOT NULL DEFAULT 0,
+            submit_attempts INTEGER NOT NULL DEFAULT 0,
+            next_attempt_ms INTEGER NOT NULL DEFAULT 0,
+            remote_id TEXT,
+            error_code TEXT,
+            created_ms INTEGER NOT NULL,
+            updated_ms INTEGER NOT NULL,
+            CHECK(ended_ms > started_ms)
+         );"#;
+    db.execute_batch(SCHEMA).map_err(|e| e.to_string())?;
+    let old: bool = db
+        .query_row(
+            "SELECT instr(sql, ?1)=0 FROM sqlite_master WHERE type='table' AND name='cloud_tasks'",
+            ["'screenshot'"],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if old {
+        let legacy: bool = db
+            .pragma_query_value(None, "legacy_alter_table", |r| r.get(0))
+            .map_err(|e| e.to_string())?;
+        let foreign_keys: bool = db
+            .pragma_query_value(None, "foreign_keys", |r| r.get(0))
+            .map_err(|e| e.to_string())?;
+        // SQLite's documented table rebuild procedure disables FK enforcement
+        // outside the migration transaction; IDs and referencing rows are copied unchanged.
+        db.pragma_update(None, "foreign_keys", false)
+            .map_err(|e| e.to_string())?;
+        db.pragma_update(None, "legacy_alter_table", true)
+            .map_err(|e| e.to_string())?;
+        let result = crate::storage::migrate(
+            db,
+            "screenshot_cloud_tasks_v1",
+            &format!(
+                "{} INSERT INTO cloud_tasks_new SELECT * FROM cloud_tasks; DROP TABLE cloud_tasks; ALTER TABLE cloud_tasks_new RENAME TO cloud_tasks;",
+                SCHEMA.replace("IF NOT EXISTS cloud_tasks", "cloud_tasks_new")
+            ),
+        );
+        db.pragma_update(None, "legacy_alter_table", legacy)
+            .map_err(|e| e.to_string())?;
+        db.pragma_update(None, "foreign_keys", foreign_keys)
+            .map_err(|e| e.to_string())?;
+        result?;
+    }
+    Ok(())
+}
+
 pub fn init(db: &Connection) -> Result<(), String> {
+    init_cloud_tasks(db)?;
     db.execute_batch(
         "CREATE TABLE IF NOT EXISTS cloud_queues (
             provider TEXT PRIMARY KEY CHECK(provider IN ('llm','asr')),
@@ -91,28 +155,6 @@ pub fn init(db: &Connection) -> Result<(), String> {
             CHECK(ended_ms > started_ms)
          );
          CREATE INDEX IF NOT EXISTS event_suppressions_time ON event_suppressions(started_ms,ended_ms);
-         CREATE TABLE IF NOT EXISTS cloud_tasks (
-            id TEXT PRIMARY KEY,
-            provider TEXT NOT NULL CHECK(provider IN ('llm','asr')),
-            target_kind TEXT NOT NULL CHECK(target_kind IN ('candidate','event','range')),
-            target_id TEXT NOT NULL,
-            target_version TEXT NOT NULL,
-            model_id TEXT NOT NULL,
-            processor_version TEXT NOT NULL,
-            started_ms INTEGER NOT NULL,
-            ended_ms INTEGER NOT NULL,
-            source TEXT,
-            manual INTEGER NOT NULL DEFAULT 0,
-            state TEXT NOT NULL CHECK(state IN ('pending','processing','submitted','complete','failed','superseded')),
-            attempts INTEGER NOT NULL DEFAULT 0,
-            submit_attempts INTEGER NOT NULL DEFAULT 0,
-            next_attempt_ms INTEGER NOT NULL DEFAULT 0,
-            remote_id TEXT,
-            error_code TEXT,
-            created_ms INTEGER NOT NULL,
-            updated_ms INTEGER NOT NULL,
-            CHECK(ended_ms > started_ms)
-         );
          CREATE INDEX IF NOT EXISTS cloud_tasks_next ON cloud_tasks(provider,state,next_attempt_ms,manual,created_ms);
          DROP INDEX IF EXISTS cloud_tasks_logical;
          CREATE UNIQUE INDEX IF NOT EXISTS cloud_tasks_run ON cloud_tasks
@@ -2368,6 +2410,15 @@ pub fn task_current(db: &Connection, task: &CloudTask) -> Result<bool, String> {
     if state.as_deref() == Some("superseded") || state.is_none() {
         return Ok(false);
     }
+    if task.target_kind == "screenshot" {
+        return db
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM moments WHERE id=?1 AND kind='screenshot')",
+                [&task.target_id],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string());
+    }
     let erased: bool = db
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM clear_ranges c WHERE (c.mode='all_data' OR (c.mode='raw_audio' AND (SELECT submit_attempts FROM cloud_tasks WHERE id=?1)=0))
@@ -3555,6 +3606,46 @@ mod tests {
     fn summary_result(task: &CloudTask, summary: serde_json::Value) -> serde_json::Value {
         serde_json::json!({"events":[{"start_ms":task.start,"end_ms":task.end,
             "title":"界面布局讨论","summary":summary,"sources":"microphone","merge_with_event_id":null}]})
+    }
+
+    #[test]
+    fn screenshot_migration_preserves_existing_cloud_tasks_references_and_views() {
+        let db = Connection::open_in_memory().unwrap();
+        // Seed exactly the released schema before opening it with the new code.
+        db.execute_batch(include_str!("../tests/cloud_tasks_v1.sql"))
+            .unwrap();
+        db.execute_batch("CREATE TABLE reference(task_id TEXT REFERENCES cloud_tasks(id));
+          INSERT INTO cloud_tasks(id,provider,target_kind,target_id,target_version,model_id,processor_version,started_ms,ended_ms,state,created_ms,updated_ms)
+          VALUES('old','asr','event','e','1','bigmodel','v1',1,2,'submitted',1,1);
+          INSERT INTO reference VALUES('old');
+          CREATE VIEW saved_view AS SELECT id FROM cloud_tasks;
+          PRAGMA foreign_keys=ON;").unwrap();
+        init_cloud_tasks(&db).unwrap();
+        init_cloud_tasks(&db).unwrap();
+        assert_eq!(
+            db.query_row::<String, _, _>("SELECT id FROM saved_view", [], |r| r.get(0))
+                .unwrap(),
+            "old"
+        );
+        assert_eq!(
+            db.query_row::<String, _, _>(
+                "SELECT t.state FROM reference r JOIN cloud_tasks t ON r.task_id=t.id",
+                [],
+                |r| r.get(0)
+            )
+            .unwrap(),
+            "submitted"
+        );
+        assert_eq!(
+            db.query_row::<i64, _, _>("SELECT count(*) FROM pragma_foreign_key_check", [], |r| r
+                .get(0))
+                .unwrap(),
+            0
+        );
+        assert!(
+            !db.pragma_query_value::<bool, _>(None, "legacy_alter_table", |r| r.get(0))
+                .unwrap()
+        );
     }
 
     #[test]

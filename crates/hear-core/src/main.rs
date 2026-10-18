@@ -1187,6 +1187,25 @@ fn process_cloud_task(
                 events::defer_paused(&mut store.db, task, now)?;
                 return Ok(());
             }
+            if task.target_kind == "screenshot" {
+                // Cleanup shares this outbound gate, so the image remains owned
+                // until upload finishes. Keep file IO outside the Store lock.
+                let png = {
+                    let db = shared.readers.snapshot()?;
+                    moments::image(
+                        &db,
+                        &shared.directory,
+                        uuid::Uuid::parse_str(&task.target_id)
+                            .map_err(|_| "invalid_screenshot_task".to_owned())?,
+                    )?
+                };
+                let key = active_cloud_credential(shared, task.provider)?;
+                let meter = usage::Recorder::task(shared, task.provider, task.id)?;
+                let output = cloud::describe_image(&key, &task.model_id, &png, deadline, &meter)?;
+                let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                moments::publish_image(&mut store.db, task, output, now_ms()?)?;
+                return Ok(());
+            }
             // Capture prior-event summaries under the same gate as cleanup,
             // including context outside this candidate's own time range.
             let input = {

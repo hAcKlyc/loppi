@@ -464,6 +464,12 @@ pub struct MomentView {
     pub text: Option<String>,
     pub ocr_text: Option<String>,
     pub ocr_state: Option<String>,
+    #[serde(default)]
+    pub image_summary: Option<String>,
+    #[serde(default)]
+    pub image_transcript: Option<String>,
+    #[serde(default)]
+    pub image_state: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

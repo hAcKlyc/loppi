@@ -1,0 +1,22 @@
+CREATE TABLE IF NOT EXISTS cloud_tasks (
+            id TEXT PRIMARY KEY,
+            provider TEXT NOT NULL CHECK(provider IN ('llm','asr')),
+            target_kind TEXT NOT NULL CHECK(target_kind IN ('candidate','event','range')),
+            target_id TEXT NOT NULL,
+            target_version TEXT NOT NULL,
+            model_id TEXT NOT NULL,
+            processor_version TEXT NOT NULL,
+            started_ms INTEGER NOT NULL,
+            ended_ms INTEGER NOT NULL,
+            source TEXT,
+            manual INTEGER NOT NULL DEFAULT 0,
+            state TEXT NOT NULL CHECK(state IN ('pending','processing','submitted','complete','failed','superseded')),
+            attempts INTEGER NOT NULL DEFAULT 0,
+            submit_attempts INTEGER NOT NULL DEFAULT 0,
+            next_attempt_ms INTEGER NOT NULL DEFAULT 0,
+            remote_id TEXT,
+            error_code TEXT,
+            created_ms INTEGER NOT NULL,
+            updated_ms INTEGER NOT NULL,
+            CHECK(ended_ms > started_ms)
+         );

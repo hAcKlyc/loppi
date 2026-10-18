@@ -78,7 +78,25 @@ document.getElementById('run').onclick=async()=>{
  assert([...aside.querySelectorAll('.moment-record,.note-composer')].every(el=>el.scrollWidth<=el.clientWidth+1),'窄栏内容溢出');
  columns.style.gridTemplateColumns=old;
  moments=[];token++;render();await wait(200);assert(document.querySelector('.notes-empty')?.textContent.includes('还没有现场记录'),'空状态');
- output.textContent='PASS：对齐/紧凑重点/OCR折叠与完整阅读/原图与回听隔离/加载反馈/笔记锚点与失败保稿/窄栏/空状态';
+ const transcript='# 会议安排\n\n| 事项 | 时间 |\n| --- | --- |\n| 设计评审 | 周三 14:00 |\n\n- 确认页面布局\n- [无法辨认]\n\n![外部图片](https://example.invalid/leak)\n[链接文字](https://example.invalid)\n<script>window.bad=true<\/script>';
+ let copied='';Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{copied=text}}});
+ moments=[make('cloud','screenshot',297000,{image_state:'pending',ocr_state:'complete',ocr_text:'本地备用文字'}),make('cloud-failed','screenshot',350000,{image_state:'failed',ocr_text:'仍可阅读的本地结果'}),make('cloud-paused','screenshot',360000,{image_state:'paused',ocr_state:'failed'})];
+ token++;render();await wait(200);
+ assert(document.querySelector('.notes-stream').textContent.includes('等待图片理解'),'等待反馈缺失');
+ assert(document.querySelector('.notes-stream').textContent.includes('可在队列中重试'),'云失败重试提示缺失');
+ assert(document.querySelector('.notes-stream').textContent.includes('已暂停'),'暂停反馈缺失');
+ moments[0]={...moments[0],image_state:'complete',image_summary:'这是一张会议安排截图，列出了设计评审时间和待确认事项。',image_transcript:transcript};
+ await wait(3400);assert(document.querySelector('.image-summary')?.textContent.includes('会议安排'),'后台完成未自动刷新');
+ const md=document.querySelector('.moment-record .moment-ocr');assert(!md.open,'完整转录默认未折叠');
+ await click(md.querySelector('summary'));
+ assert(md.querySelector('h1')?.textContent==='会议安排'&&md.querySelector('table')&&md.querySelectorAll('li').length===2,'Markdown 结构丢失');
+ assert(!md.querySelector('img')&&!md.querySelector('a')&&!md.querySelector('script'),'转录触发活动内容');
+ await click(md.querySelector('button'));assert(copied===transcript&&md.textContent.includes('已复制'),'Markdown 复制非原文');
+ const cols=document.querySelector('.detail-columns');const previous=cols.style.gridTemplateColumns;cols.style.gridTemplateColumns='minmax(0,1fr) 240px';await wait(100);
+ assert(document.querySelector('.notes-panel').scrollWidth<=document.querySelector('.notes-panel').clientWidth+1,'Markdown 窄栏溢出');cols.style.gridTemplateColumns=previous;
+ moments=[moments[0],make('no-text','screenshot',400000,{image_state:'complete',image_summary:'一张山景照片。',image_transcript:''})];token++;render();await wait(200);
+ assert(document.querySelector('.notes-stream').textContent.includes('图片中没有可转录的文字'),'无文字图片状态错误');
+ output.textContent='PASS：对齐/紧凑重点/OCR折叠与完整阅读/原图与回听隔离/加载反馈/笔记锚点与失败保稿/窄栏/空状态/图片摘要与Markdown/复制/安全呈现/后台刷新/云状态';
  }catch(error){output.textContent=`FAIL：${error.message}`;throw error;}finally{document.getElementById('run').disabled=false;}
 };
 </script></html>
