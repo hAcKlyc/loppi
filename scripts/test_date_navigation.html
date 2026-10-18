@@ -52,18 +52,32 @@ document.getElementById('run').onclick=async()=>{
   try {
     await wait(900);
     assert(button(current)?.getAttribute('aria-current')==='date','初始选中日期错误');
-    const target=button(older), width=target.getBoundingClientRect().width;
+    const target=button(older), rect=n=>n.querySelector('strong').getBoundingClientRect();
+    const initial=rect(target), width=initial.width;
+    const gap=initial.left-rect(button(current)).right;
+    assert(gap<=21&&gap>=7,'日期之间存在多余占位空白');
     target.click();await frame();await wait(70);
     assert(button(older)===target,'选中时替换了日期 DOM');
     assert(button(current)&&button(oldest),'加载时清空了月导航');
-    const middle=target.getBoundingClientRect().width;
-    if(!matchMedia('(prefers-reduced-motion: reduce)').matches) assert(middle>width&&middle<172.8,'没有连续的中间尺寸');
-    const sliding=button(oldest), beforeLeft=sliding.getBoundingClientRect().left;
+    const during=rect(target), middle=during.width;
+    if(!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      assert(middle>width&&middle<target.offsetWidth,'没有连续的中间尺寸');
+      assert(during.left<initial.left-2,'没有自然的横向移动');
+    }
+    const sliding=button(oldest), before=rect(sliding), beforeLeft=before.left;
     flushSync(()=>sliding.click());
-    const firstLeft=sliding.getBoundingClientRect().left;
-    if(!matchMedia('(prefers-reduced-motion: reduce)').matches) assert(Math.abs(firstLeft-beforeLeft)<3,'三日窗口滚动时出现位置跳变');
+    const first=rect(sliding), firstLeft=first.left;
+    if(!matchMedia('(prefers-reduced-motion: reduce)').matches) { assert(Math.abs(firstLeft-beforeLeft)<3,'三日窗口滚动时出现位置跳变'); assert(Math.abs(first.width-before.width)<3&&Math.abs(first.top-before.top)<3,'连续点击时文字尺寸或纵坐标跳变'); }
     await wait(900);
     assert(button(oldest).getAttribute('aria-current')==='date','快速切换被旧请求覆盖');
+    assert(document.querySelector('.date-track').getAnimations({subtree:true}).length===0,'完成后存在残留动画');
+    const settled=rect(button(oldest));
+    if(!matchMedia('(prefers-reduced-motion: reduce)').matches) assert(Math.abs(settled.left-firstLeft)>5,'窗口切换没有最终横向位移');
+    else assert(Math.abs(settled.left-firstLeft)<1,'减少动态效果时未直接定位');
+    const reverse=button(older), reverseBefore=rect(reverse);
+    flushSync(()=>reverse.click());
+    if(!matchMedia('(prefers-reduced-motion: reduce)').matches) assert(Math.abs(rect(reverse).left-reverseBefore.left)<3,'反向切换首帧跳变');
+    await wait(400);button(oldest).click();await wait(900);
     assert(document.querySelector('.event-list h3')?.textContent===`日期 ${oldest} 的记录`,'内容与日期不一致');
     failCalendar=true;button(older).click();await wait(900);
     assert(document.querySelectorAll('.date-choice').length===3,'月请求失败丢失已有日期');
@@ -71,7 +85,7 @@ document.getElementById('run').onclick=async()=>{
     document.querySelector(`[aria-label="${y}年${m+1}月${oldest}日"]`).click();await wait(900);
     assert(button(oldest).getAttribute('aria-current')==='date','日历选日未保留选中日期');
     assert(!falseEmpty,'出现暂无记录闪烁');
-    output.textContent=`PASS：DOM 连续；尺寸 ${width.toFixed(1)} → ${middle.toFixed(1)}；四日期窗口位移、快速切换、过期响应、月请求失败、日历选日均通过。`;
+    output.textContent=`PASS：DOM 连续；尺寸 ${width.toFixed(1)} → ${middle.toFixed(1)}；紧凑间距、双向窗口位移、快速切换、过期响应、月请求失败、日历选日均通过。`;
   } catch(error){output.textContent=`FAIL：${error.message}`;} finally{observer.disconnect();document.getElementById('run').disabled=false;}
 };
 </script></html>

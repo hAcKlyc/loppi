@@ -105,20 +105,27 @@ export function TimelineView({
 	const dateTrack = useRef<HTMLElement>(null);
 	const datePositions = useRef<{
 		target: string;
-		positions: Map<string, number>;
+		direction: number;
+		positions: Map<string, { left: number; title: DOMRect }>;
 	} | null>(null);
 	const chooseDate = (next: Date) => {
-		// Capture the currently painted positions, including an interrupted animation.
+		// Read painted geometry before React changes the layout, including any
+		// animation in flight. A second click continues from that exact frame.
+		const positions = new Map<string, { left: number; title: DOMRect }>();
+		for (const node of dateTrack.current?.querySelectorAll<HTMLElement>(
+			"[data-date]",
+		) ?? []) {
+			const title = node.querySelector("strong");
+			if (title)
+				positions.set(node.dataset.date ?? "", {
+					left: node.getBoundingClientRect().left,
+					title: title.getBoundingClientRect(),
+				});
+		}
 		datePositions.current = {
 			target: dateInput(next),
-			positions: new Map(
-				Array.from(
-					dateTrack.current?.querySelectorAll<HTMLElement>("[data-date]") ?? [],
-				).map((node) => [
-					node.dataset.date ?? "",
-					node.getBoundingClientRect().left,
-				]),
-			),
+			direction: dateInput(next) < selectedKey ? 1 : -1,
+			positions,
 		};
 		onDate(next);
 	};
@@ -133,30 +140,46 @@ export function TimelineView({
 			return;
 		const animations: Animation[] = [];
 		const motion = getComputedStyle(document.documentElement);
-		const duration = Number.parseFloat(
-			motion.getPropertyValue("--motion-layout"),
-		);
-		const easing = motion.getPropertyValue("--ease-standard").trim();
-		// Size transitions handle neighboring widths. FLIP handles a date leaving
-		// the three-day window, whose flex-layout removal otherwise jumps instantly.
+		const options = {
+			duration: Number.parseFloat(motion.getPropertyValue("--motion-layout")),
+			easing: motion.getPropertyValue("--ease-standard").trim(),
+		};
+		// Natural widths establish the destination once. Animate positions and
+		// text geometry together instead of competing with flex/width transitions.
 		for (const node of dateTrack.current?.querySelectorAll<HTMLElement>(
 			"[data-date]",
 		) ?? []) {
-			const left = previous.positions.get(node.dataset.date ?? "");
-			const frames =
-				left === undefined
-					? [{ opacity: 0 }, { opacity: 1 }]
-					: [
+			const before = previous.positions.get(node.dataset.date ?? "");
+			const title = node.querySelector("strong");
+			if (!title) continue;
+			const after = title.getBoundingClientRect();
+			const dx = before
+				? before.left - node.getBoundingClientRect().left
+				: previous.direction *
+					Number.parseFloat(motion.getPropertyValue("--space-9"));
+			if (before) {
+				const base = getComputedStyle(title).transform;
+				const dy = before.title.top - after.top;
+				animations.push(
+					title.animate(
+						[
 							{
-								transform: `translateX(${left - node.getBoundingClientRect().left}px)`,
+								transform: `translate(${before.title.left - after.left - dx}px, ${dy}px) ${base} scale(${before.title.width / after.width}, ${before.title.height / after.height})`,
 							},
-							{ transform: "translateX(0)" },
-						];
+							{ transform: base },
+						],
+						options,
+					),
+				);
+			}
 			animations.push(
-				node.animate(frames, {
-					duration,
-					easing,
-				}),
+				node.animate(
+					[
+						{ transform: `translateX(${dx}px)`, opacity: before ? 1 : 0 },
+						{ transform: "translateX(0)", opacity: 1 },
+					],
+					options,
+				),
 			);
 		}
 		return () => {

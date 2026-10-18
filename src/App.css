@@ -293,13 +293,13 @@ p {
 .date-track {
 	display: flex;
 	align-items: center;
-	gap: var(--space-6);
+	gap: var(--space-8);
 	min-height: 72px;
 }
 .date-choice {
 	position: relative;
 	flex: 0 0 auto;
-	width: calc(var(--type-body) * 5.4);
+	width: max-content;
 	height: 72px;
 	padding: 0;
 	border: 0;
@@ -309,11 +309,7 @@ p {
 	text-align: left;
 	font-size: var(--type-body);
 	font-weight: var(--weight-regular);
-	transition:
-		width var(--motion-layout) var(--ease-standard),
-		font-size var(--motion-layout) var(--ease-standard),
-		color var(--motion-layout) var(--ease-standard),
-		font-weight var(--motion-layout) var(--ease-standard);
+	transition: color var(--motion-layout) var(--ease-standard);
 }
 .date-choice strong {
 	display: block;
@@ -323,7 +319,7 @@ p {
 	letter-spacing: var(--tracking-tight);
 	white-space: nowrap;
 	transform: translateY(0);
-	transition: transform var(--motion-layout) var(--ease-standard);
+	transform-origin: top left;
 }
 .date-choice span {
 	position: absolute;
@@ -339,7 +335,6 @@ p {
 		transform var(--motion-layout) var(--ease-standard);
 }
 .date-choice.date-current {
-	width: calc(var(--type-date) * 5.4);
 	color: var(--color-text);
 	font-size: var(--type-date);
 	font-weight: var(--weight-bold);
