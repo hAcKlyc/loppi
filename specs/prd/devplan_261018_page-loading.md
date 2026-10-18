@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: implemented
 updated: 2026-10-19
 ---
 # 页面统一骨架加载
@@ -23,7 +23,7 @@ updated: 2026-10-19
 - [x] 实现统一展示与逐区域真实加载状态
 - [x] 夹具、静态和构建验证
 - [x] requirements/adversarial/architecture 审查
-- [ ] 重建重启、提交和收尾
+- [x] 重建重启、提交和收尾
 ### Review 基线
 - Base e2c09e4
 - 范围：src 内相关前端页面及新 LoadingState.tsx、scripts/test_page_loading.html、specs/DESIGN.md 和该台账；不包含 README/package 脚本和无关未跟踪文件。
@@ -36,3 +36,5 @@ updated: 2026-10-19
 - 2026-10-19：Phase 1 两路指出状态快照内 error 未接入设置读取边界（blocking）；adversarial 另指出日历背景失败覆盖成功日期（blocking）。均属契约内：使用 snapshot.error 与 IPC 错误合并传入原边界；日历既有月份结果保留成功 days 并记录 error。增加正常 resolve 错误快照、异步错误事件、日历成功后背景失败夹具。页面加载及日期导航再次 PASS；typecheck/lint 与 entry/capture 14 项通过。没有新增 owner/协议。
 
 - 2026-10-19：两路 focused recheck PASS；最终 architecture PASS，无剩余阻塞。最终签名构建与严格签名校验通过；退出旧进程后替换 /Applications/hear.app 并重启，按原意图和 revision guard 恢复记录。revision 55：麦克风/电脑声音均 recording；主窗口首页、队列和设置内容核对正常。
+
+- 收尾：代码提交 8f104d3；安装验证完成，测试浏览器页及临时服务已清理。本批无剩余任务。
