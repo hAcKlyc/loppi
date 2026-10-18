@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: implemented
 updated: 2026-10-18
 ---
 
@@ -30,7 +30,7 @@ updated: 2026-10-18
   - [x] 实现首次骨架和读取失败状态
   - [x] 浏览器及静态构建验证
   - [x] requirements / adversarial / architecture 审查
-  - [ ] 签名 App 重建重启、提交与收尾
+  - [x] 签名 App 重建重启、提交与收尾
 
 ### 当前批次 Review 基线
 - Batch base：be1964a
@@ -46,3 +46,5 @@ updated: 2026-10-18
 - 2026-10-18：typecheck、lint、build 和 17 项纯逻辑测试通过；真实 WebKit 加载夹具 PASS（延迟、独立完成、空/非空、两区域失败重试、背景保留、关闭请求），已有定位夹具 PASS。截图 /tmp/hear-detail-loading.png；减少动态效果通过 CSS media 覆盖确认。
 
 - 2026-10-18：三路 fresh-context 审查均 PASS，无阻塞发现，无修复循环。签名 App 构建、严格签名验证通过，安装至 /Applications/hear.app 并重启；revision 53→54，麦克风和电脑声音均 recording。原生截图确认详情文字、时间定位与选中态正常；首次延迟窗口由受控 WebKit 夹具覆盖。
+
+- 2026-10-18：代码提交 f391762。逐项核对原子交付契约全部满足；单批次审查后代码未变，原有静态、构建和运行证据适用，无待决策或 mandatory 缺口。未改动共享工作树中的 release 打包及其它无关文件。
