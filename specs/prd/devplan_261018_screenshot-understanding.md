@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: implemented
 updated: 2026-10-18
 ---
 # 新截图自动图片理解
@@ -27,7 +27,7 @@ updated: 2026-10-18
 - Batch 1（一个端到端批次）
   - [x] 核心策略、迁移、图片适配和测试
   - [x] 摘要/Markdown 呈现、队列和配置文案、文档
-  - [ ] 验证、cross-review、提交
+  - [x] 验证、cross-review、提交
 ### 当前批次 Review 基线
 - Batch base: f7567399cf2d4387b8902a509ea40deed213092e
 - 范围：moments/events/cloud/main/protocol、MomentList/api/DetailDrawer/WorkspaceViews/App.css、相关测试与架构设计文档及本台账。
@@ -42,3 +42,7 @@ updated: 2026-10-18
 - 2026-10-18：完整核心测试 247 PASS、3 个既有重型测试 ignored；协议 8 PASS；云任务状态 2 PASS；typecheck/lint/frontend build/cargo check PASS。完整 macOS app 构建并深度签名验证 PASS。签名产物隔离启动旧 schema 烟测 PASS，保留历史 OCR、未创建历史云任务。
 - Cross-review：requirements PASS；adversarial PASS（独立复跑 9 个截图测试）；architecture 发现新增 Markdown 样式未使用语义 token，裁决为本次违反既有设计规范的阻塞问题，改用既有 token；定向复核 PASS。CSS 修复后 typecheck/lint/build/浏览器完整 fixture PASS，核心证据不受影响。未新增状态或扩大范围。
 - 最终边界复核：无历史回填/手动重识别入口/新 provider/新 queue；持久旧数据兼容有实际升级测试。云供应商精确识别效果为 advisory，未上传任何真实用户截图做验证。
+
+- 2026-10-18：Batch 1 提交 f036e0a。最终 CSS token 修复后的 macOS app 再构建/签名检查 PASS。单批次整体门禁已完成，无额外完整 review 必要。
+- 已重启签名 GUI 与后台核心，恢复原本录制意图；原生界面确认“正在记录，麦克风·电脑声音”，设置显示“自动整理事件与新截图”及发送说明。未触碰历史截图。实际云端图片质量属于用户可选体验观察，不是未完成实现项。
+- 验收方式（advisory）：新截一张有文字的图片，等摘要出现后展开完整转录并复制 Markdown；旧截图仍显示本地识别文字。无 Key 分支和暂停/重试已在隔离测试覆盖，不要求用户删除现有 Key 来验收。
