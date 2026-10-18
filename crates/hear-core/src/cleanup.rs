@@ -916,7 +916,7 @@ pub fn apply(
             let mut stmt = tx
                 .prepare(
                     "SELECT DISTINCT t.target_kind,t.target_id,t.target_version
-                 FROM precise_segments p JOIN cloud_tasks t ON t.id=p.task_id
+                 FROM precise_segments p JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms
                  WHERE p.started_ms<?2 AND p.ended_ms>?1 AND
                  ((p.source='microphone' AND ?3&1!=0)
                    OR (p.source='system' AND ?3&2!=0))",
@@ -1720,6 +1720,7 @@ mod tests {
         tx.commit().unwrap();
         assert!(!crate::events::task_current(&store.db, &task).unwrap());
         let utterance = crate::cloud::AsrUtterance {
+            words: None,
             start_ms: 500,
             end_ms: 1000,
             text: "should stay erased".into(),
@@ -1812,6 +1813,7 @@ mod tests {
         tx.commit().unwrap();
         assert!(crate::events::task_current(&store.db, &task).unwrap());
         let utterance = crate::cloud::AsrUtterance {
+            words: None,
             start_ms: 500,
             end_ms: 1000,
             text: "already submitted".into(),

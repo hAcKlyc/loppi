@@ -307,7 +307,7 @@ fn visible_segment(
 ) -> Result<Option<(String, i64, i64)>, String> {
     db.query_row(
         "SELECT p.source,p.started_ms,p.ended_ms FROM precise_segments p
-         JOIN cloud_tasks t ON t.id=p.task_id
+         JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms
          WHERE p.id=?1 AND t.state='complete' AND
            ((t.target_kind='event' AND EXISTS (
               SELECT 1 FROM named_events e WHERE e.id=t.target_id
@@ -399,7 +399,7 @@ fn revision_parts(
     let mut output = std::collections::HashMap::new();
     let mut stmt = db.prepare("SELECT p.id,p.source,p.started_ms,p.ended_ms,p.text,p.speaker_scope,
       coalesce(p.speaker_label,''),coalesce(g.group_id,'') FROM precise_segments p
-      JOIN cloud_tasks t ON t.id=p.task_id LEFT JOIN precise_group_membership g
+      JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms LEFT JOIN precise_group_membership g
       ON g.segment_id=p.id
       WHERE p.id IN (SELECT value FROM json_each(?1)) AND t.state='complete' AND
       ((t.target_kind='event' AND EXISTS(SELECT 1 FROM named_events e WHERE e.id=t.target_id
@@ -848,7 +848,7 @@ pub fn resolve_review(
                     JOIN descendants d ON d.id=l.old_event_id)
                  SELECT EXISTS(SELECT 1 FROM precise_segments old_p JOIN cloud_tasks old_t
               ON old_t.id=old_p.task_id JOIN precise_segments new_p ON new_p.id=?2
-              JOIN cloud_tasks new_t ON new_t.id=new_p.task_id
+              JOIN transcript_tasks new_t ON new_t.id=new_p.task_id AND new_p.started_ms>=new_t.started_ms AND new_p.ended_ms<=new_t.ended_ms
               WHERE old_p.id=?1 AND old_t.target_kind=new_t.target_kind
               AND (old_t.target_id=new_t.target_id OR
                 (old_t.target_kind='event' AND new_t.target_id IN descendants)))",
@@ -884,10 +884,10 @@ pub fn resolve_review(
             let target_scope: (i64, i64) = tx
                 .query_row(
                     "SELECT started_ms,ended_ms FROM named_events WHERE id=(
-                   SELECT t.target_id FROM precise_segments p JOIN cloud_tasks t ON t.id=p.task_id
+                   SELECT t.target_id FROM precise_segments p JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms
                    WHERE p.id=?1) UNION ALL
                  SELECT started_ms,ended_ms FROM manual_ranges WHERE id=(
-                   SELECT t.target_id FROM precise_segments p JOIN cloud_tasks t ON t.id=p.task_id
+                   SELECT t.target_id FROM precise_segments p JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms
                    WHERE p.id=?1) LIMIT 1",
                     params![target_id],
                     |r| Ok((r.get(0)?, r.get(1)?)),
@@ -1111,7 +1111,7 @@ fn search_sql(db: &Connection, query: Option<&str>) -> Result<(String, String), 
         WHERE identity.segment_id=p.id) AS person_name,t.target_kind
       FROM search_records sr
       LEFT JOIN precise_segments p ON sr.kind='precise' AND p.id=sr.item_id
-      LEFT JOIN cloud_tasks t ON t.id=p.task_id
+      LEFT JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms
       WHERE sr.started_ms<?2 AND sr.ended_ms>?1
         AND (?3 IS NULL OR EXISTS(SELECT 1 FROM precise_identity_projection identity
           WHERE identity.segment_id=p.id AND identity.person_id=?3))
@@ -1341,10 +1341,10 @@ pub fn session_speakers(
     let mut stmt = db
         .prepare(
             "SELECT i.speaker,p.id,i.person_id FROM precise_segments p
-         JOIN cloud_tasks t ON t.id=p.task_id
+         JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms
          JOIN precise_identity_projection i ON i.segment_id=p.id
          JOIN precise_segments seed ON seed.id=?1
-         JOIN cloud_tasks st ON st.id=seed.task_id
+         JOIN transcript_tasks st ON st.id=seed.task_id AND seed.started_ms>=st.started_ms AND seed.ended_ms<=st.ended_ms
          WHERE t.target_kind=st.target_kind AND t.target_id=st.target_id
          AND t.target_version=st.target_version AND t.state='complete'
          AND i.speaker IS NOT NULL ORDER BY p.started_ms,p.id",
@@ -1876,7 +1876,7 @@ fn group_voice_evidence(
     let mut stmt = tx.prepare(
         "SELECT p.speaker_scope,p.speaker_label,o.vector FROM voice_observations o
          JOIN precise_segments p ON p.id=o.segment_id
-         JOIN cloud_tasks t ON t.id=p.task_id
+         JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms
          JOIN speaker_groups g ON g.speaker_scope=p.speaker_scope AND g.speaker_label=p.speaker_label
          WHERE g.group_id=?1 AND t.target_kind=?2 AND t.target_id=?3
            AND t.target_version=?4 AND t.state='complete' AND p.source=?5
@@ -1908,7 +1908,7 @@ fn group_labels(
 ) -> Result<Vec<(String, String)>, String> {
     let mut stmt = tx.prepare(
         "SELECT DISTINCT p.speaker_scope,p.speaker_label FROM precise_segments p
-         JOIN cloud_tasks t ON t.id=p.task_id
+         JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms
          JOIN speaker_groups g ON g.speaker_scope=p.speaker_scope AND g.speaker_label=p.speaker_label
          WHERE g.group_id=?1 AND t.target_kind=?2 AND t.target_id=?3
            AND t.target_version=?4 AND t.state='complete' AND p.source=?5",
@@ -1933,11 +1933,11 @@ fn safe_session_merge(
     let overlap: i64 = tx.query_row(
         "SELECT EXISTS(SELECT 1 FROM precise_segments a
            JOIN speaker_groups ga ON ga.speaker_scope=a.speaker_scope AND ga.speaker_label=a.speaker_label
-           JOIN cloud_tasks ta ON ta.id=a.task_id
+           JOIN transcript_tasks ta ON ta.id=a.task_id AND a.started_ms>=ta.started_ms AND a.ended_ms<=ta.ended_ms
            JOIN precise_segments b ON a.source=b.source AND a.started_ms<b.ended_ms
              AND b.started_ms<a.ended_ms
            JOIN speaker_groups gb ON gb.speaker_scope=b.speaker_scope AND gb.speaker_label=b.speaker_label
-           JOIN cloud_tasks tb ON tb.id=b.task_id
+           JOIN transcript_tasks tb ON tb.id=b.task_id AND b.started_ms>=tb.started_ms AND b.ended_ms<=tb.ended_ms
            WHERE ga.group_id=?1 AND gb.group_id=?2
              AND ta.target_kind=?3 AND ta.target_id=?4 AND ta.target_version=?5
              AND tb.target_kind=ta.target_kind AND tb.target_id=ta.target_id
@@ -1951,7 +1951,7 @@ fn safe_session_merge(
     let people: i64 = tx.query_row(
         "SELECT count(DISTINCT sb.person_id) FROM speaker_bindings sb
          JOIN precise_segments p ON p.id=sb.current_segment_id
-         JOIN cloud_tasks t ON t.id=p.task_id
+         JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms
          JOIN speaker_groups g ON g.speaker_scope=p.speaker_scope AND g.speaker_label=p.speaker_label
          WHERE g.group_id IN (?1,?2) AND sb.state='active'
            AND t.target_kind=?3 AND t.target_id=?4 AND t.target_version=?5
@@ -2006,7 +2006,7 @@ fn reconcile_session_speaker(
         .query_row(
             "SELECT p.speaker_scope,p.speaker_label,p.source,t.target_kind,t.target_id,
            t.target_version FROM precise_segments p
-           JOIN cloud_tasks t ON t.id=p.task_id WHERE p.id=?1",
+           JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms WHERE p.id=?1",
             params![segment_id.to_string()],
             |r| {
                 Ok((
@@ -2030,7 +2030,7 @@ fn reconcile_session_speaker(
     let mut stmt=tx.prepare(
         "SELECT DISTINCT g.group_id,o.vector,p.speaker_scope FROM voice_observations o
          JOIN precise_segments p ON p.id=o.segment_id
-         JOIN cloud_tasks t ON t.id=p.task_id
+         JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms
          JOIN speaker_groups g ON g.speaker_scope=p.speaker_scope AND g.speaker_label=p.speaker_label
          WHERE t.target_kind=?1 AND t.target_id=?2 AND t.target_version=?3
            AND t.state='complete' AND p.source=?4
@@ -2143,7 +2143,7 @@ pub fn rebuild_speaker_groups(
     tx.execute(
         "UPDATE speaker_groups SET group_id=speaker_scope||':'||speaker_label
          WHERE speaker_scope IN (SELECT DISTINCT p.speaker_scope FROM precise_segments p
-           JOIN cloud_tasks t ON t.id=p.task_id
+           JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms
            WHERE t.target_kind=?1 AND t.target_id=?2 AND t.target_version=?3)",
         params![target.0, target.1, target.2],
     )
@@ -2151,14 +2151,14 @@ pub fn rebuild_speaker_groups(
     tx.execute(
         "UPDATE speaker_bindings SET state='revoked',current_segment_id=NULL,updated_ms=?4
          WHERE state='active' AND origin='automatic' AND current_segment_id IN
-         (SELECT p.id FROM precise_segments p JOIN cloud_tasks t ON t.id=p.task_id
+         (SELECT p.id FROM precise_segments p JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms
           WHERE t.target_kind=?1 AND t.target_id=?2 AND t.target_version=?3)",
         params![target.0, target.1, target.2, now],
     )
     .map_err(|error| error.to_string())?;
     tx.execute(
         "UPDATE voice_observations SET matched_generation=0 WHERE segment_id IN
-         (SELECT p.id FROM precise_segments p JOIN cloud_tasks t ON t.id=p.task_id
+         (SELECT p.id FROM precise_segments p JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms
           WHERE t.target_kind=?1 AND t.target_id=?2 AND t.target_version=?3)",
         params![target.0, target.1, target.2],
     )
@@ -2167,7 +2167,7 @@ pub fn rebuild_speaker_groups(
         .prepare(
             "SELECT o.segment_id,o.vector FROM voice_observations o
              JOIN precise_segments p ON p.id=o.segment_id
-             JOIN cloud_tasks t ON t.id=p.task_id
+             JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms
              WHERE t.target_kind=?1 AND t.target_id=?2 AND t.target_version=?3
                AND t.state='complete' AND o.state='ready' AND o.model_version=?4
              ORDER BY p.started_ms,p.id",
@@ -2196,7 +2196,7 @@ fn rebuild_for_segment(tx: &Transaction<'_>, segment_id: Uuid, now: i64) -> Resu
     let target: (String, String, String) = tx
         .query_row(
             "SELECT t.target_kind,t.target_id,t.target_version FROM precise_segments p
-             JOIN cloud_tasks t ON t.id=p.task_id WHERE p.id=?1",
+             JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms WHERE p.id=?1",
             params![segment_id.to_string()],
             |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         )
@@ -2623,7 +2623,7 @@ pub fn reconcile_corrections(
                  JOIN precise_segments old_p ON old_p.id=c.anchor_segment_id
                  JOIN cloud_tasks old_t ON old_t.id=old_p.task_id
                  JOIN precise_segments new_p ON new_p.id=?4
-                 JOIN cloud_tasks new_t ON new_t.id=new_p.task_id
+                 JOIN transcript_tasks new_t ON new_t.id=new_p.task_id AND new_p.started_ms>=new_t.started_ms AND new_p.ended_ms<=new_t.ended_ms
                  WHERE c.state='pending_review' AND c.source=?1
                    AND c.started_ms<?3 AND c.ended_ms>?2
                    AND old_t.target_kind=new_t.target_kind
@@ -2724,7 +2724,7 @@ pub fn pending_event_corrections(
         "UPDATE text_corrections SET state='pending_review',current_segment_id=NULL,
          updated_ms=?2,revision=revision+1
          WHERE state='active' AND current_segment_id IN (
-           SELECT p.id FROM precise_segments p JOIN cloud_tasks t ON t.id=p.task_id
+           SELECT p.id FROM precise_segments p JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms
            WHERE t.target_kind='event' AND t.target_id=?1)",
         params![event_id.to_string(), now],
     )
@@ -2732,7 +2732,7 @@ pub fn pending_event_corrections(
     tx.execute(
         "UPDATE speaker_bindings SET state='pending_review',current_segment_id=NULL,
       updated_ms=?2 WHERE state='active' AND current_segment_id IN (
-        SELECT p.id FROM precise_segments p JOIN cloud_tasks t ON t.id=p.task_id
+        SELECT p.id FROM precise_segments p JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms
         WHERE t.target_kind='event' AND t.target_id=?1)",
         params![event_id.to_string(), now],
     )
@@ -2942,6 +2942,7 @@ mod tests {
             &mut db,
             &task,
             &[AsrUtterance {
+                words: None,
                 start_ms: 0,
                 end_ms: 4000,
                 text: "另一场发言".into(),
@@ -3183,6 +3184,7 @@ mod tests {
             &mut db,
             &task,
             &[AsrUtterance {
+                words: None,
                 start_ms: 500,
                 end_ms: 4000,
                 text: "你好".into(),
@@ -3233,12 +3235,14 @@ mod tests {
             &task,
             &[
                 AsrUtterance {
+                    words: None,
                     start_ms: 500,
                     end_ms: 1800,
                     text: "一句".into(),
                     speaker: Some("1".into()),
                 },
                 AsrUtterance {
+                    words: None,
                     start_ms: 1800,
                     end_ms: 2800,
                     text: "二句".into(),
@@ -3256,6 +3260,11 @@ mod tests {
         bind_speaker(&tx, old[0].id, person, true, 8004).unwrap();
         tx.commit().unwrap();
         events::edit_event(&mut db, event, 1, 1000, 7000, "会议", None, 8005).unwrap();
+        {
+            let tx = db.transaction().unwrap();
+            events::retranscribe_event_in(&tx, event, 2, 8005).unwrap();
+            tx.commit().unwrap();
+        }
         assert_eq!(review_items(&db).unwrap().len(), 2);
         let task = events::take_task(&mut db, CloudProvider::Asr, 8006)
             .unwrap()
@@ -3265,12 +3274,14 @@ mod tests {
             &task,
             &[
                 AsrUtterance {
+                    words: None,
                     start_ms: 500,
                     end_ms: 1800,
                     text: "一句新版".into(),
                     speaker: Some("2".into()),
                 },
                 AsrUtterance {
+                    words: None,
                     start_ms: 1800,
                     end_ms: 2800,
                     text: "二句新版".into(),
@@ -3294,78 +3305,18 @@ mod tests {
         assert!(restored.iter().all(|item| item.person_id == Some(person)));
         let (left, right) =
             events::split_event(&mut db, event, 2, 2800, "左段", "右段", 8009).unwrap();
-        let left_task = events::take_task(&mut db, CloudProvider::Asr, 8010)
-            .unwrap()
-            .unwrap();
-        assert_eq!(left_task.target_id, left.to_string());
-        events::publish_asr(
-            &mut db,
-            &left_task,
-            &[AsrUtterance {
-                start_ms: 500,
-                end_ms: 1800,
-                text: "左段发言".into(),
-                speaker: Some("3".into()),
-            }],
-            8011,
-        )
-        .unwrap();
-        let right_task = events::take_task(&mut db, CloudProvider::Asr, 8012)
-            .unwrap()
-            .unwrap();
-        assert_eq!(right_task.target_id, right.to_string());
-        events::publish_asr(
-            &mut db,
-            &right_task,
-            &[AsrUtterance {
-                start_ms: 0,
-                end_ms: 1000,
-                text: "右段发言".into(),
-                speaker: Some("4".into()),
-            }],
-            8013,
-        )
-        .unwrap();
-        assert_eq!(review_items(&db).unwrap().len(), 2);
-        let left_segment = events::event_detail(&db, left, 0, 10)
-            .unwrap()
-            .precise_segments[0]
-            .id;
-        let right_segment = events::event_detail(&db, right, 0, 10)
-            .unwrap()
-            .precise_segments[0]
-            .id;
-        let review = review_items(&db).unwrap().remove(0);
-        let tx = db.transaction().unwrap();
-        resolve_review(&tx, review.id, Some(left_segment), 8014).unwrap();
-        tx.commit().unwrap();
-        assert_eq!(review_items(&db).unwrap().len(), 1);
-        assert_eq!(
-            events::event_detail(&db, left, 0, 10)
+        assert!(
+            events::take_task(&mut db, CloudProvider::Asr, 8010)
                 .unwrap()
-                .precise_segments[0]
-                .person_id,
-            Some(person)
+                .is_none()
         );
-        assert_eq!(
-            events::event_detail(&db, right, 0, 10)
-                .unwrap()
-                .precise_segments[0]
-                .person_id,
-            None
-        );
-        let review = review_items(&db).unwrap().remove(0);
-        let tx = db.transaction().unwrap();
-        resolve_review(&tx, review.id, Some(right_segment), 8015).unwrap();
-        tx.commit().unwrap();
+        for (id, expected) in [(left, restored[0].id), (right, restored[1].id)] {
+            let detail = events::event_detail(&db, id, 0, 10).unwrap();
+            assert_eq!(detail.precise_segments.len(), 1);
+            assert_eq!(detail.precise_segments[0].id, expected);
+            assert_eq!(detail.precise_segments[0].person_id, Some(person));
+        }
         assert!(review_items(&db).unwrap().is_empty());
-        assert_eq!(
-            events::event_detail(&db, right, 0, 10)
-                .unwrap()
-                .precise_segments[0]
-                .person_id,
-            Some(person)
-        );
     }
 
     #[test]
@@ -3396,6 +3347,7 @@ mod tests {
             &mut db,
             &first,
             &[AsrUtterance {
+                words: None,
                 start_ms: 0,
                 end_ms: 3500,
                 text: "第一段".into(),
@@ -3413,12 +3365,14 @@ mod tests {
             &second,
             &[
                 AsrUtterance {
+                    words: None,
                     start_ms: 0,
                     end_ms: 3500,
                     text: "第二段".into(),
                     speaker: Some("2".into()),
                 },
                 AsrUtterance {
+                    words: None,
                     start_ms: 3500,
                     end_ms: 4500,
                     text: "短句".into(),
@@ -3489,7 +3443,7 @@ mod tests {
         let target: (String, String, String) = tx
             .query_row(
                 "SELECT t.target_kind,t.target_id,t.target_version FROM precise_segments p
-             JOIN cloud_tasks t ON t.id=p.task_id WHERE p.id=?1",
+             JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms WHERE p.id=?1",
                 params![segments[2].id.to_string()],
                 |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
             )
@@ -3541,6 +3495,7 @@ mod tests {
             .into_iter()
             .enumerate()
             .map(|(index, speaker)| AsrUtterance {
+                words: None,
                 start_ms: index as i64 * 3000,
                 end_ms: index as i64 * 3000 + 3000,
                 text: "发言".into(),
@@ -3628,6 +3583,7 @@ mod tests {
         let utterances = utterances
             .iter()
             .map(|(speaker, start, end)| AsrUtterance {
+                words: None,
                 start_ms: *start,
                 end_ms: *end,
                 text: "对照语音".into(),
@@ -3885,6 +3841,7 @@ mod tests {
             &mut db,
             &task,
             &[AsrUtterance {
+                words: None,
                 start_ms: 500,
                 end_ms: 3000,
                 text: "精确转录完成".into(),
@@ -3901,6 +3858,7 @@ mod tests {
             &mut db,
             &overlapping,
             &[AsrUtterance {
+                words: None,
                 start_ms: 500,
                 end_ms: 3000,
                 text: "精确转录完成".into(),
@@ -3941,6 +3899,7 @@ mod tests {
             &mut db,
             &task,
             &[AsrUtterance {
+                words: None,
                 start_ms: 500,
                 end_ms: 3000,
                 text: "原稿".into(),
@@ -4020,6 +3979,7 @@ mod tests {
             &mut db,
             &first,
             &[AsrUtterance {
+                words: None,
                 start_ms: 500,
                 end_ms: 3000,
                 text: "识别错字".into(),
@@ -4062,6 +4022,7 @@ mod tests {
             &mut db,
             &parallel,
             &[AsrUtterance {
+                words: None,
                 start_ms: 500,
                 end_ms: 3000,
                 text: "独立范围识别".into(),
@@ -4096,6 +4057,11 @@ mod tests {
         let _: Uuid = manual_range;
 
         events::edit_event(&mut db, event, 1, 1000, 7000, "讨论", None, 8003).unwrap();
+        {
+            let tx = db.transaction().unwrap();
+            events::retranscribe_event_in(&tx, event, 2, 8003).unwrap();
+            tx.commit().unwrap();
+        }
         let next = events::take_task(&mut db, CloudProvider::Asr, 8004)
             .unwrap()
             .unwrap();
@@ -4103,6 +4069,7 @@ mod tests {
             &mut db,
             &next,
             &[AsrUtterance {
+                words: None,
                 start_ms: 500,
                 end_ms: 3000,
                 text: "新版原识别".into(),
@@ -4125,6 +4092,11 @@ mod tests {
         );
 
         events::edit_event(&mut db, event, 2, 1000, 8000, "讨论", None, 8006).unwrap();
+        {
+            let tx = db.transaction().unwrap();
+            events::retranscribe_event_in(&tx, event, 3, 8006).unwrap();
+            tx.commit().unwrap();
+        }
         let split = events::take_task(&mut db, CloudProvider::Asr, 8007)
             .unwrap()
             .unwrap();
@@ -4133,12 +4105,14 @@ mod tests {
             &split,
             &[
                 AsrUtterance {
+                    words: None,
                     start_ms: 500,
                     end_ms: 1750,
                     text: "前半句".into(),
                     speaker: Some("1".into()),
                 },
                 AsrUtterance {
+                    words: None,
                     start_ms: 1750,
                     end_ms: 3000,
                     text: "后半句".into(),
@@ -4174,6 +4148,11 @@ mod tests {
         assert_eq!(resolved[1].text, "后半句");
 
         events::edit_event(&mut db, event, 3, 1000, 9000, "讨论", None, 8010).unwrap();
+        {
+            let tx = db.transaction().unwrap();
+            events::retranscribe_event_in(&tx, event, 4, 8010).unwrap();
+            tx.commit().unwrap();
+        }
         let revised = events::take_task(&mut db, CloudProvider::Asr, 8011)
             .unwrap()
             .unwrap();
@@ -4181,6 +4160,7 @@ mod tests {
             &mut db,
             &revised,
             &[AsrUtterance {
+                words: None,
                 start_ms: 500,
                 end_ms: 1750,
                 text: "再一次错误".into(),
@@ -4197,38 +4177,17 @@ mod tests {
 
         let (left, _right) =
             events::split_event(&mut db, event, 4, 3500, "上半场", "下半场", 8013).unwrap();
-        let split_task = events::take_task(&mut db, CloudProvider::Asr, 8014)
-            .unwrap()
-            .unwrap();
-        assert_eq!(split_task.target_id, left.to_string());
-        events::publish_asr(
-            &mut db,
-            &split_task,
-            &[AsrUtterance {
-                start_ms: 500,
-                end_ms: 1750,
-                text: "拆分后错字".into(),
-                speaker: Some("9".into()),
-            }],
-            8015,
-        )
-        .unwrap();
-        let pending = review_items(&db).unwrap();
-        assert_eq!(pending.len(), 1);
-        let target = events::event_detail(&db, left, 0, 10)
-            .unwrap()
-            .precise_segments[0]
-            .id;
-        let tx = db.transaction().unwrap();
-        resolve_review(&tx, pending[0].id, Some(target), 8016).unwrap();
-        tx.commit().unwrap();
-        assert_eq!(
-            events::event_detail(&db, left, 0, 10)
+        assert!(
+            events::take_task(&mut db, CloudProvider::Asr, 8014)
                 .unwrap()
-                .precise_segments[0]
-                .text,
-            "正确文字"
+                .is_none()
         );
+        let reused = events::event_detail(&db, left, 0, 10)
+            .unwrap()
+            .precise_segments;
+        assert_eq!(reused[0].id, latest[0].id);
+        assert_eq!(reused[0].text, "正确文字");
+        assert!(review_items(&db).unwrap().is_empty());
     }
 
     #[test]
@@ -4267,6 +4226,7 @@ mod tests {
                 &mut db,
                 &task,
                 &[AsrUtterance {
+                    words: None,
                     start_ms: 500,
                     end_ms: 4000,
                     text: "一段清楚的话".into(),

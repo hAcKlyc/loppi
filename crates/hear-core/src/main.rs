@@ -1266,7 +1266,24 @@ fn process_cloud_task(
                         let store = shared.store.lock().map_err(|e| e.to_string())?;
                         events::audio_manifest(&store.db, task)?
                     };
-                    let ogg = events::assemble_ogg(&shared.directory, task, &parts)?;
+                    let input = {
+                        let store = shared.store.lock().map_err(|e| e.to_string())?;
+                        events::asr::input(&store.db, task.id)?
+                    };
+                    let (ogg, audio_duration) = if let Some(input) = input {
+                        (
+                            events::asr::assemble(
+                                &shared.directory,
+                                &events::asr::resolve_media(&input, &parts)?,
+                            )?,
+                            input.duration_ms,
+                        )
+                    } else {
+                        (
+                            events::assemble_ogg(&shared.directory, task, &parts)?,
+                            task.end - task.start,
+                        )
+                    };
                     let _outbound = shared.asr_outbound.lock().map_err(|e| e.to_string())?;
                     // Recheck after audio decoding: a boundary edit or cleanup
                     // may have superseded the task before any upload.
@@ -1296,7 +1313,7 @@ fn process_cloud_task(
                         task.remote_id,
                         &ogg,
                         cloud::AsrAudioFormat::Ogg,
-                        task.end - task.start,
+                        audio_duration,
                         deadline,
                         &meter,
                     )?;

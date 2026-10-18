@@ -129,7 +129,7 @@ fn bucket(db: &Connection, segment: Uuid) -> Result<String, String> {
     let parts: (String, String, String) = db
         .query_row(
             "SELECT t.target_kind,t.target_id,t.target_version
-      FROM precise_segments p JOIN cloud_tasks t ON t.id=p.task_id WHERE p.id=?1",
+      FROM precise_segments p JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms WHERE p.id=?1",
             [segment.to_string()],
             |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         )
@@ -150,8 +150,8 @@ fn evidence(db: &Connection, segment: Uuid, person: Uuid) -> Result<EnrollmentPa
         .map_err(|_| "speaker is not manually confirmed".to_string())?;
     // Check all requests in this target/version, not just one provider request.
     let overlap: bool = db.query_row("SELECT EXISTS(SELECT 1 FROM precise_segments p
-      JOIN cloud_tasks t ON t.id=p.task_id JOIN precise_segments seed ON seed.id=?1
-      JOIN cloud_tasks st ON st.id=seed.task_id
+      JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms JOIN precise_segments seed ON seed.id=?1
+      JOIN transcript_tasks st ON st.id=seed.task_id AND seed.started_ms>=st.started_ms AND seed.ended_ms<=st.ended_ms
       WHERE t.target_kind=st.target_kind AND t.target_id=st.target_id AND t.target_version=st.target_version
       AND t.state='complete' AND p.source=?2 AND p.id!=seed.id
       AND p.started_ms<?4 AND p.ended_ms>?3)", params![segment.to_string(),source,start,end], |r|r.get(0)).map_err(|e|e.to_string())?;
@@ -687,8 +687,8 @@ fn intervening_segment(
     b: &EnrollmentPart,
 ) -> Result<bool, String> {
     db.query_row("SELECT EXISTS(SELECT 1 FROM precise_segments p
-      JOIN cloud_tasks t ON t.id=p.task_id JOIN precise_segments seed ON seed.id=?1
-      JOIN cloud_tasks st ON st.id=seed.task_id
+      JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms JOIN precise_segments seed ON seed.id=?1
+      JOIN transcript_tasks st ON st.id=seed.task_id AND seed.started_ms>=st.started_ms AND seed.ended_ms<=st.ended_ms
       WHERE t.target_kind=st.target_kind AND t.target_id=st.target_id AND t.target_version=st.target_version
       AND t.state='complete' AND p.source=seed.source AND p.id NOT IN(?1,?2)
       AND p.started_ms<?4 AND p.ended_ms>?3)",params![a.segment_id.to_string(),b.segment_id.to_string(),a.end,b.start],|r|r.get(0)).map_err(|e|e.to_string())

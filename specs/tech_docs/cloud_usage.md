@@ -37,7 +37,7 @@ LLM 计量来自 [Chat Completions usage](https://api-docs.deepseek.com/api/crea
 
 `C = ((input - cached) × input_rate + cached × cache_rate + output × output_rate) / 1,000,000`。
 
-ASR 优先使用 `audio_info.duration` 毫秒；尚未返回时以已提交音频时长估算。生产 Ogg 路径由 assemble_ogg 按 task 范围逐帧生成，包含中间静音，其确切编码时长等于该范围；连接验证是 1 秒 WAV。这里不是拿转录句段首尾推算时长。`C = audio_ms × hourly_rate / 3,600,000`，保持毫秒比例的估算，不擅自发明供应商未明确的秒级舍入方向。
+ASR 优先使用 `audio_info.duration` 毫秒；尚未返回时以已提交音频时长估算。新任务由不可变 ASR 输入计划生成 Ogg，提交估算使用压缩后的编码时长（包括保留停顿/接缝），不使用事件墙钟跨度；旧任务仍由 assemble_ogg 按原范围逐帧生成；连接验证是 1 秒 WAV。这里不是拿转录句段首尾推算时长。`C = audio_ms × hourly_rate / 3,600,000`，保持毫秒比例的估算，不擅自发明供应商未明确的秒级舍入方向。
 
 计算使用 i128 中间值，存 i64 CNY 纳元，最终渲染才显示到小数位。无套餐/免费额度/合同折扣抵扣，不读取账户余额。不混加其他币种；未来新增供应商时必须登记其真实单位和货币并补齐归一化/计价适配及测试。
 

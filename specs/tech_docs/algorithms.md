@@ -75,9 +75,13 @@ LLM 收到粗文字、真实时间、来源、人声但无文字的标记，以�
 
 LLM/ASR 各有配置、暂停开关和持久 `cloud_tasks`，可单独继续。取任务时手动任务优先；任务绑定 `target_kind + target_id + target_version`，发布前再次确认仍指向当前事件/范围。[`take_task` / `task_current`](../../crates/hear-core/src/events.rs)。暂停队列不影响采集和粗转；已经外发的请求可以完成并经版本校验保存。
 
-ASR 默认由 LLM 命名且判断值得精转的事件创建；人工建事件、改需精转范围、明确“重新精转”或“选择范围精转”可直接建 ASR 待办。当前同一来源在保留原声之间超过 3 秒的静音处分开物理任务，连续范围仍以最长约 15 分钟为上限，两路分别建任务；一个虚拟事件可关联多个物理请求。整段输入由已保存 Opus 块按真实时间重组，间隙编码为静音；以有界 10 秒 slab 拼 Ogg/Opus，避免一次把整场 PCM 留在内存。临时文件在正常/崩溃恢复时清理，单请求有大小上限。[`queue_asr_with_processor` / `assemble_ogg`](../../crates/hear-core/src/events.rs)。
+ASR 默认由 LLM 命名且判断值得精转的事件触发。自动请求等待事件末尾 15 分钟且相关本地分析/候选拟合已完成；后续独立事件可提前关闭观察范围。处理中持续显示粗转，失败显式显示异常。人工建事件、改范围、明确“重新精转”或“选择范围精转”可立即规划。
 
-火山标准版使用 `submit/query`、固定资源 `volc.seedasr.auc`，请求 `enable_speaker_info`、`show_utterances` 与当前 `ssd_version=300`。物理任务 ID 也是远端请求去重 ID；未知提交结果应先查询而非直接付费重送。[`cloud.rs`](../../crates/hear-core/src/cloud.rs)。若供应商把长停顿合为一句，适配器仅在词列表完整、文字可顺序对齐且时刻有效时按超过 3 秒的词间停顿拆句，保留原文、标点和 speaker；不完整/无效的词元数据保持原句交由严格覆盖校验，零时长重复句仍拒绝。供应商 `utterances` 的相对毫秒通过任务真实起点映射，并核验区间确有对应编码输入后，作为精转事实存入 `precise_segments`；speaker 标签的作用域是物理任务 ID。[`publish_asr`](../../crates/hear-core/src/events.rs)。空结果可为已完成但“无可识别文字”，不冒充配置失败。
+`events/asr.rs` 在排队事务内保存不可变 `asr_inputs`：来源封块、原始时间范围、上传偏移与编码时长。封块路径是输入来源记录；实际上传经当前音频清单定位相同原始范围，允许清理其他时段时封块被重写，不改变持久输入和时间映射。普通短停顿保留；超过 3 秒且完全被无语音保留决策覆盖、没有采集缺口或清理记录的空档，在上传副本压至 1 秒。未知长缺口分开请求，原声/回放/真实时钟不变。同一来源按压缩后最多 20 分钟拼 Ogg/Opus，编码后仍检查 10MB 上限；两路来源分别提交。使用有界 10 秒 slab，内存不随整场 PCM 增长。事件可以比上传时长长得多。
+
+`event_asr_refs` 记录事件对物理请求的有效范围；`event_asr_state` 仅保存当前范围是否已规划。`transcript_tasks` 统一投影当前事件归属，网络和用量继续使用物理 `cloud_tasks`。拆分继承完整识别历史，当前视图才按子事件裁剪，日后延长可复用原范围。自然续接、裁剪、拆分与合并复用已提交/已完成输入，按输入覆盖范围补新增音频，空结果和失败也不自动付费重送。完整旧句段、纠错和向量保留原 ID；跨人工边界的整句隐藏并显示部分精转，不猜字时间。显式重新精转才退出旧引用、生成新运行。界面在增量处理中同时显示旧精转和未覆盖粗转。
+
+火山标准版使用 `submit/query`、固定资源 `volc.seedasr.auc`，请求 `enable_speaker_info`、`show_utterances` 与当前 `ssd_version=300`。物理任务 ID 也是远端请求去重 ID；未知提交结果应先查询而非直接付费重送。[`cloud.rs`](../../crates/hear-core/src/cloud.rs)。若供应商把长停顿合为一句，适配器仅在词列表完整、文字可顺序对齐且时刻有效时按超过 3 秒的词间停顿拆句，保留原文、标点和 speaker；不完整/无效的词元数据保持原句交由严格覆盖校验，零时长重复句仍拒绝。供应商 `utterances` 的相对毫秒通过持久输入映射还原；跨压缩接缝的句子必须用完整且顺序对齐的词级时间拆开，不能把一个句子拉过原始长空档。任何无法映射的返回令本请求整体失败，不发布部分结果、不自动新建付费请求。核验区间确有对应编码输入后，作为精转事实存入 `precise_segments`；speaker 标签的作用域是物理任务 ID。[`publish_asr`](../../crates/hear-core/src/events.rs)。空结果可为已完成但“无可识别文字”，不冒充配置失败。升级前已经提交的任务保留原请求 ID 和旧线性映射，已完成历史任务只建有效引用；只有尚未提交的 pending 任务按新规则规划。
 
 云 ASR 完成之后才进入本机说话人观察和人物匹配。精转重跑创建新运行版本；旧任务与句段保留作纠错锚点、退出当前投影。人工逐句文字修正独立保存；来源与时间能唯一对应时迁移到新句段，否则进入待核对，不能由新结果静默覆盖。[`retranscribe_event_in`](../../crates/hear-core/src/events.rs)、[`reconcile_corrections`](../../crates/hear-core/src/knowledge.rs)。
 
@@ -113,7 +117,7 @@ Mark、评论和主动截图是独立的 `moments`，按用户触发或选择的
 | VAD 512 样本输入、约 20 秒主动 flush | [`hear-worker`](../../crates/hear-worker/src/main.rs) | 控制推理资源；需测长连续语音召回。 |
 | `pending_vad_v2` 保留判断 | [`retention.rs`](../../crates/hear-core/src/retention.rs) | 工作树候选；安装版误删/误留未验收。 |
 | 15 分钟候选静默切点、30 分钟计算窗 | [`events.rs`](../../crates/hear-core/src/events.rs) | 只切计算输入，不决定用户事件边界。 |
-| 同源 ASR 最长约 15 分钟、Ogg/Opus、SSD 300 | [`events.rs`](../../crates/hear-core/src/events.rs)、[`cloud.rs`](../../crates/hear-core/src/cloud.rs) | 真实双人案例改善误拆；公开多人反例显示仍会误并。 |
+| 同源 ASR 编码时长最多 20 分钟、Ogg/Opus、SSD 300 | [`events.rs`](../../crates/hear-core/src/events.rs)、[`cloud.rs`](../../crates/hear-core/src/cloud.rs) | 真实双人案例改善误拆；公开多人反例显示仍会误并。 |
 | 本机匿名合组及全局人物门槛 | [`knowledge.rs`](../../crates/hear-core/src/knowledge.rs) | 小样本原型值，跨设备误认/漏认尚未冻结。 |
 
 这些参数的改变须同时检查输入/模型版本、旧任务与修订重放、真实时间对齐、用户可见结果和代表性音频质量。单个案例的说话人组数吻合，不等于逐句分段准确，也不等于跨事件人物识别准确。

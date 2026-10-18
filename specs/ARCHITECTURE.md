@@ -46,7 +46,7 @@ flowchart LR
 | 层 | 实际对象 | 性质 |
 | --- | --- | --- |
 | 物理事实 | `recording_sessions`、`session_clock`、`audio_blocks`、`coarse_segments`、`media_gaps`、`media/*.opus` | 两路声音各自的采样/墙钟映射、已确认封块、粗转与真实缺口；不能被事件标题反写。 |
-| 处理事实 | `candidate_windows`、`cloud_queues`、`cloud_tasks`、`precise_segments` | 候选与供应商任务有各自版本；云结果必须通过当前版本与清理范围校验才能发布。 |
+| 处理事实 | `candidate_windows`、`cloud_queues`、`cloud_tasks`、`asr_inputs`、`event_asr_refs/state`、`precise_segments` | 候选与供应商任务有各自版本；ASR 输入不可变，当前事件通过有效范围引用物理请求；云结果必须通过当前归属与清理范围校验才能发布。 |
 | 用户事实 | `named_events`、`manual_ranges`、`moments`、`people`、`speaker_bindings`、`local_speaker_assignments`、`voice_samples`、`text_corrections` | 人工边界、名字、身份和纠错优先；清理会使所选范围失效。 |
 | 派生投影 | 日程未整理块、`speaker_groups`、有效身份视图、FTS 搜索、导出内容 | 从当前有效事实重建；不能把投影编号当成人物 ID。 |
 | 清理/恢复 | `clear_ranges`、`media_deletion_jobs`、导出/截图/媒体暂存作业 | 先提交逻辑失效，再回收或重写物理文件；迟到任务不得复活清理数据。 |
@@ -77,7 +77,8 @@ flowchart TD
   S --> K[候选区间]
   K --> Q1[持久 LLM 队列]
   Q1 --> E[命名事件 / 未整理投影]
-  E --> Q2[持久 ASR 队列]
+  E --> ST[事件稳定 / 只规划未覆盖音频]
+  ST --> Q2[持久 ASR 队列与不可变输入映射]
   B --> Q2
   Q2 --> P[精转句段 + 物理请求局部 speaker]
   P --> G[本机同场匿名组]
@@ -119,7 +120,7 @@ VAD 先事务提交 `coarse_jobs` 的来源/session/16 kHz 样本区间与 `spee
 ## 5. 外发、修订与清理边界
 
 - DeepSeek LLM 只见候选区间的粗文字、时间、来源及“检测到人声但无可用文字”等状态；其 JSON 仅是建议，核心检查边界、来源、冲突、人工优先级及任务版本。[`llm_input` / `publish_fit`](../crates/hear-core/src/events.rs)。
-- 火山 ASR 只见被判定或人工指定需精转的音频；按来源和最长窗口建持久任务。当前适配器是 `volc.seedasr.auc`，请求 speaker 信息、分句及 `ssd_version=300`。Keychain 的 LLM/ASR 凭据分别设置、分别暂停队列。[`cloud.rs`](../crates/hear-core/src/cloud.rs)。
+- 火山 ASR 只见被判定或人工指定需精转的音频；事件稳定后按来源及编码时长上限建持久任务，上传副本缩短已确认无语音的长空档。当前适配器是 `volc.seedasr.auc`，请求 speaker 信息、分句及 `ssd_version=300`。Keychain 的 LLM/ASR 凭据分别设置、分别暂停队列。[`cloud.rs`](../crates/hear-core/src/cloud.rs)。
 - 人工确认人物后，Core 在既有声纹循环中筛选单句/相邻短句组合样例，按质量、近似去重和每场/每人物限额入库。每个组合成员保留人工绑定证据；自动命名不回流训练。内部取样任务及证据表由 `knowledge/enrollment.rs` 管理，复用本地 worker 和清理屏障，详见[声纹入库策略](tech_docs/speaker-identity.md#短句组合与音质)。
 - 人物列表、声纹特征和截图不因上述两种云任务外发。云 speaker 标签只在单个物理 ASR 请求内有意义；本机负责同场合组和跨事件人物匹配。[说话人文档](tech_docs/speaker-identity.md)。
 - 人工改事件范围、标题、句段文字或人物时检查对象当前修订；迟到云结果必须核对目标版本。人工文字以独立修订保存，重转后无法唯一映射的放入待核对。[`events.rs`](../crates/hear-core/src/events.rs)、[`knowledge.rs`](../crates/hear-core/src/knowledge.rs)。

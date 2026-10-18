@@ -93,7 +93,7 @@ function bestSegments(
 	detail: TimelineItem,
 ): (CoarseSegment | PreciseSegment)[] {
 	if (
-		(detail.id || detail.manual_range_id) &&
+		detail.processing_state === "transcribed" &&
 		detail.precise_segments.length > 0
 	) {
 		return [...detail.precise_segments].sort(
@@ -569,6 +569,7 @@ export function DetailDrawer({
 	const queueRelevant =
 		(detail.id || detail.manual_range_id) &&
 		[
+			"settling_asr",
 			"pending_asr",
 			"transcribing",
 			"asr_failed",

@@ -10,6 +10,8 @@ use sherpa_onnx::LinearResampler;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
+pub(crate) mod asr;
+
 struct CandidatePolicy {
     quiet_cut_ms: i64,
     max_window_ms: i64,
@@ -21,7 +23,7 @@ const CANDIDATE_POLICY: CandidatePolicy = CandidatePolicy {
     version: "candidate-v1",
 };
 const FIT_POLICY_VERSION: &str = "fit-v3";
-const ASR_ADAPTER_VERSION: &str = "volc-standard-v3-ogg-ssd300-v3";
+const ASR_ADAPTER_VERSION: &str = asr::VERSION;
 const ASR_WINDOW_MS: i64 = 15 * 60 * 1000;
 pub(crate) const MAX_ASR_INTERIOR_SILENCE_MS: i64 = 3_000;
 
@@ -167,6 +169,7 @@ pub fn init(db: &Connection) -> Result<(), String> {
         WHERE state IN ('pending','submitted');",
     )
     .map_err(|e| e.to_string())?;
+    asr::init(db)?;
     crate::knowledge::init(db)
 }
 
@@ -780,9 +783,6 @@ pub fn edit_event_in(
     ensure_nonoverlap(tx, start, end, mask, Some(&id.to_string()))?;
     let audio_changed = old_start != start || old_end != end || old_mask != mask;
     let title_changed = old_title != title.trim();
-    if audio_changed {
-        crate::knowledge::pending_event_corrections(tx, id, now)?;
-    }
     tx.execute("UPDATE named_events SET started_ms=?2,ended_ms=?3,title=?4,source_mask=?5,revision=revision+1,
         boundary_locked=CASE WHEN ?6 THEN 1 ELSE boundary_locked END,
         title_locked=CASE WHEN ?7 THEN 1 ELSE title_locked END,
@@ -790,12 +790,6 @@ pub fn edit_event_in(
         params![id.to_string(),start,end,title.trim(),mask,audio_changed,title_changed])
         .map_err(|error| error.to_string())?;
     if audio_changed {
-        tx.execute(
-            "UPDATE cloud_tasks SET state='superseded',updated_ms=?2 WHERE target_kind='event'
-            AND target_id=?1 AND state IN ('pending','processing','submitted','failed')",
-            params![id.to_string(), now],
-        )
-        .map_err(|error| error.to_string())?;
         queue_asr(
             tx,
             "event",
@@ -826,12 +820,10 @@ pub fn retranscribe_event_in(
     // segments for review, but prevent an in-flight old result from publishing.
     crate::knowledge::pending_event_corrections(tx, id, now)?;
     tx.execute(
-        "UPDATE cloud_tasks SET state='superseded',updated_ms=?2
-         WHERE provider='asr' AND target_kind='event' AND target_id=?1
-           AND target_version=?3 AND state!='superseded'",
-        params![id.to_string(), now, version],
+        "DELETE FROM event_asr_refs WHERE event_id=?1",
+        [id.to_string()],
     )
-    .map_err(|error| error.to_string())?;
+    .map_err(|e| e.to_string())?;
     let run = format!("{ASR_ADAPTER_VERSION}:{}", Uuid::new_v4());
     let count = queue_asr_with_processor(
         tx,
@@ -887,15 +879,11 @@ fn suppress_old(
     mask: i64,
     now: i64,
 ) -> Result<(), String> {
-    crate::knowledge::pending_event_corrections(tx, id, now)?;
     tx.execute(
         "UPDATE named_events SET deleted_ms=?2 WHERE id=?1 AND deleted_ms IS NULL",
         params![id.to_string(), now],
     )
     .map_err(|e| e.to_string())?;
-    tx.execute("UPDATE cloud_tasks SET state='superseded',updated_ms=?2
-        WHERE target_kind='event' AND target_id=?1 AND state IN ('pending','processing','submitted','failed')",
-        params![id.to_string(),now]).map_err(|e|e.to_string())?;
     tx.execute(
         "DELETE FROM event_candidate_links WHERE event_id=?1",
         params![id.to_string()],
@@ -924,17 +912,11 @@ fn insert_manual_tx(
         params![id.to_string(), start, end, title, mask, now],
     )
     .map_err(|e| e.to_string())?;
-    queue_asr(
-        tx,
-        "event",
-        &id.to_string(),
-        &asr_version(mask, start, end),
-        start,
-        end,
-        mask,
-        true,
-        now,
-    )?;
+    tx.execute(
+        "INSERT INTO event_asr_state VALUES(?1,NULL)",
+        [id.to_string()],
+    )
+    .map_err(|e| e.to_string())?;
     Ok(id)
 }
 
@@ -952,7 +934,9 @@ pub fn delete_event_in(
     now: i64,
 ) -> Result<(), String> {
     let (start, end, mask, _) = active_event(tx, id, expected)?;
-    suppress_old(tx, id, start, end, mask, now)
+    crate::knowledge::pending_event_corrections(tx, id, now)?;
+    suppress_old(tx, id, start, end, mask, now)?;
+    asr::cancel_orphans(tx, now)
 }
 
 #[cfg(test)]
@@ -995,6 +979,22 @@ pub fn split_event_in(
             params![id.to_string(), next.to_string(), now],
         )
         .map_err(|error| error.to_string())?;
+    }
+    for next in [left, right] {
+        asr::inherit(tx, &id.to_string(), &next.to_string())?;
+    }
+    for (next, a, b) in [(left, start, at), (right, at, end)] {
+        queue_asr(
+            tx,
+            "event",
+            &next.to_string(),
+            &asr_version(mask, a, b),
+            a,
+            b,
+            mask,
+            true,
+            now,
+        )?;
     }
     Ok((left, right))
 }
@@ -1044,6 +1044,20 @@ pub fn merge_events_in(
         )
         .map_err(|error| error.to_string())?;
     }
+    for prior in [left, right] {
+        asr::inherit(tx, &prior.to_string(), &merged.to_string())?;
+    }
+    queue_asr(
+        tx,
+        "event",
+        &merged.to_string(),
+        &asr_version(mask, start, end),
+        start,
+        end,
+        mask,
+        true,
+        now,
+    )?;
     Ok(merged)
 }
 
@@ -1186,74 +1200,18 @@ fn queue_asr_with_processor(
     now: i64,
     processor_version: &str,
 ) -> Result<usize, String> {
-    let mut count = 0;
-    for source in ["microphone", "system"] {
-        if (source == "microphone" && mask & 1 == 0) || (source == "system" && mask & 2 == 0) {
-            continue;
-        }
-        let mut stmt = tx
-            .prepare(
-                "SELECT started_ms,ended_ms FROM audio_blocks
-             WHERE source=?1 AND media_path IS NOT NULL AND started_ms < ?3 AND ended_ms > ?2
-             ORDER BY started_ms",
-            )
-            .map_err(|error| error.to_string())?;
-        let blocks = stmt
-            .query_map(params![source, start, end], |row| {
-                Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
-            })
-            .map_err(|error| error.to_string())?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| error.to_string())?;
-        let mut window: Option<(i64, i64)> = None;
-        for (block_start, block_end) in blocks {
-            let block_start = block_start.max(start);
-            let block_end = block_end.min(end);
-            if let Some((a, b)) = window {
-                // A missing retained block is encoded as silence. Do not
-                // merge long silent holes into a paid recognition request:
-                // seedasr can stretch its first word across that silence.
-                if block_start - b > MAX_ASR_INTERIOR_SILENCE_MS || block_end - a > ASR_WINDOW_MS {
-                    insert_task(
-                        tx,
-                        "asr",
-                        kind,
-                        target,
-                        version,
-                        a,
-                        b,
-                        Some(source),
-                        manual,
-                        now,
-                        processor_version,
-                    )?;
-                    count += 1;
-                    window = Some((block_start, block_end));
-                } else {
-                    window = Some((a, b.max(block_end)));
-                }
-            } else {
-                window = Some((block_start, block_end));
-            }
-        }
-        if let Some((a, b)) = window {
-            insert_task(
-                tx,
-                "asr",
-                kind,
-                target,
-                version,
-                a,
-                b,
-                Some(source),
-                manual,
-                now,
-                processor_version,
-            )?;
-            count += 1;
-        }
-    }
-    Ok(count)
+    asr::schedule(
+        tx,
+        kind,
+        target,
+        version,
+        start,
+        end,
+        mask,
+        manual,
+        now,
+        processor_version,
+    )
 }
 
 type ManualRangeRow = (String, i64, i64, i64, i64);
@@ -1275,7 +1233,7 @@ fn visible_manual_ranges(
              AND c.ended_ms>m.started_ms
              AND ((c.source='microphone' AND m.source_mask&1!=0)
                OR (c.source='system' AND m.source_mask&2!=0)))
-           OR EXISTS(SELECT 1 FROM precise_segments p JOIN cloud_tasks t ON t.id=p.task_id
+           OR EXISTS(SELECT 1 FROM precise_segments p JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms
              WHERE t.target_kind='range' AND t.target_id=m.id AND t.state='complete'
                AND t.target_version=cast(m.revision AS TEXT)
                AND p.started_ms<m.ended_ms AND p.ended_ms>m.started_ms
@@ -1997,6 +1955,21 @@ fn coarse_for(
 }
 
 fn event_state(db: &Connection, id: &str, version: &str) -> Result<String, String> {
+    let waiting:bool=db.query_row("SELECT EXISTS(SELECT 1 FROM event_asr_state WHERE event_id=?1 AND coalesce(planned_version,'')!=?2)",params![id,version],|r|r.get(0)).map_err(|e|e.to_string())?;
+    if waiting {
+        let failed:bool=db.query_row("SELECT EXISTS(SELECT 1 FROM named_events e JOIN candidate_windows w ON w.started_ms<e.ended_ms+900000 AND w.ended_ms>e.started_ms WHERE e.id=?1 AND w.state='failed')",[id],|r|r.get(0)).map_err(|e|e.to_string())?;
+        if failed {
+            return Ok("fit_failed".into());
+        }
+        let failed:bool=db.query_row("SELECT EXISTS(SELECT 1 FROM named_events e JOIN audio_blocks b ON b.started_ms<e.ended_ms+900000 AND b.ended_ms>e.started_ms WHERE e.id=?1 AND ((b.source='microphone' AND e.source_mask&1!=0) OR(b.source='system' AND e.source_mask&2!=0)) AND (b.analysis_state='failed' OR(b.analysis_state='pending' AND b.analysis_attempts>=3))) OR EXISTS(SELECT 1 FROM named_events e JOIN coarse_jobs j ON j.started_ms<e.ended_ms+900000 AND j.ended_ms>e.started_ms WHERE e.id=?1 AND j.state='failed' AND ((j.source='microphone' AND e.source_mask&1!=0) OR(j.source='system' AND e.source_mask&2!=0)))",[id],|r|r.get(0)).map_err(|e|e.to_string())?;
+        return Ok(if failed {
+            "analysis_failed"
+        } else {
+            "settling_asr"
+        }
+        .into());
+    }
+
     let incomplete_audio: bool = db
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM named_events e JOIN media_gaps g
@@ -2018,7 +1991,7 @@ fn event_state(db: &Connection, id: &str, version: &str) -> Result<String, Strin
         .map_err(|e| e.to_string())?;
     let mut stmt = db
         .prepare(
-            "SELECT state,count(*) FROM cloud_tasks WHERE provider='asr'
+            "SELECT state,count(*) FROM transcript_tasks WHERE provider='asr'
         AND target_kind='event' AND target_id=?1 AND target_version=?2
         AND state!='superseded' GROUP BY state",
         )
@@ -2042,14 +2015,21 @@ fn event_state(db: &Connection, id: &str, version: &str) -> Result<String, Strin
         return Ok("asr_failed".to_owned());
     }
     if states.iter().all(|(s, _)| s == "complete") {
+        let crossing:bool=db.query_row("SELECT EXISTS(SELECT 1 FROM transcript_tasks t JOIN precise_segments p ON p.task_id=t.id
+          WHERE t.target_kind='event' AND t.target_id=?1 AND t.state='complete' AND p.started_ms<t.ended_ms AND p.ended_ms>t.started_ms
+          AND (p.started_ms<t.started_ms OR p.ended_ms>t.ended_ms))",[id],|r|r.get(0)).map_err(|e|e.to_string())?;
+        if crossing {
+            return Ok("partial_transcript".into());
+        }
+
         let (count,empty_windows):(i64,i64) = db
             .query_row(
-                "SELECT (SELECT count(*) FROM precise_segments p JOIN cloud_tasks t ON t.id=p.task_id
+                "SELECT (SELECT count(*) FROM precise_segments p JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms
                     WHERE t.target_kind='event' AND t.target_id=?1 AND t.target_version=?2
                       AND t.state='complete'),
-                    (SELECT count(*) FROM cloud_tasks t WHERE t.target_kind='event'
+                    (SELECT count(*) FROM transcript_tasks t WHERE t.target_kind='event'
                       AND t.target_id=?1 AND t.target_version=?2 AND t.state='complete'
-                      AND NOT EXISTS(SELECT 1 FROM precise_segments p WHERE p.task_id=t.id))",
+                      AND NOT EXISTS(SELECT 1 FROM precise_segments p WHERE p.task_id=t.id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms))",
                 params![id, version],
                 |r| Ok((r.get(0)?,r.get(1)?)),
             )
@@ -2099,7 +2079,7 @@ fn manual_range_state(db: &Connection, id: &str, revision: i64) -> Result<String
     if states.iter().all(|state| state == "complete") {
         let (count, empty): (i64, i64) = db
             .query_row(
-                "SELECT (SELECT count(*) FROM precise_segments p JOIN cloud_tasks t ON t.id=p.task_id
+                "SELECT (SELECT count(*) FROM precise_segments p JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms
                  WHERE t.target_kind='range' AND t.target_id=?1 AND t.target_version=?2
                    AND t.state='complete'),
                  (SELECT count(*) FROM cloud_tasks t WHERE t.target_kind='range'
@@ -2144,7 +2124,7 @@ fn precise_for(
              (SELECT c.text FROM text_corrections c WHERE c.current_segment_id=p.id
               AND c.state='active' ORDER BY c.updated_ms DESC LIMIT 1),
              identity.person_id,identity.person_name,identity.person_origin
-        FROM precise_segments p JOIN cloud_tasks t ON t.id=p.task_id
+        FROM precise_segments p JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms
         JOIN precise_identity_projection identity ON identity.segment_id=p.id
         WHERE t.target_kind=?1 AND t.target_id=?2 AND t.target_version=?3 AND t.state='complete'
           AND p.started_ms < ?5 AND p.ended_ms > ?4
@@ -2199,7 +2179,7 @@ fn range_precise_for(
              (SELECT c.text FROM text_corrections c WHERE c.current_segment_id=p.id
               AND c.state='active' ORDER BY c.updated_ms DESC LIMIT 1),
              identity.person_id,identity.person_name,identity.person_origin
-        FROM precise_segments p JOIN cloud_tasks t ON t.id=p.task_id
+        FROM precise_segments p JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms
         JOIN precise_identity_projection identity ON identity.segment_id=p.id
         JOIN manual_ranges m ON m.id=t.target_id
         WHERE t.target_kind='range' AND t.state='complete' AND t.target_version=cast(m.revision AS TEXT)
@@ -2289,6 +2269,9 @@ pub fn take_task_fair(
     now: i64,
     turn: u64,
 ) -> Result<Option<CloudTask>, String> {
+    if provider == CloudProvider::Asr {
+        asr::refresh(db, now)?;
+    }
     let tx = db.transaction().map_err(|e| e.to_string())?;
     let enabled: bool = tx
         .query_row(
@@ -2387,7 +2370,7 @@ pub fn task_current(db: &Connection, task: &CloudTask) -> Result<bool, String> {
     }
     let erased: bool = db
         .query_row(
-            "SELECT EXISTS(SELECT 1 FROM clear_ranges c WHERE c.mode='all_data'
+            "SELECT EXISTS(SELECT 1 FROM clear_ranges c WHERE (c.mode='all_data' OR (c.mode='raw_audio' AND (SELECT submit_attempts FROM cloud_tasks WHERE id=?1)=0))
          AND c.committed_ms > (SELECT created_ms FROM cloud_tasks WHERE id=?1)
          AND c.from_ms<?3 AND c.to_ms>?2
          AND (?4 IS NULL OR (?4='microphone' AND c.source_mask&1!=0)
@@ -2398,6 +2381,9 @@ pub fn task_current(db: &Connection, task: &CloudTask) -> Result<bool, String> {
         .map_err(|e| e.to_string())?;
     if erased {
         return Ok(false);
+    }
+    if let Some(active) = asr::current(db, task)? {
+        return Ok(active);
     }
     let current: Option<String> = match task.target_kind.as_str() {
         "candidate" => db
@@ -2894,9 +2880,6 @@ pub fn publish_fit_with_input(
                     )
                     .map_err(|e| e.to_string())?;
                     if old_start != new_start || old_end != new_end || old_mask != new_mask {
-                        tx.execute("UPDATE cloud_tasks SET state='superseded',updated_ms=?2 WHERE target_kind='event'
-                            AND target_id=?1 AND state IN ('pending','processing','submitted','failed')",
-                            params![linked_id,now]).map_err(|e|e.to_string())?;
                         queue_asr(
                             &tx,
                             "event",
@@ -2972,9 +2955,6 @@ pub fn publish_fit_with_input(
                         ],
                     )
                     .map_err(|e| e.to_string())?;
-                    tx.execute("UPDATE cloud_tasks SET state='superseded',updated_ms=?2 WHERE target_kind='event'
-                        AND target_id=?1 AND state IN ('pending','processing','submitted','failed')",
-                        params![prior_id,now]).map_err(|e|e.to_string())?;
                     queue_asr(
                         &tx,
                         "event",
@@ -3087,6 +3067,16 @@ pub fn publish_asr(
     now: i64,
 ) -> Result<usize, String> {
     let tx = db.transaction().map_err(|e| e.to_string())?;
+    let completed: bool = tx
+        .query_row(
+            "SELECT state='complete' FROM cloud_tasks WHERE id=?1",
+            [task.id.to_string()],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if completed {
+        return Ok(0);
+    }
     if !task_current(&tx, task)? {
         tx.execute(
             "UPDATE cloud_tasks SET state='superseded',updated_ms=?2 WHERE id=?1",
@@ -3100,21 +3090,34 @@ pub fn publish_asr(
         .source
         .as_deref()
         .ok_or_else(|| "asr task missing source".to_owned())?;
+    let mapped = if let Some(input) = asr::input(&tx, task.id)? {
+        asr::map(&input, utterances)?
+    } else {
+        utterances
+            .iter()
+            .map(|u| {
+                let mut item = u.clone();
+                item.start_ms = task
+                    .start
+                    .checked_add(u.start_ms)
+                    .ok_or("provider_invalid_timing")?;
+                item.end_ms = task
+                    .start
+                    .checked_add(u.end_ms)
+                    .ok_or("provider_invalid_timing")?;
+                Ok(item)
+            })
+            .collect::<Result<Vec<_>, String>>()?
+    };
     let mut inserted_segments = Vec::new();
-    for utterance in utterances {
-        let start = task
-            .start
-            .checked_add(utterance.start_ms)
-            .ok_or_else(|| "provider_invalid_timing".to_owned())?;
-        let end = task
-            .start
-            .checked_add(utterance.end_ms)
-            .ok_or_else(|| "provider_invalid_timing".to_owned())?;
+    for utterance in &mapped {
+        let start = utterance.start_ms;
+        let end = utterance.end_ms;
         if start < task.start || end > task.end || end <= start {
-            return Err("provider_invalid_timing".to_owned());
+            return Err("provider_invalid_timing".into());
         }
         if !utterance_has_encoded_audio(&tx, source, start, end, task.submit_attempts > 0)? {
-            return Err("provider_unmapped_timing".to_owned());
+            return Err("provider_unmapped_timing".into());
         }
         let segment_id = Uuid::new_v4();
         tx.execute(
@@ -3910,6 +3913,7 @@ mod tests {
         ]
         .into_iter()
         .map(|(start_ms, end_ms, speaker)| crate::cloud::AsrUtterance {
+            words: None,
             start_ms,
             end_ms,
             text: "你好".to_owned(),
@@ -4081,6 +4085,7 @@ mod tests {
             &mut db,
             &first,
             &[crate::cloud::AsrUtterance {
+                words: None,
                 start_ms: 1_000,
                 end_ms: 2_000,
                 text: "第一句".into(),
@@ -4096,6 +4101,7 @@ mod tests {
             &mut db,
             &second,
             &[crate::cloud::AsrUtterance {
+                words: None,
                 start_ms: 500,
                 end_ms: 1_000,
                 text: "第二句".into(),
@@ -4135,6 +4141,7 @@ mod tests {
             .unwrap()
             .unwrap();
         let sentence = crate::cloud::AsrUtterance {
+            words: None,
             start_ms: 3_000,
             end_ms: 7_000,
             text: "跨过一句短暂停顿".to_owned(),
@@ -4175,6 +4182,7 @@ mod tests {
             .unwrap()
             .unwrap();
         let utterance = crate::cloud::AsrUtterance {
+            words: None,
             start_ms: 0,
             end_ms: 3_000,
             text: "原文".to_owned(),
@@ -4583,7 +4591,7 @@ mod tests {
     }
 
     #[test]
-    fn edited_event_rejects_old_asr_result_and_requeues_current_range() {
+    fn extended_event_accepts_old_result_and_only_queues_new_coverage() {
         let mut db = db();
         let now = 10_000_000;
         media(&db, "a", now - 100_000, now - 90_000);
@@ -4616,6 +4624,7 @@ mod tests {
             &mut db,
             &old,
             &[crate::cloud::AsrUtterance {
+                words: None,
                 start_ms: 0,
                 end_ms: 500,
                 text: "旧结果".to_owned(),
@@ -4624,14 +4633,15 @@ mod tests {
             now + 2,
         )
         .unwrap();
-        assert_eq!(rows, 0);
+        assert_eq!(rows, 1);
         let count: i64 = db
             .query_row("SELECT count(*) FROM precise_segments", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(count, 0);
+        assert_eq!(count, 1);
         let next = take_task(&mut db, CloudProvider::Asr, now + 3)
             .unwrap()
             .unwrap();
+        assert_eq!((next.start, next.end), (now - 80_000, now - 70_000));
         assert_eq!(
             next.target_version,
             asr_version(3, now - 100_000, now - 70_000)
@@ -5272,12 +5282,9 @@ mod tests {
             .unwrap()
             .unwrap();
         edit_event(&mut db, id, 1, 1_000, 11_000, "会话", None, 12_001).unwrap();
-        assert_eq!(
-            mark_submit_intent(&db, &old, 12_001).unwrap_err(),
-            "asr_submit_task_no_longer_current"
-        );
+        mark_submit_intent(&db, &old, 12_001).unwrap();
         edit_event(&mut db, id, 2, 1_000, 6_000, "会话", None, 12_002).unwrap();
-        let task = take_task(&mut db, CloudProvider::Asr, 12_003)
+        let task = take_task(&mut db, CloudProvider::Asr, 72_002)
             .unwrap()
             .unwrap();
         assert_eq!((task.start, task.end), (1_000, 6_000));
@@ -5382,6 +5389,7 @@ mod tests {
             &mut db,
             &task,
             &[crate::cloud::AsrUtterance {
+                words: None,
                 start_ms: 1_000,
                 end_ms: 2_000,
                 text: "一句话".to_owned(),
@@ -5458,6 +5466,7 @@ mod tests {
             &mut db,
             &first,
             &[crate::cloud::AsrUtterance {
+                words: None,
                 start_ms: 1_000,
                 end_ms: 2_000,
                 text: "第一句".to_owned(),
@@ -5503,6 +5512,7 @@ mod tests {
             .unwrap()
             .unwrap();
         let utterance = crate::cloud::AsrUtterance {
+            words: None,
             start_ms: 4_000,
             end_ms: 6_000,
             text: "越界".to_owned(),
@@ -5518,6 +5528,7 @@ mod tests {
         )
         .unwrap();
         let utterance = crate::cloud::AsrUtterance {
+            words: None,
             start_ms: 2_500,
             end_ms: 3_500,
             text: "缺口".to_owned(),
@@ -5552,6 +5563,7 @@ mod tests {
                 &mut db,
                 &task,
                 &[crate::cloud::AsrUtterance {
+                    words: None,
                     start_ms: 500,
                     end_ms: 3_500,
                     text: "跨过空白".to_owned(),
@@ -5573,6 +5585,7 @@ mod tests {
                 &mut db,
                 &task,
                 &[crate::cloud::AsrUtterance {
+                    words: None,
                     start_ms: 100,
                     end_ms: 900,
                     text: "第一段".to_owned(),
@@ -5736,6 +5749,7 @@ mod tests {
             &mut db,
             &recovered,
             &[crate::cloud::AsrUtterance {
+                words: None,
                 start_ms: 1_000,
                 end_ms: 2_000,
                 text: "已完成".to_owned(),

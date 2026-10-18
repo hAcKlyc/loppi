@@ -333,6 +333,8 @@ pub struct AsrUtterance {
     pub end_ms: i64,
     pub text: String,
     pub speaker: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub words: Option<Value>,
 }
 
 pub fn query_audio(
@@ -405,12 +407,29 @@ pub(crate) fn parse_asr_result(response: &Value) -> Result<Vec<AsrUtterance>, St
             end_ms,
             text: text.to_owned(),
             speaker,
+            words: item.get("words").cloned(),
         };
         // Some successful seedasr responses join speech separated by
         // minutes of silence. Use complete, aligned word metadata to
         // split those pauses before the core checks audio coverage.
-        utterances
-            .extend(split_long_asr_pauses(&utterance, item).unwrap_or_else(|| vec![utterance]));
+        let mut pieces = split_long_asr_pauses(&utterance, item).unwrap_or_else(|| vec![utterance]);
+        for piece in &mut pieces {
+            if let Some(words) = item.get("words").and_then(Value::as_array) {
+                piece.words = Some(Value::Array(
+                    words
+                        .iter()
+                        .filter(|w| {
+                            w["start_time"]
+                                .as_i64()
+                                .is_some_and(|a| a >= piece.start_ms)
+                                && w["end_time"].as_i64().is_some_and(|b| b <= piece.end_ms)
+                        })
+                        .cloned()
+                        .collect(),
+                ));
+            }
+        }
+        utterances.extend(pieces);
     }
     Ok(utterances)
 }
@@ -462,6 +481,7 @@ fn split_long_asr_pauses(utterance: &AsrUtterance, item: &Value) -> Option<Vec<A
     for &(next_start, next_end, offset) in &timed[1..] {
         if next_start - end > crate::events::MAX_ASR_INTERIOR_SILENCE_MS {
             split.push(AsrUtterance {
+                words: None,
                 start_ms: start,
                 end_ms: end,
                 text: utterance.text[text_start..offset].to_owned(),
@@ -476,6 +496,7 @@ fn split_long_asr_pauses(utterance: &AsrUtterance, item: &Value) -> Option<Vec<A
         return None;
     }
     split.push(AsrUtterance {
+        words: None,
         start_ms: start,
         end_ms: utterance.end_ms,
         text: utterance.text[text_start..].to_owned(),

@@ -346,6 +346,7 @@ fn add_scene(db: &mut Connection, start: i64) -> Vec<hear_protocol::PreciseSegme
         .unwrap();
     let utterances = (0..3)
         .map(|i| crate::cloud::AsrUtterance {
+            words: None,
             start_ms: i * 5000,
             end_ms: i * 5000 + 4000,
             text: "合格的人工样例".into(),

@@ -471,7 +471,7 @@ pub fn export(
                AND c.started_ms<e.ended_ms AND c.ended_ms>e.started_ms
                AND ((c.source='microphone' AND e.source_mask&?3&1!=0)
                  OR (c.source='system' AND e.source_mask&?3&2!=0))
-             UNION ALL SELECT 1 FROM precise_segments p JOIN cloud_tasks t ON t.id=p.task_id
+             UNION ALL SELECT 1 FROM precise_segments p JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms
                WHERE t.state='complete' AND p.started_ms<?2 AND p.ended_ms>?1
                AND p.started_ms<e.ended_ms AND p.ended_ms>e.started_ms
                AND ((p.source='microphone' AND e.source_mask&?3&1!=0)
@@ -518,7 +518,7 @@ pub fn export(
                 AND c.state='active' ORDER BY c.updated_ms DESC LIMIT 1),
              identity.speaker,identity.person_id,identity.person_name,
              identity.person_origin,t.target_kind,t.target_id
-           FROM precise_segments p JOIN cloud_tasks t ON t.id=p.task_id
+           FROM precise_segments p JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms
            JOIN precise_identity_projection identity ON identity.segment_id=p.id
            LEFT JOIN named_events e ON t.target_kind='event' AND e.id=t.target_id
            LEFT JOIN manual_ranges r ON t.target_kind='range' AND r.id=t.target_id

@@ -73,6 +73,10 @@ export function processingLabel(value: string): string {
 			return "待整理";
 		case "fit_failed":
 			return "事件整理失败";
+		case "analysis_failed":
+			return "本地语音分析失败";
+		case "settling_asr":
+			return "等待事件稳定";
 		case "pending_asr":
 			return "待精转";
 		case "transcribing":
