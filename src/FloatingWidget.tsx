@@ -145,15 +145,19 @@ export function FloatingWidget() {
 		viewRef.current = "collapsed";
 		setView("collapsed");
 	}, []);
-	const openPanel = useCallback(() => {
-		window.clearTimeout(collapseTimer.current);
-		if (inhibit.current || dragging.current || viewRef.current !== "collapsed")
-			return;
-		keyboardExpand.current = focusInside.current;
-		viewRef.current = "panel";
-		setView("panel");
-		respond("curious");
-	}, [respond]);
+	const openPanel = useCallback(
+		(explicit = false) => {
+			window.clearTimeout(collapseTimer.current);
+			if (dragging.current || viewRef.current !== "collapsed") return;
+			if (explicit) inhibit.current = false;
+			if (inhibit.current) return;
+			keyboardExpand.current = focusInside.current;
+			viewRef.current = "panel";
+			setView("panel");
+			respond("curious");
+		},
+		[respond],
+	);
 	const leave = useCallback(() => {
 		pointerInside.current = false;
 
@@ -413,7 +417,7 @@ export function FloatingWidget() {
 			style={{ "--entry-band": `${geometry.band}px` } as React.CSSProperties}
 			onFocusCapture={() => {
 				focusInside.current = true;
-				openPanel();
+				openPanel(true);
 			}}
 			onBlurCapture={(event) => {
 				if (!event.currentTarget.contains(event.relatedTarget)) {
@@ -643,7 +647,7 @@ export function FloatingWidget() {
 							pointer.current = null;
 						}}
 						onClick={() => {
-							if (isTop) openPanel();
+							if (isTop) openPanel(true);
 							else if (suppressClick.current) suppressClick.current = false;
 							else void perform("mark");
 						}}

@@ -58,7 +58,6 @@ static BOOL hitRegion(HearEntryGeometry g, NSInteger mode, NSInteger view, BOOL 
 @property BOOL commentFocus;
 @property BOOL drag;
 @property BOOL inhibited;
-@property NSRect suppressedFrame;
 @property (weak) NSWindow *previousWindow;
 @property NSPoint anchor;
 @property NSString *displayUUID;
@@ -66,6 +65,7 @@ static BOOL hitRegion(HearEntryGeometry g, NSInteger mode, NSInteger view, BOOL 
 @property HearEntryGeometry geometry;
 - (HearEntryGeometry)layout;
 - (HearEntryGeometry)layoutAnimated:(BOOL)animated;
+- (void)updatePointer:(NSEvent *)event at:(NSPoint)point;
 @end
 
 @implementation HearEntry
@@ -87,12 +87,18 @@ static BOOL hitRegion(HearEntryGeometry g, NSInteger mode, NSInteger view, BOOL 
   return hitRegion(hitGeometry(_geometry,_mode,_view,f),_mode,_view,_detail,p);
 }
 - (void)checkPointer:(NSEvent *)event {
+  [self updatePointer:event at:NSEvent.mouseLocation];
+}
+- (void)updatePointer:(NSEvent *)event at:(NSPoint)point {
   if(_drag) {
     if(event && event.type==NSEventTypeLeftMouseUp) { _drag=NO; [self layout]; _callback(5,0); }
     else return;
   }
-  if(_inhibited && event && !NSPointInRect(NSEvent.mouseLocation,_suppressedFrame)) { _inhibited=NO; _callback(7,0); }
-  BOOL hit=[self hit:NSEvent.mouseLocation];
+  BOOL hit=[self hit:point];
+  // Only suppress a pointer still over the current entry. The old expanded
+  // panel (and the feedback bubble) must not become an invisible dead zone.
+  // An intentional click also reopens without requiring a mouse round trip.
+  if(_inhibited && (!hit || (event && event.type==NSEventTypeLeftMouseDown))) { _inhibited=NO; _callback(7,0); }
   _window.ignoresMouseEvents=!hit;
   if(_inhibited) hit=NO;
   if(hit!=_inside) { _inside=hit; _callback(1,hit); }
@@ -167,8 +173,7 @@ static BOOL hitRegion(HearEntryGeometry g, NSInteger mode, NSInteger view, BOOL 
   for(NSString *name in @[NSApplicationDidBecomeActiveNotification,NSApplicationDidResignActiveNotification]) {
     [_tokens addObject:[center addObserverForName:name object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n){ (void)n;
       if(!NSApp.isActive && weak.view==2) {
-        weak.suppressedFrame=weak.window.frame;
-        weak.inhibited=NSPointInRect(NSEvent.mouseLocation,weak.suppressedFrame);
+        weak.inhibited=YES;
         weak.view=0; [weak releaseFocus:NO]; [weak layout]; [weak notify:2 value:0];
       }
       NSWindowCollectionBehavior behavior=weak.window.collectionBehavior & ~(NSWindowCollectionBehaviorIgnoresCycle|NSWindowCollectionBehaviorParticipatesInCycle);
@@ -220,9 +225,14 @@ void hear_entry_install(void *window,HearEntryEvent callback) {
 HearEntryGeometry hear_entry_layout(void *window,int mode,int view,int feedback,int detail,int suppress) {
   HearEntry *e=entry(window);
   BOOL animated=unfolds(e.mode,e.view,mode,view,e.window.isVisible,NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion);
-  if(suppress && !e.inhibited) { e.suppressedFrame=e.window.frame; e.inhibited=NSPointInRect(NSEvent.mouseLocation,e.suppressedFrame); if(!e.inhibited) e.callback(7,0); }
+  // Arm only for an actual dismissal, never for a feedback-only resize.
+  if(view!=0) {
+    if(e.inhibited) { e.inhibited=NO; e.callback(7,0); }
+  } else if(suppress && e.view!=0) e.inhibited=YES;
   e.mode=mode; e.view=view; e.feedback=feedback; e.detail=detail;
-  return [e layoutAnimated:animated];
+  HearEntryGeometry geometry=[e layoutAnimated:animated];
+  if(suppress && !e.inhibited) e.callback(7,0);
+  return geometry;
 }
 int hear_entry_focus(void *window,int acquire,int restore) {
   HearEntry *e=entry(window);
