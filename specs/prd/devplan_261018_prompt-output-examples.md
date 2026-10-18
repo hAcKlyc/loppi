@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: implemented
 updated: 2026-10-18
 ---
 # LLM 输出要求与 JSON 示例
@@ -23,7 +23,7 @@ updated: 2026-10-18
 ### 批次与行动清单
 - Batch 1：三组 Prompt 输出说明与示例，一个内聚批次。
   - [x] 提示词与示例合法性/消费路径验证
-  - [ ] 静态/构建、cross-review、提交
+  - [x] 静态/构建、cross-review、提交
 ### Review 基线
 - Base: 1bd8805（动代码前 HEAD）；范围：crates/hear-core/src/{events,moments,cloud}.rs 和本 devplan。
 - 其它工作树文件全部排除。
@@ -35,3 +35,5 @@ updated: 2026-10-18
 - 2026-10-18：三个实际 Prompt 示例消费测试 PASS；cargo check/build PASS；不更改运行中的 App。新增示例保留合并/空事件/null 摘要/空转录差异。
 
 - 2026-10-18：requirements / adversarial / architecture 均 PASS，无阻塞项；adversarial 独立复跑 3 个示例测试 PASS。三路审查后代码未改动，既有检查仍有效。
+
+- 2026-10-18：提交 a22cef8。最终逐项核对原子契约完成，Prompt 原文与消费测试同一基线，未引入新 API 模式或运行状态；无必做真机项。仅源码及 core 开发构建更新，当前 App 未重启加载。
