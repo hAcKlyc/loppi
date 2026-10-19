@@ -1,6 +1,84 @@
 //! Opt-in local regression probes. Fixtures stay outside the repository.
-//! All database mutations target a temporary copy; no cloud requests are made.
+//! All database mutations target a temporary copy. The separately opted-in
+//! remote probe queries existing IDs only; it cannot submit audio.
 use super::*;
+
+#[test]
+#[ignore = "explicit query of existing failed remote IDs; requires a trusted Core signature, HEAR_TEST_DB and HEAR_TEST_RESULTS"]
+fn query_original_failed_asr_without_resubmission() {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    use uuid::Uuid;
+    struct QueryOnly(std::path::PathBuf);
+    impl usage::Meter for QueryOnly {
+        fn begin(&self, _: &str, _: Option<Uuid>, _: Option<i64>) -> Result<String, String> {
+            Err("query_only_no_submission".into())
+        }
+        fn llm_response(&self, _: &str, _: &serde_json::Value) -> Result<(), String> {
+            unreachable!("query only")
+        }
+        fn asr_response(&self, id: Uuid, _: &str, body: &serde_json::Value) -> Result<(), String> {
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .open(self.0.join(format!("{id}.json")))
+                .map_err(|e| e.to_string())?;
+            file.write_all(body.to_string().as_bytes())
+                .map_err(|e| e.to_string())
+        }
+        fn rejected(&self, _: &str) -> Result<(), String> {
+            unreachable!("query only")
+        }
+        fn observation_failed(&self) {
+            panic!("private result could not be saved")
+        }
+    }
+    assert_eq!(std::env::var("HEAR_QUERY_ORIGINAL_ASR").as_deref(), Ok("1"));
+    let db = Connection::open_with_flags(
+        std::env::var("HEAR_TEST_DB").unwrap(),
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )
+    .unwrap();
+    let output = std::path::PathBuf::from(std::env::var("HEAR_TEST_RESULTS").unwrap());
+    std::fs::create_dir_all(&output).unwrap();
+    let meter = QueryOnly(output);
+    let reference = events::credential_reference(&db, hear_protocol::CloudProvider::Asr)
+        .unwrap()
+        .unwrap();
+    let key = cloud::credential(hear_protocol::CloudProvider::Asr, &reference)
+        .unwrap()
+        .unwrap();
+    let mut statement = db.prepare("SELECT id,remote_id FROM cloud_tasks WHERE provider='asr' AND state='failed' AND error_code='provider_unmapped_timing' ORDER BY created_ms").unwrap();
+    let tasks = statement
+        .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    for (id, remote) in tasks {
+        let id = Uuid::parse_str(&id).unwrap();
+        let remote = Uuid::parse_str(&remote).unwrap();
+        let input = events::asr::input(&db, id).unwrap().unwrap();
+        match cloud::query_audio(
+            &key,
+            remote,
+            Instant::now() + Duration::from_secs(30),
+            &meter,
+        ) {
+            Ok(cloud::AsrQuery::Complete(items)) => {
+                let result = events::asr::map(&input, &items);
+                eprintln!(
+                    "original_asr {id} remote={remote} utterances={} map_error={:?}",
+                    items.len(),
+                    result.err()
+                );
+            }
+            Ok(cloud::AsrQuery::Missing) => eprintln!("original_asr {id} missing"),
+            Ok(cloud::AsrQuery::Processing) => eprintln!("original_asr {id} processing"),
+            Err(error) => eprintln!("original_asr {id} query_error={}", error.code),
+        }
+    }
+}
 
 fn fixture() -> (tempfile::TempDir, Store) {
     let source =

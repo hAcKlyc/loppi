@@ -58,7 +58,7 @@ fn auto(db: &mut Connection, a: i64, b: i64) -> Uuid {
     id
 }
 #[test]
-fn confirmed_long_silence_compacts_but_unknown_and_capture_gaps_do_not() {
+fn long_silence_and_unknown_or_capture_gaps_split_physical_requests() {
     for reason in ["confirmed", "unknown", "capture", "cleared"] {
         let mut db = database();
         block(&db, "a", 1000, 6000, true);
@@ -78,19 +78,33 @@ fn confirmed_long_silence_compacts_but_unknown_and_capture_gaps_do_not() {
             _ => {}
         }
         event(&mut db, 1000, 31000);
-        assert_eq!(
-            count(&db),
-            if reason == "confirmed" { 1 } else { 2 },
-            "{reason}"
-        );
+        assert_eq!(count(&db), 2, "{reason}");
         let t = task(&mut db);
         let i = input(&db, t.id).unwrap().unwrap();
-        if reason == "confirmed" {
-            assert_eq!(i.duration_ms, 11000);
-            assert_eq!(i.parts[1].offset, 6000);
+        assert_eq!(i.duration_ms, 5000);
+        assert_eq!(i.parts.len(), 1);
+        assert_eq!(i.parts[0].offset, 0);
+    }
+}
+#[test]
+fn short_pauses_preserve_one_linear_clock_and_long_pauses_start_a_new_request() {
+    for gap in [0, 1000, 3000, 3001] {
+        let mut db = database();
+        block(&db, "a", 1000, 6000, true);
+        block(&db, "b", 6000 + gap, 11000 + gap, true);
+        event(&mut db, 1000, 11000 + gap);
+        assert_eq!(count(&db), if gap <= 3000 { 1 } else { 2 });
+        let t = task(&mut db);
+        let i = input(&db, t.id).unwrap().unwrap();
+        assert_eq!(runs(&i).len(), 1);
+        if gap <= 3000 {
+            assert_eq!(i.duration_ms, 10000 + gap);
+            let out = map(&i, &[utterance(6000 + gap, 7000 + gap, "后半句")]).unwrap();
+            assert_eq!((out[0].start_ms, out[0].end_ms), (7000 + gap, 8000 + gap));
         }
     }
 }
+
 #[test]
 fn mapping_splits_only_fully_aligned_words_and_preserves_punctuation() {
     let p = |start, end, offset| Part {
@@ -406,23 +420,23 @@ fn mapping_failure_codes_identify_the_rejected_coordinate() {
     );
 }
 #[test]
-fn long_events_split_by_encoded_duration_not_wall_clock() {
+fn continuous_audio_keeps_twenty_minute_request_limit_without_synthetic_seams() {
     let mut db = database();
     for n in 0..125 {
-        let a = 1000 + n * 20000;
+        let a = 1000 + n * 10000;
         block(&db, &format!("a{n}"), a, a + 10000, true);
-        block(&db, &format!("s{n}"), a + 10000, a + 20000, false);
     }
-    event(&mut db, 1000, 2_491_000);
+    event(&mut db, 1000, 1_251_000);
     assert_eq!(count(&db), 2);
     let mut total = 0;
     for _ in 0..2 {
         let t = task(&mut db);
         let i = input(&db, t.id).unwrap().unwrap();
         assert!(i.duration_ms <= WINDOW_MS);
+        assert_eq!(runs(&i).len(), 1);
         total += i.duration_ms;
     }
-    assert_eq!(total, 125 * 10000 + 123 * 1000);
+    assert_eq!(total, 125 * 10000);
 }
 
 #[test]
