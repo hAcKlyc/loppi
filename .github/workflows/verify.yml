@@ -12,12 +12,19 @@ jobs:
   offline:
     runs-on: macos-15
     timeout-minutes: 40
+    env:
+      # Existing Core Audio Tap fields require the macOS 26 SDK.
+      DEVELOPER_DIR: /Applications/Xcode_26.0.1.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
           cache: npm
+      - name: Report selected Apple toolchain
+        run: |
+          xcodebuild -version
+          xcrun --sdk macosx --show-sdk-version
       - name: Install frontend test dependencies
         run: npm ci --no-audit --no-fund
       - name: Verify the same gate as local development

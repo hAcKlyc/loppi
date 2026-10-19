@@ -56,7 +56,7 @@ python3 scripts/verify.py --suite test
 python3 scripts/verify.py --suite smoke
 ```
 
-macOS、Node 24、当前稳定 Rust、Xcode Command Line Tools 是前提。GitHub Actions 采用相同入口与 [macos-15 runner](https://github.com/actions/runner-images/blob/main/images/macos/macos-15-arm64-Readme.md)。测试依赖由 package-lock/Cargo.lock 固定，React 交互测试不再依赖开发者 `/tmp` 下手动安装的 jsdom。
+macOS、Node 24、当前稳定 Rust、Xcode 26.0.1 或更新版本（含 macOS 26 SDK）是前提；现有 Audio Tap 代码引用该 SDK 的字段，部署最低版本仍为 macOS 13。GitHub Actions 采用相同入口与 [macos-15 runner](https://github.com/actions/runner-images/blob/main/images/macos/macos-15-arm64-Readme.md)。CI 通过 `DEVELOPER_DIR` 选择 runner 已安装的 Xcode 26.0.1，避免默认 Xcode 16.4 头文件缺字段。测试依赖由 package-lock/Cargo.lock 固定，React 交互测试不再依赖开发者 `/tmp` 下手动安装的 jsdom。
 
 默认门禁包含前端静态检查、Rust workspace check/test、Node 逻辑/React 交互、Python 资源测试、真实 native entry policy、全工作区构建、四组件身份校验、隔离 Core 和诊断导出烟测。禁用私有 fixture 环境；不启用 ignored 测试、不读用户活跃库、不调用付费 API。脚本及 CI 报告明列未覆盖项。
 
