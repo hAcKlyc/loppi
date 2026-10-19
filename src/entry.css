@@ -116,19 +116,6 @@
 	margin-top: 0;
 	flex: 0 0 280px;
 }
-.notch-surface:not(.comment-surface) > .notch-rabbit-control,
-.notch-surface:not(.comment-surface) > .notch-actions {
-	animation: notch-content-in 220ms ease-out both;
-}
-@keyframes notch-content-in {
-	0%,
-	20% {
-		opacity: 0;
-	}
-	100% {
-		opacity: 1;
-	}
-}
 .notch-actions button {
 	display: flex;
 	flex: 1;
@@ -164,6 +151,25 @@
 	font-size: 12px;
 	line-height: 18px;
 	padding: 0;
+}
+.notch-surface:not(.comment-surface) > .notch-rabbit-control,
+.notch-surface:not(.comment-surface) > .notch-actions,
+.notch-surface:not(.comment-surface) > .entry-detail {
+	visibility: hidden;
+}
+.notch-surface[data-ready="true"] > .notch-rabbit-control,
+.notch-surface[data-ready="true"] > .notch-actions,
+.notch-surface[data-ready="true"] > .entry-detail {
+	visibility: visible;
+	animation: notch-content-in 60ms ease-out both;
+}
+@keyframes notch-content-in {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
 }
 .comment-surface {
 	padding: calc(var(--entry-band) + 18px) 20px 16px;
@@ -306,7 +312,8 @@
 		transition: none;
 	}
 	.entry-root .notch-surface > .notch-rabbit-control,
-	.entry-root .notch-surface > .notch-actions {
+	.entry-root .notch-surface > .notch-actions,
+	.entry-root .notch-surface > .entry-detail {
 		animation: none;
 	}
 }

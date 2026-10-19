@@ -128,7 +128,7 @@ flowchart LR
 
 使用 `safeAreaInsets.top` 和 `auxiliaryTopLeftArea / auxiliaryTopRightArea` 得到真实顶部遮挡及安全区域；有有效遮挡时取两个安全矩形之间的缺口，不硬编码 Mac 型号、屏幕像素宽度或刘海宽度。收起兔子在右侧安全矩形左边缘附近；展开面板以缺口中心对齐，下方放兔子与三按钮，物理遮挡区不放控件。`visibleFrame` 排除了菜单栏，不能用它代替顶部安全区域。[Apple auxiliaryTopRightArea](https://developer.apple.com/documentation/AppKit/NSScreen/auxiliaryTopRightArea-gr2n)、[Apple visibleFrame](https://developer.apple.com/documentation/appkit/nsscreen/visibleframe)。
 
-无刘海使用屏幕 frame 顶部中央，仍是同一模式，去掉硬件遮挡带及相应空白。有效安全矩形缺失时不猜刘海宽度，保守采用无刘海布局并记录诊断；设置中的模式不变。
+无刘海使用屏幕 frame 顶部中央，仍是同一模式。收起保留32pt兔子点击高度，展开/评论时band为0，去掉硬件遮挡带及相应空白。有效安全矩形缺失时不猜刘海宽度，保守采用无刘海布局并记录诊断；设置中的模式不变。
 
 宿主统一使用 AppKit 全局 point 坐标，以兔子中心/脚底为稳定锚点。前端只传逻辑视图状态与内容高度；不再累加 `(expanded - collapsed) × scale` 的窗口偏移。转换到 Tauri physical 坐标时以主屏 `maxY` 做 y 轴翻转，并按**目标显示器**的 backing scale 换算、取整；不能用整个虚拟桌面宽高除同一缩放值。最终定位可直接在 AppKit 主线程 `setFrame`，避免跨不同缩放显示器的全局 physical 坐标混算。
 
@@ -162,7 +162,7 @@ stateDiagram-v2
 
 业务请求的 requesting/confirmed/unconfirmed/failed 与此状态机正交；面板收起不取消已经发出的业务请求，不丢草稿，也不决定采集状态。
 
-顶部展开只保留面板左侧一只兔子，收起角色隐藏且不能仍持有键盘焦点。纯 hover 不调用 app.activate / set_focus；鼠标点截图、重点和暂停也不借机打开主窗。其他应用前台时入口默认 focusable=false，只有用户点击评论才获取输入焦点；hear 本身已前台时，允许用户通过系统窗口循环/辅助功能明确聚焦入口，随后使用 Tab、Enter/Space 操作。应用激活/失活通知与显式评论会话共同决定 focusable，不能为了支持键盘让 hover 激活应用；不新增全局快捷键。此路径同样列入原生焦点验收。
+顶部展开由AppKit先在约160ms内调整窗口，完成通知携带当前布局generation；React仅接受当前代次后揭示操作区并淡入60ms。取消、切模式、重新布局与销毁会使旧完成失效；减少动态效果时两段均无过渡。键盘焦点在操作区可见后移动，不进入尚被窗口裁切的隐藏控件。顶部展开只保留面板左侧一只兔子，收起角色隐藏且不能仍持有键盘焦点。纯 hover 不调用 app.activate / set_focus；鼠标点截图、重点和暂停也不借机打开主窗。其他应用前台时入口默认 focusable=false，只有用户点击评论才获取输入焦点；hear 本身已前台时，允许用户通过系统窗口循环/辅助功能明确聚焦入口，随后使用 Tab、Enter/Space 操作。应用激活/失活通知与显式评论会话共同决定 focusable，不能为了支持键盘让 hover 激活应用；不新增全局快捷键。此路径同样列入原生焦点验收。
 
 截图、重点点击及评论有效 Enter 均在本次 UI 更新立即收起，不等网络、本机 IPC 或动画。收起后使用现有 `inhibit`/`inhibited` 防止静止指针自动重开；原生层按收起后的实际命中区域解除抑制，不保留旧面板矩形，窗口缩小产生的 DOM leave 不能单独解锁。仅展开→收起时设置抑制，反馈重布局不得重新设置；原生点击解除抑制，React 显式点击/键盘聚焦可展开，展开布局同步清除原生抑制。保存成功才发轻提示和 nod；sleeping 下改用 sleeping-response；异常/等待不播放健康动作。
 
@@ -335,3 +335,7 @@ PRD 2 的模式/屏幕规则对应第 4、9 节；PRD 3 的顶部、悬浮和草
 后续实施修正：菜单167pt高、15px字号，悬浮窗展开230pt，原生 mask 按同一可见圆角与异常按钮布局命中。侧栏复用 I4 方形图，在界面单次裁圆角。评论使用首次用户打开 token；背景布局可以更新几何，但不新建激活意图，取消 token 后迟到布局不能重新激活。macOS13短流只在启动成功后请求停止，迟到启动也归同一停止 owner，成功编码前等待停止回执；失败/超时不报告截图保存。`scripts/test_native_shot.m` 是回调生命周期验证，不能替代该系统真机截图。
 
 顶部收起→功能面板使用现有NSWindow animator，NSAnimationContext.duration为220ms；其余布局使用零时长，按AppKit的[animator契约](https://developer.apple.com/documentation/appkit/nsanimatablepropertycontainer/animator())立即中断在途插值。仅可见的同模式顶部展开播放，减少动态效果时为零。命中使用实时NSWindow.frame，resize通知更新鼠标穿透，不轮询、不换窗口类或delegate。固定按钮布局并淡入，避免缩放像素兔子；评论不延迟焦点，取消与Esc复用草稿保留/收起路径。
+
+### 2026-10-20 定向修正
+
+焦点请求不代表成功：原生仅在应用active且入口key window时确认，首次请求与DidBecomeKey/DidBecomeActive通知共用判断。延迟确认携带原评论intent，关闭/切走后的回调不能聚焦新编辑器。macOS14+使用activate与yieldActivationToApplication/activateWithOptions:0归还前台；13保留旧API。修正实施与证据见[本次devplan](devplan_261020_entry-polish.md)，不替代历史整体入口真机门槛。
