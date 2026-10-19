@@ -347,9 +347,10 @@ export type CoreResponse = { type: string; id: string; [key: string]: unknown };
 
 export async function core<T extends CoreResponse = CoreResponse>(
 	request: CoreRequest,
+	requestId?: string,
 ): Promise<T> {
 	if (!isTauri()) throw new Error("请在 hear 桌面应用中查看记录");
-	const response = await invoke<T>("core_request", { request });
+	const response = await invoke<T>("core_request", { request, requestId });
 	if (response.type === "error") {
 		throw new Error(`${String(response.code)}: ${String(response.message)}`);
 	}

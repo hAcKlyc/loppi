@@ -1,11 +1,11 @@
 use bzip2::read::BzDecoder;
+use hear_protocol::ModelPhase;
 use sha2::{Digest, Sha256};
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use tar::Archive;
-use uuid::Uuid;
 
 const SENSE_ARCHIVE_URL: &str = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2";
 const SENSE_ARCHIVE_SHA: &str = "7d1efa2138a65b0b488df37f8b89e3d91a60676e416f515b952358d83dfd347e";
@@ -30,7 +30,10 @@ pub fn speaker_ready(data_dir: &Path) -> bool {
     verify(&speaker_model_path(data_dir), SPEAKER_SHA).is_ok()
 }
 
-pub fn install_speaker(data_dir: &Path) -> Result<PathBuf, String> {
+pub fn install_speaker(
+    data_dir: &Path,
+    progress: impl Fn(ModelPhase, u8),
+) -> Result<PathBuf, String> {
     let target = speaker_model_path(data_dir);
     if speaker_ready(data_dir) {
         return Ok(target);
@@ -39,13 +42,42 @@ pub fn install_speaker(data_dir: &Path) -> Result<PathBuf, String> {
     fs::create_dir_all(&root).map_err(|error| error.to_string())?;
     fs::set_permissions(&root, fs::Permissions::from_mode(0o700))
         .map_err(|error| error.to_string())?;
-    let staging = root.join(format!(".speaker-installing-{}", Uuid::new_v4()));
-    fs::create_dir(&staging).map_err(|error| error.to_string())?;
+    let staging = root.join(".speaker-installing-v1");
+    fs::create_dir_all(&staging).map_err(|error| error.to_string())?;
     fs::set_permissions(&staging, fs::Permissions::from_mode(0o700))
         .map_err(|error| error.to_string())?;
     let result = (|| {
         let downloaded = staging.join("model.onnx");
-        download(SPEAKER_URL, &downloaded, SPEAKER_SHA, 35_000_000, |_| {})?;
+        if verify(&downloaded, SPEAKER_SHA).is_err() {
+            remove_if_present(&downloaded)?;
+            check_space(data_dir, 28_281_138)?;
+            let previous = fs::read_dir(&root)
+                .map_err(|e| e.to_string())?
+                .filter_map(Result::ok)
+                .find(|entry| {
+                    entry.path() != staging
+                        && entry
+                            .file_name()
+                            .to_string_lossy()
+                            .starts_with(".speaker-installing-")
+                        && entry.file_type().is_ok_and(|t| t.is_dir())
+                        && verify(&entry.path().join("model.onnx"), SPEAKER_SHA).is_ok()
+                });
+            if let Some(previous) = previous {
+                copy_synced(&previous.path().join("model.onnx"), &downloaded)?;
+            } else {
+                progress(ModelPhase::Downloading, 0);
+                download(SPEAKER_URL, &downloaded, SPEAKER_SHA, 35_000_000, |n| {
+                    progress(
+                        ModelPhase::Downloading,
+                        ((n * 100 / 28_281_138).min(100)) as u8,
+                    )
+                })?;
+            }
+        }
+        progress(ModelPhase::Verifying, 100);
+        verify(&downloaded, SPEAKER_SHA)?;
+        progress(ModelPhase::Installing, 100);
         let destination = root.join("speaker-v1");
         if destination.exists() {
             fs::remove_dir_all(&destination).map_err(|error| error.to_string())?;
@@ -56,8 +88,8 @@ pub fn install_speaker(data_dir: &Path) -> Result<PathBuf, String> {
             .map_err(|error| error.to_string())?;
         Ok(target.clone())
     })();
-    if result.is_err() {
-        let _ = fs::remove_dir_all(staging);
+    if result.is_ok() {
+        clean_staging(&root, ".speaker-installing-")?;
     }
     result
 }
@@ -102,7 +134,11 @@ fn download(
         .timeout_connect(std::time::Duration::from_secs(15))
         .timeout_read(std::time::Duration::from_secs(60))
         .build();
-    let response = agent.get(url).call().map_err(|error| error.to_string())?;
+    let response = agent
+        .get(url)
+        .call()
+        .map_err(|_| "model_network".to_owned())?;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(900);
     let mut input = response.into_reader();
     let mut output = OpenOptions::new()
         .create_new(true)
@@ -113,7 +149,12 @@ fn download(
     let mut bytes = 0u64;
     let mut buffer = [0; 64 * 1024];
     loop {
-        let read = input.read(&mut buffer).map_err(|error| error.to_string())?;
+        if std::time::Instant::now() >= deadline {
+            return Err("model_network_timeout".into());
+        }
+        let read = input
+            .read(&mut buffer)
+            .map_err(|_| "model_network".to_owned())?;
         if read == 0 {
             break;
         }
@@ -182,80 +223,211 @@ fn extract_sense(archive_path: &Path, destination: &Path) -> Result<(), String> 
 
 /// Downloads independently pinned official model artifacts. A crash leaves an
 /// unpublished staging directory, never a partly ready model pack.
-pub fn install(data_dir: &Path, progress: impl Fn(u8)) -> Result<PathBuf, String> {
+pub fn install(data_dir: &Path, progress: impl Fn(ModelPhase, u8)) -> Result<PathBuf, String> {
     let target = installed_path(data_dir);
     if ready(data_dir) {
         return Ok(target);
     }
     let root = data_dir.join("models");
-    fs::create_dir_all(&root).map_err(|error| error.to_string())?;
-    fs::set_permissions(&root, fs::Permissions::from_mode(0o700))
-        .map_err(|error| error.to_string())?;
-    // A terminated installer can leave a full archive in a private staging
-    // directory. No other installer runs in this single-owner core.
-    for entry in fs::read_dir(&root).map_err(|error| error.to_string())? {
-        let entry = entry.map_err(|error| error.to_string())?;
-        if entry
-            .file_name()
-            .to_string_lossy()
-            .starts_with(".installing-")
+    fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+    fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).map_err(|e| e.to_string())?;
+    // A fixed private staging directory belongs to the single Core installer.
+    // Retain only hash-valid complete resources across retries/restarts. It is
+    // never a published ready pack and provides no byte-range resume.
+    let staging = root.join(".installing-speech-v1");
+    fs::create_dir_all(&staging).map_err(|e| e.to_string())?;
+    fs::set_permissions(&staging, fs::Permissions::from_mode(0o700)).map_err(|e| e.to_string())?;
+    let mut candidates = vec![target.clone()];
+    for entry in fs::read_dir(&root).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        if entry.path() != staging
             && entry
-                .file_type()
-                .map_err(|error| error.to_string())?
-                .is_dir()
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".installing-")
+            && entry.file_type().map_err(|e| e.to_string())?.is_dir()
         {
-            fs::remove_dir_all(entry.path()).map_err(|error| error.to_string())?;
+            candidates.push(entry.path());
         }
     }
-    let staging = root.join(format!(".installing-{}", Uuid::new_v4()));
-    fs::create_dir(&staging).map_err(|error| error.to_string())?;
-    fs::set_permissions(&staging, fs::Permissions::from_mode(0o700))
-        .map_err(|error| error.to_string())?;
+    progress(ModelPhase::Checking, 0);
+    let sense_source = candidates.iter().find(|p| sense_ready(p));
+    let vad_source = candidates
+        .iter()
+        .find(|p| verify(&p.join("silero_vad.onnx"), SILERO_SHA).is_ok());
+    let sense_missing = !sense_ready(&staging);
+    let vad_missing = verify(&staging.join("silero_vad.onnx"), SILERO_SHA).is_err();
+    let archive = staging.join("sensevoice.tar.bz2");
+    let archive_valid = verify(&archive, SENSE_ARCHIVE_SHA).is_ok();
+    let required = if sense_missing {
+        239_233_841
+            + 315_894
+            + 71
+            + if sense_source.is_none() && !archive_valid {
+                163_002_883
+            } else {
+                0
+            }
+    } else {
+        0
+    } + if vad_missing { 643_854 } else { 0 };
+    if sense_missing && staging.join("sensevoice").exists() {
+        fs::remove_dir_all(staging.join("sensevoice")).map_err(|e| e.to_string())?;
+    }
+    if !archive_valid {
+        remove_if_present(&archive)?;
+    }
+    if vad_missing {
+        remove_if_present(&staging.join("silero_vad.onnx"))?;
+    }
+    check_space(data_dir, required)?;
     let result = (|| {
-        let archive = staging.join("sensevoice.tar.bz2");
-        download(
-            SENSE_ARCHIVE_URL,
-            &archive,
-            SENSE_ARCHIVE_SHA,
-            170_000_000,
-            |bytes| {
-                progress(((bytes.saturating_mul(70) / 163_002_883).min(70)) as u8);
-            },
-        )?;
-        extract_sense(&archive, &staging.join("sensevoice"))?;
-        progress(95);
-        fs::remove_file(archive).map_err(|error| error.to_string())?;
-        download(
-            SILERO_URL,
-            &staging.join("silero_vad.onnx"),
-            SILERO_SHA,
-            2_000_000,
-            |_| {
-                progress(98);
-            },
-        )?;
-        verify(&staging.join("sensevoice/model.int8.onnx"), SENSE_MODEL_SHA)?;
-        verify(&staging.join("sensevoice/tokens.txt"), SENSE_TOKENS_SHA)?;
-        verify(&staging.join("silero_vad.onnx"), SILERO_SHA)?;
-        if target.exists() {
-            fs::remove_dir_all(&target).map_err(|error| error.to_string())?;
+        if sense_missing {
+            let sense = staging.join("sensevoice");
+            if sense.exists() {
+                fs::remove_dir_all(&sense).map_err(|e| e.to_string())?;
+            }
+            if let Some(source) = sense_source {
+                fs::create_dir(&sense).map_err(|e| e.to_string())?;
+                for name in ["model.int8.onnx", "tokens.txt", "LICENSE"] {
+                    copy_synced(&source.join("sensevoice").join(name), &sense.join(name))?;
+                }
+            } else {
+                if !archive_valid {
+                    remove_if_present(&archive)?;
+                    // Older interrupted installers may have a complete archive.
+                    if let Some(source) = candidates
+                        .iter()
+                        .find(|p| verify(&p.join("sensevoice.tar.bz2"), SENSE_ARCHIVE_SHA).is_ok())
+                    {
+                        copy_synced(&source.join("sensevoice.tar.bz2"), &archive)?;
+                    } else {
+                        progress(ModelPhase::Downloading, 0);
+                        download(
+                            SENSE_ARCHIVE_URL,
+                            &archive,
+                            SENSE_ARCHIVE_SHA,
+                            170_000_000,
+                            |n| {
+                                progress(
+                                    ModelPhase::Downloading,
+                                    ((n * 100 / 163_002_883).min(100)) as u8,
+                                )
+                            },
+                        )?;
+                    }
+                }
+                progress(ModelPhase::Installing, 0);
+                extract_sense(&archive, &sense)?;
+            }
+            progress(ModelPhase::Verifying, 100);
+            if !sense_ready(&staging) {
+                return Err("model_checksum".into());
+            }
         }
-        fs::rename(&staging, &target).map_err(|error| error.to_string())?;
+        remove_if_present(&archive)?;
+        if vad_missing {
+            let vad = staging.join("silero_vad.onnx");
+            remove_if_present(&vad)?;
+            if let Some(source) = vad_source {
+                copy_synced(&source.join("silero_vad.onnx"), &vad)?;
+            } else {
+                progress(ModelPhase::Downloading, 0);
+                download(SILERO_URL, &vad, SILERO_SHA, 2_000_000, |n| {
+                    progress(
+                        ModelPhase::Downloading,
+                        ((n * 100 / 643_854).min(100)) as u8,
+                    )
+                })?;
+            }
+        }
+        progress(ModelPhase::Verifying, 100);
+        verify(&staging.join("silero_vad.onnx"), SILERO_SHA)?;
+        progress(ModelPhase::Installing, 100);
+        if target.exists() {
+            fs::remove_dir_all(&target).map_err(|e| e.to_string())?;
+        }
+        fs::rename(&staging, &target).map_err(|e| e.to_string())?;
         File::open(&root)
-            .and_then(|file| file.sync_all())
-            .map_err(|error| error.to_string())?;
-        progress(100);
+            .and_then(|f| f.sync_all())
+            .map_err(|e| e.to_string())?;
+        clean_staging(&root, ".installing-")?;
         Ok(target.clone())
     })();
-    if result.is_err() {
-        let _ = fs::remove_dir_all(&staging);
-    }
+    // Keep complete components after a failed later download. On the next
+    // attempt invalid files are discarded before retrying their download.
     result
+}
+fn sense_ready(root: &Path) -> bool {
+    verify(&root.join("sensevoice/model.int8.onnx"), SENSE_MODEL_SHA).is_ok()
+        && verify(&root.join("sensevoice/tokens.txt"), SENSE_TOKENS_SHA).is_ok()
+        && root.join("sensevoice/LICENSE").is_file()
+}
+fn remove_if_present(path: &Path) -> Result<(), String> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+fn copy_synced(from: &Path, to: &Path) -> Result<(), String> {
+    fs::copy(from, to).map_err(|e| e.to_string())?;
+    File::open(to)
+        .and_then(|f| f.sync_all())
+        .map_err(|e| e.to_string())
+}
+
+fn clean_staging(root: &Path, prefix: &str) -> Result<(), String> {
+    for entry in fs::read_dir(root).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        if entry.file_name().to_string_lossy().starts_with(prefix)
+            && entry.file_type().map_err(|e| e.to_string())?.is_dir()
+        {
+            fs::remove_dir_all(entry.path()).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+fn check_space(directory: &Path, staging: u64) -> Result<(), String> {
+    let free = fs2::available_space(directory).map_err(|_| "model_disk_check".to_owned())?;
+    if free < staging + 2 * 1_073_741_824 {
+        return Err("model_disk_space".into());
+    }
+    Ok(())
+}
+pub fn load_error_code(error: &str) -> String {
+    match error {
+        "resource_deferred" => "model_resources_busy",
+        "worker_timeout" => "model_load_timeout",
+        _ => "model_load_failed",
+    }
+    .into()
+}
+pub fn error_code(error: &str) -> String {
+    if error.starts_with("model_") {
+        return error.into();
+    }
+    if error.contains("checksum") {
+        "model_checksum"
+    } else if error.contains("archive") {
+        "model_archive"
+    } else if error.contains("No space") {
+        "model_disk_space"
+    } else {
+        "model_install"
+    }
+    .into()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn load_cancellation_is_resource_pressure_not_model_corruption() {
+        assert_eq!(load_error_code("resource_deferred"), "model_resources_busy");
+        assert_eq!(load_error_code("worker_timeout"), "model_load_timeout");
+        assert_eq!(load_error_code("worker_failed"), "model_load_failed");
+    }
 
     #[test]
     fn model_pack_stays_not_ready_with_partial_or_wrong_weights() {

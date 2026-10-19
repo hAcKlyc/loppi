@@ -175,6 +175,8 @@ fn run() -> Result<(), String> {
             ModelPhase::Missing
         },
         progress_percent: 0,
+        error: None,
+        speaker_error: None,
         speaker_phase: if speaker_present {
             ModelPhase::Checking
         } else {
@@ -206,27 +208,23 @@ fn run() -> Result<(), String> {
         resources: resources::Governor::new(),
     });
     if models_present || speaker_present {
-        let models = Arc::clone(&shared.models);
-        let directory = directory.clone();
+        let startup = Arc::clone(&shared);
         thread::spawn(move || {
-            let verified = model_pack::ready(&directory);
-            let speaker_verified = model_pack::speaker_ready(&directory);
-            if let Ok(mut state) = models.lock() {
-                if matches!(state.phase, ModelPhase::Checking) {
-                    state.phase = if verified {
-                        ModelPhase::Ready
-                    } else {
-                        ModelPhase::Missing
-                    };
-                    state.progress_percent = if verified { 100 } else { 0 };
-                }
-                if matches!(state.speaker_phase, ModelPhase::Checking) {
-                    state.speaker_phase = if speaker_verified {
-                        ModelPhase::Ready
-                    } else {
-                        ModelPhase::Missing
-                    };
-                }
+            if models_present {
+                let result = if model_pack::ready(&startup.directory) {
+                    check_speech_load(&startup.models, &startup.resources, &startup.directory)
+                } else {
+                    Err("model_checksum".into())
+                };
+                finish_model(&startup.models, false, result);
+            }
+            if speaker_present {
+                let result = if model_pack::speaker_ready(&startup.directory) {
+                    Ok(())
+                } else {
+                    Err("model_checksum".into())
+                };
+                finish_model(&startup.models, true, result);
             }
         });
     }
@@ -769,6 +767,87 @@ fn coarse_log_event(job: &coarse::Job, published: &Result<bool, String>, stage: 
         ..Default::default()
     });
     event
+}
+
+fn finish_model(models: &Mutex<ModelState>, speaker: bool, result: Result<(), String>) {
+    if let Ok(mut state) = models.lock() {
+        let phase = if result.is_ok() {
+            ModelPhase::Ready
+        } else {
+            ModelPhase::Failed
+        };
+        if speaker {
+            state.speaker_phase = phase;
+            state.speaker_error = result.err();
+        } else {
+            state.phase = phase;
+            state.error = result.err();
+            state.progress_percent = if matches!(phase, ModelPhase::Ready) {
+                100
+            } else {
+                0
+            };
+        }
+    }
+}
+
+/// Synthetic in-memory input exercises actual loading, never a capture session,
+/// database write or cloud request. Each child is killed and reaped on drop.
+fn check_speech_load(
+    models: &Mutex<ModelState>,
+    resources: &Arc<resources::Governor>,
+    data_dir: &std::path::Path,
+) -> Result<(), String> {
+    if let Ok(mut state) = models.lock() {
+        state.phase = ModelPhase::Loading;
+    }
+    let permit = resources.wait_admit(resources::Work::Coarse, Duration::from_secs(30));
+    let _permit = match permit {
+        Ok(p) => p,
+        Err(_) => {
+            resources.no_work(resources::Work::Coarse);
+            return Err("model_resources_busy".into());
+        }
+    };
+    let worker = std::env::current_exe()
+        .map_err(|_| "model_worker_missing")?
+        .with_file_name("hear-worker");
+    let directory = model_pack::installed_path(data_dir);
+    let samples = vec![0.0f32; 16_000];
+    let cancelled = || resources.cancel(resources::Work::Coarse);
+    {
+        let mut vad = analysis::AnalysisClient::start(&worker, "vad", &directory)
+            .map_err(|_| "model_worker_missing")?;
+        let result: analysis::VadResult = vad
+            .request(
+                "microphone",
+                "model-load-check",
+                0,
+                &samples,
+                true,
+                Duration::from_secs(30),
+                &cancelled,
+            )
+            .map_err(|e| model_pack::load_error_code(&e))?;
+        if result.error.is_some() {
+            return Err("model_load_failed".into());
+        }
+    }
+    let mut recognizer = analysis::AnalysisClient::start(&worker, "recognize", &directory)
+        .map_err(|_| "model_worker_missing")?
+        .managed(&resources, resources::Work::Coarse);
+    let _: String = recognizer
+        .request(
+            "microphone",
+            "model-load-check",
+            0,
+            &samples,
+            true,
+            Duration::from_secs(30),
+            &cancelled,
+        )
+        .map_err(|e| model_pack::load_error_code(&e))?;
+    Ok(())
 }
 
 fn analysis_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
@@ -2327,6 +2406,33 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                     tasks: events::task_views(&reader, provider, limit)?,
                 }
             }
+            Request::CloudConfigurationReceipt {
+                provider,
+                request_id,
+            } => {
+                // Never resend verification to discover its outcome. Holding the
+                // provider gate proves no verification is still in flight.
+                let gate = shared.outbound_gate(provider).try_lock();
+                let pending = gate.is_err();
+                let reader = shared.readers.snapshot()?;
+                let json: Option<String> = reader
+                    .query_row(
+                        "SELECT state_json FROM mutation_receipts WHERE request_id=?1",
+                        params![request_id.to_string()],
+                        |row| row.get(0),
+                    )
+                    .optional()
+                    .map_err(|e| e.to_string())?;
+                let response = json
+                    .map(|v| serde_json::from_str::<Response>(&v))
+                    .transpose()
+                    .map_err(|e| e.to_string())?;
+                Response::CloudConfigurationReceipt {
+                    id: envelope.id,
+                    pending,
+                    response: response.map(Box::new),
+                }
+            }
             Request::ConfigureCloud {
                 provider,
                 api_key,
@@ -2402,12 +2508,18 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                                 }
                             }
                         }
-                        Err(error) => Response::Error {
-                            id: envelope.id,
-                            code: error,
-                            message: "cloud provider verification or macOS Keychain storage failed"
-                                .to_owned(),
-                        },
+                        Err(error) => {
+                            let response = Response::Error {
+                                id: envelope.id,
+                                code: error,
+                                message:
+                                    "cloud provider verification or macOS Keychain storage failed"
+                                        .to_owned(),
+                            };
+                            let store = shared.store.lock().map_err(|e| e.to_string())?;
+                            store.db.execute("INSERT INTO mutation_receipts (request_id,fingerprint,state_json) VALUES (?1,?2,?3)", params![envelope.id.to_string(), mutation_fingerprint, serde_json::to_string(&response).map_err(|e|e.to_string())?]).map_err(|e|e.to_string())?;
+                            response
+                        }
                     }
                 }
             }
@@ -3546,45 +3658,46 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                 );
                 if speech_needed || speaker_needed {
                     if speech_needed {
-                        state.phase = ModelPhase::Downloading;
+                        state.phase = ModelPhase::Checking;
                         state.progress_percent = 0;
+                        state.error = None;
                     }
                     if speaker_needed {
-                        state.speaker_phase = ModelPhase::Downloading;
+                        state.speaker_phase = ModelPhase::Checking;
+                        state.speaker_error = None;
                     }
+                    let resources = Arc::clone(&shared.resources);
                     let models = Arc::clone(&shared.models);
                     let directory = shared.directory.clone();
                     let logs = shared.logs.clone();
                     let correlation_id = envelope.id;
                     thread::spawn(move || {
                         let speech_success = if speech_needed {
-                            let result = model_pack::install(&directory, |progress| {
+                            let result = model_pack::install(&directory, |phase, progress| {
                                 if let Ok(mut state) = models.lock() {
+                                    state.phase = phase;
                                     state.progress_percent = progress;
                                 }
-                            });
-                            if let Ok(mut state) = models.lock() {
-                                state.phase = if result.is_ok() {
-                                    ModelPhase::Ready
-                                } else {
-                                    ModelPhase::Failed
-                                };
-                                state.progress_percent = if result.is_ok() { 100 } else { 0 };
-                            }
-                            result.is_ok()
+                            })
+                            .map_err(|e| model_pack::error_code(&e))
+                            .and_then(|_| check_speech_load(&models, &resources, &directory));
+                            let success = result.is_ok();
+                            finish_model(&models, false, result);
+                            success
                         } else {
                             true
                         };
                         let speaker_success = if speaker_needed {
-                            let result = model_pack::install_speaker(&directory);
-                            if let Ok(mut state) = models.lock() {
-                                state.speaker_phase = if result.is_ok() {
-                                    ModelPhase::Ready
-                                } else {
-                                    ModelPhase::Failed
-                                };
-                            }
-                            result.is_ok()
+                            let result = model_pack::install_speaker(&directory, |phase, _| {
+                                if let Ok(mut state) = models.lock() {
+                                    state.speaker_phase = phase;
+                                }
+                            })
+                            .map(|_| ())
+                            .map_err(|e| model_pack::error_code(&e));
+                            let success = result.is_ok();
+                            finish_model(&models, true, result);
+                            success
                         } else {
                             true
                         };
@@ -3840,7 +3953,10 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
         },
         response => response,
     };
-    if !matches!(request_name, "status" | "app_opened" | "logs" | "log" | "playback_valid") {
+    if !matches!(
+        request_name,
+        "status" | "app_opened" | "logs" | "log" | "playback_valid"
+    ) {
         let mut received = LogEvent::simple("ipc", LogLevel::Info, "request_received");
         received.correlation_id = Some(envelope.id);
         shared.logs.emit(envelope.client, envelope.id, received);
@@ -4728,6 +4844,7 @@ impl Store {
             Request::CloudStatus
             | Request::UsageStatistics { .. }
             | Request::CloudTasks { .. }
+            | Request::CloudConfigurationReceipt { .. }
             | Request::ConfigureCloud { .. }
             | Request::SetCloudPaused { .. }
             | Request::RetryCloudTask { .. }

@@ -1045,6 +1045,7 @@ p {
 	background: var(--color-positive);
 	vertical-align: 2px;
 }
+.cloud-provider-key,
 .cloud-config label,
 .modal label {
 	display: grid;
@@ -1053,6 +1054,7 @@ p {
 	font-size: var(--type-caption);
 	font-weight: var(--weight-semibold);
 }
+.cloud-provider-key input,
 .cloud-config input,
 .modal input:not([type="checkbox"]):not([type="radio"]),
 .modal select {

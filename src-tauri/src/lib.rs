@@ -3,10 +3,12 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 use tauri::Manager;
 mod entry;
+mod onboarding;
 use entry::{
     EntryRuntime, entry_action, entry_drag, entry_focus, entry_layout, entry_mode, entry_snapshot,
 };
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+static PRIVACY_REQUEST: Mutex<()> = Mutex::new(());
 
 #[tauri::command]
 async fn core_request(
@@ -114,11 +116,13 @@ unsafe extern "C" {
     fn hear_screen_authorization_status() -> i32;
     fn hear_request_screen_authorization() -> i32;
     fn hear_tap_required() -> i32;
+    fn hear_microphone_available() -> i32;
 }
 
 #[derive(serde::Serialize)]
 struct PrivacyStatus {
     microphone: i32,
+    microphone_available: bool,
     screen_and_system_audio: i32,
     tap_required: bool,
     tap_ready: bool,
@@ -129,6 +133,7 @@ fn privacy_status() -> PrivacyStatus {
     let tap_required = unsafe { hear_tap_required() != 0 };
     PrivacyStatus {
         microphone: unsafe { hear_microphone_authorization_status() },
+        microphone_available: unsafe { hear_microphone_available() != 0 },
         screen_and_system_audio: unsafe { hear_screen_authorization_status() },
         tap_required,
         tap_ready: tap_required
@@ -139,14 +144,22 @@ fn privacy_status() -> PrivacyStatus {
 
 #[tauri::command]
 async fn request_microphone_permission() -> Result<i32, String> {
-    tauri::async_runtime::spawn_blocking(|| unsafe { hear_request_microphone_authorization() })
-        .await
-        .map_err(|error| error.to_string())
+    tauri::async_runtime::spawn_blocking(|| {
+        let _guard = PRIVACY_REQUEST
+            .try_lock()
+            .map_err(|_| "另一项授权正在进行，请完成后重试")?;
+        Ok(unsafe { hear_request_microphone_authorization() })
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
 async fn request_system_audio_permission() -> Result<i32, String> {
     tauri::async_runtime::spawn_blocking(|| {
+        let _guard = PRIVACY_REQUEST
+            .try_lock()
+            .map_err(|_| "另一项授权正在进行，请完成后重试")?;
         if unsafe { hear_tap_required() } == 0 {
             return Ok(unsafe { hear_request_screen_authorization() });
         }
@@ -231,9 +244,14 @@ async fn request_system_audio_permission() -> Result<i32, String> {
 
 #[tauri::command]
 async fn request_screenshot_permission() -> Result<i32, String> {
-    tauri::async_runtime::spawn_blocking(|| unsafe { hear_request_screen_authorization() })
-        .await
-        .map_err(|e| e.to_string())
+    tauri::async_runtime::spawn_blocking(|| {
+        let _guard = PRIVACY_REQUEST
+            .try_lock()
+            .map_err(|_| "另一项授权正在进行，请完成后重试")?;
+        Ok(unsafe { hear_request_screen_authorization() })
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -270,6 +288,12 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            app.manage(onboarding::Preferences::new(
+                std::env::var_os("HEAR_DATA_DIR")
+                    .map(|p| std::path::PathBuf::from(p).join("gui"))
+                    .unwrap_or(app.path().app_config_dir()?)
+                    .join("onboarding.json"),
+            ));
             let runtime = EntryRuntime::new(
                 std::env::var_os("HEAR_DATA_DIR")
                     .map(|p| std::path::PathBuf::from(p).join("gui"))
@@ -305,6 +329,11 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             build_info,
+
+            onboarding::onboarding_status,
+            onboarding::complete_onboarding,
+            onboarding::open_privacy_settings,
+            onboarding::open_setup_help,
             core_request,
             cleanup_request,
             gui_ready,

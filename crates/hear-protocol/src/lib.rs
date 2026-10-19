@@ -11,7 +11,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
-pub const PROTOCOL_VERSION: u32 = 18;
+pub const PROTOCOL_VERSION: u32 = 19;
 const MAX_RESPONSE_BYTES: u64 = 48 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,6 +74,10 @@ pub enum Request {
         expected_revision: i64,
     },
     CloudStatus,
+    CloudConfigurationReceipt {
+        provider: CloudProvider,
+        request_id: Uuid,
+    },
     UsageStatistics {
         boundaries: Vec<i64>,
     },
@@ -310,6 +314,7 @@ impl Request {
             Self::CloudStatus => "cloud_status",
             Self::UsageStatistics { .. } => "usage_statistics",
             Self::CloudTasks { .. } => "cloud_tasks",
+            Self::CloudConfigurationReceipt { .. } => "cloud_configuration_receipt",
             Self::ConfigureCloud { .. } => "configure_cloud",
             Self::SetCloudPaused { .. } => "set_cloud_paused",
             Self::RetryCloudTask { .. } => "retry_cloud_task",
@@ -679,6 +684,11 @@ pub enum Response {
         id: Uuid,
         report: DiagnosticReport,
     },
+    CloudConfigurationReceipt {
+        id: Uuid,
+        pending: bool,
+        response: Option<Box<Response>>,
+    },
     Status {
         id: Uuid,
         state: ServiceState,
@@ -847,6 +857,8 @@ pub struct ModelState {
     pub phase: ModelPhase,
     pub progress_percent: u8,
     pub speaker_phase: ModelPhase,
+    pub error: Option<String>,
+    pub speaker_error: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -855,6 +867,9 @@ pub enum ModelPhase {
     Missing,
     Checking,
     Downloading,
+    Verifying,
+    Installing,
+    Loading,
     Ready,
     Failed,
 }
@@ -1042,7 +1057,8 @@ fn send_with_policy(
     }
     let decoded: Response = serde_json::from_slice(&response).map_err(|error| error.to_string())?;
     match &decoded {
-        Response::Status { id, .. }
+        Response::CloudConfigurationReceipt { id, .. }
+        | Response::Status { id, .. }
         | Response::Diagnostic { id, .. }
         | Response::Models { id, .. }
         | Response::ProbeResult { id, .. }

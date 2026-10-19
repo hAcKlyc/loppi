@@ -29,6 +29,8 @@ import {
 } from "./entry-api";
 import { LoadBoundary, LoadingSkeleton } from "./LoadingState";
 import { RecordingScheduleSettings } from "./RecordingScheduleSettings";
+import { ModelPreparation, SourcePreparation } from "./SetupGroups";
+import type { ModelState, PrivacyStatus } from "./setup";
 import { UsageStatisticsView } from "./UsageStatistics";
 
 type Mutation = (
@@ -426,18 +428,9 @@ export function SettingsView({
 		Record<"queues" | "models" | "privacy" | "login" | "state", string>
 	>;
 	selection: { kind: "export" | "cleanup"; item: TimelineItem } | null;
-	privacy: {
-		microphone: number;
-		screen_and_system_audio: number;
-		tap_required: boolean;
-		tap_ready: boolean;
-	} | null;
+	privacy: PrivacyStatus | null;
 	loginStatus: number | null;
-	models: {
-		phase: string;
-		speaker_phase: string;
-		progress_percent: number;
-	} | null;
+	models: ModelState | null;
 	busy: boolean;
 	onStatus: () => Promise<void>;
 	onContext: () => Promise<void>;
@@ -507,7 +500,6 @@ export function SettingsView({
 	const [exportAudio, setExportAudio] = useState(false);
 	const [exportScreenshots, setExportScreenshots] = useState(false);
 	const [working, setWorking] = useState(false);
-	const [authorizingAudio, setAuthorizingAudio] = useState(false);
 	const [audioLimitGiB, setAudioLimitGiB] = useState("");
 	useEffect(() => {
 		if (state?.audio_limit_bytes)
@@ -638,20 +630,6 @@ export function SettingsView({
 		}
 	};
 
-	const systemAudioReady = privacy?.tap_required
-		? privacy.tap_ready
-		: privacy?.screen_and_system_audio === 1;
-	const authorizeSystemAudio = async () => {
-		setAuthorizingAudio(true);
-		try {
-			await invoke("request_system_audio_permission");
-		} catch (error) {
-			onMessage(userError(error));
-		} finally {
-			await Promise.allSettled([onContext(), onStatus()]);
-			setAuthorizingAudio(false);
-		}
-	};
 	return (
 		<section className="page-container settings-page">
 			<div className="page-heading" data-tauri-drag-region>
@@ -727,165 +705,19 @@ export function SettingsView({
 						/>
 					</div>
 				</LoadBoundary>
-				<LoadBoundary
-					ready={privacy !== null && state !== null}
+				<SourcePreparation
+					state={state}
+					privacy={privacy}
 					error={loadErrors.privacy || loadErrors.state}
-					retry={() => {
-						void onContext();
-						void onStatus();
+					onRefresh={async () => {
+						await Promise.all([onContext(), onStatus()]);
 					}}
-					label="麦克风"
-					rows={1}
-				>
-					<div className="setting-row">
-						<div>
-							<strong>麦克风</strong>
-							<p>
-								{privacy?.microphone === 3
-									? state?.microphone_recording
-										? "录制中"
-										: "已授权"
-									: "需要系统授权"}
-							</p>
-						</div>
-						{privacy?.microphone === 3 ? (
-							<Switch
-								label="麦克风"
-								checked={state?.microphone_enabled ?? false}
-								disabled={busy || !state}
-								onChange={() =>
-									void onMutate(
-										{
-											type: "set_source",
-											source: "microphone",
-											enabled: !state?.microphone_enabled,
-											expected_revision: state?.revision,
-										},
-										"声音来源已更新",
-									)
-								}
-							/>
-						) : (
-							<button
-								type="button"
-								className="quiet-button"
-								onClick={async () => {
-									await invoke("request_microphone_permission");
-									await onContext();
-								}}
-							>
-								允许访问
-							</button>
-						)}
-					</div>
-				</LoadBoundary>
-				<LoadBoundary
-					ready={privacy !== null && state !== null}
-					error={loadErrors.privacy || loadErrors.state}
-					retry={() => {
-						void onContext();
-						void onStatus();
-					}}
-					label="电脑声音"
-					rows={1}
-				>
-					<div className="setting-row">
-						<div>
-							<strong>电脑声音</strong>
-							<p>
-								{state?.system_recording
-									? privacy?.tap_required && !privacy.tap_ready
-										? "录制中 · 待完成后台授权"
-										: "录制中"
-									: systemAudioReady
-										? privacy?.tap_required
-											? "已完成设置"
-											: "已授权"
-										: "需要系统授权"}
-							</p>
-						</div>
-						<div className="setting-actions">
-							{privacy?.tap_required && (
-								<button
-									type="button"
-									className="quiet-button"
-									disabled={authorizingAudio}
-									onClick={() => void authorizeSystemAudio()}
-								>
-									{authorizingAudio
-										? "等待授权…"
-										: privacy.tap_ready
-											? "重新验证"
-											: "完成授权"}
-								</button>
-							)}
-							{state && (
-								<Switch
-									label="电脑声音"
-									checked={state.system_enabled}
-									disabled={busy || authorizingAudio}
-									onChange={() =>
-										void onMutate(
-											{
-												type: "set_source",
-												source: "system",
-												enabled: !state.system_enabled,
-												expected_revision: state.revision,
-											},
-											"声音来源已更新",
-										)
-									}
-								/>
-							)}
-							{!privacy?.tap_required && !systemAudioReady && (
-								<button
-									type="button"
-									className="quiet-button"
-									disabled={authorizingAudio}
-									onClick={() => void authorizeSystemAudio()}
-								>
-									{authorizingAudio ? "等待系统授权…" : "允许访问"}
-								</button>
-							)}
-						</div>
-					</div>
-				</LoadBoundary>
-				<LoadBoundary
-					ready={models !== null}
+				/>
+				<ModelPreparation
+					models={models}
 					error={loadErrors.models}
-					retry={() => void onContext()}
-					label="本地模型"
-					rows={1}
-				>
-					<div className="setting-row">
-						<div>
-							<strong>本地模型</strong>
-							<p>
-								{models?.phase === "ready"
-									? "语音识别已就绪"
-									: models?.phase === "downloading"
-										? `语音识别下载中 · ${models.progress_percent}%`
-										: "语音识别尚未就绪"}
-								{" · "}
-								{models?.speaker_phase === "ready"
-									? "声纹已就绪"
-									: models?.speaker_phase === "downloading"
-										? "声纹下载中"
-										: "声纹尚未就绪"}
-							</p>
-						</div>
-						<button
-							type="button"
-							className="quiet-button"
-							disabled={busy}
-							onClick={() =>
-								void onMutate({ type: "prepare_models" }, "正在准备模型")
-							}
-						>
-							准备模型
-						</button>
-					</div>
-				</LoadBoundary>
+					onRefresh={onContext}
+				/>
 				<LoadBoundary
 					ready={state !== null}
 					error={loadErrors.state}
@@ -988,8 +820,7 @@ export function SettingsView({
 							key={provider}
 							provider={provider}
 							configured={cloudConfigured}
-							busy={busy}
-							onMutate={onMutate}
+							onRefresh={onContext}
 						/>
 					</div>
 					{provider === "llm" && (

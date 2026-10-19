@@ -30,7 +30,7 @@ flowchart LR
 | 核心 | [`crates/hear-core/src/main.rs`](../crates/hear-core/src/main.rs) | 唯一 SQLite 写入者；持有采集监督、时间映射、媒体、两条云队列、声纹任务和权限/容量状态。登录项与按需服务争同一个 owner 锁。 |
 | 采集来源 | [`source_process.rs`](../crates/hear-core/src/source_process.rs)、[`record.rs`](../crates/hear-core/src/record.rs) | 每个来源以同一签名核心可执行文件的私有子命令运行；持有原生设备、有界缓冲及封块写入。只发布不可变媒体和 core 管理的 ingestion 日志，不访问业务库。 |
 | 本地推理 | [`crates/hear-worker/src/main.rs`](../crates/hear-worker/src/main.rs) | 轻量 `vad` 与重型 `recognize` 独立进程；`embed` 按需复用 CampPlus。三者共用有界帧协议，父 core 消失退出；只计算，不拥有数据库。 |
-| IPC 协议 | [`crates/hear-protocol/src/lib.rs`](../crates/hear-protocol/src/lib.rs) | 请求/响应、稳定 ID、预期修订、重复提交标识和协议版本。当前工作树版本为 18。 |
+| IPC 协议 | [`crates/hear-protocol/src/lib.rs`](../crates/hear-protocol/src/lib.rs) | 请求/响应、稳定 ID、预期修订、重复提交标识和协议版本。当前工作树版本为 19。 |
 | macOS 桥接 | [`src-tauri/native/`](../src-tauri/native/privacy.m)、[`crates/hear-core/native/`](../crates/hear-core/native/system_audio.m) | 登录项、权限、截图/OCR、系统声 API 等原生操作；业务数据仍由核心裁决。 |
 
 没有长期运行的 Node 服务，也没有局域网/HTTP 管理接口。模型权重按哈希安装在本机数据目录；`.env` 仅供开发，不打进客户端。正式凭据由设置页交给核心验证并存在 Keychain。[模型包实现](../crates/hear-core/src/model_pack.rs)；[云端凭据和请求](../crates/hear-core/src/cloud.rs)。
@@ -170,3 +170,13 @@ GUI 上下文刷新合并在途请求，仅前台聚焦时周期刷新。连续�
 
 
 诊断遵循相同 owner 边界：协议 18 的 `Diagnose` 使用 Core 的只读快照与日志 worker，生成脱敏、有界的临时报表，不新增持久状态或调度入口。构建身份、日志字段、覆盖口径、统一验证和安装门禁见[诊断与开发验证](tech_docs/diagnostics-and-verification.md)。
+
+## 单页首次设置（2026-10-20）
+
+首次 GUI 路由由 Tauri 的 `onboarding.json` 管理（app_config_dir；隔离运行时为 `HEAR_DATA_DIR/gui`），仅含 schema_version 与 completed，原子受限写入。缺失时以 Core 的 enabled_intent 或双供应商已配置迁移既有用户；损坏显式恢复，不能根据历史空白重置。完成会重新读取 Core 模型、来源、双云和原生权限，保存元数据后进入首页，不写 Start/Resume、登录项或录制计划。CLI 不依赖 GUI 标记。
+
+`SetupGroups` 在设置和首次页面共用模型/来源操作；`refreshContext` 仍是 GUI 观察入口。`CloudKeyInput` 保留未保存草稿在组件内，`setup.ts` 仅在当前 WebView 保存未确认请求 ID。云配置使用既有稳定 ID 与 mutation_receipts，`CloudConfigurationReceipt` 是只读查询；失败回执也记录，不因传输失败自动重复供应商验证。凭据只由 Core 验证、Keychain 保存。
+
+必要语音模型在启动校验或显式安装后通过 Governor 的 Coarse 预算准入，以现有 AnalysisClient 运行 VAD 和 SenseVoice 合成静音加载检查；每次各有 30 秒请求上限，退出回收子进程，不建立业务录音或发云请求。ModelState 提供 checking/downloading/installing/verifying/loading/ready/failed 和分组件错误。CampPlus 独立失败不阻断完成。模型安装按锁定包体和解包文件预算加 2 GiB 录音余量检查磁盘；废弃暂存清理、完整包复用，未完成下载重新开始。
+
+权限刷新不发起授权或试录；显式点击由宿主串行授权。Tap marker 仅表示曾完成前台准备，UI 不将其当作当前永久 TCC 授权。上线证据仍以单页首次设置 PRD 的签名新用户和平台验收为准。

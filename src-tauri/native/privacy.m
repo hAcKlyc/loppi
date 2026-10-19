@@ -34,3 +34,7 @@ int hear_request_screen_authorization(void) {
 int hear_tap_required(void) {
   return [[NSProcessInfo processInfo] operatingSystemVersion].majorVersion >= 26;
 }
+
+int hear_microphone_available(void) {
+  return [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeAudio] != nil;
+}

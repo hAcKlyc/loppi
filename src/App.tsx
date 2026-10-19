@@ -26,17 +26,13 @@ import { TimelineView } from "./TimelineView";
 import { monthBoundaries } from "./timeline-view";
 import { QueueView, SettingsView } from "./WorkspaceViews";
 import "./App.css";
+import { OnboardingView } from "./OnboardingView";
+import type { ModelState, PrivacyStatus } from "./setup";
 
-type Page = "timeline" | "queue" | "people" | "settings";
+type Page = "timeline" | "queue" | "people" | "settings" | "onboarding";
 type EventForm = { mode: "create" | "edit"; item?: TimelineItem };
 type EventTool = { item: TimelineItem; mode: "split" | "merge" | "delete" };
 type DataAction = { kind: "export" | "cleanup"; item: TimelineItem };
-type PrivacyStatus = {
-	microphone: number;
-	screen_and_system_audio: number;
-	tap_required: boolean;
-	tap_ready: boolean;
-};
 
 function localInput(timestamp: number): string {
 	const d = new Date(timestamp);
@@ -49,6 +45,28 @@ function errorText(error: unknown): string {
 
 function App() {
 	const [page, setPage] = useState<Page>("timeline");
+	const [setupCompleted, setSetupCompleted] = useState<boolean | null>(null);
+	const [setupError, setSetupError] = useState("");
+	const setupLoading = useRef(false);
+	const loadSetup = useCallback(async (recover = false) => {
+		if (setupLoading.current) return;
+		setupLoading.current = true;
+		setSetupError("");
+		try {
+			const result = await invoke<{ completed: boolean }>("onboarding_status", {
+				recover,
+			});
+			setSetupCompleted(result.completed);
+			if (!result.completed) setPage("onboarding");
+		} catch (e) {
+			setSetupError(errorText(e));
+		} finally {
+			setupLoading.current = false;
+		}
+	}, []);
+	useEffect(() => {
+		void loadSetup();
+	}, [loadSetup]);
 	const [date, setDate] = useState(() => new Date());
 	const [hideCoarse, setHideCoarse] = useState(true);
 	const [items, setItems] = useState<TimelineItem[]>([]);
@@ -83,11 +101,7 @@ function App() {
 	const [tasksError, setTasksError] = useState("");
 	const [reviewsError, setReviewsError] = useState("");
 	const tasksRequest = useRef(0);
-	const [models, setModels] = useState<{
-		phase: string;
-		speaker_phase: string;
-		progress_percent: number;
-	} | null>(null);
+	const [models, setModels] = useState<ModelState | null>(null);
 	const [selection, setSelection] = useState<{
 		item: TimelineItem;
 		initialAt?: number;
@@ -327,11 +341,7 @@ function App() {
 				core<{
 					type: "models";
 					id: string;
-					state: {
-						phase: string;
-						speaker_phase: string;
-						progress_percent: number;
-					};
+					state: ModelState;
 				}>({ type: "models" })
 					.then((result) => setModels(result.state))
 					.catch((cause) => failed("models", cause)),
@@ -404,12 +414,12 @@ function App() {
 	useEffect(() => {
 		if (!isTauri()) return;
 		const subscription = listen("hear-open-settings", () =>
-			setPage("settings"),
+			setPage(setupCompleted === false ? "onboarding" : "settings"),
 		);
 		return () => {
 			void subscription.then((unlisten) => unlisten());
 		};
-	}, []);
+	}, [setupCompleted]);
 	useEffect(() => {
 		if (!isTauri()) return;
 		let disposed = false;
@@ -696,8 +706,54 @@ function App() {
 	const captureControl = useCaptureControl({
 		snapshot,
 		onRefresh: refreshStatus,
-		onSettings: () => setPage("settings"),
+		onSettings: () =>
+			setPage(setupCompleted === false ? "onboarding" : "settings"),
 	});
+	const refreshSetup = async () => {
+		// Finish any older poll, then fetch observations begun after mutations.
+		await refreshContext();
+		await Promise.all([refreshStatus(), refreshContext()]);
+	};
+	if (setupCompleted === null)
+		return (
+			<main className="onboarding-loading">
+				<h1>准备 Hear</h1>
+				<p role="status">{setupError || "正在读取设置…"}</p>
+				{setupError && (
+					<>
+						<button type="button" onClick={() => void loadSetup()}>
+							重试
+						</button>
+						<button type="button" onClick={() => void loadSetup(true)}>
+							恢复设置记录
+						</button>
+						<p>恢复只重建首次页面记录，不会重置录音、来源或云配置。</p>
+					</>
+				)}
+			</main>
+		);
+	if (page === "onboarding")
+		return (
+			<OnboardingView
+				state={state}
+				privacy={privacy}
+				models={models}
+				queues={queues}
+				queuesReady={contextReady.queues}
+				errors={{
+					models: contextErrors.models,
+					privacy: contextErrors.privacy,
+					queues: contextErrors.queues,
+					state: statusError || snapshot?.error || "",
+				}}
+				onRefresh={refreshSetup}
+				onComplete={() => {
+					setSetupCompleted(true);
+					setPage("timeline");
+				}}
+				onLater={() => setPage("timeline")}
+			/>
+		);
 	return (
 		<div className="app-shell">
 			<aside className="sidebar" data-tauri-drag-region>
@@ -767,6 +823,14 @@ function App() {
 				</nav>
 			</aside>
 			<main className="main-area">
+				{setupCompleted === false && (
+					<div className="connection-banner">
+						首次准备尚未完成
+						<button type="button" onClick={() => setPage("onboarding")}>
+							继续设置
+						</button>
+					</div>
+				)}
 				{error && (
 					<div className="connection-banner">
 						后台暂不可用 · {error}

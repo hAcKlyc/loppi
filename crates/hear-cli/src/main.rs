@@ -926,6 +926,9 @@ fn main() {
         request,
         cli.request_id.unwrap_or_else(Uuid::new_v4),
     ) {
+        Ok(response @ Response::CloudConfigurationReceipt { .. }) => {
+            println!("{}", serde_json::to_string(&response).unwrap())
+        }
         Ok(
             response @ (Response::Status { .. }
             | Response::Diagnostic { .. }
