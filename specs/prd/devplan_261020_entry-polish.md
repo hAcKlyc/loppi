@@ -1,6 +1,6 @@
 ---
 type: devplan
-status: in-progress
+status: implemented
 created: 2026-10-20
 updated: 2026-10-20
 ---
@@ -33,7 +33,7 @@ updated: 2026-10-20
 - [x] 静态/构建/相关回归
 - [x] 签名新包真机验证与证据
 - [x] requirements/adversarial → 裁决修复 → architecture
-- [ ] 提交与最终验收记录
+- [x] 提交与最终验收记录
 
 ### Review 基线
 - Batch base: `3faad261272eac54c2fb1d306ceae10469e4cb4d`
@@ -70,3 +70,5 @@ updated: 2026-10-20
 - 手工验收应在该独立包上用真实鼠标从其它应用打开评论，确认光标/输入及取消后前台归还；在无刘海外接屏确认展开上方无32pt空带；在第三方全屏及中文IME输入过程中检查不抢焦点、不误提交。未获得证据前保留整体发布门槛。
 
 - 2026-10-20：提交前在当前共享HEAD（已包含独立ASR合并）重新执行全量typecheck/lint、5项入口测试、React交互、原生测试及9项Rust入口测试，全部通过；diff whitespace检查通过。私有签名包再次校验通过。当前候选满足本次定向契约；不承接或关闭历史整体发布门槛。
+
+- 2026-10-20：实现提交`009a885`。单Batch已完成三个修正、受影响回归、独立三路review和本机可执行验收；review后未变更生产代码，无中间兼容层或新增owner。最终状态`implemented`仅指本devplan限定的定向修正与“能做的真机验证”，不代表旧入口PRD整体发布验收完成。其余共享工作树改动未纳入提交。
