@@ -42,6 +42,7 @@ mod record;
 mod recovery;
 mod resources;
 mod retention;
+mod schedule;
 mod source_process;
 mod storage;
 mod system_audio;
@@ -193,6 +194,7 @@ fn run() -> Result<(), String> {
         system_busy: AtomicBool::new(false),
         capture: Mutex::new(CaptureRuntime::default()),
         allow_capture: AtomicBool::new(capture_after_launch),
+        normal_run: AtomicBool::new(capture_after_launch),
         resources: resources::Governor::new(),
     });
     if models_present || speaker_present {
@@ -1620,18 +1622,25 @@ fn capture_supervisor(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
             .store
             .lock()
             .map_err(|error| error.to_string())
-            .and_then(|store| store.state());
+            .and_then(|mut store| {
+                if shared.normal_run.load(Ordering::Acquire)
+                    && store.settle_schedule().unwrap_or(false)
+                {
+                    shared.allow_capture.store(true, Ordering::Release);
+                }
+                Ok((store.state()?, events::configured(&store.db)?))
+            });
         let models_ready = shared
             .models
             .lock()
             .is_ok_and(|models| matches!(models.phase, ModelPhase::Ready));
         let capture_allowed = shared.allow_capture.load(Ordering::Acquire)
             && models_ready
-            && state.as_ref().is_ok_and(|state| {
-                state.enabled_intent && !state.paused_intent && !state.storage_paused
+            && state.as_ref().is_ok_and(|(state, configured)| {
+                *configured && state.enabled_intent && !state.paused_intent && !state.storage_paused
             });
         let (want_microphone, want_system) = match state {
-            Ok(state) => (
+            Ok((state, _)) => (
                 capture_allowed && state.microphone_enabled,
                 capture_allowed && state.system_enabled,
             ),
@@ -1749,6 +1758,8 @@ struct CoreState {
     system_busy: AtomicBool,
     capture: Mutex<CaptureRuntime>,
     allow_capture: AtomicBool,
+    // A live GUI may arm future actions without starting current capture.
+    normal_run: AtomicBool,
     resources: Arc<resources::Governor>,
 }
 
@@ -1831,7 +1842,14 @@ impl CoreState {
                 Some("recording paused because audio storage reached its safety limit".to_owned());
         } else if state.paused_intent {
             state.capture_state = CaptureState::Paused;
-            state.reason = Some("recording was paused by the user".to_owned());
+            state.reason = Some(
+                if state.recording_schedule.paused_by_schedule {
+                    "recording was paused by schedule"
+                } else {
+                    "recording was paused by the user"
+                }
+                .to_owned(),
+            );
         } else if !models_ready || !cloud_ready {
             state.capture_state = CaptureState::NotReady;
             state.reason = Some(if !models_ready {
@@ -3594,6 +3612,32 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                     }
                 }
             },
+            Request::AppOpened => {
+                if !matches!(envelope.client, ClientKind::Gui) {
+                    Response::Error {
+                        id: envelope.id,
+                        code: "gui_required".into(),
+                        message: "application activation requires GUI".into(),
+                    }
+                } else {
+                    let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                    // The host repeats this with its existing state refresh, so
+                    // a restarted query-only Core can recover. Only the first
+                    // activation of this instance restores current intent.
+                    if !shared.normal_run.load(Ordering::Acquire) {
+                        if store.state()?.recording_schedule.enabled {
+                            store.settle_schedule()?;
+                            store.clear_quit()?;
+                            shared.allow_capture.store(true, Ordering::Release);
+                        }
+                        shared.normal_run.store(true, Ordering::Release);
+                    }
+                    Response::Status {
+                        id: envelope.id,
+                        state: store.state()?,
+                    }
+                }
+            }
             Request::YieldToLogin => {
                 if shared.launch_mode == LaunchMode::Login {
                     Response::Error {
@@ -3616,19 +3660,15 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
         }
     };
     if explicit_capture && matches!(response, Response::Status { .. }) {
-        shared
-            .store
-            .lock()
-            .map_err(|error| error.to_string())?
-            .clear_quit()?;
+        let mut store = shared.store.lock().map_err(|error| error.to_string())?;
+        store.clear_quit()?;
+        shared.normal_run.store(true, Ordering::Release);
         shared.allow_capture.store(true, Ordering::Release);
     }
     if explicit_quit && matches!(response, Response::Status { .. }) {
-        shared
-            .store
-            .lock()
-            .map_err(|error| error.to_string())?
-            .mark_quit(current_login_session()?)?;
+        let mut store = shared.store.lock().map_err(|error| error.to_string())?;
+        store.mark_quit(current_login_session()?)?;
+        shared.normal_run.store(false, Ordering::Release);
         shared.allow_capture.store(false, Ordering::Release);
     }
     let response = match response {
@@ -3638,7 +3678,7 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
         },
         response => response,
     };
-    if !matches!(request_name, "status" | "logs" | "log" | "playback_valid") {
+    if !matches!(request_name, "status" | "app_opened" | "logs" | "log" | "playback_valid") {
         let mut received = LogEvent::simple("ipc", LogLevel::Info, "request_received");
         received.correlation_id = Some(envelope.id);
         shared.logs.emit(envelope.client, envelope.id, received);
@@ -3830,6 +3870,7 @@ impl Store {
           WHERE analysis_state='failed' AND retention_decision='pending_vad_v2'
             AND media_path IS NOT NULL",
         )?;
+        schedule::init(&db)?;
         archive::init(&db)?;
         Ok(Self {
             db,
@@ -3949,6 +3990,17 @@ impl Store {
         Ok(())
     }
 
+    fn settle_schedule(&mut self) -> Result<bool, String> {
+        let tx = self.db.transaction().map_err(|e| e.to_string())?;
+        let consumed = schedule::settle(&tx, now_ms()?).map_err(|e| e.to_string())?;
+        if consumed {
+            tx.execute("DELETE FROM explicit_exit WHERE id=1", [])
+                .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(consumed)
+    }
+
     fn state(&self) -> Result<ServiceState, String> {
         read_state(&self.db)
     }
@@ -4064,7 +4116,7 @@ impl Store {
             .execute(
                 "UPDATE media_gaps SET ended_ms = max(started_ms, ?2)
              WHERE source = ?1 AND ended_ms IS NULL
-             AND reason NOT IN ('manual_pause','storage_limit','source_disabled')",
+             AND reason NOT IN ('manual_pause','schedule_pause','storage_limit','source_disabled')",
                 params![source_name(source), at],
             )
             .map_err(|error| error.to_string())?;
@@ -4382,6 +4434,7 @@ impl Store {
                 }
                 let at = now_ms()?;
                 self.mutate(id, expected_revision, fingerprint, |tx| {
+                    schedule::manual(tx, at)?;
                     close_intent_gaps(tx, "manual_pause", at)?;
                     tx.execute("UPDATE service_state SET enabled_intent=1,paused_intent=0,revision=revision+1 WHERE id=1",[])
                 })
@@ -4389,6 +4442,7 @@ impl Store {
             Request::Pause { expected_revision } => {
                 let at = now_ms()?;
                 self.mutate(id, expected_revision, fingerprint, |tx| {
+                    schedule::manual(tx, at)?;
                     open_intent_gap(tx, "microphone", "manual_pause", at)?;
                     open_intent_gap(tx, "system", "manual_pause", at)?;
                     tx.execute("UPDATE service_state SET paused_intent = 1, revision = revision + 1 WHERE id = 1", [])
@@ -4406,10 +4460,29 @@ impl Store {
                 }
                 let at = now_ms()?;
                 self.mutate(id, expected_revision, fingerprint, |tx| {
+                    schedule::manual(tx, at)?;
                     close_intent_gaps(tx, "manual_pause", at)?;
                     close_intent_gaps(tx, "storage_limit", at)?;
                     tx.execute("UPDATE capture_guard SET pause_reason = NULL WHERE id = 1", [])?;
                     tx.execute("UPDATE service_state SET paused_intent = 0, revision = revision + 1 WHERE id = 1", [])
+                })
+            }
+            Request::SetRecordingSchedule {
+                enabled,
+                start_minute,
+                stop_minute,
+                expected_revision,
+            } => {
+                if start_minute >= 1440 || stop_minute >= 1440 || start_minute == stop_minute {
+                    return Ok(Response::Error {
+                        id,
+                        code: "invalid_schedule".into(),
+                        message: "choose two different valid times".into(),
+                    });
+                }
+                let at = now_ms()?;
+                self.mutate(id, expected_revision, fingerprint, |tx| {
+                    schedule::save(tx, enabled, start_minute, stop_minute, at)
                 })
             }
             Request::SetSource {
@@ -4479,7 +4552,8 @@ impl Store {
             | Request::RecordTest { .. }
             | Request::Log { .. }
             | Request::Logs { .. }
-            | Request::YieldToLogin => {
+            | Request::YieldToLogin
+            | Request::AppOpened => {
                 unreachable!("handled by IPC dispatcher")
             }
             Request::CloudStatus
@@ -4647,6 +4721,7 @@ fn prior_mutation_response(
 }
 
 fn read_state(db: &Connection) -> Result<ServiceState, String> {
+    let recording_schedule = schedule::view(db)?;
     db.query_row(
         "SELECT revision, enabled_intent, paused_intent, microphone_enabled, system_enabled,
                 (SELECT pause_reason IS NOT NULL FROM capture_guard WHERE id = 1),
@@ -4656,6 +4731,7 @@ fn read_state(db: &Connection) -> Result<ServiceState, String> {
         [],
         |row| {
             Ok(ServiceState {
+                recording_schedule: recording_schedule.clone(),
                 revision: row.get(0)?,
                 enabled_intent: row.get(1)?,
                 paused_intent: row.get(2)?,

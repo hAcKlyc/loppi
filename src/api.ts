@@ -5,6 +5,7 @@ export type Sources = Source | "both";
 export type CloudProvider = "llm" | "asr";
 
 const errorLabels: Record<string, string> = {
+	invalid_schedule: "请选择不同的开始和停止时间",
 	range_no_audio: "所选时间没有可精转的原声",
 	range_invalid: "请选择有效的精转时间和声音来源",
 	invalid_time_range: "请选择有效的时间范围",
@@ -122,7 +123,18 @@ export function manualAsrLabel(value: string): string {
 	}
 }
 
+export interface RecordingSchedule {
+	enabled: boolean;
+	start_minute: number;
+	stop_minute: number;
+	paused_by_schedule: boolean;
+	next_at_ms: number | null;
+	next_action: "start" | "stop" | null;
+	error: string | null;
+}
+
 export interface ServiceState {
+	recording_schedule: RecordingSchedule;
 	revision: number;
 	enabled_intent: boolean;
 	paused_intent: boolean;

@@ -38,6 +38,13 @@ enum Command {
     Start,
     Pause,
     Resume,
+    Schedule {
+        enabled: Switch,
+        #[arg(long, value_parser = parse_schedule_time)]
+        start: Option<u16>,
+        #[arg(long, value_parser = parse_schedule_time)]
+        stop: Option<u16>,
+    },
     Source {
         source: Source,
         enabled: Switch,
@@ -461,6 +468,25 @@ fn main() {
         Command::Resume => Request::Resume {
             expected_revision: expected_revision(),
         },
+        Command::Schedule {
+            enabled,
+            start,
+            stop,
+        } => {
+            let state = match send(Request::Status) {
+                Ok(Response::Status { state, .. }) => state,
+                other => {
+                    eprintln!("hear: cannot read recording schedule: {other:?}");
+                    std::process::exit(1);
+                }
+            };
+            Request::SetRecordingSchedule {
+                enabled: matches!(enabled, Switch::On),
+                start_minute: start.unwrap_or(state.recording_schedule.start_minute),
+                stop_minute: stop.unwrap_or(state.recording_schedule.stop_minute),
+                expected_revision: cli.if_revision.unwrap_or(state.revision),
+            }
+        }
         Command::Quit => Request::Quit,
         Command::Cloud { action } => match action {
             CloudCommand::Status => Request::CloudStatus,
@@ -967,4 +993,14 @@ fn run_cleanup(
             std::process::exit(1);
         }
     }
+}
+
+fn parse_schedule_time(value: &str) -> Result<u16, String> {
+    let (hour, minute) = value.split_once(':').ok_or("expected HH:MM")?;
+    let hour = hour.parse::<u16>().map_err(|_| "expected HH:MM")?;
+    let minute = minute.parse::<u16>().map_err(|_| "expected HH:MM")?;
+    if hour > 23 || minute > 59 {
+        return Err("expected a time from 00:00 to 23:59".into());
+    }
+    Ok(hour * 60 + minute)
 }

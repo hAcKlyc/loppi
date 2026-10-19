@@ -12,6 +12,7 @@ use std::sync::Arc;
 async fn core_request(
     app: tauri::AppHandle,
     mut request: hear_protocol::Request,
+    request_id: Option<uuid::Uuid>,
 ) -> Result<hear_protocol::Response, String> {
     if let hear_protocol::Request::CaptureScreenshot {
         excluded_window_ids,
@@ -37,7 +38,11 @@ async fn core_request(
                 })
                 .ok_or_else(|| snapshot.error.unwrap_or("status unavailable".into()));
         }
-        let result = hear_protocol::send_from(hear_protocol::ClientKind::Gui, request);
+        let result = hear_protocol::send_from_with_id(
+            hear_protocol::ClientKind::Gui,
+            request,
+            request_id.unwrap_or_else(uuid::Uuid::new_v4),
+        );
         runtime.request_refresh();
         result
     })

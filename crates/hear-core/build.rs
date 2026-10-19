@@ -1,4 +1,5 @@
 fn main() {
+    println!("cargo:rerun-if-changed=native/schedule.m");
     println!("cargo:rerun-if-changed=native/system_audio.m");
     println!("cargo:rerun-if-changed=native/system_audio_tap.m");
     println!("cargo:rerun-if-changed=native/permissions.m");
@@ -6,6 +7,7 @@ fn main() {
     println!("cargo:rerun-if-changed=native/moments.m");
     cc::Build::new()
         .file("native/system_audio.m")
+        .file("native/schedule.m")
         .file("native/system_audio_tap.m")
         .file("native/permissions.m")
         .file("native/resources.m")

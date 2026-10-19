@@ -60,6 +60,8 @@ function gapReason(reason: string): string {
 	switch (reason) {
 		case "manual_pause":
 			return "已暂停";
+		case "schedule_pause":
+			return "定时暂停";
 		case "storage_limit":
 			return "空间不足";
 		case "source_disabled":

@@ -28,6 +28,7 @@ import {
 	getEntrySnapshot,
 } from "./entry-api";
 import { LoadBoundary, LoadingSkeleton } from "./LoadingState";
+import { RecordingScheduleSettings } from "./RecordingScheduleSettings";
 import { UsageStatisticsView } from "./UsageStatistics";
 
 type Mutation = (
@@ -684,6 +685,7 @@ export function SettingsView({
 				</LoadBoundary>
 			</div>
 			<h2>记录</h2>
+			<RecordingScheduleSettings state={state} refresh={onStatus} />
 			<div className="panel-card setting-panel">
 				<LoadBoundary
 					ready={loginStatus !== null}

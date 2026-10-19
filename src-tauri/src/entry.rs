@@ -214,7 +214,12 @@ fn presentation(s: Option<&ServiceState>) -> (Appearance, Option<String>, Option
         );
     }
     if s.paused_intent || !s.enabled_intent {
-        return (Appearance::Sleeping, None, control);
+        return (
+            Appearance::Sleeping,
+            (s.paused_intent && s.recording_schedule.paused_by_schedule)
+                .then(|| "定时暂停，可随时手动继续录制".into()),
+            control,
+        );
     }
     let detail = match s.capture_blocker {
         Blocker::SourceUnavailable => "声音来源暂不可用，请检查权限或设备",
@@ -298,7 +303,7 @@ impl EntryRuntime {
             return;
         }
         let result =
-            hear_protocol::send_from(ClientKind::Gui, Request::Status).and_then(|r| match r {
+            hear_protocol::send_from(ClientKind::Gui, Request::AppOpened).and_then(|r| match r {
                 Response::Status { state, .. } => Ok(state),
                 Response::Error { code, message, .. } => Err(format!("{code}: {message}")),
                 _ => Err("unexpected status response".into()),

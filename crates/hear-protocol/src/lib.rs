@@ -9,7 +9,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
-pub const PROTOCOL_VERSION: u32 = 17;
+pub const PROTOCOL_VERSION: u32 = 18;
 const MAX_RESPONSE_BYTES: u64 = 48 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,6 +50,13 @@ pub enum Request {
         expected_revision: i64,
     },
     Resume {
+        expected_revision: i64,
+    },
+    AppOpened,
+    SetRecordingSchedule {
+        enabled: bool,
+        start_minute: u16,
+        stop_minute: u16,
         expected_revision: i64,
     },
     SetSource {
@@ -290,6 +297,8 @@ impl Request {
             Self::Start { .. } => "start",
             Self::Pause { .. } => "pause",
             Self::Resume { .. } => "resume",
+            Self::AppOpened => "app_opened",
+            Self::SetRecordingSchedule { .. } => "set_recording_schedule",
             Self::SetSource { .. } => "set_source",
             Self::SetAudioLimit { .. } => "set_audio_limit",
             Self::CloudStatus => "cloud_status",
@@ -852,7 +861,33 @@ pub enum CaptureBlocker {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecordingSchedule {
+    pub enabled: bool,
+    pub start_minute: u16,
+    pub stop_minute: u16,
+    pub paused_by_schedule: bool,
+    pub next_at_ms: Option<i64>,
+    pub next_action: Option<String>,
+    pub error: Option<String>,
+}
+impl Default for RecordingSchedule {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            start_minute: 480,
+            stop_minute: 1380,
+            paused_by_schedule: false,
+            next_at_ms: None,
+            next_action: None,
+            error: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServiceState {
+    #[serde(default)]
+    pub recording_schedule: RecordingSchedule,
     pub revision: i64,
     pub enabled_intent: bool,
     pub paused_intent: bool,

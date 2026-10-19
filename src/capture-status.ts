@@ -1,4 +1,5 @@
 import type { EntrySnapshot } from "./entry-api";
+import { nextScheduleAction } from "./recording-schedule.ts";
 
 export type CaptureStatusAction =
 	| "pause"
@@ -67,8 +68,16 @@ export function captureStatusView(
 	if (snapshot.appearance === "sleeping") {
 		return {
 			tone: "paused",
-			label: state.paused_intent ? "已暂停" : "未开始",
-			subtitle: state.paused_intent ? "声音记录已暂停" : "准备好后，开始记录",
+			label: state.paused_intent
+				? state.recording_schedule?.paused_by_schedule
+					? "定时暂停"
+					: "已暂停"
+				: "未开始",
+			subtitle: state.paused_intent
+				? state.recording_schedule?.paused_by_schedule
+					? nextScheduleAction(state.recording_schedule)
+					: "声音记录已暂停"
+				: "准备好后，开始记录",
 			detail,
 			action: control,
 		};

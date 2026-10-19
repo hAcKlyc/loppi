@@ -2458,3 +2458,36 @@ body.floating-body .float-wrap {
 .moment-ocr > [role="status"] {
 	display: block;
 }
+
+.recording-schedule-panel {
+	margin-bottom: var(--space-7);
+}
+.schedule-times {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-8);
+	padding: var(--space-6) 0;
+}
+.schedule-times label {
+	display: flex;
+	align-items: center;
+	gap: var(--space-6);
+	font-size: var(--type-meta);
+}
+.schedule-times input {
+	padding: var(--space-4) var(--space-5);
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius-sm);
+	background: var(--color-surface);
+	color: inherit;
+	font: inherit;
+}
+.schedule-note {
+	font-size: var(--type-caption);
+	color: var(--color-text-muted);
+	line-height: var(--leading-body);
+}
+.schedule-error {
+	font-size: var(--type-meta);
+	color: var(--color-danger);
+}
