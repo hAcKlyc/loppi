@@ -2617,7 +2617,25 @@ pub fn task_failed_with_retry(
         || error == "provider_http_429"
         || error.starts_with("provider_http_5")
         || error == "provider_incomplete_output";
-    let retry = transient;
+    // Model output is a proposal, so an occasional format/boundary rejection
+    // can retry in the existing queue. Keep a finite total attempt budget;
+    // deterministic ASR mapping failures must never enter this paid path.
+    let invalid_fit_output = task.provider == CloudProvider::Llm
+        && task.target_kind == "candidate"
+        && (error == "provider_incomplete_output"
+            || error == "provider_invalid_json_content"
+            || error.starts_with("provider_invalid_json_content_")
+            || matches!(
+                error,
+                "invalid_fit_schema" | "invalid_fit_count" | "invalid_fit_source"
+                    | "invalid_fit_summary" | "invalid_fit_boundary"
+            )
+            || error.starts_with("invalid_fit_boundary_"));
+    let retry = if invalid_fit_output {
+        attempts < 3
+    } else {
+        transient
+    };
     let scale = attempts.min(10);
     let base_delay = (30_000_i64 * scale * scale).min(10 * 60 * 1000);
     let jitter = (task.id.as_u128() % (base_delay as u128 / 5 + 1)) as i64;
@@ -2699,15 +2717,23 @@ pub fn llm_input(db: &Connection, task: &CloudTask) -> Result<String, String> {
     let items = evidence(db, task.start, task.end)?;
     let mut lines = Vec::new();
     for item in items {
+        // A coarse utterance can straddle the computational window. The
+        // model owns only its intersection, not the full physical interval.
+        // Keep original evidence untouched for adjacent windows and playback.
         if let Some(text) = item.text.as_ref().filter(|s| !s.trim().is_empty()) {
             lines.push(format!(
                 "{}-{} {}: {}",
-                item.start, item.end, item.source, text
+                item.start.max(task.start),
+                item.end.min(task.end),
+                item.source,
+                text
             ));
         } else {
             lines.push(format!(
                 "{}-{} {}: [speech detected, no usable local text]",
-                item.start, item.end, item.source
+                item.start.max(task.start),
+                item.end.min(task.end),
+                item.source
             ));
         }
     }
@@ -2821,6 +2847,7 @@ Do not infer people's real identities, invented facts, or content outside the su
 If the candidate continues previous_event, set merge_with_event_id to that exact id; otherwise null.
 Return events in chronological order.
 All start_ms/end_ms values are absolute integer milliseconds within candidate, including for merges; preserve the supplied millisecond precision.
+Observation times are clipped to candidate; a coarse sentence can extend beyond that intersection, so never infer an output boundary outside the supplied interval from its wording.
 For a merge, return only the continuation inside candidate and the previous_event id; the application retains the prior start and joins the ranges.
 For example, if previous_event covers 1000-9000 and candidate covers 10000-20000, a continuation uses start_ms=10000 and end_ms=20000, not start_ms=1000.
 
@@ -5180,6 +5207,94 @@ mod tests {
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].id, Some(id));
         assert_eq!(items[0].processing_state, "audio_unavailable");
+    }
+
+    #[test]
+    fn invalid_fit_output_retries_are_bounded_and_keep_task_identity() {
+        for code in [
+            "provider_invalid_json_content",
+            "provider_invalid_json_content_syntax",
+            "invalid_fit_boundary_outside_window",
+            "invalid_fit_schema",
+            "provider_incomplete_output",
+        ] {
+            let mut db = db();
+            coarse(&db, "speech", 1000, 6000, "可整理的连续讨论");
+            set_configured(&db, CloudProvider::Llm, "deepseek-flash").unwrap();
+            refresh_candidates(&mut db, 100_000, true).unwrap();
+            let mut identity = None;
+            for attempt in 1..=3 {
+                let t = take_task(&mut db, CloudProvider::Llm, attempt * 1_000_000)
+                    .unwrap()
+                    .unwrap();
+                assert!(identity.is_none_or(|id| id == t.id));
+                identity = Some(t.id);
+                task_failed(&db, &t, code, attempt * 1_000_000 + 1).unwrap();
+                let (state, attempts): (String, i64) = db
+                    .query_row(
+                        "SELECT state,attempts FROM cloud_tasks WHERE id=?1",
+                        [t.id.to_string()],
+                        |r| Ok((r.get(0)?, r.get(1)?)),
+                    )
+                    .unwrap();
+                assert_eq!(state, if attempt < 3 { "pending" } else { "failed" });
+                assert_eq!(attempts, attempt);
+                assert_eq!(
+                    db.query_row(
+                        "SELECT state FROM candidate_windows WHERE id=?1",
+                        [&t.target_id],
+                        |r| r.get::<_, String>(0)
+                    )
+                    .unwrap(),
+                    state
+                );
+            }
+            assert!(
+                take_task(&mut db, CloudProvider::Llm, 10_000_000)
+                    .unwrap()
+                    .is_none()
+            );
+            assert_eq!(
+                db.query_row("SELECT count(*) FROM named_events", [], |r| r
+                    .get::<_, i64>(0))
+                    .unwrap(),
+                0
+            );
+        }
+    }
+
+    #[test]
+    fn fit_input_intersects_crossing_observations_without_retiming_evidence() {
+        let mut db = db();
+        coarse(&db, "initial", 2000, 3000, "当前讨论");
+        set_configured(&db, CloudProvider::Llm, "deepseek-flash").unwrap();
+        refresh_candidates(&mut db, 100_000, true).unwrap();
+        let task = take_task(&mut db, CloudProvider::Llm, 100_000)
+            .unwrap()
+            .unwrap();
+        coarse(&db, "crossing", 1000, 4000, "跨越前后窗口的原始句子");
+        let sent: serde_json::Value = serde_json::from_str(&llm_input(&db, &task).unwrap()).unwrap();
+        let lines = sent["observations"].as_array().unwrap();
+        assert_eq!(lines.len(), 2);
+        assert!(
+            lines
+                .iter()
+                .all(|line| line.as_str().unwrap().starts_with("2000-3000 microphone:"))
+        );
+        assert_eq!(
+            db.query_row(
+                "SELECT started_ms,ended_ms FROM coarse_segments WHERE text='跨越前后窗口的原始句子'",
+                [],
+                |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?))
+            )
+            .unwrap(),
+            (1000, 4000)
+        );
+        let invalid = serde_json::json!({"events":[{"start_ms":1000,"end_ms":4000,"title":"越界","summary":null,"sources":"microphone","merge_with_event_id":null}]});
+        assert_eq!(
+            publish_fit(&mut db, &task, invalid, 100_001).unwrap_err(),
+            "invalid_fit_boundary_outside_window"
+        );
     }
 
     #[test]

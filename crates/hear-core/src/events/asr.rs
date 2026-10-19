@@ -2,10 +2,9 @@
 use super::*;
 use serde::{Deserialize, Serialize};
 
-pub const VERSION: &str = "volc-event-compact-v1";
+pub const VERSION: &str = "volc-event-contiguous-v2";
 pub const WINDOW_MS: i64 = 20 * 60 * 1000;
 const SETTLE_MS: i64 = 15 * 60 * 1000;
-const SEPARATOR_MS: i64 = 1_000;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Part {
@@ -69,33 +68,6 @@ pub fn input(db: &Connection, id: Uuid) -> Result<Option<Input>, String> {
     value
         .map(|v| serde_json::from_str(&v).map_err(|e| e.to_string()))
         .transpose()
-}
-
-fn silent(db: &Connection, source: &str, start: i64, end: i64) -> Result<bool, String> {
-    if end - start <= 10 {
-        return Ok(true);
-    }
-    let invalid: bool = db.query_row("SELECT EXISTS(SELECT 1 FROM media_gaps WHERE source=?1 AND started_ms<?3 AND coalesce(ended_ms,?3)>?2)
-      OR EXISTS(SELECT 1 FROM clear_ranges WHERE from_ms<?3 AND to_ms>?2 AND ((?1='microphone' AND source_mask&1!=0) OR (?1='system' AND source_mask&2!=0)))",params![source,start,end],|r|r.get(0)).map_err(|e|e.to_string())?;
-    if invalid {
-        return Ok(false);
-    }
-    let mut stmt=db.prepare("SELECT started_ms,ended_ms FROM audio_blocks WHERE source=?1 AND started_ms<?3 AND ended_ms>?2
-      AND retention_decision IN('discard_digital_silence_v1','discard_no_speech_v2') ORDER BY started_ms").map_err(|e|e.to_string())?;
-    let mut covered = start;
-    for row in stmt
-        .query_map(params![source, start, end], |r| {
-            Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?))
-        })
-        .map_err(|e| e.to_string())?
-    {
-        let (a, b) = row.map_err(|e| e.to_string())?;
-        if a > covered + 10 {
-            return Ok(false);
-        }
-        covered = covered.max(b);
-    }
-    Ok(covered + 10 >= end)
 }
 
 pub fn schedule(
@@ -301,14 +273,12 @@ fn plan(
             for (from, to) in spans.into_iter().filter(|(a, b)| b > a) {
                 let gap = parts.last().map(|p| from - p.end).unwrap_or(0).max(0);
                 let capture_gap:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM media_gaps WHERE source=?1 AND started_ms<?3 AND coalesce(ended_ms,?3)>?2)",params![source,from-gap,from],|r|r.get(0)).map_err(|e|e.to_string())?;
-                let can_join = !capture_gap
-                    && (gap <= MAX_ASR_INTERIOR_SILENCE_MS
-                        || silent(tx, source, from - gap, from)?);
-                let encoded_gap = if gap > MAX_ASR_INTERIOR_SILENCE_MS {
-                    SEPARATOR_MS
-                } else {
-                    gap
-                };
+                // A synthetic separator does not make provider word timing
+                // invertible: a single word can span multiple source runs.
+                // Keep one linear clock per request and reuse existing task
+                // splitting for long silence, unknown holes and capture gaps.
+                let can_join = !capture_gap && gap <= MAX_ASR_INTERIOR_SILENCE_MS;
+                let encoded_gap = gap;
                 if !parts.is_empty()
                     && (!can_join || duration + encoded_gap + to - from > WINDOW_MS)
                 {
