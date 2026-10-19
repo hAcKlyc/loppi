@@ -67,14 +67,10 @@ fn write(path: &Path, completed: bool) -> Result<Metadata, String> {
     Ok(value)
 }
 fn business() -> Result<(hear_protocol::ServiceState, bool), String> {
-    let Response::Status { state, .. } =
-        hear_protocol::send_from(ClientKind::Gui, Request::Status)?
-    else {
+    let Response::Status { state, .. } = checked_response(Request::Status)? else {
         return Err("无法读取记录状态".into());
     };
-    let Response::CloudStatus { queues, .. } =
-        hear_protocol::send_from(ClientKind::Gui, Request::CloudStatus)?
-    else {
+    let Response::CloudStatus { queues, .. } = checked_response(Request::CloudStatus)? else {
         return Err("无法读取云端配置".into());
     };
     let configured = [
@@ -84,6 +80,12 @@ fn business() -> Result<(hear_protocol::ServiceState, bool), String> {
     .iter()
     .all(|p| queues.iter().any(|q| q.provider == *p && q.configured));
     Ok((state, configured))
+}
+fn checked_response(request: Request) -> Result<Response, String> {
+    match hear_protocol::send_from(ClientKind::Gui, request)? {
+        Response::Error { code, message, .. } => Err(format!("{code}: {message}")),
+        response => Ok(response),
+    }
 }
 #[tauri::command]
 pub async fn onboarding_status(app: tauri::AppHandle, recover: bool) -> Result<Metadata, String> {
@@ -115,9 +117,7 @@ pub async fn complete_onboarding(app: tauri::AppHandle) -> Result<Metadata, Stri
             }
         }
         let (state, configured) = business()?;
-        let Response::Models { state: models, .. } =
-            hear_protocol::send_from(ClientKind::Gui, Request::Models)?
-        else {
+        let Response::Models { state: models, .. } = checked_response(Request::Models)? else {
             return Err("无法读取本地组件".into());
         };
         let privacy = super::privacy_status();

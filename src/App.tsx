@@ -724,10 +724,14 @@ function App() {
 						<button type="button" onClick={() => void loadSetup()}>
 							重试
 						</button>
-						<button type="button" onClick={() => void loadSetup(true)}>
-							恢复设置记录
-						</button>
-						<p>恢复只重建首次页面记录，不会重置录音、来源或云配置。</p>
+						{setupError.includes("首次设置记录损坏") && (
+							<>
+								<button type="button" onClick={() => void loadSetup(true)}>
+									恢复设置记录
+								</button>
+								<p>恢复只重建首次页面记录，不会重置录音、来源或云配置。</p>
+							</>
+						)}
 					</>
 				)}
 			</main>

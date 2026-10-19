@@ -1,5 +1,7 @@
 mod diagnostic;
+mod lifecycle;
 pub use diagnostic::*;
+pub use lifecycle::quit_gui_core;
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs;
@@ -11,7 +13,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
-pub const PROTOCOL_VERSION: u32 = 19;
+pub const PROTOCOL_VERSION: u32 = 20;
 const MAX_RESPONSE_BYTES: u64 = 48 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -31,9 +33,22 @@ pub enum ClientKind {
     Worker,
 }
 
+// Stable lifecycle wire contract: these actions remain available across business
+// protocol revisions so a replaced GUI can drain an older background owner.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LifecycleAction {
+    Inspect,
+    Handoff,
+    Quit,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Request {
+    Lifecycle {
+        action: LifecycleAction,
+    },
     Status,
     Diagnose {
         filter: DiagnosticFilter,
@@ -298,6 +313,7 @@ pub enum Request {
 impl Request {
     pub fn name(&self) -> &'static str {
         match self {
+            Self::Lifecycle { .. } => "lifecycle",
             Self::Status => "status",
             Self::Diagnose { .. } => "diagnose",
             Self::Models => "models",
@@ -680,6 +696,12 @@ pub struct SearchHit {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Response {
+    Lifecycle {
+        id: Uuid,
+        build: BuildInfo,
+        allow_capture: bool,
+        normal_run: bool,
+    },
     Diagnostic {
         id: Uuid,
         report: DiagnosticReport,
@@ -999,6 +1021,11 @@ pub fn send_from_with_id(
     request: Request,
     id: Uuid,
 ) -> Result<Response, String> {
+    let _session = if matches!(client, ClientKind::Gui) {
+        Some(lifecycle::gui_request()?)
+    } else {
+        None
+    };
     send_with_policy(client, request, id, true)
 }
 
@@ -1057,7 +1084,8 @@ fn send_with_policy(
     }
     let decoded: Response = serde_json::from_slice(&response).map_err(|error| error.to_string())?;
     match &decoded {
-        Response::CloudConfigurationReceipt { id, .. }
+        Response::Lifecycle { id, .. }
+        | Response::CloudConfigurationReceipt { id, .. }
         | Response::Status { id, .. }
         | Response::Diagnostic { id, .. }
         | Response::Models { id, .. }

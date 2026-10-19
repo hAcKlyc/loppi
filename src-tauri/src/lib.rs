@@ -283,6 +283,17 @@ fn unregister_login_item() -> Result<i32, String> {
     }
 }
 
+fn show_exit_error(error: &str, native_exit: bool) {
+    let instruction = if native_exit {
+        "后台尚未退出。请稍后重新打开 Hear，再选择退出。"
+    } else {
+        "后台尚未退出。请稍后再次选择退出 Hear。"
+    };
+    let _ = Command::new("/usr/bin/osascript")
+        .args(["-e", "on run argv\ndisplay alert \"Hear 后台尚未退出\" message (item 1 of argv) as warning\nend run", "--", &format!("{instruction}\n\n{error}")])
+        .status();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -329,7 +340,6 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             build_info,
-
             onboarding::onboarding_status,
             onboarding::complete_onboarding,
             onboarding::open_privacy_settings,
@@ -355,13 +365,29 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| match event {
-            tauri::RunEvent::ExitRequested { .. } => {
+            // macOS's native terminate: (default menu, Cmd-Q and Dock Quit)
+            // delivers Exit directly, without ExitRequested. Always drain here
+            // too. quit_gui_core is idempotent and never starts a missing Core.
+            tauri::RunEvent::Exit => {
                 app.state::<Arc<EntryRuntime>>().stop();
+                if let Err(error) = hear_protocol::quit_gui_core() {
+                    eprintln!("Hear native exit incomplete: {error}");
+                    show_exit_error(&error, true);
+                }
                 entry::dispose(app);
-                let _ = hear_protocol::send_from(
-                    hear_protocol::ClientKind::Gui,
-                    hear_protocol::Request::Quit,
-                );
+            }
+            tauri::RunEvent::ExitRequested { api, .. } => {
+                app.state::<Arc<EntryRuntime>>().stop();
+                match hear_protocol::quit_gui_core() {
+                    Ok(()) => entry::dispose(app),
+                    Err(error) => {
+                        api.prevent_exit();
+                        eprintln!("Hear exit incomplete: {error}");
+                        // Keep the GUI alive rather than silently abandoning a
+                        // recording Core; the user can retry the Quit action.
+                        show_exit_error(&error, false);
+                    }
+                }
             }
             tauri::RunEvent::Reopen { .. } => {
                 if let Some(window) = app.get_webview_window("main") {

@@ -1,7 +1,8 @@
 use fs2::FileExt;
 use hear_protocol::{
-    AudioSource, CaptureState, ClientKind, Envelope, LogEvent, LogFilter, LogLevel, ModelPhase,
-    ModelState, PROTOCOL_VERSION, ProbeStats, Request, Response, ServiceState, data_dir,
+    AudioSource, CaptureState, ClientKind, Envelope, LifecycleAction, LogEvent, LogFilter,
+    LogLevel, ModelPhase, ModelState, PROTOCOL_VERSION, ProbeStats, Request, Response,
+    ServiceState, data_dir,
 };
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use sha2::{Digest, Sha256};
@@ -125,13 +126,24 @@ fn run() -> Result<(), String> {
         );
         return Ok(());
     }
-    if !args.is_empty()
+    let handoff = if args.len() == 3 && args[0] == "serve" && args[1] == "--handoff" {
+        match args[2].as_str() {
+            "capture" => Some((true, true)),
+            "normal" => Some((false, true)),
+            "query" => Some((false, false)),
+            _ => return Err("invalid handoff mode".into()),
+        }
+    } else {
+        None
+    };
+    if handoff.is_none()
+        && !args.is_empty()
         && args.as_slice() != ["serve", "--on-demand"]
         && args.as_slice() != ["serve", "--login"]
     {
         return Err("usage: hear-core [serve --on-demand|serve --login]".to_owned());
     }
-    let launch_mode = if args.as_slice() == ["serve", "--on-demand"] {
+    let launch_mode = if handoff.is_some() || args.as_slice() == ["serve", "--on-demand"] {
         LaunchMode::OnDemand
     } else {
         LaunchMode::Login
@@ -158,8 +170,12 @@ fn run() -> Result<(), String> {
     events::recover_tasks(&mut store.db, now_ms()?)?;
     knowledge::recover_voice(&store.db)?;
     let login_session = current_login_session()?;
-    let capture_after_launch =
-        launch_mode == LaunchMode::Login && !store.quit_in_login(login_session)?;
+    let capture_after_launch = handoff
+        .map(|v| v.0)
+        .unwrap_or(launch_mode == LaunchMode::Login && !store.quit_in_login(login_session)?);
+    if handoff.is_some_and(|v| v.1) {
+        store.clear_quit()?;
+    }
     if launch_mode == LaunchMode::Login && !capture_after_launch {
         store.close_open_gaps(AudioSource::Microphone)?;
         store.close_open_gaps(AudioSource::System)?;
@@ -204,7 +220,7 @@ fn run() -> Result<(), String> {
         system_busy: AtomicBool::new(false),
         capture: Mutex::new(CaptureRuntime::default()),
         allow_capture: AtomicBool::new(capture_after_launch),
-        normal_run: AtomicBool::new(capture_after_launch),
+        normal_run: AtomicBool::new(handoff.map(|v| v.1).unwrap_or(capture_after_launch)),
         resources: resources::Governor::new(),
     });
     if models_present || speaker_present {
@@ -2365,8 +2381,20 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
         Sha256::digest(serde_json::to_vec(&envelope.request).map_err(|error| error.to_string())?)
     );
     let request_started = Instant::now();
-    let explicit_quit = matches!(envelope.request, Request::Quit);
+    let explicit_quit = matches!(
+        envelope.request,
+        Request::Quit
+            | Request::Lifecycle {
+                action: LifecycleAction::Quit
+            }
+    );
     let quit = explicit_quit
+        || matches!(
+            envelope.request,
+            Request::Lifecycle {
+                action: LifecycleAction::Handoff
+            }
+        )
         || matches!(envelope.request, Request::YieldToLogin)
             && shared.launch_mode == LaunchMode::OnDemand;
     let explicit_capture = matches!(
@@ -2374,7 +2402,11 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
         Request::Start { .. } | Request::Resume { .. }
     );
     let request_name = envelope.request.name();
-    let response = if envelope.version != PROTOCOL_VERSION {
+    let stable_lifecycle = matches!(
+        envelope.request,
+        Request::Status | Request::Lifecycle { .. }
+    );
+    let response = if envelope.version != PROTOCOL_VERSION && !stable_lifecycle {
         Response::Error {
             id: envelope.id,
             code: "protocol_version".to_owned(),
@@ -2382,6 +2414,12 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
         }
     } else {
         match envelope.request {
+            Request::Lifecycle { .. } => Response::Lifecycle {
+                id: envelope.id,
+                build: hear_protocol::build_info("core"),
+                allow_capture: shared.allow_capture.load(Ordering::Acquire),
+                normal_run: shared.normal_run.load(Ordering::Acquire),
+            },
             Request::UsageStatistics { boundaries } => {
                 let reader = shared.readers.snapshot()?;
                 Response::UsageStatistics {
@@ -3940,7 +3978,12 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
         shared.normal_run.store(true, Ordering::Release);
         shared.allow_capture.store(true, Ordering::Release);
     }
-    if explicit_quit && matches!(response, Response::Status { .. }) {
+    if explicit_quit
+        && matches!(
+            response,
+            Response::Status { .. } | Response::Lifecycle { .. }
+        )
+    {
         let mut store = shared.store.lock().map_err(|error| error.to_string())?;
         store.mark_quit(current_login_session()?)?;
         shared.normal_run.store(false, Ordering::Release);
@@ -4830,7 +4873,8 @@ impl Store {
                     )
                 })
             }
-            Request::Models
+            Request::Lifecycle { .. }
+            | Request::Models
             | Request::PrepareModels
             | Request::Probe { .. }
             | Request::RecordTest { .. }

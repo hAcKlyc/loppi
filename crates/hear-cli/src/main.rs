@@ -971,6 +971,10 @@ fn main() {
                 println!("{}", serde_json::to_string(&entry).unwrap());
             }
         }
+        Ok(Response::Lifecycle { .. }) => {
+            eprintln!("hear: unexpected lifecycle response");
+            std::process::exit(2);
+        }
         Ok(Response::Error { code, message, .. }) => {
             eprintln!("hear: {code}: {message}");
             std::process::exit(2);
