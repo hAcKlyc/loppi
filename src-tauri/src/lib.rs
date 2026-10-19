@@ -111,6 +111,7 @@ unsafe extern "C" {
     fn hear_agent_status() -> i32;
     fn hear_agent_register() -> i32;
     fn hear_agent_unregister() -> i32;
+    fn hear_show_exit_error(message: *const std::ffi::c_char);
     fn hear_microphone_authorization_status() -> i32;
     fn hear_request_microphone_authorization() -> i32;
     fn hear_screen_authorization_status() -> i32;
@@ -289,9 +290,11 @@ fn show_exit_error(error: &str, native_exit: bool) {
     } else {
         "后台尚未退出。请稍后再次选择退出 Hear。"
     };
-    let _ = Command::new("/usr/bin/osascript")
-        .args(["-e", "on run argv\ndisplay alert \"Hear 后台尚未退出\" message (item 1 of argv) as warning\nend run", "--", &format!("{instruction}\n\n{error}")])
-        .status();
+    // Error text is display data, never an AppleScript or shell program.
+    let text = format!("{instruction}\n\n{error}").replace('\0', "�");
+    if let Ok(text) = std::ffi::CString::new(text) {
+        unsafe { hear_show_exit_error(text.as_ptr()) };
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

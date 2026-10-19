@@ -32,3 +32,4 @@ updated: 2026-10-20
 - Rust 303 passed / 7 ignored。Phase 1 审查完成：adversarial PASS；requirements 提出的 AppOpened 定时激活问题经裁决为契约阶段边界歧义，保留既有正常 GUI 打开行为，补充实际 AppOpened 路径及定时开启/暂停保持验证；不引入新的定时屏蔽状态。native signed smoke 后补。
 - 签名 native smoke：真实旧19后台在隔离目录被替换；Cmd-Q 后 GUI 11645/Core 11674 均退出且 socket 删除；关闭窗口保持后台。另一本机旧17录制后台实际交接后，两路采集均恢复 recording，原修订56及录制意图保留。未清理或重建任何用户业务数据。
 - requirements 最终 PASS（故障实际错误原生提示已补）；adversarial PASS；最终 architecture PASS。macOS 默认 terminate 直达 Exit，已复用幂等清理补齐；Core 卡死等无法优雅终止时不强杀，原生退出失败可见提示重新打开重试。最终签名 release 的失败提示 smoke / 身份 / 公证检查待构建后完成。
+- cb5b060 已提交 dev 并合并 main，clean Release 四组件身份一致；初次公证通过。故障 smoke 发现脚本弹窗脱离 Hear 归属，改为既有 native bridge 的 NSAlert；11 desktop tests 通过；签名包 native 故障 smoke 实见实际错误，可点击“好”且 GUI 正常退出。adversarial / architecture 定向复查均 PASS。最终包需按此修正重新构建公证。
