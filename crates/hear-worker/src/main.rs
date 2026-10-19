@@ -163,14 +163,18 @@ impl VadWorker {
 
     fn drain(session: &mut SourceSession, output: &mut Vec<SpeechRegion>) {
         while let Some(segment) = session.vad.front() {
-            let start_sample = session
-                .base_sample
-                .saturating_add(segment.start().max(0) as u64);
-            let end_sample = start_sample + segment.n().max(0) as u64;
-            output.push(SpeechRegion {
-                start_sample,
-                end_sample,
-            });
+            // Silero can queue an empty marker after our active-duration
+            // flush. It contains no samples, so it is not a speech region.
+            // Keep the core's strict positive-duration validation intact.
+            if segment.n() > 0 {
+                let start_sample = session
+                    .base_sample
+                    .saturating_add(segment.start().max(0) as u64);
+                output.push(SpeechRegion {
+                    start_sample,
+                    end_sample: start_sample + segment.n() as u64,
+                });
+            }
             session.vad.pop();
         }
     }

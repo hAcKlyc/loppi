@@ -73,10 +73,13 @@ impl Device {
         }
     }
 
-    fn failed(&self) -> bool {
+    fn error(&self) -> Option<String> {
         match self {
-            Self::Microphone(device) => device.stream_failed.load(Ordering::Relaxed),
-            Self::System(device, _) => device.failed(),
+            Self::Microphone(device) => device
+                .stream_failed
+                .load(Ordering::Relaxed)
+                .then(|| "microphone_stream_failed".into()),
+            Self::System(device, _) => device.error(),
         }
     }
 
@@ -489,9 +492,9 @@ fn consume_source(
                 }
             }
         }
-        if device.failed() {
+        if let Some(error) = device.error() {
             assembler.seal()?;
-            return Err("audio source stopped unexpectedly".to_owned());
+            return Err(error);
         }
     }
     if let Some(resampler) = resampler.as_ref() {

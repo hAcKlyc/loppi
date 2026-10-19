@@ -91,7 +91,7 @@ flowchart TD
 
 采集、保留、粗转、候选、两条云队列、声纹与 OCR 不是同一个阻塞链。采集热路径不能等待网络或模型；本地计算积压与云端失败由持久状态表达。`analysis_loop`、`coarse_loop`、`cloud_loop`、`voice_loop`、`capture_supervisor` 分别在[核心](../crates/hear-core/src/main.rs)；事件算法见[核心处理算法](tech_docs/algorithms.md)。
 
-VAD 先事务提交 `coarse_jobs` 的来源/session/16 kHz 样本区间与 `speech_active`，保留判断同时提交，不等待 SenseVoice。粗转任务从原有不可变封块重建输入，使用与 VAD 相同的逐块重采样；不新增另一份音频库。每来源独立追踪 worker 游标，重建或不连续时回放该来源最近最多 6 个连续已完成的人声／尚待判定块，已发布区间前缀不重复入队。worker 返回独立的 speech_pending 表示仍有未结束话语；它存在时保留尚未确认的开头，待完整区间发表后再裁决最多 6 个连续前块。该边界覆盖原有 20 秒话语上限及起点回看；不把尚未确认的声音直接标为人声。清理使相交待办失效，发布前复核任务当前状态；all_data 墓碑也约束迟到 VAD 区间。空文字/粗转失败不回写为无人声。
+VAD 先事务提交 `coarse_jobs` 的来源/session/16 kHz 样本区间与 `speech_active`，保留判断同时提交，不等待 SenseVoice。粗转任务从原有不可变封块重建输入，使用与 VAD 相同的逐块重采样；不新增另一份音频库。每来源独立追踪 worker 游标，重建或不连续时回放该来源最近最多 6 个连续已完成的人声／尚待判定块，已持久化覆盖区间不重复入队；通过已有 coarse_jobs/旧 coarse_segments 的实际覆盖扣除，允许补齐历史失败空洞，不能以 session 的最大结束点代表全部前缀成功。worker 返回独立的 speech_pending 表示仍有未结束话语；它存在时保留尚未确认的开头，待完整区间发表后再裁决最多 6 个连续前块。该边界覆盖原有 20 秒话语上限及起点回看；已关闭区间的样本终点也能结束其之前的等待。已失去 VAD 上下文的历史完整块由现有 maintenance 有界收敛为 `retain_unresolved_v2`，保留媒体和原始语音标志，避免永久阻塞精转；不把尚未确认的声音直接标为人声。worker 丢弃底层 flush 产生的零样本空片段，核心保留严格时间校验。清理使相交待办失效，发布前复核任务当前状态；all_data 墓碑也约束迟到 VAD 区间。空文字/粗转失败不回写为无人声。
 
 ### 3.1 资源准入与模型寿命
 
@@ -103,7 +103,7 @@ VAD 先事务提交 `coarse_jobs` 的来源/session/16 kHz 样本区间与 `spee
 
 ## 4. 采集与生命周期
 
-麦克风和电脑声音各有来源开关、录制 session、封块与缺口。麦克风桥接在 [`microphone.rs`](../crates/hear-core/src/microphone.rs)；电脑声音在 [`system_audio.rs`](../crates/hear-core/src/system_audio.rs) 及原生实现。当前工作树在满足系统版本和授权预检条件时有 Core Audio Tap 路径，其他情况沿用 ScreenCaptureKit；**Tap 的最终安装版关屏、真实空闲睡眠及较低系统版本验收仍开放**。`src-tauri/tauri.conf.json` 当前声明最低 macOS 13.0，不能据此认为所有路径已在 13–25 实测通过。
+麦克风和电脑声音各有来源开关、录制 session、封块与缺口。麦克风桥接在 [`microphone.rs`](../crates/hear-core/src/microphone.rs)；电脑声音在 [`system_audio.rs`](../crates/hear-core/src/system_audio.rs) 及原生实现。当前工作树在满足系统版本和授权预检条件时有 Core Audio Tap 路径，其他情况沿用 ScreenCaptureKit，音频采集和探测都注册 Audio 与 Screen 输出；Screen 回调只消费交付，不保留像素；**Tap 的最终安装版关屏、真实空闲睡眠及较低系统版本验收仍开放**。`src-tauri/tauri.conf.json` 当前声明最低 macOS 13.0，不能据此认为所有路径已在 13–25 实测通过。
 
 `capture_supervisor` 每路独立启动/停止并处理睡眠和异常退出。录制意图、手动暂停、容量暂停、来源开关、系统许可、模型准备及本次登录的完全退出各有独立含义。来源异常后使用有上限退避，恢复前保持真实缺口；另一来源可继续。容量边界暂停新增采集并提醒，释放空间后由用户手动恢复。[采集监督](../crates/hear-core/src/main.rs)、[封块写入](../crates/hear-core/src/record.rs)。
 

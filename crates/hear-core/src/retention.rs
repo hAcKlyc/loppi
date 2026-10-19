@@ -67,6 +67,13 @@ pub fn resolve_analysis(
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
+    // A completed region closes its prefix even if the same reply already
+    // contains the next open utterance. `speech_pending` alone cannot express
+    // that transition during continuous conversation.
+    let closed_through: i64 = tx.query_row(
+        "SELECT coalesce(max(end_sample)*3,0) FROM coarse_jobs WHERE session_id=?1 AND block_id=?2",
+        params![session_id, current_id], |r| r.get(0),
+    ).map_err(|e|e.to_string())?;
     let mut cursor = sample_start as i64;
     for (id, start, frames, state, retained) in previous {
         if start + frames != cursor || state != "complete" || !retained {
@@ -76,10 +83,38 @@ pub fn resolve_analysis(
         // A confirmed, still-open utterance can start in a prior block whose
         // own final VAD flag was false. Keep its onset until the segment closes.
         // Six contiguous blocks cover the worker's 20s active limit + lookback.
-        resolve_block(tx, &id, !speech_pending, now_ms, &mut result)?;
+        resolve_block(
+            tx,
+            &id,
+            !speech_pending || start + frames <= closed_through,
+            now_ms,
+            &mut result,
+        )?;
     }
     resolve_block(tx, current_id, current_flush, now_ms, &mut result)?;
     Ok(result)
+}
+
+/// Old versions could strand a completed block outside the six-block VAD
+/// context, or at a closed, fully drained stream tail. There is no trustworthy
+/// silence decision left to wait for. Keep its media and speech flag intact;
+/// ASR already includes all retained media. Never reclassify it as silence or
+/// manufacture a speech detection. Process a bounded batch in maintenance.
+pub fn settle_unreachable(tx: &Transaction<'_>) -> Result<usize, String> {
+    tx.execute(
+        "UPDATE audio_blocks SET retention_decision='retain_unresolved_v2' WHERE id IN (
+          SELECT b.id FROM audio_blocks b JOIN recording_sessions s ON s.id=b.session_id
+          WHERE b.retention_decision='pending_vad_v2' AND b.analysis_state='complete'
+            AND b.media_path IS NOT NULL AND (
+              EXISTS(SELECT 1 FROM audio_blocks n WHERE n.session_id=b.session_id
+                AND n.sample_start>b.sample_start AND n.analysis_state='complete'
+                ORDER BY n.sample_start LIMIT 1 OFFSET 6)
+              OR (s.state!='open'
+                AND NOT EXISTS(SELECT 1 FROM ingestion_pending_sessions p WHERE p.session_id=b.session_id)
+                AND NOT EXISTS(SELECT 1 FROM audio_blocks p WHERE p.session_id=b.session_id
+                  AND p.analysis_state IN('pending','processing','sealing') AND p.media_path IS NOT NULL)))
+          ORDER BY b.started_ms,b.id LIMIT 128)", [],
+    ).map_err(|e|e.to_string())
 }
 
 fn resolve_block(
@@ -331,5 +366,110 @@ mod tests {
             decisions,
             vec!["pending_conservative_v1", "retain_speech_v2"]
         );
+    }
+
+    #[test]
+    fn completed_region_resolves_onset_even_when_the_next_utterance_is_open() {
+        let mut store = store();
+        block(&store, "silent", 0, PENDING, 0);
+        block(&store, "onset", 240_000, PENDING, 0);
+        block(&store, "active", 480_000, PENDING, 1);
+        store.db.execute("INSERT INTO coarse_jobs(id,block_id,session_id,source,start_sample,end_sample,started_ms,ended_ms,state)
+          VALUES('region','active','session','system',144000,176000,9000,11000,'pending')", []).unwrap();
+        let tx = store.db.transaction().unwrap();
+        let result =
+            resolve_analysis(&tx, "session", 480_000, "active", false, true, 15_000).unwrap();
+        assert!(result.deleted_media);
+        assert_eq!(result.newly_speech, ["onset"]);
+        tx.commit().unwrap();
+        assert_eq!(
+            store
+                .db
+                .query_row(
+                    "SELECT retention_decision FROM audio_blocks WHERE id='silent'",
+                    [],
+                    |r| r.get::<_, String>(0)
+                )
+                .unwrap(),
+            "discard_no_speech_v2"
+        );
+        assert_eq!(
+            store
+                .db
+                .query_row(
+                    "SELECT retention_decision FROM audio_blocks WHERE id='onset'",
+                    [],
+                    |r| r.get::<_, String>(0)
+                )
+                .unwrap(),
+            "retain_speech_v2"
+        );
+    }
+
+    #[test]
+    fn unreachable_decisions_keep_media_and_do_not_invent_speech() {
+        for closed in [false, true] {
+            let mut store = store();
+            store
+                .db
+                .execute(
+                    "INSERT INTO recording_sessions VALUES('session','system',0,50000,NULL,?1)",
+                    [if closed { "failed" } else { "open" }],
+                )
+                .unwrap();
+            // Active streams still have a six-block context; drained streams
+            // have none. In either case an unknown old decision keeps audio.
+            let length = if closed { 1 } else { 8 };
+            for i in 0..length {
+                block(&store, &i.to_string(), i * 240_000, PENDING, 0);
+            }
+            let tx = store.db.transaction().unwrap();
+            assert_eq!(settle_unreachable(&tx).unwrap(), 1);
+            assert_eq!(settle_unreachable(&tx).unwrap(), 0);
+            tx.commit().unwrap();
+            let row: (String, bool, i64) = store.db.query_row("SELECT retention_decision,media_path IS NOT NULL,speech_active FROM audio_blocks WHERE id='0'", [], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap();
+            assert_eq!(row, ("retain_unresolved_v2".into(), true, 0));
+            assert_eq!(
+                store
+                    .db
+                    .query_row("SELECT count(*) FROM media_deletion_jobs", [], |r| r
+                        .get::<_, i64>(0))
+                    .unwrap(),
+                0
+            );
+        }
+    }
+
+    #[test]
+    fn closed_tail_waits_for_journal_and_pending_analysis() {
+        let mut store = store();
+        store
+            .db
+            .execute(
+                "INSERT INTO recording_sessions VALUES('session','system',0,5000,5000,'failed')",
+                [],
+            )
+            .unwrap();
+        block(&store, "tail", 0, PENDING, 0);
+        store
+            .db
+            .execute(
+                "INSERT INTO ingestion_pending_sessions(session_id) VALUES('session')",
+                [],
+            )
+            .unwrap();
+        let tx = store.db.transaction().unwrap();
+        assert_eq!(settle_unreachable(&tx).unwrap(), 0);
+        tx.execute("DELETE FROM ingestion_pending_sessions", [])
+            .unwrap();
+        tx.execute("UPDATE audio_blocks SET analysis_state='pending'", [])
+            .unwrap();
+        assert_eq!(settle_unreachable(&tx).unwrap(), 0);
+        tx.execute("UPDATE audio_blocks SET analysis_state='failed'", [])
+            .unwrap();
+        assert_eq!(settle_unreachable(&tx).unwrap(), 0);
+        tx.execute("UPDATE audio_blocks SET analysis_state='complete'", [])
+            .unwrap();
+        assert_eq!(settle_unreachable(&tx).unwrap(), 1);
     }
 }

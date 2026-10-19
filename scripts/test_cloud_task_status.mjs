@@ -5,9 +5,11 @@ import { taskStatus } from '../src/cloud-task-status.ts';
 test('ASR mapping and response errors are distinguished from transport failures', () => {
  const reasons = {
   provider_unmapped_timing: '识别时间与原声不匹配',
+  provider_unmapped_timing_word_in_separator: '识别时间与原声不匹配',
   provider_invalid_timing: '识别时间超出录音范围',
   provider_invalid_utterance: '识别结果格式异常',
   invalid_fit_boundary: '整理结果时间范围异常',
+  invalid_fit_boundary_overlap: '整理结果时间范围异常',
   provider_status_45000092: '云端未找到识别任务，可重试',
   provider_http_429: '服务繁忙，请稍后重试',
   provider_transport: '云端服务异常',

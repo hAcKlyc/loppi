@@ -32,29 +32,6 @@ pub fn enqueue(
     block: &crate::PendingBlock,
     segments: Vec<analysis::SpeechRegion>,
 ) -> Result<(), String> {
-    let mut confirmed: i64 = tx
-        .query_row(
-            "SELECT coalesce(max(end_sample),0) FROM coarse_jobs WHERE session_id=?1",
-            [&block.session_id],
-            |r| r.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-    if confirmed == 0 {
-        // Published pre-upgrade segments have no coarse_jobs row. Their
-        // millisecond endpoint is authoritative at the legacy precision.
-        let legacy_end: Option<i64> = tx
-            .query_row(
-                "SELECT max(ended_ms) FROM coarse_segments WHERE session_id=?1",
-                [&block.session_id],
-                |r| r.get(0),
-            )
-            .map_err(|e| e.to_string())?;
-        if let Some(end) = legacy_end {
-            confirmed = tx.query_row("SELECT (sample_start+2)/3+(?2-started_ms)*16 FROM audio_blocks
-              WHERE session_id=?1 AND started_ms<=?2 AND ended_ms>=?2 ORDER BY sample_start DESC LIMIT 1",
-              params![block.session_id,end], |r|r.get(0)).optional().map_err(|e|e.to_string())?.unwrap_or(0);
-        }
-    }
     for segment in segments {
         if segment.end_sample <= segment.start_sample
             || segment.end_sample - segment.start_sample > 16_000 * 30
@@ -62,30 +39,96 @@ pub fn enqueue(
         {
             return Err("invalid VAD segment".into());
         }
-        // Replay can close a region already published before worker death.
-        // Never publish that prefix twice, even if the replay warm-up differs.
-        if segment.end_sample <= confirmed as u64 {
-            continue;
-        }
-        let start = segment.start_sample.max(confirmed as u64);
-        let started_ms = crate::map_sample(tx, &block.session_id, start)?;
+        // A later job proves only its own coverage, not that every earlier
+        // block succeeded. Subtract actual published ranges so historical
+        // retries can fill holes without duplicating already-owned samples.
+        let started_ms = crate::map_sample(tx, &block.session_id, segment.start_sample)?;
         let ended_ms = crate::map_sample(tx, &block.session_id, segment.end_sample)?;
-        let erased:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM clear_ranges c
+        let mut statement = tx
+            .prepare(
+                "SELECT start_sample,end_sample FROM coarse_jobs
+          WHERE session_id=?1 AND start_sample<?3 AND end_sample>?2",
+            )
+            .map_err(|e| e.to_string())?;
+        let mut covered = statement
+            .query_map(
+                params![
+                    block.session_id,
+                    segment.start_sample as i64,
+                    segment.end_sample as i64
+                ],
+                |r| Ok((r.get::<_, i64>(0)? as u64, r.get::<_, i64>(1)? as u64)),
+            )
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
+        // Pre-upgrade coarse facts have no job. Preserve their actual ranges
+        // at legacy millisecond precision, even after new jobs were added.
+        let mut legacy = tx
+            .prepare(
+                "SELECT c.started_ms,c.ended_ms FROM coarse_segments c
+          WHERE c.session_id=?1 AND c.started_ms<?3 AND c.ended_ms>?2
+          AND NOT EXISTS(SELECT 1 FROM coarse_jobs j WHERE j.id=c.id)",
+            )
+            .map_err(|e| e.to_string())?;
+        for row in legacy
+            .query_map(params![block.session_id, started_ms, ended_ms], |r| {
+                Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?))
+            })
+            .map_err(|e| e.to_string())?
+        {
+            let (a, b) = row.map_err(|e| e.to_string())?;
+            covered.push((
+                sample_at_ms(tx, &block.session_id, a.max(started_ms))?,
+                sample_at_ms(tx, &block.session_id, b.min(ended_ms))?,
+            ));
+        }
+        covered.sort_unstable();
+        let mut cursor = segment.start_sample;
+        let mut missing = Vec::new();
+        for (a, b) in covered {
+            if a > cursor {
+                missing.push((cursor, a.min(segment.end_sample)));
+            }
+            cursor = cursor.max(b);
+            if cursor >= segment.end_sample {
+                break;
+            }
+        }
+        if cursor < segment.end_sample {
+            missing.push((cursor, segment.end_sample));
+        }
+        for (start, end) in missing {
+            let started_ms = crate::map_sample(tx, &block.session_id, start)?;
+            let ended_ms = crate::map_sample(tx, &block.session_id, end)?;
+            let erased:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM clear_ranges c
           LEFT JOIN ingestion_clears g ON g.clear_id=c.id
           LEFT JOIN session_generation sg ON sg.session_id=?1
           JOIN recording_sessions s ON s.id=?1
           WHERE c.mode='all_data' AND c.source_mask&?2!=0 AND c.from_ms<?4 AND min(c.to_ms,c.committed_ms)>?3
           AND ((sg.generation IS NOT NULL AND g.generation>=sg.generation) OR (sg.generation IS NULL AND c.committed_ms>=s.started_ms)))",
           params![block.session_id,if block.source=="microphone"{1}else{2},started_ms,ended_ms],|r|r.get(0)).map_err(|e|e.to_string())?;
-        if erased {
-            confirmed = segment.end_sample as i64;
-            continue;
+            if erased {
+                continue;
+            }
+            tx.execute("INSERT OR IGNORE INTO coarse_jobs(id,block_id,session_id,source,start_sample,end_sample,started_ms,ended_ms,state)
+          VALUES(?1,?2,?3,?4,?5,?6,?7,?8,'pending')",params![Uuid::new_v4().to_string(),block.id,block.session_id,block.source,start as i64,end as i64,started_ms,ended_ms]).map_err(|e|e.to_string())?;
         }
-        tx.execute("INSERT OR IGNORE INTO coarse_jobs(id,block_id,session_id,source,start_sample,end_sample,started_ms,ended_ms,state)
-          VALUES(?1,?2,?3,?4,?5,?6,?7,?8,'pending')",params![Uuid::new_v4().to_string(),block.id,block.session_id,block.source,start as i64,segment.end_sample as i64,started_ms,ended_ms]).map_err(|e|e.to_string())?;
-        confirmed = segment.end_sample as i64;
     }
     Ok(())
+}
+
+fn sample_at_ms(tx: &Transaction<'_>, session: &str, ms: i64) -> Result<u64, String> {
+    tx.query_row(
+        "SELECT (sample_start+2)/3+(?2-started_ms)*16 FROM audio_blocks
+      WHERE session_id=?1 AND started_ms<=?2 AND ended_ms>=?2 ORDER BY sample_start DESC LIMIT 1",
+        params![session, ms],
+        |r| r.get::<_, i64>(0),
+    )
+    .optional()
+    .map_err(|e| e.to_string())?
+    .map(|n| n as u64)
+    .ok_or_else(|| "speech segment could not map to saved audio".into())
 }
 #[derive(Clone)]
 pub struct Job {
@@ -408,11 +451,127 @@ mod tests {
             }],
         )
         .unwrap();
+        enqueue(
+            &tx,
+            &block,
+            vec![SpeechRegion {
+                start_sample: 76_000,
+                end_sample: 79_840,
+            }],
+        )
+        .unwrap();
+        let ranges = tx
+            .prepare("SELECT start_sample,end_sample FROM coarse_jobs ORDER BY start_sample")
+            .unwrap()
+            .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(ranges, [(76_000, 76_800), (76_800, 79_840)]);
+    }
+    #[test]
+    fn historical_retry_fills_hole_before_later_jobs_and_protects_onset() {
+        let (_, mut store, block, wall) = setup();
+        store.db.execute("INSERT INTO audio_blocks(id,session_id,source,started_ms,ended_ms,sample_start,frames,bytes,media_path,retention_decision,analysis_state,speech_active)
+          VALUES('c',?1,'microphone',?2,?2+5000,480000,240000,100,'media/microphone/c.opus','retain_speech_v2','complete',1)", params![block.session_id,wall+10000]).unwrap();
+        store.db.execute("INSERT INTO coarse_jobs(id,block_id,session_id,source,start_sample,end_sample,started_ms,ended_ms,state)
+          VALUES('later','c',?1,'microphone',160000,176000,?2,?3,'complete')", params![block.session_id,wall+10000,wall+11000]).unwrap();
+        let result = || VadResult {
+            segments: vec![SpeechRegion {
+                start_sample: 78_400,
+                end_sample: 96_000,
+            }],
+            speech_active: true,
+            speech_pending: false,
+            error: None,
+        };
+        store.publish_analysis(&block, result()).unwrap();
+        assert_eq!(store.db.query_row("SELECT retention_decision FROM audio_blocks WHERE id='a' AND media_path IS NOT NULL", [], |r| r.get::<_,String>(0)).unwrap(), "retain_speech_v2");
+        assert_eq!(store.db.query_row("SELECT count(*) FROM coarse_jobs WHERE start_sample=78400 AND end_sample=96000", [], |r| r.get::<_,i64>(0)).unwrap(), 1);
         assert_eq!(
-            tx.query_row("SELECT count(*) FROM coarse_jobs", [], |r| r
-                .get::<_, i64>(0))
+            store
+                .db
+                .query_row("SELECT count(*) FROM media_deletion_jobs", [], |r| r
+                    .get::<_, i64>(0))
                 .unwrap(),
-            1
+            0
+        );
+        store
+            .db
+            .execute(
+                "UPDATE audio_blocks SET analysis_state='processing' WHERE id='b'",
+                [],
+            )
+            .unwrap();
+        store.publish_analysis(&block, result()).unwrap();
+        assert_eq!(
+            store
+                .db
+                .query_row("SELECT count(*) FROM coarse_jobs", [], |r| r
+                    .get::<_, i64>(0))
+                .unwrap(),
+            2
+        );
+    }
+
+    #[test]
+    fn recovery_fills_only_uncovered_samples_between_existing_ranges() {
+        let (_, mut store, block, _) = setup();
+        let tx = store.db.transaction().unwrap();
+        enqueue(
+            &tx,
+            &block,
+            vec![
+                SpeechRegion {
+                    start_sample: 80_000,
+                    end_sample: 90_000,
+                },
+                SpeechRegion {
+                    start_sample: 110_000,
+                    end_sample: 120_000,
+                },
+            ],
+        )
+        .unwrap();
+        for _ in 0..2 {
+            enqueue(
+                &tx,
+                &block,
+                vec![SpeechRegion {
+                    start_sample: 78_400,
+                    end_sample: 128_000,
+                }],
+            )
+            .unwrap();
+        }
+        let ranges = tx
+            .prepare("SELECT start_sample,end_sample FROM coarse_jobs ORDER BY start_sample")
+            .unwrap()
+            .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(
+            ranges,
+            [
+                (78_400, 80_000),
+                (80_000, 90_000),
+                (90_000, 110_000),
+                (110_000, 120_000),
+                (120_000, 128_000)
+            ]
+        );
+        assert_eq!(
+            enqueue(
+                &tx,
+                &block,
+                vec![SpeechRegion {
+                    start_sample: 128_000,
+                    end_sample: 128_000
+                }]
+            )
+            .unwrap_err(),
+            "invalid VAD segment"
         );
     }
     #[test]

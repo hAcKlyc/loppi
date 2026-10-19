@@ -7,6 +7,8 @@ pub fn init(db: &Connection) -> Result<(), String> {
         "CREATE TABLE IF NOT EXISTS core_migrations(name TEXT PRIMARY KEY);
          CREATE INDEX IF NOT EXISTS audio_blocks_media_path ON audio_blocks(media_path)
            WHERE media_path IS NOT NULL;
+         CREATE INDEX IF NOT EXISTS audio_blocks_pending_retention ON audio_blocks(started_ms,id)
+           WHERE retention_decision='pending_vad_v2' AND analysis_state='complete' AND media_path IS NOT NULL;
          CREATE INDEX IF NOT EXISTS audio_blocks_session_sample ON audio_blocks(session_id,sample_start);
          CREATE INDEX IF NOT EXISTS audio_blocks_source_end ON audio_blocks(source,ended_ms,started_ms)
            WHERE media_path IS NOT NULL;

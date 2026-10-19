@@ -288,6 +288,123 @@ fn stability_waits_for_local_backlog_and_does_not_starve_later_events() {
     refresh(&mut db, 90_000_000).unwrap();
     assert_eq!(count(&db), 2);
 }
+
+#[test]
+fn projection_and_scheduler_share_next_event_horizon_and_source_scope() {
+    for failed_at in [9_000, 10_000, 20_000] {
+        let mut db = database();
+        block(&db, "a", 1000, 6000, true);
+        let first = auto(&mut db, 1000, 6000);
+        auto(&mut db, 10_000, 15_000);
+        db.execute(
+            "INSERT INTO candidate_windows VALUES('later',?1,30000,'hash','failed',NULL)",
+            [failed_at],
+        )
+        .unwrap();
+        let expected = if failed_at < 10_000 {
+            Some("fit_failed")
+        } else {
+            None
+        };
+        assert_eq!(
+            settling_state(&db, &first.to_string(), 1000, 6000, 1).unwrap(),
+            expected
+        );
+        assert_eq!(
+            event_detail(&db, first, 0, 10).unwrap().processing_state,
+            expected.unwrap_or("settling_asr")
+        );
+        refresh(&mut db, 1_000_000).unwrap();
+        assert_eq!(count(&db), if failed_at < 10_000 { 0 } else { 1 });
+    }
+    let mut db = database();
+    block(&db, "a", 1000, 6000, true);
+    let first = auto(&mut db, 1000, 6000);
+    auto(&mut db, 10_000, 15_000);
+    block(&db, "failed", 8000, 9000, true);
+    db.execute(
+        "UPDATE audio_blocks SET analysis_state='failed',source='system' WHERE id='failed'",
+        [],
+    )
+    .unwrap();
+    assert_eq!(
+        settling_state(&db, &first.to_string(), 1000, 6000, 1).unwrap(),
+        None
+    );
+    db.execute(
+        "UPDATE audio_blocks SET source='microphone' WHERE id='failed'",
+        [],
+    )
+    .unwrap();
+    assert_eq!(
+        event_detail(&db, first, 0, 10).unwrap().processing_state,
+        "analysis_failed"
+    );
+    refresh(&mut db, 1_000_000).unwrap();
+    assert_eq!(count(&db), 0);
+}
+
+#[test]
+fn unresolved_retained_audio_is_recognized_without_claiming_vad_speech() {
+    let mut db = database();
+    block(&db, "a", 1000, 6000, true);
+    db.execute(
+        "UPDATE audio_blocks SET retention_decision='retain_unresolved_v2',speech_active=0",
+        [],
+    )
+    .unwrap();
+    auto(&mut db, 1000, 6000);
+    refresh(&mut db, 1_000_000).unwrap();
+    assert_eq!(count(&db), 1);
+    let t = task(&mut db);
+    assert_eq!(input(&db, t.id).unwrap().unwrap().duration_ms, 5000);
+}
+
+#[test]
+fn mapping_failure_codes_identify_the_rejected_coordinate() {
+    let i = Input {
+        parts: vec![
+            Part {
+                block_id: "a".into(),
+                path: "a".into(),
+                frames: 240000,
+                block_start: 1000,
+                start: 1000,
+                end: 6000,
+                offset: 0,
+            },
+            Part {
+                block_id: "b".into(),
+                path: "b".into(),
+                frames: 240000,
+                block_start: 26000,
+                start: 26000,
+                end: 31000,
+                offset: 6000,
+            },
+        ],
+        duration_ms: 11000,
+    };
+    let mut u = utterance(1000, 8000, "你好世界");
+    assert_eq!(
+        map(&i, &[u.clone()]).unwrap_err(),
+        "provider_unmapped_timing_words_missing"
+    );
+    u.words = Some(
+        json!([{"text":"你好","start_time":1000,"end_time":2000},{"text":"世界","start_time":5500,"end_time":8000}]),
+    );
+    assert_eq!(
+        map(&i, &[u.clone()]).unwrap_err(),
+        "provider_unmapped_timing_word_in_separator"
+    );
+    u.words.as_mut().unwrap()[1]["start_time"] = json!(7000);
+    u.start_ms = 5500;
+    u.words.as_mut().unwrap()[0]["start_time"] = json!(-1);
+    assert_eq!(
+        map(&i, &[u]).unwrap_err(),
+        "provider_unmapped_timing_word_bounds"
+    );
+}
 #[test]
 fn long_events_split_by_encoded_duration_not_wall_clock() {
     let mut db = database();
