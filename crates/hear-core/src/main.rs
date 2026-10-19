@@ -4194,6 +4194,9 @@ impl Store {
         // durable journal is still importing. Require an adjacent manifest or
         // a committed discontinuity; the final tail waits for journal drain.
         // Do not skip a waiting prefix and feed a later block from that stream.
+        // A retained successor only continues VAD if it will actually run.
+        // Historical retries can precede already-complete or exhausted blocks;
+        // flush that retry tail instead of leaving speech in an idle worker.
         let idle_before_ms = now_ms()?.saturating_sub(8_000);
         let block = self
             .db
@@ -4210,6 +4213,7 @@ impl Store {
                       WHERE adjacent.session_id = b.session_id
                         AND adjacent.sample_start = b.sample_start + b.frames
                         AND adjacent.media_path IS NOT NULL
+                        AND adjacent.analysis_state = 'pending' AND adjacent.analysis_attempts < 3
                     )
              FROM audio_blocks b JOIN recording_sessions s ON s.id = b.session_id
              WHERE b.analysis_state = 'pending' AND b.analysis_attempts < 3
@@ -4751,6 +4755,52 @@ mod tests {
         );
     }
     use uuid::Uuid;
+
+    #[test]
+    fn historical_retry_flushes_uncontinued_speech_but_keeps_pending_successors_contiguous() {
+        for (successor_state, attempts, expect_flush) in [
+            ("complete", 1, true),
+            ("failed", 3, true),
+            ("pending", 3, true),
+            ("pending", 0, false),
+        ] {
+            let store = Store::new(Connection::open_in_memory().unwrap()).unwrap();
+            store.db.execute("INSERT INTO recording_sessions VALUES('s','system',0,15000,15000,'closed')", []).unwrap();
+            store.db.execute("DELETE FROM core_migrations WHERE name='vad_nonempty_regions_v1'", []).unwrap();
+            store.db.execute("INSERT INTO audio_blocks(id,session_id,source,started_ms,ended_ms,sample_start,frames,bytes,media_path,retention_decision,analysis_state,analysis_attempts)
+              VALUES('retry','s','system',5000,10000,240000,240000,100,'media/system/b.opus','pending_vad_v2','failed',3)", []).unwrap();
+            store.db.execute("INSERT INTO audio_blocks(id,session_id,source,started_ms,ended_ms,sample_start,frames,bytes,media_path,retention_decision,analysis_state,analysis_attempts,speech_active)
+              VALUES('successor','s','system',10000,15000,480000,240000,100,'media/system/c.opus','retain_speech_v2',?1,?2,1)", params![successor_state,attempts]).unwrap();
+            let mut store = Store::new(store.db).unwrap();
+            let retry = store.take_pending_block().unwrap().unwrap();
+            assert_eq!(retry.id, "retry");
+            assert_eq!(retry.flush, expect_flush, "successor={successor_state}/{attempts}");
+            // Model the worker's open-tail contract: a region is returned only
+            // after a flush or subsequent audio. Exercise real publication and
+            // scheduling so a completed recovery cannot abandon the tail.
+            let region_end = if expect_flush { 160_000 } else { 240_000 };
+            let result = |closed| analysis::VadResult {
+                segments: if closed {
+                    vec![analysis::SpeechRegion { start_sample: 80_000, end_sample: region_end }]
+                } else {
+                    vec![]
+                },
+                speech_active: true,
+                speech_pending: !closed,
+                error: None,
+            };
+            store.publish_analysis(&retry, result(retry.flush)).unwrap();
+            if !expect_flush {
+                let successor = store.take_pending_block().unwrap().unwrap();
+                assert_eq!(successor.id, "successor");
+                assert!(successor.flush);
+                store.publish_analysis(&successor, result(successor.flush)).unwrap();
+            }
+            assert!(store.take_pending_block().unwrap().is_none());
+            assert_eq!(store.db.query_row("SELECT count(*) FROM coarse_jobs WHERE session_id='s' AND start_sample=80000 AND end_sample=?1", [region_end as i64], |r| r.get::<_,i64>(0)).unwrap(), 1);
+            assert_eq!(store.db.query_row("SELECT count(*) FROM audio_blocks WHERE media_path IS NOT NULL", [], |r| r.get::<_,i64>(0)).unwrap(), 2);
+        }
+    }
 
     #[test]
     fn speaker_input_quality_is_not_reported_as_missing_audio() {
