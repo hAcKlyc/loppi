@@ -41,14 +41,17 @@ const { emit } = await import('@tauri-apps/api/event');
 const { FloatingWidget } = await import('../src/FloatingWidget.tsx');
 const layouts = [], actions = [], focus = [], drags = [];
 let outcome = 'confirmed';
+let finishLayout = true, confirmFocus = true;
 mockWindows('float');
 mockIPC(async (command, args) => {
   if (command === 'entry_snapshot') return { sequence: 1, state: null, error: null, mode: 'top', appearance: 'sleeping', control: 'resume', detail: null, notice: null };
   if (command === 'entry_layout') {
     layouts.push(args);
+    if (finishLayout && args.view === 'panel')
+      await emit('hear-entry-native', { kind: 8, value: 1, generation: args.generation });
     return { width: args.view === 'collapsed' ? 44 : 412, height: args.view === 'collapsed' ? 32 : 160, band: 32, rabbit_x: 8, rabbit_y: 2 };
   }
-  if (command === 'entry_focus') { focus.push(args); return true; }
+  if (command === 'entry_focus') { focus.push(args); return confirmFocus; }
   if (command === 'entry_action') { actions.push(args.action); return { outcome, message: 'simulated failure' }; }
   if (command === 'privacy_status') return { screen_and_system_audio: 1 };
   if (command === 'entry_drag' || command === 'plugin:window|start_dragging') { drags.push({ command, args }); return; }
@@ -62,8 +65,18 @@ const panel = () => document.querySelector('.notch-surface');
 const escape = () => settle(() => document.querySelector('.entry-root').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
 try {
   await settle(() => root.render(React.createElement(FloatingWidget)));
+  finishLayout = false;
   await native(1, 1);
   assert(panel(), 'native hover opens');
+  assert.equal(panel().dataset.ready, 'false', 'content waits for actual native completion');
+  const oldLayout = layouts.at(-1).generation;
+  await escape();
+  await click(document.querySelector('.entry-rabbit'));
+  await settle(() => emit('hear-entry-native', { kind: 8, value: 1, generation: oldLayout }));
+  assert.equal(panel().dataset.ready, 'false', 'canceled completion cannot reveal a newer panel');
+  await settle(() => emit('hear-entry-native', { kind: 8, value: 1, generation: layouts.at(-1).generation }));
+  assert.equal(panel().dataset.ready, 'true', 'matching native completion reveals content');
+  finishLayout = true;
   assert(!focus.some(call => call.acquire), 'hover never acquires app focus');
   await click(button('重点'));
   assert(!panel(), 'action immediately collapses');
@@ -84,9 +97,13 @@ try {
   await native(7, 0);
   await native(1, 1);
   assert(panel(), 'fresh native entry reopens');
+  confirmFocus = false;
   await click(button('评论'));
+  const firstIntent = focus.at(-1).generation;
+  assert.notEqual(document.activeElement, document.querySelector('textarea'), 'unconfirmed activation does not focus editor');
+  await settle(() => emit('hear-entry-native', { kind: 9, value: 1, generation: firstIntent }));
   const text = document.querySelector('textarea');
-  assert.equal(document.activeElement, text, 'comment focuses only its editor');
+  assert.equal(document.activeElement, text, 'late actual activation focuses its editor');
   await settle(() => {
     Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(text, '保留草稿');
     text.dispatchEvent(new Event('input', { bubbles: true }));
@@ -94,6 +111,11 @@ try {
   await click(button('取消'));
   await click(document.querySelector('.entry-rabbit'));
   await click(button('评论'));
+  await settle(() => emit('hear-entry-native', { kind: 9, value: 1, generation: firstIntent }));
+  assert.notEqual(document.activeElement, document.querySelector('textarea'), 'old focus confirmation cannot affect a new comment');
+  await settle(() => emit('hear-entry-native', { kind: 9, value: 1, generation: focus.at(-1).generation }));
+  assert.equal(document.activeElement, document.querySelector('textarea'));
+  confirmFocus = true;
   assert.equal(document.querySelector('textarea').value, '保留草稿', 'cancel preserves draft');
   outcome = 'rejected';
   await click(button('保存'));

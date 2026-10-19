@@ -3,12 +3,32 @@
 #import <CoreGraphics/CoreGraphics.h>
 #include <stdint.h>
 
-typedef void (*HearEntryEvent)(int, int);
+typedef void (*HearEntryEvent)(int, int, uint64_t);
 typedef struct { double width,height,band,rabbit_x,rabbit_y; } HearEntryGeometry;
 static const void *HearEntryKey=&HearEntryKey;
 
 static BOOL unfolds(NSInteger oldMode, NSInteger oldView, NSInteger mode, NSInteger view, BOOL visible, BOOL reducedMotion) {
   return oldMode==0 && mode==0 && oldView==0 && view==1 && visible && !reducedMotion;
+}
+
+static HearEntryGeometry topLayout(NSRect screen, double safeTop, NSRect left, NSRect right, NSInteger view, BOOL feedback, BOOL detail, NSRect *frame) {
+  BOOL notch=safeTop>0 && !NSIsEmptyRect(left) && !NSIsEmptyRect(right) && NSMaxX(left)<NSMinX(right);
+  double center=notch ? (NSMaxX(left)+NSMinX(right))/2 : NSMidX(screen);
+  double rabbitCenter=notch ? NSMinX(right)+22 : center;
+  // The compact trigger needs room even on a plain display. Expanded content
+  // reserves only a real hardware obstruction, not a fictitious 32pt notch.
+  double band=view==0 ? MAX(32,notch ? safeTop : 0) : (notch ? safeTop : 0);
+  HearEntryGeometry g={0}; g.band=band;
+  if(view==0) {
+    g.width=feedback ? 280 : 44; g.height=band+(feedback ? 48 : 0);
+    g.rabbit_x=g.width/2-14; g.rabbit_y=(band-28)/2;
+    *frame=NSMakeRect(rabbitCenter-g.width/2,NSMaxY(screen)-g.height,g.width,g.height);
+  } else {
+    g.width=412; g.height=band+(view==2 ? 152 : 128)+(detail && view==1 ? 40 : 0);
+    g.rabbit_x=20; g.rabbit_y=band+24;
+    *frame=NSMakeRect(center-g.width/2,NSMaxY(screen)-g.height,g.width,g.height);
+  }
+  return g;
 }
 
 static HearEntryGeometry hitGeometry(HearEntryGeometry g, NSInteger mode, NSInteger view, NSRect frame) {
@@ -56,6 +76,10 @@ static BOOL hitRegion(HearEntryGeometry g, NSInteger mode, NSInteger view, BOOL 
 @property BOOL detail;
 @property BOOL inside;
 @property BOOL commentFocus;
+@property BOOL focusConfirmed;
+@property uint64_t focusGeneration;
+@property uint64_t layoutGeneration;
+@property uint64_t layoutSerial;
 @property BOOL drag;
 @property BOOL inhibited;
 @property (weak) NSWindow *previousWindow;
@@ -66,11 +90,27 @@ static BOOL hitRegion(HearEntryGeometry g, NSInteger mode, NSInteger view, BOOL 
 - (HearEntryGeometry)layout;
 - (HearEntryGeometry)layoutAnimated:(BOOL)animated;
 - (void)updatePointer:(NSEvent *)event at:(NSPoint)point;
+- (BOOL)confirmFocus;
+- (BOOL)ownsKeyboard;
+- (void)finishLayout:(uint64_t)serial generation:(uint64_t)generation;
 @end
 
 @implementation HearEntry
 - (instancetype)init { if((self=[super init])) _tokens=[NSMutableArray array]; return self; }
-- (void)notify:(int)kind value:(int)value { if(_callback) _callback(kind,value); }
+- (void)notify:(int)kind value:(int)value { if(_callback) _callback(kind,value,_layoutGeneration); }
+- (BOOL)ownsKeyboard { return NSApp.isActive && _window.isKeyWindow; }
+- (BOOL)confirmFocus {
+  BOOL confirmed=_commentFocus && _view==2 && [self ownsKeyboard];
+  if(confirmed && !_focusConfirmed) {
+    _focusConfirmed=YES;
+    if(_callback) _callback(9,1,_focusGeneration);
+  }
+  return confirmed;
+}
+- (void)finishLayout:(uint64_t)serial generation:(uint64_t)generation {
+  if(serial==_layoutSerial && generation==_layoutGeneration && _mode==0 && _view==1)
+    [self notify:8 value:1];
+}
 - (NSString *)uuid:(NSScreen *)screen {
   CGDirectDisplayID did=[screen.deviceDescription[@"NSScreenNumber"] unsignedIntValue];
   CFUUIDRef uuid=CGDisplayCreateUUIDFromDisplayID(did);
@@ -91,18 +131,18 @@ static BOOL hitRegion(HearEntryGeometry g, NSInteger mode, NSInteger view, BOOL 
 }
 - (void)updatePointer:(NSEvent *)event at:(NSPoint)point {
   if(_drag) {
-    if(event && event.type==NSEventTypeLeftMouseUp) { _drag=NO; [self layout]; _callback(5,0); }
+    if(event && event.type==NSEventTypeLeftMouseUp) { _drag=NO; [self layout]; [self notify:5 value:0]; }
     else return;
   }
   BOOL hit=[self hit:point];
   // Only suppress a pointer still over the current entry. The old expanded
   // panel (and the feedback bubble) must not become an invisible dead zone.
   // An intentional click also reopens without requiring a mouse round trip.
-  if(_inhibited && (!hit || (event && event.type==NSEventTypeLeftMouseDown))) { _inhibited=NO; _callback(7,0); }
+  if(_inhibited && (!hit || (event && event.type==NSEventTypeLeftMouseDown))) { _inhibited=NO; [self notify:7 value:0]; }
   _window.ignoresMouseEvents=!hit;
   if(_inhibited) hit=NO;
-  if(hit!=_inside) { _inside=hit; _callback(1,hit); }
-  if(event && event.type==NSEventTypeLeftMouseDown && !hit && _view!=0) { _view=0; [self releaseFocus:NO]; _callback(2,0); }
+  if(hit!=_inside) { _inside=hit; [self notify:1 value:hit]; }
+  if(event && event.type==NSEventTypeLeftMouseDown && !hit && _view!=0) { _view=0; [self releaseFocus:NO]; [self notify:2 value:0]; }
 }
 - (HearEntryGeometry)layout {
   return [self layoutAnimated:NO];
@@ -114,20 +154,7 @@ static BOOL hitRegion(HearEntryGeometry g, NSInteger mode, NSInteger view, BOOL 
   HearEntryGeometry g={0};
   NSRect frame;
   if(_mode==0) {
-    double band=MAX(32,s.safeAreaInsets.top);
-    BOOL notch=s.safeAreaInsets.top>0 && !NSIsEmptyRect(s.auxiliaryTopRightArea);
-    double center=notch ? (NSMaxX(s.auxiliaryTopLeftArea)+NSMinX(s.auxiliaryTopRightArea))/2 : NSMidX(screen);
-    double rabbitCenter=notch ? NSMinX(s.auxiliaryTopRightArea)+22 : center;
-    g.band=band;
-    if(_view==0) {
-      g.width=_feedback ? 280 : 44; g.height=band+(_feedback ? 48 : 0);
-      g.rabbit_x=g.width/2-14; g.rabbit_y=(band-28)/2;
-      frame=NSMakeRect(rabbitCenter-g.width/2,NSMaxY(screen)-g.height,g.width,g.height);
-    } else {
-      g.width=412; g.height=band+(_view==2 ? 152 : 128)+(_detail && _view==1 ? 40 : 0);
-      g.rabbit_x=20; g.rabbit_y=band+24;
-      frame=NSMakeRect(center-g.width/2,NSMaxY(screen)-g.height,g.width,g.height);
-    }
+    g=topLayout(screen,s.safeAreaInsets.top,s.auxiliaryTopLeftArea,s.auxiliaryTopRightArea,_view,_feedback,_detail,&frame);
     _window.level=NSStatusWindowLevel;
   } else {
     NSRect visible=s.visibleFrame;
@@ -142,12 +169,14 @@ static BOOL hitRegion(HearEntryGeometry g, NSInteger mode, NSInteger view, BOOL 
     _displayUUID=[self uuid:s]; _window.level=NSFloatingWindowLevel;
   }
   _geometry=g;
+  uint64_t serial=++_layoutSerial, generation=_layoutGeneration;
+  __weak HearEntry *weak=self;
   // The animator is asynchronous. A zero-duration update also cancels an
   // in-flight resize, so actions, input focus and screen changes never wait.
   [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
-    context.duration=animated ? 0.22 : 0;
+    context.duration=animated ? 0.16 : 0;
     [[self.window animator] setFrame:frame display:YES];
-  } completionHandler:nil];
+  } completionHandler:^{ [weak finishLayout:serial generation:generation]; }];
   if(_window.isVisible) [_window orderFrontRegardless];
   [self checkPointer:nil];
   return g;
@@ -158,6 +187,9 @@ static BOOL hitRegion(HearEntryGeometry g, NSInteger mode, NSInteger view, BOOL 
   _globalMonitor=[NSEvent addGlobalMonitorForEventsMatchingMask:mask handler:^(NSEvent *e){ [weak checkPointer:e]; }];
   _localMonitor=[NSEvent addLocalMonitorForEventsMatchingMask:mask handler:^NSEvent *(NSEvent *e){ [weak checkPointer:e]; return e; }];
   NSNotificationCenter *center=NSNotificationCenter.defaultCenter;
+  [_tokens addObject:[center addObserverForName:NSWindowDidBecomeKeyNotification object:_window queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n){
+    (void)n; [weak confirmFocus];
+  }]];
   [_tokens addObject:[center addObserverForName:NSWindowDidResizeNotification object:_window queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n){
     (void)n;
     if(weak.mode==0 && weak.view==1) [weak checkPointer:nil];
@@ -181,6 +213,7 @@ static BOOL hitRegion(HearEntryGeometry g, NSInteger mode, NSInteger view, BOOL 
       weak.window.excludedFromWindowsMenu=!NSApp.isActive;
       if(NSApp.isActive) [NSApp addWindowsItem:weak.window title:weak.window.title filename:NO];
       [weak notify:4 value:NSApp.isActive];
+      [weak confirmFocus];
     }]];
   }
   [_tokens addObject:[center addObserverForName:NSWindowDidChangeOcclusionStateNotification object:_window queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n){ (void)n; [weak notify:6 value:weak.window.isVisible && (weak.window.occlusionState & NSWindowOcclusionStateVisible)!=0]; }]];
@@ -196,12 +229,29 @@ static BOOL hitRegion(HearEntryGeometry g, NSInteger mode, NSInteger view, BOOL 
   if(!_commentFocus) return;
   BOOL owned=NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier==NSProcessInfo.processInfo.processIdentifier && _window.isKeyWindow;
   _commentFocus=NO;
+  _focusConfirmed=NO;
   if(_window.isKeyWindow) [_window resignKeyWindow];
   if(restore && owned && _previousWindow && _previousWindow.isVisible) [_previousWindow makeKeyAndOrderFront:nil];
-  if(restore && owned && _previous && !_previous.terminated && _previous.processIdentifier!=NSProcessInfo.processInfo.processIdentifier) [_previous activateWithOptions:NSApplicationActivateIgnoringOtherApps];
+  if(restore && owned && _previous && !_previous.terminated && _previous.processIdentifier!=NSProcessInfo.processInfo.processIdentifier) {
+    if([NSApp respondsToSelector:@selector(yieldActivationToApplication:)]) {
+      // Selector availability keeps the Rust-linked macOS 13 binary independent
+      // of Clang's newer OS-version availability runtime helper.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunguarded-availability-new"
+      [NSApp yieldActivationToApplication:_previous];
+#pragma clang diagnostic pop
+      [_previous activateWithOptions:0];
+    } else {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+      [_previous activateWithOptions:NSApplicationActivateIgnoringOtherApps]; // macOS 13
+#pragma clang diagnostic pop
+    }
+  }
   _previous=nil; _previousWindow=nil;
 }
 - (void)dispose {
+  ++_layoutSerial;
   [self releaseFocus:NO];
   if(_globalMonitor) [NSEvent removeMonitor:_globalMonitor];
   if(_localMonitor) [NSEvent removeMonitor:_localMonitor];
@@ -220,27 +270,32 @@ void hear_entry_install(void *window,HearEntryEvent callback) {
   w.acceptsMouseMovedEvents=YES;
   w.excludedFromWindowsMenu=!NSApp.isActive;
   if(NSApp.isActive) { w.collectionBehavior=(w.collectionBehavior & ~NSWindowCollectionBehaviorIgnoresCycle)|NSWindowCollectionBehaviorParticipatesInCycle; [NSApp addWindowsItem:w title:w.title filename:NO]; }
-  [e install]; callback(4,NSApp.isActive);
+  [e install]; [e notify:4 value:NSApp.isActive];
 }
-HearEntryGeometry hear_entry_layout(void *window,int mode,int view,int feedback,int detail,int suppress) {
+HearEntryGeometry hear_entry_layout(void *window,int mode,int view,int feedback,int detail,int suppress,uint64_t generation) {
   HearEntry *e=entry(window);
+  e.layoutGeneration=generation;
   BOOL animated=unfolds(e.mode,e.view,mode,view,e.window.isVisible,NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion);
   // Arm only for an actual dismissal, never for a feedback-only resize.
   if(view!=0) {
-    if(e.inhibited) { e.inhibited=NO; e.callback(7,0); }
+    if(e.inhibited) { e.inhibited=NO; [e notify:7 value:0]; }
   } else if(suppress && e.view!=0) e.inhibited=YES;
   e.mode=mode; e.view=view; e.feedback=feedback; e.detail=detail;
   HearEntryGeometry geometry=[e layoutAnimated:animated];
-  if(suppress && !e.inhibited) e.callback(7,0);
+  if(suppress && !e.inhibited) [e notify:7 value:0];
   return geometry;
 }
-int hear_entry_focus(void *window,int acquire,int restore) {
+int hear_entry_focus(void *window,int acquire,int restore,uint64_t generation) {
   HearEntry *e=entry(window);
   if(acquire) {
     if(e.view!=2) return 0;
-    if(e.commentFocus) return NSApp.isActive && e.window.isKeyWindow;
+    if(e.commentFocus) return [e confirmFocus];
     if(!e.commentFocus) { e.previous=NSWorkspace.sharedWorkspace.frontmostApplication; e.previousWindow=NSApp.isActive ? NSApp.keyWindow : nil; }
-    e.commentFocus=YES; [NSApp activateIgnoringOtherApps:YES]; [e.window makeKeyAndOrderFront:nil];
+    e.commentFocus=YES; e.focusConfirmed=NO; e.focusGeneration=generation;
+    if([NSApp respondsToSelector:@selector(activate)]) [NSApp activate];
+    else [NSApp activateIgnoringOtherApps:YES]; // macOS 13
+    [e.window makeKeyAndOrderFront:nil];
+    return [e confirmFocus]; // A request is not proof of activation.
   } else [e releaseFocus:restore!=0];
   return 1;
 }

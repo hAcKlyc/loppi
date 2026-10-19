@@ -20,7 +20,7 @@ static HOST: OnceLock<tauri::AppHandle> = OnceLock::new();
 unsafe extern "C" {
     fn hear_entry_active() -> i32;
     fn hear_entry_geometry(window: *mut std::ffi::c_void) -> Geometry;
-    fn hear_entry_install(window: *mut std::ffi::c_void, callback: extern "C" fn(i32, i32));
+    fn hear_entry_install(window: *mut std::ffi::c_void, callback: extern "C" fn(i32, i32, u64));
     fn hear_entry_layout(
         window: *mut std::ffi::c_void,
         mode: i32,
@@ -28,8 +28,14 @@ unsafe extern "C" {
         feedback: i32,
         detail: i32,
         suppress: i32,
+        generation: u64,
     ) -> Geometry;
-    fn hear_entry_focus(window: *mut std::ffi::c_void, acquire: i32, restore: i32) -> i32;
+    fn hear_entry_focus(
+        window: *mut std::ffi::c_void,
+        acquire: i32,
+        restore: i32,
+        generation: u64,
+    ) -> i32;
     fn hear_entry_drag(window: *mut std::ffi::c_void, dragging: i32);
     fn hear_entry_position(window: *mut std::ffi::c_void) -> *mut libc::c_char;
     fn hear_entry_restore(window: *mut std::ffi::c_void, uuid: *const libc::c_char, x: f64, y: f64);
@@ -392,7 +398,7 @@ async fn native<T: Send + 'static>(
     .await
     .map_err(|e| e.to_string())?
 }
-extern "C" fn native_event(kind: i32, value: i32) {
+extern "C" fn native_event(kind: i32, value: i32, generation: u64) {
     let Some(app) = HOST.get() else { return };
     if kind == 2 || kind == 3 {
         let runtime = app.state::<Arc<EntryRuntime>>();
@@ -405,7 +411,7 @@ extern "C" fn native_event(kind: i32, value: i32) {
             let _ = w.set_focusable(value != 0);
         }
     }
-    let geometry = if kind == 3 || kind == 5 {
+    let geometry = if kind == 3 || kind == 5 || kind == 8 {
         app.get_webview_window("float")
             .and_then(|w| w.ns_window().ok())
             .map(|n| unsafe { hear_entry_geometry(n) })
@@ -415,7 +421,7 @@ extern "C" fn native_event(kind: i32, value: i32) {
     let _ = app.emit_to(
         "float",
         "hear-entry-native",
-        serde_json::json!({"kind":kind,"value":value,"geometry":geometry}),
+        serde_json::json!({"kind":kind,"value":value,"generation":generation,"geometry":geometry}),
     );
 }
 pub fn install(
@@ -442,6 +448,7 @@ pub fn install(
         hear_entry_layout(
             pointer,
             if inner.prefs.mode == Mode::Top { 0 } else { 1 },
+            0,
             0,
             0,
             0,
@@ -488,8 +495,8 @@ pub async fn entry_mode(app: tauri::AppHandle, mode: Mode) -> Result<(), String>
             return Ok(());
         }
         unsafe {
-            hear_entry_focus(n, 0, 1);
-            hear_entry_layout(n, if mode == Mode::Top { 0 } else { 1 }, 0, 0, 0, 0);
+            hear_entry_focus(n, 0, 1, 0);
+            hear_entry_layout(n, if mode == Mode::Top { 0 } else { 1 }, 0, 0, 0, 0, 0);
         }
         w.set_focusable(unsafe { hear_entry_active() != 0 })
             .map_err(|e| e.to_string())
@@ -546,6 +553,7 @@ pub async fn entry_layout(
                 feedback as i32,
                 detail as i32,
                 suppress as i32,
+                generation,
             )
         };
         if !w.is_visible().map_err(|e| e.to_string())? {
@@ -589,7 +597,7 @@ pub async fn entry_focus(
         if acquire {
             w.set_focusable(true).map_err(|e| e.to_string())?;
         }
-        let okay = unsafe { hear_entry_focus(n, acquire as i32, restore as i32) };
+        let okay = unsafe { hear_entry_focus(n, acquire as i32, restore as i32, generation) };
         if !acquire {
             w.set_focusable(unsafe { hear_entry_active() != 0 })
                 .map_err(|e| e.to_string())?;

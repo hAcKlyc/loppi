@@ -8,13 +8,20 @@
 @property NSRect frame;
 @property BOOL ignoresMouseEvents;
 @property BOOL isVisible;
+@property BOOL isKeyWindow;
+- (void)makeKeyAndOrderFront:(id)sender;
+- (void)resignKeyWindow;
 @end
 @implementation EntryTestWindow
+- (void)makeKeyAndOrderFront:(id)sender { (void)sender; }
+- (void)resignKeyWindow { self.isKeyWindow=NO; }
 @end
 @interface EntryTest : HearEntry
 @property NSPoint testPoint;
+@property BOOL keyboard;
 @end
 @implementation EntryTest
+- (BOOL)ownsKeyboard { return self.keyboard; }
 - (HearEntryGeometry)layoutAnimated:(BOOL)animated {
   (void)animated;
   HearEntryGeometry g=self.view==0
@@ -26,8 +33,11 @@
   return g;
 }
 @end
-static int enters, releases, dismissals;
-static void eventReceived(int kind,int value) {
+static int enters, releases, dismissals, presented, focused;
+static uint64_t confirmedGeneration;
+static void eventReceived(int kind,int value,uint64_t generation) {
+  if(kind==8) { presented++; confirmedGeneration=generation; }
+  if(kind==9) { focused++; confirmedGeneration=generation; }
   if(kind==1 && value) enters++;
   if(kind==7) releases++;
   if(kind==2) dismissals++;
@@ -44,50 +54,92 @@ static void testReopening(void) {
   for(int feedback=0;feedback<=1;feedback++) {
     // Mark/screenshot/comment/cancel all dismiss through the same layout path.
     e.testPoint=action;
-    hear_entry_layout(handle,0,1,0,0,0);
-    hear_entry_layout(handle,0,0,feedback,0,1);
+    hear_entry_layout(handle,0,1,0,0,0,0);
+    hear_entry_layout(handle,0,0,feedback,0,1,0);
     assert(!e.inhibited && !e.inside && window.ignoresMouseEvents);
     int before=enters;
     e.testPoint=rabbit;
     [e updatePointer:move at:rabbit];
     assert(e.inside && enters==before+1 && !window.ignoresMouseEvents);
     // A delayed frontend suppress flag must not rearm on toast resize/expiry.
-    hear_entry_layout(handle,0,0,!feedback,0,1);
+    hear_entry_layout(handle,0,0,!feedback,0,1,0);
     assert(!e.inhibited && e.inside && enters==before+1);
   }
   // Escape while stationary over the original trigger does not spring open.
   e.testPoint=rabbit;
-  hear_entry_layout(handle,0,1,0,0,0);
-  hear_entry_layout(handle,0,0,0,0,1);
+  hear_entry_layout(handle,0,1,0,0,0,0);
+  hear_entry_layout(handle,0,0,0,0,1,0);
   int before=enters;
   assert(e.inhibited && !e.inside);
-  hear_entry_layout(handle,0,0,1,0,1);
+  hear_entry_layout(handle,0,0,1,0,1,0);
   [e updatePointer:move at:rabbit];
   assert(e.inhibited && enters==before);
   // A physical click is an explicit reopen, without any leave first.
   [e updatePointer:click at:rabbit];
   assert(!e.inhibited && e.inside && enters==before+1);
   // Keyboard/AX click has no native mouse-down; the requested panel clears it.
-  hear_entry_layout(handle,0,1,0,0,0);
-  hear_entry_layout(handle,0,0,0,0,1);
+  hear_entry_layout(handle,0,1,0,0,0,0);
+  hear_entry_layout(handle,0,0,0,0,1,0);
   assert(e.inhibited);
-  hear_entry_layout(handle,0,1,0,0,0);
+  hear_entry_layout(handle,0,1,0,0,0,0);
   int dismissed=dismissals;
   [e updatePointer:click at:action];
   assert(!e.inhibited && dismissals==dismissed);
   // Exit/re-enter only the small trigger, still inside the old panel bounds.
-  hear_entry_layout(handle,0,0,0,0,1);
+  hear_entry_layout(handle,0,0,0,0,1,0);
   [e updatePointer:move at:NSMakePoint(800,940)];
   before=enters;
   [e updatePointer:move at:rabbit];
   assert(!e.inhibited && enters==before+1);
   assert(releases>0);
   // Transparent feedback never intercepts another application's click.
-  hear_entry_layout(handle,0,0,1,0,0);
+  hear_entry_layout(handle,0,0,1,0,0,0);
   [e updatePointer:click at:NSMakePoint(847,900)];
   assert(window.ignoresMouseEvents);
 }
+static void testCompletionAndFocus(void) {
+  EntryTestWindow *window=[EntryTestWindow new];
+  EntryTest *e=[EntryTest new]; e.window=(NSWindow *)window; e.callback=eventReceived;
+  void *handle=(__bridge void *)window;
+  objc_setAssociatedObject(window,HearEntryKey,e,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  e.mode=0; e.view=1; e.layoutGeneration=7; e.layoutSerial=2;
+  [e finishLayout:1 generation:7]; // canceled native animation
+  [e finishLayout:2 generation:6]; // old UI request
+  assert(presented==0);
+  [e finishLayout:2 generation:7];
+  assert(presented==1 && confirmedGeneration==7);
+  e.view=0; [e finishLayout:2 generation:7];
+  assert(presented==1);
+  e.view=2;
+  assert(!hear_entry_focus(handle,1,0,8)); // requesting focus is not success
+  assert(focused==0);
+  e.keyboard=YES;
+  assert([e confirmFocus] && focused==1 && confirmedGeneration==8);
+  assert([e confirmFocus] && focused==1); // one confirmation per intent
+  hear_entry_focus(handle,0,0,9);
+  assert(![e confirmFocus] && focused==1); // late notification after dismissal
+}
+static void testTopLayouts(void) {
+  NSRect screen=NSMakeRect(-1920,200,1920,1080), frame;
+  HearEntryGeometry g=topLayout(screen,0,NSZeroRect,NSZeroRect,0,NO,NO,&frame);
+  assert(g.band==32 && g.height==32 && NSMaxY(frame)==NSMaxY(screen));
+  assert(NSMidX(frame)==NSMidX(screen));
+  g=topLayout(screen,0,NSZeroRect,NSZeroRect,1,NO,NO,&frame);
+  assert(g.band==0 && g.height==128 && g.rabbit_y==24);
+  assert(NSMaxY(frame)==NSMaxY(screen) && NSMidX(frame)==NSMidX(screen));
+  assert(hitRegion(g,0,1,NO,NSMakePoint(206,16)));
+  g=topLayout(screen,0,NSZeroRect,NSZeroRect,2,NO,NO,&frame);
+  assert(g.band==0 && g.height==152);
+  screen=NSMakeRect(0,0,1470,956);
+  NSRect left=NSMakeRect(0,924,646,32), right=NSMakeRect(825,924,645,32);
+  g=topLayout(screen,32,left,right,1,NO,NO,&frame);
+  assert(g.band==32 && g.height==160 && NSMidX(frame)==735.5);
+  g=topLayout(screen,32,NSZeroRect,right,1,NO,NO,&frame);
+  assert(g.band==0 && NSMidX(frame)==735); // incomplete safe areas are not a notch
+}
 int main(void) {
+  testTopLayouts();
+  testCompletionAndFocus();
   testReopening();
   HearEntryGeometry top={412,160,32,20,56};
   // Built-in notch spans 646...825; entry is centered at 735, rabbit at 847.

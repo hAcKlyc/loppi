@@ -70,6 +70,7 @@ export function FloatingWidget() {
 	const snapshotRef = useRef(snapshot);
 	snapshotRef.current = snapshot;
 	const [view, setView] = useState<EntryView>("collapsed");
+	const [panelReady, setPanelReady] = useState(false);
 	const viewRef = useRef(view);
 	viewRef.current = view;
 	const [geometry, setGeometry] = useState<EntryGeometry>({
@@ -115,6 +116,16 @@ export function FloatingWidget() {
 	const restoreFocus = useRef(true);
 	const lastMode = useRef(snapshot.mode);
 	const notice = useRef(0);
+	const focusComment = useCallback((intent: number) => {
+		if (
+			mounted.current &&
+			viewRef.current === "comment" &&
+			snapshotRef.current.mode === "top" &&
+			commentFocusIntent.current === intent &&
+			document.activeElement !== textarea.current
+		)
+			textarea.current?.focus();
+	}, []);
 
 	const showFeedback = useCallback((text: string) => {
 		window.clearTimeout(feedbackTimer.current);
@@ -143,6 +154,7 @@ export function FloatingWidget() {
 		keyboardExpand.current = false;
 		commentFocusIntent.current = null;
 		viewRef.current = "collapsed";
+		setPanelReady(false);
 		setView("collapsed");
 	}, []);
 	const openPanel = useCallback(
@@ -153,6 +165,7 @@ export function FloatingWidget() {
 			if (inhibit.current) return;
 			keyboardExpand.current = focusInside.current;
 			viewRef.current = "panel";
+			setPanelReady(false);
 			setView("panel");
 			respond("curious");
 		},
@@ -195,31 +208,43 @@ export function FloatingWidget() {
 			listen<EntrySnapshot>("hear-entry-snapshot", (event) =>
 				accept(event.payload),
 			),
-			listen<{ kind: number; value: number; geometry?: EntryGeometry }>(
-				"hear-entry-native",
-				({ payload }) => {
-					if (disposed) return;
-					if (payload.kind === 1) {
-						if (payload.value) {
-							pointerInside.current = true;
-							openPanel();
-						} else leave();
-					} else if (payload.kind === 2) collapse(false, true);
-					else if (payload.kind === 3) {
-						collapse(false, true);
-						if (payload.geometry) setGeometry(payload.geometry);
-					} else if (payload.kind === 7) {
-						inhibit.current = false;
-					} else if (payload.kind === 5) {
-						dragging.current = false;
-						pointer.current = null;
-						void invoke("entry_drag", { dragging: false }).catch((error) =>
-							showFeedback(userError(error)),
-						);
-						if (payload.geometry) setGeometry(payload.geometry);
-					} else if (payload.kind === 6) setNativeVisible(!!payload.value);
-				},
-			),
+			listen<{
+				kind: number;
+				value: number;
+				generation: number;
+				geometry?: EntryGeometry;
+			}>("hear-entry-native", ({ payload }) => {
+				if (disposed) return;
+				if (payload.kind === 1) {
+					if (payload.value) {
+						pointerInside.current = true;
+						openPanel();
+					} else leave();
+				} else if (payload.kind === 2) collapse(false, true);
+				else if (payload.kind === 3) {
+					collapse(false, true);
+					if (payload.geometry) setGeometry(payload.geometry);
+				} else if (payload.kind === 7) {
+					inhibit.current = false;
+				} else if (payload.kind === 5) {
+					dragging.current = false;
+					pointer.current = null;
+					void invoke("entry_drag", { dragging: false }).catch((error) =>
+						showFeedback(userError(error)),
+					);
+					if (payload.geometry) setGeometry(payload.geometry);
+				} else if (payload.kind === 6) setNativeVisible(!!payload.value);
+				else if (
+					payload.kind === 8 &&
+					payload.generation === generation.current &&
+					viewRef.current === "panel" &&
+					snapshotRef.current.mode === "top"
+				) {
+					if (payload.geometry) setGeometry(payload.geometry);
+					setPanelReady(true);
+				} else if (payload.kind === 9 && payload.value)
+					focusComment(payload.generation);
+			}),
 		];
 		void Promise.all(subscriptions)
 			.then(() => getEntrySnapshot())
@@ -237,7 +262,7 @@ export function FloatingWidget() {
 			window.clearTimeout(feedbackTimer.current);
 			document.body.classList.remove("floating-body");
 		};
-	}, [collapse, leave, openPanel, showFeedback]);
+	}, [collapse, leave, openPanel, showFeedback, focusComment]);
 	const hasFeedback = !!feedback;
 	const hasDetail = !!snapshot.detail;
 	const mode = snapshot.mode;
@@ -288,7 +313,7 @@ export function FloatingWidget() {
 					});
 					if (!acquired) return;
 					if (mounted.current && token === generation.current)
-						textarea.current?.focus();
+						focusComment(focusIntent);
 					else if (
 						!mounted.current ||
 						viewRef.current !== "comment" ||
@@ -305,7 +330,7 @@ export function FloatingWidget() {
 			.catch((error) => {
 				if (mounted.current) showFeedback(userError(error));
 			});
-	}, [ready, view, mode, hasDetail, hasFeedback, showFeedback]);
+	}, [ready, view, mode, hasDetail, hasFeedback, showFeedback, focusComment]);
 	const perform = async (kind: EntryKind) => {
 		if (active.current.has(kind) || requests.current.isBusy(kind)) return;
 		if (
@@ -439,6 +464,7 @@ export function FloatingWidget() {
 			{isTop && expanded ? (
 				<div
 					className={`notch-surface ${view === "comment" ? "comment-surface" : ""}`}
+					data-ready={panelReady}
 				>
 					{view === "comment" ? (
 						<div className="notch-composer">
@@ -509,6 +535,7 @@ export function FloatingWidget() {
 								ref={(element) => {
 									if (
 										element &&
+										panelReady &&
 										keyboardExpand.current &&
 										control &&
 										!busy.control
@@ -538,6 +565,7 @@ export function FloatingWidget() {
 									ref={(element) => {
 										if (
 											element &&
+											panelReady &&
 											isTop &&
 											keyboardExpand.current &&
 											(!control || busy.control)
