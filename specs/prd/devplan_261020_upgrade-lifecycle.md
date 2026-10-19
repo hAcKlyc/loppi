@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: implemented
 updated: 2026-10-20
 ---
 # 更新交接与完整退出
@@ -24,7 +24,7 @@ updated: 2026-10-20
 ### 行动清单
 - [x] 实现、回归和实际旧版升级验证
 - [x] requirements/adversarial → architecture
-- [ ] 提交、合并、签名公证包
+- [x] 提交、合并、签名公证包
 ### 进展
 - 本机新版 CLI 请求旧 Core 实际返回 protocol_version expected 17；首次设置丢弃此错误；Quit 同样受版本检查拒绝。
 - 实现稳定 Lifecycle 通道、GUI 会话/跨进程交接屏障、17–19 兼容退出；0.1.2 协议20。真实已签名旧 Core 的两版本×两启动方式×升级/退出八场景通过；并发启动、错误混包不停止旧 owner、稳定通道三种运行许可和新构建禁止降级通过。
@@ -33,3 +33,6 @@ updated: 2026-10-20
 - 签名 native smoke：真实旧19后台在隔离目录被替换；Cmd-Q 后 GUI 11645/Core 11674 均退出且 socket 删除；关闭窗口保持后台。另一本机旧17录制后台实际交接后，两路采集均恢复 recording，原修订56及录制意图保留。未清理或重建任何用户业务数据。
 - requirements 最终 PASS（故障实际错误原生提示已补）；adversarial PASS；最终 architecture PASS。macOS 默认 terminate 直达 Exit，已复用幂等清理补齐；Core 卡死等无法优雅终止时不强杀，原生退出失败可见提示重新打开重试。最终签名 release 的失败提示 smoke / 身份 / 公证检查待构建后完成。
 - cb5b060 已提交 dev 并合并 main，clean Release 四组件身份一致；初次公证通过。故障 smoke 发现脚本弹窗脱离 Hear 归属，改为既有 native bridge 的 NSAlert；11 desktop tests 通过；签名包 native 故障 smoke 实见实际错误，可点击“好”且 GUI 正常退出。adversarial / architecture 定向复查均 PASS。最终包需按此修正重新构建公证。
+- 最终代码 1aed8d6bacb9dd55462a1522ee785686e7b5386f 已合并 main，clean Release 四组件均为0.1.2/协议20/dirty=false。最终包真实原生失败提示可见且确认后退出；Developer ID 签名、Apple公证、staple、Gatekeeper及镜像校验全部通过。公证4f785706-b86b-4dc2-8501-dea39b58cd81；DMG SHA256 c97d612d5ab13d47b9154965e683627710833a9ca947002855c9c24a3bef1e1d。
+- 交付文件 target/release/bundle/dmg/hear_0.1.2_arm64.dmg（17,670,864 bytes），同目录保留 checksum/build-identity/release 元数据。本机 /Applications/hear.app 已切为相同正式包，旧测试 Core 优雅交接；修订56、两路来源、录制/暂停意图不变，两路均恢复 recording。旧 app 留在 /tmp/hear-upgrade-legacy/installed-before-0.1.2.app，仅作文件备份，不支持直接降级处理新数据。
+- 最终门禁：真实旧17/19升级与退出8场景、并发初始化/混包保护、30秒忙锁超时、稳定通道许可传递/拒绝降级、实际AppOpened定时语义、native关闭窗口/退出/错误提示均已覆盖。303 Rust tests通过/7既有环境测试忽略；桌面修正后11 tests复跑通过，前端typecheck/lint与最终build通过。无剩余必做项；不push、不清理用户数据；无关README与打包脚本改动原样保留。
