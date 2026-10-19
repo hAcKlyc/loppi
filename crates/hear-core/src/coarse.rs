@@ -303,6 +303,8 @@ mod tests {
         }
         let block = crate::PendingBlock {
             id: "b".into(),
+            started_ms: wall + 5000,
+            ended_ms: wall + 10000,
             session_id: id.to_string(),
             source: "microphone".into(),
             sample_start: 240000,

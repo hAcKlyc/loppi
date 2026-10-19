@@ -31,7 +31,7 @@ hear logs --from-ms 1792339200000 --to-ms 1792425600000 --capture-span-id <uuid>
 - `window_usage` 按实际调用时刻统计 requests、accepted、已知 token/音频/费用和 incomplete；未知不视为零，不能按音频事件时间归账。
 - 队列年龄基于当前未结束任务的创建时间；完成 elapsed 包括排队。云任务 failed_attempts 只在失败时递增，正常轮询不计入；completed_after_failure 统计当前计数仍大于零且已完成的任务。手动重试或迁移重置过的更早失败不可凭该字段还原，需结合保留日志。VAD 的 attempt_counter 是领取次数，coarse 的 attempt_counter 是失败次数，不能混用。
 - `logs.retained_from_ms/to_ms` 是当前轮转文件可解析记录的最早/最晚时间，不保证其中没有丢失。`malformed_lines`、`truncated` 和 `logs_available` 分别表示坏行、返回记录截断、日志不可用。最多返回 500 条，但 `matched` 和最多 128 类 `failure_counts` 统计全部匹配记录；分类超限单独标记。事件过滤可联查报告中列出的云任务日志；任务列表截断时事件日志依赖展开也不完整。
-- 日志的时间是故障发生时刻，DB 的筛选是任务音频时间范围，历史音频延后处理可能需要扩大日志查询时间窗。
+- 日志的时间是故障发生时刻，DB 的筛选是任务音频时间范围，历史音频延后处理可能需要扩大日志查询时间窗。VAD 失败的 `context.start_ms/end_ms` 保留领取时的原音频范围，即使该块不在故障发生窗口的 DB 查询结果中，仍可定位处理对象。
 
 ## 日志写法
 

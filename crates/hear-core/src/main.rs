@@ -880,36 +880,44 @@ fn analysis_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
                 let _ = store.analysis_failed(&block.id);
             }
         }
-        let mut event = LogEvent::simple(
-            "speech",
-            if success {
-                LogLevel::Info
-            } else {
-                LogLevel::Warn
-            },
-            if success {
-                "vad_complete"
-            } else {
-                "vad_failed"
-            },
-        );
-        event.context = Some(hear_protocol::LogContext {
-            source: Some(if block.source == "microphone" {
-                AudioSource::Microphone
-            } else {
-                AudioSource::System
-            }),
-            ..Default::default()
-        });
-        event.capture_span_id = uuid::Uuid::parse_str(&block.session_id).ok();
-        event.job_id = uuid::Uuid::parse_str(&block.id).ok();
-        if let Err(error) = &published {
-            event.error_code = Some(analysis::failure_code(stage, error));
-        }
+        let event = vad_log_event(&block, &published, stage);
         shared
             .logs
             .emit(ClientKind::Worker, uuid::Uuid::new_v4(), event);
     }
+}
+
+fn vad_log_event(block: &PendingBlock, published: &Result<bool, String>, stage: &str) -> LogEvent {
+    let success = published.is_ok();
+    let mut event = LogEvent::simple(
+        "speech",
+        if success {
+            LogLevel::Info
+        } else {
+            LogLevel::Warn
+        },
+        if success {
+            "vad_complete"
+        } else {
+            "vad_failed"
+        },
+    );
+    event.context = Some(hear_protocol::LogContext {
+        start_ms: Some(block.started_ms),
+        end_ms: Some(block.ended_ms),
+        source: Some(if block.source == "microphone" {
+            AudioSource::Microphone
+        } else {
+            AudioSource::System
+        }),
+        ..Default::default()
+    });
+    event.capture_span_id = uuid::Uuid::parse_str(&block.session_id).ok();
+    event.job_id = uuid::Uuid::parse_str(&block.id).ok();
+    if let Err(error) = published {
+        event.error_code = Some(analysis::failure_code(stage, error));
+    }
+    event
 }
 
 fn cloud_loop(
@@ -3873,6 +3881,8 @@ struct Store {
 
 struct PendingBlock {
     id: String,
+    started_ms: i64,
+    ended_ms: i64,
     session_id: String,
     source: String,
     sample_start: u64,
@@ -4368,7 +4378,7 @@ impl Store {
                         AND adjacent.sample_start = b.sample_start + b.frames
                         AND adjacent.media_path IS NOT NULL
                         AND adjacent.analysis_state = 'pending' AND adjacent.analysis_attempts < 3
-                    )
+                    ), b.started_ms, b.ended_ms
              FROM audio_blocks b JOIN recording_sessions s ON s.id = b.session_id
              WHERE b.analysis_state = 'pending' AND b.analysis_attempts < 3
                    AND b.media_path IS NOT NULL
@@ -4400,6 +4410,8 @@ impl Store {
                         frames: row.get::<_, i64>(4)? as usize,
                         media_path: row.get(5)?,
                         flush: row.get(6)?,
+                        started_ms: row.get(7)?,
+                        ended_ms: row.get(8)?,
                     })
                 },
             )
@@ -4422,7 +4434,7 @@ impl Store {
             .db
             .prepare(
                 "SELECT id, session_id, source, sample_start, frames, media_path,
-                    (coalesce(speech_active, 0) OR retention_decision='pending_vad_v2')
+                    (coalesce(speech_active, 0) OR retention_decision='pending_vad_v2'), started_ms, ended_ms
              FROM audio_blocks
              WHERE session_id = ?1 AND sample_start < ?2
                AND analysis_state = 'complete' AND media_path IS NOT NULL
@@ -4442,6 +4454,8 @@ impl Store {
                             frames: row.get::<_, i64>(4)? as usize,
                             media_path: row.get(5)?,
                             flush: false,
+                            started_ms: row.get(7)?,
+                            ended_ms: row.get(8)?,
                         },
                         row.get::<_, bool>(6)?,
                     ))
@@ -4860,6 +4874,57 @@ mod tests {
     use super::*;
 
     #[test]
+    fn delayed_vad_failure_keeps_claimed_audio_range_in_diagnostic_logs() {
+        let mut store = Store::new(Connection::open_in_memory().unwrap()).unwrap();
+        let session = Uuid::new_v4();
+        let job = Uuid::new_v4();
+        store
+            .db
+            .execute(
+                "INSERT INTO recording_sessions VALUES(?1,'microphone',1000,2000,2000,'closed')",
+                [session.to_string()],
+            )
+            .unwrap();
+        store.db.execute("INSERT INTO audio_blocks(id,session_id,source,started_ms,ended_ms,sample_start,frames,bytes,media_path,retention_decision,analysis_state) VALUES(?1,?2,'microphone',1000,2000,0,48000,100,'media/microphone/private.opus','pending_vad_v2','pending')", params![job.to_string(),session.to_string()]).unwrap();
+        let block = store.take_pending_block().unwrap().unwrap();
+        let event = vad_log_event(
+            &block,
+            &Err("private decode error".into()),
+            "local_analysis_decode",
+        );
+        assert_eq!(event.event, "vad_failed");
+        assert_eq!(event.job_id, Some(job));
+        assert_eq!(event.capture_span_id, Some(session));
+        let context = event.context.as_ref().unwrap();
+        assert_eq!((context.start_ms, context.end_ms), (Some(1000), Some(2000)));
+        assert_eq!(context.source, Some(AudioSource::Microphone));
+        let directory = tempfile::tempdir().unwrap();
+        let mut logs = unilogs::UniLogs::open(directory.path()).unwrap();
+        let now = now_ms().unwrap();
+        logs.emit(ClientKind::Worker, Uuid::new_v4(), event);
+        let filter = hear_protocol::DiagnosticFilter {
+            from_ms: now - 60_000,
+            to_ms: now + 60_000,
+            event_id: None,
+            job_id: Some(job),
+        };
+        let facts = diagnostic_report::facts(&store.db, &filter, now).unwrap();
+        assert!(facts["window_local_jobs"].as_array().unwrap().is_empty());
+        let window = logs
+            .window(&LogFilter {
+                from_ms: Some(filter.from_ms as u64),
+                to_ms: Some(filter.to_ms as u64),
+                job_id: Some(job),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(window.entries.len(), 1);
+        let context = window.entries[0].event.context.as_ref().unwrap();
+        assert_eq!((context.start_ms, context.end_ms), (Some(1000), Some(2000)));
+        assert!(!serde_json::to_string(&window).unwrap().contains("private"));
+    }
+
+    #[test]
     fn vad_upgrade_retries_retained_failures_once_without_reviving_cleared_media() {
         let store = Store::new(Connection::open_in_memory().unwrap()).unwrap();
         store
@@ -5156,6 +5221,8 @@ mod tests {
         }
         let current = PendingBlock {
             id: "c".to_owned(),
+            started_ms: 2000,
+            ended_ms: 3000,
             session_id: "session".to_owned(),
             source: "system".to_owned(),
             sample_start: 96_000,

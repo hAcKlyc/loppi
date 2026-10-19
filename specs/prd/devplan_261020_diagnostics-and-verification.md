@@ -70,3 +70,5 @@ updated: 2026-10-20
 
 - 2026-10-20：首轮远端 CI 揭示 runner 默认 Xcode 16.4 无法编译既有 Audio Tap 的 `bundleIDs` / `processRestoreEnabled` 字段；本机通过使用 Xcode 26.0.1/macOS 26 SDK。修正 workflow 显式选择 runner 已安装的同版 Xcode，并回显工具链；不删改采集字段或引入运行时兼容分支。只需重验远端 CI 工具链与完整门禁，原生产代码测试证据不失效。
 - 2026-10-20：CI 工具链修正经原需求与架构 reviewer 定向复核 PASS；YAML 解析通过，`DEVELOPER_DIR` 经原验证脚本传给全部子进程。原完整架构 PASS 继续成立，远端重跑结果见 PR checks。
+- 2026-10-20 合入复核：以本地 dev `838e69a` 组合 PR 最新提交，完整离线门禁通过。需求审查发现 VAD 失败日志缺少原音频范围：积压任务在较晚窗口失败时，日志无法独立关联实际音频。现从既有 PendingBlock 领取与 replay 投影携带 started_ms/ended_ms，生产日志直接记录；无新状态或调度变化。回归覆盖真实领取、延迟失败日志与脱敏导出，需求定向复核 PASS。受影响复测 workspace check、282 项 Core 测试（7 项显式入口跳过）、workspace build、四组件身份和两组隔离 smoke 全通过；原 desktop 9 项、protocol 8 项及前端/原生检查继续有效。安装与真实 OS 验收仍不在本轮执行。
+- 2026-10-20 合入复核收口：需求与对抗、修复后的完整最终架构均 PASS。新增范围字段仍由原领取/replay 投影读取已有列；未引入新业务状态、owner、队列或恢复机制。
