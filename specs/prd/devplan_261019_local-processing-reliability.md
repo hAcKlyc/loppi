@@ -31,7 +31,7 @@ updated: 2026-10-19
   - [x] 数据/时间/日志回归和隔离验收
   - [x] 文档与 issue 处置表
   - [x] 三视角审查
-  - [ ] 提交、推送与 PR
+  - [x] 提交、推送与 PR
 
 ### Review 基线
 - Batch base: a926d39c8cb06be9d1bb281a2af6185f922f8cb0
@@ -55,3 +55,4 @@ updated: 2026-10-19
 
 - Phase 1 裁决：requirements 的恢复证据缺口与 adversarial 的 P1 为同一根因，采纳为阻塞项。历史迁移暴露 coarse::enqueue 的 session 全局水位假设，可能吞旧区间并回收句首。已在原 coarse owner 使用既有区间覆盖去重，不加状态/队列/模式；原“更早起点也被整个前缀吞掉”测试改为实际已覆盖样本不重复，允许补未覆盖前缀。新增两项回归；真实回放每例补回 1 个任务并核验媒体不丢。原 SCK、前端和映射验证不受影响。
 - 三视角结果：requirements 与 adversarial 定向复核 PASS，原恢复证据缺口与 P1 均关闭；唯一非阻塞算法文档残留已修正。全新上下文 architecture 审查完整最终 23 文件候选后 PASS：复用原 owner/事务、维护与迁移，无新增进程、表、协议、队列或通用重试框架，复杂度与本次保证相称。发布前安装与 OS 长时验收仍待执行。
+- 10/19：代码提交 `8f5044c01af1a9512a78c02635e84bdab2c627bb` 已推送，创建 [PR #9](https://github.com/hAcKlyc/hear/pull/9)。远端回读确认为 OPEN、可合并，23 个预期文件，无自动 CI 检查；验证依据为以上本机实跑记录。PR 拟关闭 #1/#4/#6/#7/#8，#2/#3/#5 保持开放。未合并或部署；状态继续 in-progress，等待上述 mandatory 安装发布验收。
