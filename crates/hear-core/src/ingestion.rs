@@ -1006,6 +1006,8 @@ mod tests {
             assert!(retained); // Unconfirmed onset still has its original audio.
             let next = crate::PendingBlock {
                 id: b.to_string(),
+                started_ms: session.wall_anchor_ms + 1000,
+                ended_ms: session.wall_anchor_ms + 2000,
                 session_id: session.id.to_string(),
                 source: "microphone".into(),
                 sample_start: 48_000,

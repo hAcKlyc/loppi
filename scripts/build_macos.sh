@@ -19,6 +19,8 @@ JS
 
 # Native dependencies must target the same minimum OS as the app bundle.
 export MACOSX_DEPLOYMENT_TARGET=13.0
+# One build identity across Cargo and Tauri invocations.
+export HEAR_BUILD_EPOCH=$(date +%s)
 
 hear_sign_identity=${APPLE_SIGNING_IDENTITY:-$(security find-identity -v -p codesigning | sed -n 's/.*"\(Developer ID Application:.*\)".*/\1/p' | head -1)}
 if [[ -z "$hear_sign_identity" ]]; then
@@ -39,6 +41,7 @@ env -u APPLE_SIGNING_IDENTITY -u APPLE_API_KEY -u APPLE_API_ISSUER -u APPLE_API_
 
 hear_app=target/release/bundle/macos/hear.app
 hear_helper="$hear_app/Contents/Library/LoginItems/HearCore.app"
+python3 scripts/verify_build_identity.py --bundle "$hear_app" --output "$hear_app/Contents/Resources/build-info.json"
 codesign --force --options runtime --timestamp --sign "$hear_sign_identity" "$hear_helper/Contents/MacOS/hear-worker"
 codesign --force --options runtime --timestamp --entitlements src-tauri/native/HearCore.entitlements --sign "$hear_sign_identity" "$hear_helper"
 codesign --force --options runtime --timestamp --sign "$hear_sign_identity" "$hear_app/Contents/MacOS/hear"

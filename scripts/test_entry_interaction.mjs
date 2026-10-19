@@ -1,5 +1,4 @@
-// npm install --prefix /tmp/hear-entry-test-deps --no-audit --no-fund --package-lock=false jsdom@29.1.1
-// HEAR_TEST_NODE_MODULES=/tmp/hear-entry-test-deps/node_modules node scripts/test_entry_interaction.mjs
+// npm ci && node scripts/test_entry_interaction.mjs
 // Real React/widget/EntryRequests, mocked Tauri IPC; native policy is tested in test_native_entry.m.
 import assert from 'node:assert/strict';
 import { registerHooks, createRequire } from 'node:module';
@@ -7,7 +6,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 
-const requireTest = createRequire(`${process.env.HEAR_TEST_NODE_MODULES || '/tmp/hear-entry-test-deps/node_modules'}/fixture.cjs`);
+const requireTest = createRequire(import.meta.url);
 const { JSDOM } = requireTest('jsdom');
 const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost/' });
 for (const name of ['window', 'document', 'HTMLElement', 'HTMLTextAreaElement', 'Event', 'MouseEvent', 'KeyboardEvent']) globalThis[name] = dom.window[name];

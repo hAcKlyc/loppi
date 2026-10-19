@@ -101,12 +101,14 @@ fn agent() -> &'static ureq::Agent {
 pub struct Failure {
     pub code: String,
     pub retry_after_ms: Option<i64>,
+    pub context: hear_protocol::LogContext,
 }
 impl From<String> for Failure {
     fn from(code: String) -> Self {
         Self {
             code,
             retry_after_ms: None,
+            context: Default::default(),
         }
     }
 }
@@ -142,6 +144,7 @@ fn checked_response(
         Ok(response) => Ok(response),
         Err(ureq::Error::Status(code, response)) => Err(Failure {
             code: format!("provider_http_{code}"),
+            context: Default::default(),
             retry_after_ms: response
                 .header("Retry-After")
                 .and_then(|v| retry_after(v, std::time::SystemTime::now())),
@@ -294,7 +297,22 @@ fn parse_chat_content(response: &Value) -> Result<Value, Failure> {
         .and_then(|array| array.first())
         .ok_or_else(|| "provider_missing_choice".to_owned())?;
     if choice.get("finish_reason").and_then(Value::as_str) != Some("stop") {
-        return Err("provider_incomplete_output".to_owned().into());
+        use hear_protocol::OutputFinishReason;
+        let finish_reason = match choice.get("finish_reason").and_then(Value::as_str) {
+            Some("length") => OutputFinishReason::Length,
+            Some("content_filter") => OutputFinishReason::ContentFilter,
+            Some("tool_calls") => OutputFinishReason::ToolCalls,
+            Some(_) => OutputFinishReason::Other,
+            None => OutputFinishReason::Missing,
+        };
+        return Err(Failure {
+            code: "provider_incomplete_output".into(),
+            retry_after_ms: None,
+            context: hear_protocol::LogContext {
+                finish_reason: Some(finish_reason),
+                ..Default::default()
+            },
+        });
     }
     let content = choice
         .pointer("/message/content")
@@ -308,7 +326,17 @@ fn parse_chat_content(response: &Value) -> Result<Value, Failure> {
             serde_json::error::Category::Data => "provider_invalid_json_content_data",
             serde_json::error::Category::Io => "provider_invalid_json_content_io",
         };
-        code.to_owned().into()
+        Failure {
+            code: code.into(),
+            retry_after_ms: None,
+            context: hear_protocol::LogContext {
+                finish_reason: Some(hear_protocol::OutputFinishReason::Stop),
+                json_line: Some(error.line()),
+                json_column: Some(error.column()),
+                output_bytes: Some(content.len()),
+                ..Default::default()
+            },
+        }
     })
 }
 
@@ -611,6 +639,20 @@ pub fn verify_asr(key: &str, meter: &dyn Meter) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn malformed_output_preserves_only_numeric_parser_context() {
+        let response = serde_json::json!({"choices":[{"finish_reason":"stop","message":{"content":"{\n  \"private words\": "}}]});
+        let error = parse_chat_content(&response).unwrap_err();
+        assert_eq!(error.context.json_line, Some(2));
+        assert!(error.context.json_column.unwrap() > 0);
+        assert!(error.context.output_bytes.unwrap() > 0);
+        assert!(
+            !serde_json::to_string(&error.context)
+                .unwrap()
+                .contains("private")
+        );
+    }
+
+    #[test]
     fn invalid_json_reports_category_without_supplier_content() {
         for (content, code) in [
             ("{\"events\":[", "provider_invalid_json_content_eof"),
@@ -817,6 +859,7 @@ mod tests {
         let failure = Failure {
             code: "provider_http_429".into(),
             retry_after_ms: Some(2000),
+            context: Default::default(),
         };
         let rejected = metered_result::<()>(&meter, "id", Err(failure)).unwrap_err();
         assert_eq!(rejected.code, "provider_http_429");

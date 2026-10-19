@@ -303,6 +303,8 @@ mod tests {
         }
         let block = crate::PendingBlock {
             id: "b".into(),
+            started_ms: wall + 5000,
+            ended_ms: wall + 10000,
             session_id: id.to_string(),
             source: "microphone".into(),
             sample_start: 240000,
@@ -391,8 +393,14 @@ mod tests {
         let job = take(&mut store.db, "microphone", false, i64::MAX)
             .unwrap()
             .unwrap();
-        assert!(publish(&mut store.db, &job, "").unwrap());
-        assert!(!publish(&mut store.db, &job, "duplicate").unwrap());
+        let published = publish(&mut store.db, &job, "");
+        let event = crate::coarse_log_event(&job, &published, "coarse_recognize");
+        assert!(published.unwrap());
+        assert_eq!(event.event, "coarse_complete");
+        let duplicate = publish(&mut store.db, &job, "duplicate");
+        let event = crate::coarse_log_event(&job, &duplicate, "coarse_recognize");
+        assert!(!duplicate.unwrap());
+        assert_eq!(event.event, "coarse_not_published");
         let kept: bool = store
             .db
             .query_row(
@@ -412,7 +420,21 @@ mod tests {
                 .unwrap()
                 .unwrap();
             clear(&mut store, dir.path(), wall, wall + 10000, mode);
-            assert!(!publish(&mut store.db, &job, "must not return").unwrap());
+            let published = publish(&mut store.db, &job, "must not return");
+            let event = crate::coarse_log_event(&job, &published, "coarse_recognize");
+            assert!(!published.unwrap());
+            assert_eq!(event.event, "coarse_not_published");
+            assert_eq!(event.level, hear_protocol::LogLevel::Info);
+            assert!(event.error_code.is_none());
+            assert_eq!(event.job_id, Uuid::parse_str(&job.id).ok());
+            assert_eq!(
+                store
+                    .db
+                    .query_row("SELECT count(*) FROM coarse_segments", [], |r| r
+                        .get::<_, i64>(0))
+                    .unwrap(),
+                0
+            );
         }
     }
     #[test]
