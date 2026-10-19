@@ -12,3 +12,5 @@ coverage/
 /logs/
 /build/
 *.log
+
+__pycache__/

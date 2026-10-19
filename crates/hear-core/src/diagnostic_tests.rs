@@ -168,9 +168,10 @@ fn replay_saved_vad_through_production_decoder_and_publication() {
     let data = std::path::PathBuf::from(std::env::var("HEAR_TEST_DATA").unwrap());
     let worker_path = std::path::PathBuf::from(std::env::var("HEAR_TEST_WORKER").unwrap());
     for id in std::env::var("HEAR_TEST_BLOCKS").unwrap().split(',') {
-        let block = store.db.query_row("SELECT session_id,source,sample_start,frames,media_path FROM audio_blocks WHERE id=?1", [id], |r| Ok(PendingBlock {
+        let block = store.db.query_row("SELECT session_id,source,sample_start,frames,media_path,started_ms,ended_ms FROM audio_blocks WHERE id=?1", [id], |r| Ok(PendingBlock {
             id: id.to_owned(), session_id: r.get(0)?, source: r.get(1)?, sample_start: r.get::<_,i64>(2)? as u64,
             frames: r.get::<_,i64>(3)? as usize, media_path: r.get(4)?, flush: false,
+            started_ms: r.get(5)?, ended_ms: r.get(6)?,
         })).unwrap();
         let mut worker = analysis::AnalysisClient::start(
             &worker_path,

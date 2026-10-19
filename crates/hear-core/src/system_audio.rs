@@ -263,3 +263,13 @@ impl Drop for SystemAudio {
         }
     }
 }
+
+/// Observation only: main-display power is not machine sleep or a capture gate.
+pub fn main_display_asleep() -> Option<bool> {
+    unsafe extern "C" {
+        fn CGMainDisplayID() -> u32;
+        fn CGDisplayIsAsleep(display: u32) -> u32;
+    }
+    let display = unsafe { CGMainDisplayID() };
+    (display != 0).then(|| unsafe { CGDisplayIsAsleep(display) != 0 })
+}

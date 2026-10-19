@@ -1,4 +1,4 @@
-use hear_protocol::{ClientKind, LogEvent, LogFilter, LogRecord};
+use hear_protocol::{ClientKind, LogContext, LogEvent, LogFilter, LogLevel, LogRecord, LogWindow};
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
@@ -14,6 +14,8 @@ pub struct UniLogs {
     file: File,
     run_id: Uuid,
     started: Instant,
+    vad_counts: [u64; 3],
+    summary_since: Instant,
 }
 
 impl UniLogs {
@@ -28,6 +30,8 @@ impl UniLogs {
             file,
             run_id: Uuid::new_v4(),
             started: Instant::now(),
+            vad_counts: [0; 3],
+            summary_since: Instant::now(),
         })
     }
 
@@ -56,9 +60,45 @@ impl UniLogs {
         if !valid_event(&event) {
             return;
         }
+        if self.summary_since.elapsed().as_secs() >= 60 {
+            self.flush_summary();
+        }
+        if event.component == "speech"
+            && event.event == "vad_complete"
+            && matches!(event.level, LogLevel::Info)
+        {
+            let index = match event.context.as_ref().and_then(|c| c.source) {
+                Some(hear_protocol::AudioSource::Microphone) => 0,
+                Some(hear_protocol::AudioSource::System) => 1,
+                None => 2,
+            };
+            self.vad_counts[index] += 1;
+            return;
+        }
         if let Err(error) = self.try_emit(client, request_id, event) {
             eprintln!("hear-core unilogs unavailable: {error}");
         }
+    }
+
+    pub fn flush_summary(&mut self) {
+        let counts = std::mem::take(&mut self.vad_counts);
+        for (index, count) in counts.into_iter().enumerate().filter(|(_, n)| *n > 0) {
+            let mut event = LogEvent::simple("speech", LogLevel::Info, "vad_completed_summary");
+            event.duration_ms = Some(self.summary_since.elapsed().as_millis() as u64);
+            event.context = Some(LogContext {
+                count: Some(count),
+                source: [
+                    Some(hear_protocol::AudioSource::Microphone),
+                    Some(hear_protocol::AudioSource::System),
+                    None,
+                ][index],
+                ..Default::default()
+            });
+            if let Err(error) = self.try_emit(ClientKind::Core, Uuid::new_v4(), event) {
+                eprintln!("hear-core unilogs unavailable: {error}");
+            }
+        }
+        self.summary_since = Instant::now();
     }
 
     fn try_emit(
@@ -113,25 +153,25 @@ impl UniLogs {
     }
 
     pub fn read(&self, filter: &LogFilter) -> Result<Vec<LogRecord>, String> {
-        let limit = filter.limit.unwrap_or(100).min(500);
-        let mut entries = Vec::new();
+        Ok(self.window(filter)?.entries)
+    }
+
+    pub fn window(&self, filter: &LogFilter) -> Result<LogWindow, String> {
+        let mut window = LogWindow::default();
         for archive in (1..=ARCHIVES).rev() {
-            let path = self.directory.join(format!("hear.{archive:02}.jsonl"));
-            read_matching(&path, filter, &mut entries)?;
+            read_matching(
+                &self.directory.join(format!("hear.{archive:02}.jsonl")),
+                filter,
+                &mut window,
+            )?;
         }
-        read_matching(&self.directory.join("hear.jsonl"), filter, &mut entries)?;
-        if entries.len() > limit {
-            entries.drain(..entries.len() - limit);
-        }
-        Ok(entries)
+        read_matching(&self.directory.join("hear.jsonl"), filter, &mut window)?;
+        window.truncated = window.matched > window.entries.len();
+        Ok(window)
     }
 }
 
-fn read_matching(
-    path: &Path,
-    filter: &LogFilter,
-    entries: &mut Vec<LogRecord>,
-) -> Result<(), String> {
+fn read_matching(path: &Path, filter: &LogFilter, window: &mut LogWindow) -> Result<(), String> {
     let file = match OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW)
@@ -141,35 +181,76 @@ fn read_matching(
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         Err(error) => return Err(error.to_string()),
     };
-    let metadata = file.metadata().map_err(|error| error.to_string())?;
+    let metadata = file.metadata().map_err(|e| e.to_string())?;
     if !metadata.file_type().is_file() || metadata.len() > LOG_BYTES {
-        return Err("diagnostic log archive is not a bounded regular file".to_owned());
+        return Err("diagnostic log archive is not a bounded regular file".into());
     }
     for line in BufReader::new(file).lines() {
-        let line = line.map_err(|error| error.to_string())?;
-        let Ok(record) = serde_json::from_str::<LogRecord>(&line) else {
-            continue;
+        let line = line.map_err(|e| e.to_string())?;
+        let record = match serde_json::from_str::<LogRecord>(&line) {
+            Ok(record) if valid_event(&record.event) => record,
+            _ => {
+                window.malformed_lines += 1;
+                continue;
+            }
         };
+        window.retained_from_ms = Some(
+            window
+                .retained_from_ms
+                .map_or(record.timestamp_ms, |t| t.min(record.timestamp_ms)),
+        );
+        window.retained_to_ms = Some(
+            window
+                .retained_to_ms
+                .map_or(record.timestamp_ms, |t| t.max(record.timestamp_ms)),
+        );
         if filter
             .component
             .as_ref()
-            .is_some_and(|value| *value != record.event.component)
+            .is_some_and(|v| *v != record.event.component)
+            || filter.level.is_some_and(|v| v != record.event.level)
+            || filter
+                .correlation_id
+                .is_some_and(|v| record.event.correlation_id != Some(v))
+            || filter
+                .job_id
+                .is_some_and(|v| record.event.job_id != Some(v))
+            || filter.event_id.is_some_and(|v| {
+                record.event.event_id != Some(v)
+                    && !filter
+                        .related_job_ids
+                        .as_ref()
+                        .is_some_and(|ids| record.event.job_id.is_some_and(|j| ids.contains(&j)))
+            })
+            || filter
+                .capture_span_id
+                .is_some_and(|v| record.event.capture_span_id != Some(v))
+            || filter.from_ms.is_some_and(|v| record.timestamp_ms < v)
+            || filter.to_ms.is_some_and(|v| record.timestamp_ms >= v)
         {
             continue;
         }
-        if filter
-            .level
-            .is_some_and(|value| value != record.event.level)
-        {
-            continue;
+        window.matched += 1;
+        if matches!(record.event.level, LogLevel::Warn | LogLevel::Error) {
+            let key = format!(
+                "{}.{}.{}",
+                record.event.component,
+                record.event.event,
+                record.event.error_code.as_deref().unwrap_or("none")
+            );
+            if window.failure_counts.contains_key(&key) || window.failure_counts.len() < 128 {
+                *window.failure_counts.entry(key).or_default() += 1;
+            } else {
+                window.failure_groups_truncated = true;
+            }
         }
-        if filter
-            .correlation_id
-            .is_some_and(|value| record.event.correlation_id != Some(value))
-        {
-            continue;
+        let limit = filter.limit.unwrap_or(100).min(500);
+        if limit > 0 {
+            window.entries.push(record);
+            if window.entries.len() > limit {
+                window.entries.remove(0);
+            }
         }
-        entries.push(record);
     }
     Ok(())
 }
@@ -182,7 +263,16 @@ pub(crate) fn valid_event(event: &LogEvent) -> bool {
                 byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'.' || byte == b'_'
             })
     }
-    token(&event.component) && token(&event.event) && event.error_code.as_deref().is_none_or(token)
+    token(&event.component)
+        && token(&event.event)
+        && event.error_code.as_deref().is_none_or(token)
+        && event.build.as_ref().is_none_or(|b| {
+            matches!(b.component.as_str(), "core" | "cli" | "gui" | "worker")
+                && b.git_sha.len() <= 64
+                && b.git_sha.bytes().all(|c| c.is_ascii_alphanumeric())
+                && b.version.len() <= 32
+                && b.version.bytes().all(|c| c.is_ascii_digit() || c == b'.')
+        })
 }
 
 #[cfg(test)]
@@ -210,6 +300,7 @@ mod tests {
             level: Some(LogLevel::Info),
             correlation_id: None,
             limit: Some(10),
+            ..Default::default()
         };
         let found = logs.read(&filter).unwrap();
         assert_eq!(found.len(), 1);
@@ -245,5 +336,84 @@ mod tests {
                 & 0o777,
             0o600
         );
+    }
+    #[test]
+    fn summaries_do_not_hide_failures_and_filters_report_truncation() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut logs = UniLogs::open(directory.path()).unwrap();
+        let job = Uuid::new_v4();
+        for _ in 0..700 {
+            logs.emit(
+                ClientKind::Core,
+                job,
+                LogEvent::simple("speech", LogLevel::Info, "vad_complete"),
+            );
+        }
+        for _ in 0..3 {
+            let mut failed = LogEvent::simple("speech", LogLevel::Warn, "vad_failed");
+            failed.job_id = Some(job);
+            failed.error_code = Some("local_analysis_publish_invalid_region".into());
+            logs.emit(ClientKind::Core, job, failed);
+        }
+        logs.flush_summary();
+        let window = logs
+            .window(&LogFilter {
+                limit: Some(500),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(window.entries.len(), 4);
+        assert_eq!(
+            window.entries[3].event.context.as_ref().unwrap().count,
+            Some(700)
+        );
+        assert_eq!(window.failure_counts.values().sum::<usize>(), 3);
+        let window = logs
+            .window(&LogFilter {
+                job_id: Some(job),
+                limit: Some(1),
+                ..Default::default()
+            })
+            .unwrap();
+        assert!(window.truncated);
+        assert_eq!(window.matched, 3);
+        assert_eq!(window.entries.len(), 1);
+        assert_eq!(window.failure_counts.values().sum::<usize>(), 3);
+        let time = window.entries[0].timestamp_ms;
+        let window = logs
+            .window(&LogFilter {
+                to_ms: Some(time),
+                ..Default::default()
+            })
+            .unwrap();
+        assert!(window.entries.iter().all(|r| r.timestamp_ms < time));
+        let window = logs
+            .window(&LogFilter {
+                event_id: Some(Uuid::new_v4()),
+                related_job_ids: Some(vec![job]),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(window.matched, 3);
+    }
+
+    #[test]
+    fn old_logs_parse_but_private_or_malformed_lines_are_not_exported() {
+        let directory = tempfile::tempdir().unwrap();
+        let logs = UniLogs::open(directory.path()).unwrap();
+        let id = Uuid::new_v4();
+        let good = serde_json::json!({"timestamp_ms":42,"run_id":id,"elapsed_ms":0,"client":"core","request_id":id,"component":"speech","level":"warn","event":"coarse_failed","error_code":"failed"});
+        let mut private = good.clone();
+        private["error_code"] = serde_json::json!("/private/secret");
+        fs::write(
+            directory.path().join("logs/hear.jsonl"),
+            format!("{good}\n{private}\ninvalid\n"),
+        )
+        .unwrap();
+        let window = logs.window(&LogFilter::default()).unwrap();
+        assert_eq!(window.matched, 1);
+        assert_eq!(window.malformed_lines, 2);
+        assert_eq!(window.retained_from_ms, Some(42));
+        assert!(!serde_json::to_string(&window).unwrap().contains("private"));
     }
 }
