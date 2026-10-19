@@ -1,6 +1,6 @@
 ---
 type: devplan
-status: in-progress
+status: implemented
 created: 2026-10-20
 updated: 2026-10-20
 ---
@@ -32,7 +32,7 @@ updated: 2026-10-20
 - [x] 回归、构建与签名
 - [x] 新包真机验收与边界记录
 - [x] 独立三路review与必要修复
-- [ ] 提交及最终证据
+- [x] 提交及最终证据
 
 ### Review基线
 - Batch base：`290dc751ad6fb56f89004387fbcdb1ee956a7dbc`
@@ -69,3 +69,5 @@ updated: 2026-10-20
 - 隔离源码/包/数据目录：`/var/folders/n5/pzrmblj11dbc2ltb0ncd36s00000gn/T/hear-entry-polish-5lv855d_`。最终签名包在`target/debug/bundle/macos/hear Entry Check.app`；只读采样为`motion-first.tsv`、`motion-rebound.tsv`、`motion-final.tsv`。源码使用Batch base加本次拥有改动；entry.rs只带Geometry字段，避免混入同时开发的录制计划/首次设置接口。
 
 - 2026-10-20：收尾在当前共享HEAD组合态再次通过全量typecheck/lint与9项Rust入口测试（另2项非入口测试未选）；已核对签名构建的本次原生/前端/测试源码逐字节一致。独立测试进程全部退出，三项动效、本次mandatory真机证据与三路审查闭环。
+
+- 2026-10-20：实现提交`50e988b`。单Batch整体复核完成，本次动效与可执行真机验收已闭合；状态implemented仅指本devplan，不替代旧入口整体发布门槛。收尾只提交本计划证据，保留所有并行首次设置/打包等改动。
