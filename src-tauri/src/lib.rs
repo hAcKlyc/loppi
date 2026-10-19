@@ -76,8 +76,14 @@ async fn cleanup_request(
 }
 
 #[tauri::command]
+fn build_info() -> hear_protocol::BuildInfo {
+    hear_protocol::build_info("gui")
+}
+
+#[tauri::command]
 fn gui_ready() -> Result<(), String> {
-    let event = hear_protocol::LogEvent::simple("gui", hear_protocol::LogLevel::Info, "opened");
+    let mut event = hear_protocol::LogEvent::simple("gui", hear_protocol::LogLevel::Info, "opened");
+    event.build = Some(hear_protocol::build_info("gui"));
     hear_protocol::send_from(
         hear_protocol::ClientKind::Gui,
         hear_protocol::Request::Log { event },
@@ -293,6 +299,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            build_info,
             core_request,
             cleanup_request,
             gui_ready,

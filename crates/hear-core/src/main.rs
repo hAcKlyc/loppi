@@ -25,6 +25,7 @@ mod capture;
 mod cleanup;
 mod cloud;
 mod coarse;
+mod diagnostic_report;
 #[cfg(test)]
 mod diagnostic_tests;
 mod diagnostics;
@@ -63,6 +64,13 @@ fn main() {
 
 fn run() -> Result<(), String> {
     let args: Vec<_> = std::env::args().skip(1).collect();
+    if std::env::args().nth(1).as_deref() == Some("--build-info") {
+        println!(
+            "{}",
+            serde_json::to_string(&hear_protocol::build_info("core")).unwrap()
+        );
+        return Ok(());
+    }
     if args.first().is_some_and(|s| s == "capture-source") {
         if args.len() != 2 {
             return Err("invalid capture helper arguments".into());
@@ -591,7 +599,7 @@ fn resource_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
         if shared.resources.mode() != resources::Mode::Normal {
             shared.readers.shrink();
         }
-        let diagnostics = serde_json::json!({"schema":1,"run_id":shared.run_id,"pid":std::process::id(),"observed_ms":now,
+        let diagnostics = serde_json::json!({"schema":2,"build":hear_protocol::build_info("core"),"run_id":shared.run_id,"pid":std::process::id(),"observed_ms":now,
             "resources":shared.resources.diagnostics(),"storage":storage_metrics,
             "wal_bytes":fs::metadata(shared.directory.join("hear.sqlite-wal")).map(|m|m.len()).ok()});
         // A bounded, replace-only diagnostic snapshot; it is not durable
@@ -674,11 +682,14 @@ fn coarse_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
                 continue;
             }
         };
+        let mut stage = "coarse_manifest";
         let result = (|| -> Result<String, String> {
             let parts =
                 coarse::manifest(&shared.store.lock().map_err(|e| e.to_string())?.db, &job)?;
+            stage = "coarse_decode";
             let pcm = coarse::pcm(&shared.directory, &job, parts)?;
             if worker.is_none() {
+                stage = "coarse_worker_start";
                 worker = Some(
                     analysis::AnalysisClient::start(
                         &exe.with_file_name("hear-worker"),
@@ -688,6 +699,7 @@ fn coarse_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
                     .managed(&shared.resources, resources::Work::Coarse),
                 );
             }
+            stage = "coarse_recognize";
             worker.as_mut().unwrap().request(
                 &job.source,
                 &job.session_id,
@@ -700,27 +712,61 @@ fn coarse_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
                 },
             )
         })();
-        match result {
-            Ok(text) => {
-                if let Ok(mut store) = shared.store.lock() {
-                    if coarse::publish(&mut store.db, &job, &text).is_err() {
-                        let _ = coarse::failed(
-                            &store.db,
-                            &job,
-                            "publish_failed",
-                            now_ms().unwrap_or(now),
-                        );
-                    }
-                }
-            }
+        let published = match result {
+            Ok(text) => shared
+                .store
+                .lock()
+                .map_err(|_| "store_unavailable".to_owned())
+                .and_then(|mut store| {
+                    coarse::publish(&mut store.db, &job, &text)
+                        .map_err(|_| "publish_failed".to_owned())
+                }),
             Err(error) => {
                 worker = None;
-                if let Ok(store) = shared.store.lock() {
-                    let _ = coarse::failed(&store.db, &job, &error, now_ms().unwrap_or(now));
-                }
+                Err(error)
+            }
+        };
+        if let Err(error) = &published {
+            if let Ok(store) = shared.store.lock() {
+                let _ = coarse::failed(&store.db, &job, error, now_ms().unwrap_or(now));
             }
         }
+        shared.logs.emit(
+            ClientKind::Core,
+            uuid::Uuid::new_v4(),
+            coarse_log_event(&job, &published, stage),
+        );
     }
+}
+
+fn coarse_log_event(job: &coarse::Job, published: &Result<bool, String>, stage: &str) -> LogEvent {
+    let (level, message) = match published {
+        Ok(true) => (LogLevel::Info, "coarse_complete"),
+        Ok(false) => (LogLevel::Info, "coarse_not_published"),
+        Err(error) if error == "resource_deferred" => (LogLevel::Info, "coarse_deferred"),
+        Err(_) => (LogLevel::Warn, "coarse_failed"),
+    };
+    let mut event = LogEvent::simple("speech", level, message);
+    event.job_id = uuid::Uuid::parse_str(&job.id).ok();
+    event.capture_span_id = uuid::Uuid::parse_str(&job.session_id).ok();
+    event.error_code = published.as_ref().err().map(|error| {
+        if error == "publish_failed" || error == "resource_deferred" {
+            error.clone()
+        } else {
+            analysis::failure_code(stage, error)
+        }
+    });
+    event.context = Some(hear_protocol::LogContext {
+        start_ms: Some(job.started_ms),
+        end_ms: Some(job.ended_ms),
+        source: Some(if job.source == "microphone" {
+            AudioSource::Microphone
+        } else {
+            AudioSource::System
+        }),
+        ..Default::default()
+    });
+    event
 }
 
 fn analysis_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
@@ -842,11 +888,19 @@ fn analysis_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
                 LogLevel::Warn
             },
             if success {
-                "coarse_complete"
+                "vad_complete"
             } else {
-                "coarse_failed"
+                "vad_failed"
             },
         );
+        event.context = Some(hear_protocol::LogContext {
+            source: Some(if block.source == "microphone" {
+                AudioSource::Microphone
+            } else {
+                AudioSource::System
+            }),
+            ..Default::default()
+        });
         event.capture_span_id = uuid::Uuid::parse_str(&block.session_id).ok();
         event.job_id = uuid::Uuid::parse_str(&block.id).ok();
         if let Err(error) = &published {
@@ -912,6 +966,7 @@ fn cloud_loop(
         };
         turn = turn.wrapping_add(1);
         let task_id = task.id;
+        let started = Instant::now();
         let outcome = process_cloud_task(&shared, &task, now);
         let mut event = LogEvent::simple(
             "cloud",
@@ -927,9 +982,32 @@ fn cloud_loop(
             },
         );
         event.job_id = Some(task_id);
-        if let Err(error) = &outcome {
-            event.error_code = Some(error.code.clone());
+        event.duration_ms = Some(started.elapsed().as_millis() as u64);
+        if task.target_kind == "event" {
+            event.event_id = uuid::Uuid::parse_str(&task.target_id).ok();
         }
+        let mut context = outcome
+            .as_ref()
+            .err()
+            .map(|e| e.context.clone())
+            .unwrap_or_default();
+        context.start_ms = Some(task.start);
+        context.end_ms = Some(task.end);
+        context.previous_failures = Some(task.attempts);
+        context.provider = Some(task.provider);
+        if let Err(error) = &outcome {
+            let candidate = LogEvent {
+                error_code: Some(error.code.clone()),
+                ..event.clone()
+            };
+            event.error_code = Some(if unilogs::valid_event(&candidate) {
+                error.code.clone()
+            } else {
+                "processing_failed".into()
+            });
+            context.retry_after_ms = error.retry_after_ms;
+        }
+        event.context = Some(context);
         shared.logs.emit(ClientKind::Worker, task_id, event);
         if let Err(error) = outcome {
             if let Ok(store) = shared.store.lock() {
@@ -1272,7 +1350,10 @@ fn process_cloud_task(
             };
             let mut event = LogEvent::simple("events", LogLevel::Info, "fit_published");
             event.job_id = Some(task.id);
-            event.duration_ms = Some(count as u64);
+            event.context = Some(hear_protocol::LogContext {
+                count: Some(count as u64),
+                ..Default::default()
+            });
             shared.logs.emit(ClientKind::Worker, task.id, event);
             Ok(())
         }
@@ -1560,6 +1641,12 @@ fn start_source(shared: &Arc<CoreState>, source: AudioSource) -> SourceSlot {
             },
         );
         event.capture_span_id = Some(session_id);
+        event.context = Some(hear_protocol::LogContext {
+            source: Some(source),
+            main_display_asleep: system_audio::main_display_asleep(),
+            captured_frames: Some(source_frames.load(Ordering::Acquire)),
+            ..Default::default()
+        });
         if let Err(error) = &result {
             event.error_code = Some(source_process::error_code(error));
         }
@@ -1881,6 +1968,10 @@ impl CoreState {
 
 enum LogCommand {
     Emit(ClientKind, uuid::Uuid, LogEvent),
+    Window(
+        LogFilter,
+        mpsc::Sender<Result<hear_protocol::LogWindow, String>>,
+    ),
     Read(
         LogFilter,
         mpsc::Sender<Result<Vec<hear_protocol::LogRecord>, String>>,
@@ -1906,7 +1997,27 @@ impl LogWorker {
                     None
                 }
             };
-            for command in receiver {
+            if let Some(logs) = logs.as_mut() {
+                let mut event = LogEvent::simple("core", LogLevel::Info, "started");
+                event.build = Some(hear_protocol::build_info("core"));
+                logs.emit(ClientKind::Core, uuid::Uuid::new_v4(), event);
+            }
+            loop {
+                let command = match receiver.recv_timeout(Duration::from_secs(60)) {
+                    Ok(command) => command,
+                    Err(mpsc::RecvTimeoutError::Timeout) => {
+                        if let Some(logs) = logs.as_mut() {
+                            logs.flush_summary();
+                        }
+                        continue;
+                    }
+                    Err(_) => {
+                        if let Some(logs) = logs.as_mut() {
+                            logs.flush_summary();
+                        }
+                        break;
+                    }
+                };
                 let lost = pending_drops.swap(0, Ordering::AcqRel);
                 if lost > 0
                     && let Some(logs) = logs.as_mut()
@@ -1921,11 +2032,24 @@ impl LogWorker {
                             logs.emit(client, id, event);
                         }
                     }
+                    LogCommand::Window(filter, reply) => {
+                        let result = logs
+                            .as_mut()
+                            .ok_or_else(|| "logs unavailable".to_owned())
+                            .and_then(|logs| {
+                                logs.flush_summary();
+                                logs.window(&filter)
+                            });
+                        let _ = reply.send(result);
+                    }
                     LogCommand::Read(filter, reply) => {
                         let result = logs
-                            .as_ref()
+                            .as_mut()
                             .ok_or_else(|| "diagnostic logs are unavailable".to_owned())
-                            .and_then(|logs| logs.read(&filter));
+                            .and_then(|logs| {
+                                logs.flush_summary();
+                                logs.read(&filter)
+                            });
                         let _ = reply.send(result);
                     }
                 }
@@ -1946,6 +2070,16 @@ impl LogWorker {
         {
             self.dropped.fetch_add(1, Ordering::Relaxed);
         }
+    }
+
+    fn window(&self, filter: LogFilter) -> Result<hear_protocol::LogWindow, String> {
+        let (reply, receiver) = mpsc::channel();
+        self.sender
+            .try_send(LogCommand::Window(filter, reply))
+            .map_err(|_| "logs busy".to_owned())?;
+        receiver
+            .recv_timeout(Duration::from_secs(3))
+            .map_err(|_| "logs timed out".to_owned())?
     }
 
     fn read(&self, filter: LogFilter) -> Result<Vec<hear_protocol::LogRecord>, String> {
@@ -3580,6 +3714,26 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                     state: shared.service_state()?,
                 }
             }
+            Request::Diagnose { filter } => {
+                let facts = diagnostic_report::validate(&filter).and_then(|_| {
+                    let db = shared.readers.snapshot()?;
+                    diagnostic_report::facts(&db, &filter, now_ms()?)
+                });
+                match facts {
+                    Ok(facts) => {
+                        // Release the DB snapshot before waiting on the log worker.
+                        let logs = shared.logs.window(LogFilter { from_ms: Some(filter.from_ms as u64), to_ms: Some(filter.to_ms as u64),
+                            job_id: filter.job_id, event_id: filter.event_id,
+                            related_job_ids: Some(facts["cloud_tasks"].as_array().into_iter().flatten().filter_map(|t| t["job_id"].as_str()?.parse().ok()).collect()), limit: Some(500), ..Default::default() });
+                        Response::Diagnostic { id: envelope.id, report: hear_protocol::DiagnosticReport {
+                            schema: 1, observed_ms: now_ms()?, core_build: hear_protocol::build_info("core"), filter, facts,
+                            logs_available: logs.is_ok(), logs: logs.unwrap_or_default(),
+                        }}
+                    }
+                    Err(_) => Response::Error { id: envelope.id, code: "diagnostics_unavailable".into(),
+                        message: "diagnostics require a valid range of at most seven days and an available read snapshot".into() },
+                }
+            }
             Request::Logs { filter } => match shared.logs.read(filter) {
                 Ok(entries) => Response::Logs {
                     id: envelope.id,
@@ -4478,6 +4632,7 @@ impl Store {
             | Request::Probe { .. }
             | Request::RecordTest { .. }
             | Request::Log { .. }
+            | Request::Diagnose { .. }
             | Request::Logs { .. }
             | Request::YieldToLogin => {
                 unreachable!("handled by IPC dispatcher")
@@ -4765,8 +4920,20 @@ mod tests {
             ("pending", 0, false),
         ] {
             let store = Store::new(Connection::open_in_memory().unwrap()).unwrap();
-            store.db.execute("INSERT INTO recording_sessions VALUES('s','system',0,15000,15000,'closed')", []).unwrap();
-            store.db.execute("DELETE FROM core_migrations WHERE name='vad_nonempty_regions_v1'", []).unwrap();
+            store
+                .db
+                .execute(
+                    "INSERT INTO recording_sessions VALUES('s','system',0,15000,15000,'closed')",
+                    [],
+                )
+                .unwrap();
+            store
+                .db
+                .execute(
+                    "DELETE FROM core_migrations WHERE name='vad_nonempty_regions_v1'",
+                    [],
+                )
+                .unwrap();
             store.db.execute("INSERT INTO audio_blocks(id,session_id,source,started_ms,ended_ms,sample_start,frames,bytes,media_path,retention_decision,analysis_state,analysis_attempts)
               VALUES('retry','s','system',5000,10000,240000,240000,100,'media/system/b.opus','pending_vad_v2','failed',3)", []).unwrap();
             store.db.execute("INSERT INTO audio_blocks(id,session_id,source,started_ms,ended_ms,sample_start,frames,bytes,media_path,retention_decision,analysis_state,analysis_attempts,speech_active)
@@ -4774,14 +4941,20 @@ mod tests {
             let mut store = Store::new(store.db).unwrap();
             let retry = store.take_pending_block().unwrap().unwrap();
             assert_eq!(retry.id, "retry");
-            assert_eq!(retry.flush, expect_flush, "successor={successor_state}/{attempts}");
+            assert_eq!(
+                retry.flush, expect_flush,
+                "successor={successor_state}/{attempts}"
+            );
             // Model the worker's open-tail contract: a region is returned only
             // after a flush or subsequent audio. Exercise real publication and
             // scheduling so a completed recovery cannot abandon the tail.
             let region_end = if expect_flush { 160_000 } else { 240_000 };
             let result = |closed| analysis::VadResult {
                 segments: if closed {
-                    vec![analysis::SpeechRegion { start_sample: 80_000, end_sample: region_end }]
+                    vec![analysis::SpeechRegion {
+                        start_sample: 80_000,
+                        end_sample: region_end,
+                    }]
                 } else {
                     vec![]
                 },
@@ -4794,11 +4967,23 @@ mod tests {
                 let successor = store.take_pending_block().unwrap().unwrap();
                 assert_eq!(successor.id, "successor");
                 assert!(successor.flush);
-                store.publish_analysis(&successor, result(successor.flush)).unwrap();
+                store
+                    .publish_analysis(&successor, result(successor.flush))
+                    .unwrap();
             }
             assert!(store.take_pending_block().unwrap().is_none());
             assert_eq!(store.db.query_row("SELECT count(*) FROM coarse_jobs WHERE session_id='s' AND start_sample=80000 AND end_sample=?1", [region_end as i64], |r| r.get::<_,i64>(0)).unwrap(), 1);
-            assert_eq!(store.db.query_row("SELECT count(*) FROM audio_blocks WHERE media_path IS NOT NULL", [], |r| r.get::<_,i64>(0)).unwrap(), 2);
+            assert_eq!(
+                store
+                    .db
+                    .query_row(
+                        "SELECT count(*) FROM audio_blocks WHERE media_path IS NOT NULL",
+                        [],
+                        |r| r.get::<_, i64>(0)
+                    )
+                    .unwrap(),
+                2
+            );
         }
     }
 

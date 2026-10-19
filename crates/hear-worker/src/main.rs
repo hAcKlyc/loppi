@@ -315,6 +315,13 @@ fn serve_recognizer(model_dir: &Path) -> Result<(), String> {
 }
 
 fn run() -> Result<(), String> {
+    if std::env::args().nth(1).as_deref() == Some("--build-info") {
+        println!(
+            "{}",
+            serde_json::to_string(&hear_protocol::build_info("worker")).unwrap()
+        );
+        return Ok(());
+    }
     let mut args: Vec<_> = std::env::args().skip(1).collect();
     if args.len() >= 2 && args[args.len() - 2] == "--parent-pid" {
         let parent: i32 = args

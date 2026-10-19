@@ -30,7 +30,7 @@ flowchart LR
 | 核心 | [`crates/hear-core/src/main.rs`](../crates/hear-core/src/main.rs) | 唯一 SQLite 写入者；持有采集监督、时间映射、媒体、两条云队列、声纹任务和权限/容量状态。登录项与按需服务争同一个 owner 锁。 |
 | 采集来源 | [`source_process.rs`](../crates/hear-core/src/source_process.rs)、[`record.rs`](../crates/hear-core/src/record.rs) | 每个来源以同一签名核心可执行文件的私有子命令运行；持有原生设备、有界缓冲及封块写入。只发布不可变媒体和 core 管理的 ingestion 日志，不访问业务库。 |
 | 本地推理 | [`crates/hear-worker/src/main.rs`](../crates/hear-worker/src/main.rs) | 轻量 `vad` 与重型 `recognize` 独立进程；`embed` 按需复用 CampPlus。三者共用有界帧协议，父 core 消失退出；只计算，不拥有数据库。 |
-| IPC 协议 | [`crates/hear-protocol/src/lib.rs`](../crates/hear-protocol/src/lib.rs) | 请求/响应、稳定 ID、预期修订、重复提交标识和协议版本。当前工作树版本为 17。 |
+| IPC 协议 | [`crates/hear-protocol/src/lib.rs`](../crates/hear-protocol/src/lib.rs) | 请求/响应、稳定 ID、预期修订、重复提交标识和协议版本。当前工作树版本为 18。 |
 | macOS 桥接 | [`src-tauri/native/`](../src-tauri/native/privacy.m)、[`crates/hear-core/native/`](../crates/hear-core/native/system_audio.m) | 登录项、权限、截图/OCR、系统声 API 等原生操作；业务数据仍由核心裁决。 |
 
 没有长期运行的 Node 服务，也没有局域网/HTTP 管理接口。模型权重按哈希安装在本机数据目录；`.env` 仅供开发，不打进客户端。正式凭据由设置页交给核心验证并存在 Keychain。[模型包实现](../crates/hear-core/src/model_pack.rs)；[云端凭据和请求](../crates/hear-core/src/cloud.rs)。
@@ -163,3 +163,6 @@ GUI 上下文刷新合并在途请求，仅前台聚焦时周期刷新。连续�
 资源准入在普通推理边界让位：等待超过 1 秒、策略允许且释放当前空闲驻留后满足峰值预算的另一个模型可促使空闲模型卸载；活动推理不因公平性被中断。无任务、模型未就绪或被压力策略延期的任务不能占住让位权，低内存机器也不会被反复抢占的粗转饿死声纹。
 
 升级迁移增加索引、派生表和可空列，不改模型或阈值。追加式 schema 不等于任意二进制降级安全：旧 core 不认识新 journal、粗转待办和保留语义。需要回退时先停止所有组件，保留一致的数据库及媒体备份，再恢复匹配版本的整套备份；不得让旧 core 直接处理正在使用的新数据目录。
+
+
+诊断遵循相同 owner 边界：协议 18 的 `Diagnose` 使用 Core 的只读快照与日志 worker，生成脱敏、有界的临时报表，不新增持久状态或调度入口。构建身份、日志字段、覆盖口径、统一验证和安装门禁见[诊断与开发验证](tech_docs/diagnostics-and-verification.md)。

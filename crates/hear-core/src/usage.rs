@@ -313,6 +313,19 @@ fn price(db: &Connection, id: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Content-free diagnostic projection. Unlike the calendar view, accepts an
+/// explicit arbitrary window. Unknown observations remain counted as unknown.
+pub fn diagnostic_totals(db: &Connection, from: i64, to: i64) -> Result<serde_json::Value, String> {
+    let mut totals = serde_json::Map::new();
+    for capability in ["llm", "asr"] {
+        let value = db.query_row("SELECT count(*),coalesce(sum(accepted),0),sum(input_tokens),sum(output_tokens),sum(audio_ms),sum(cost_nano),coalesce(sum(CASE WHEN state!='rejected' AND (state='unknown' OR cost_nano IS NULL) THEN 1 ELSE 0 END),0) FROM usage_requests WHERE started_ms>=?1 AND started_ms<?2 AND capability=?3",params![from,to,capability], |r| Ok(serde_json::json!({
+            "requests":r.get::<_,i64>(0)?,"accepted":r.get::<_,i64>(1)?,"known_input_tokens":r.get::<_,Option<i64>>(2)?,"known_output_tokens":r.get::<_,Option<i64>>(3)?,"known_audio_ms":r.get::<_,Option<i64>>(4)?,"known_cost_nano":r.get::<_,Option<i64>>(5)?,"incomplete":r.get::<_,i64>(6)?
+        }))).map_err(|e|e.to_string())?;
+        totals.insert(capability.into(), value);
+    }
+    Ok(serde_json::Value::Object(totals))
+}
+
 pub fn statistics(db: &Connection, boundaries: &[i64]) -> Result<UsageStatistics, String> {
     if !matches!(boundaries.len(),8|31|91) || boundaries[0]<0 || boundaries.windows(2).any(|w|!matches!(w[1].checked_sub(w[0]),Some(span) if (20*3_600_000..=28*3_600_000).contains(&span))) {
         return Err("usage_range_invalid".to_owned());

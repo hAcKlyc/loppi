@@ -21,6 +21,21 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     Status,
+    /// Build identity of this CLI; does not start Core.
+    BuildInfo,
+    /// Content-free report from an already running Core. Range is [from, to).
+    Diagnose {
+        #[arg(long)]
+        from_ms: i64,
+        #[arg(long)]
+        to_ms: i64,
+        #[arg(long)]
+        event_id: Option<Uuid>,
+        #[arg(long)]
+        job_id: Option<Uuid>,
+        #[arg(long)]
+        output: Option<PathBuf>,
+    },
     Models {
         #[command(subcommand)]
         action: ModelCommand,
@@ -154,6 +169,16 @@ enum Command {
         correlation: Option<Uuid>,
         #[arg(long, default_value_t = 100)]
         limit: usize,
+        #[arg(long)]
+        from_ms: Option<u64>,
+        #[arg(long)]
+        to_ms: Option<u64>,
+        #[arg(long)]
+        job_id: Option<Uuid>,
+        #[arg(long)]
+        event_id: Option<Uuid>,
+        #[arg(long)]
+        capture_span_id: Option<Uuid>,
     },
     Quit,
 }
@@ -361,6 +386,65 @@ fn current_ms() -> i64 {
 
 fn main() {
     let cli = Cli::parse();
+    match &cli.command {
+        Command::BuildInfo => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&hear_protocol::build_info("cli")).unwrap()
+            );
+            return;
+        }
+        Command::Diagnose {
+            from_ms,
+            to_ms,
+            event_id,
+            job_id,
+            output,
+        } => {
+            let result = (|| -> Result<(), String> {
+                let response = hear_protocol::send_existing(
+                    ClientKind::Cli,
+                    Request::Diagnose {
+                        filter: hear_protocol::DiagnosticFilter {
+                            from_ms: *from_ms,
+                            to_ms: *to_ms,
+                            event_id: *event_id,
+                            job_id: *job_id,
+                        },
+                    },
+                )?;
+                let Response::Diagnostic { report, .. } = response else {
+                    return Err(
+                        "diagnostics unavailable; check the time range and matching Core version"
+                            .into(),
+                    );
+                };
+                let data = serde_json::to_vec_pretty(&serde_json::json!({"cli_build":hear_protocol::build_info("cli"),"report":report})).map_err(|e|e.to_string())?;
+                if let Some(path) = output {
+                    use std::os::unix::fs::OpenOptionsExt;
+                    let mut file = std::fs::OpenOptions::new()
+                        .write(true)
+                        .create_new(true)
+                        .mode(0o600)
+                        .open(path)
+                        .map_err(|e| e.to_string())?;
+                    file.write_all(&data)
+                        .and_then(|_| file.write_all(b"\n"))
+                        .map_err(|e| e.to_string())?;
+                    println!("{}", path.display());
+                } else {
+                    println!("{}", String::from_utf8(data).unwrap());
+                }
+                Ok(())
+            })();
+            if let Err(error) = result {
+                eprintln!("hear: {error}");
+                std::process::exit(1);
+            }
+            return;
+        }
+        _ => {}
+    }
     if let Command::Cleanup {
         from_ms,
         to_ms,
@@ -433,6 +517,9 @@ fn main() {
         }
     };
     let request = match cli.command {
+        Command::BuildInfo | Command::Diagnose { .. } => {
+            unreachable!("local command handled above")
+        }
         Command::Status => Request::Status,
         Command::Models { action } => match action {
             ModelCommand::Status => Request::Models,
@@ -766,12 +853,22 @@ fn main() {
             include_screenshots: screenshots,
         },
         Command::Logs {
+            from_ms,
+            to_ms,
+            job_id,
+            event_id,
+            capture_span_id,
             component,
             level,
             correlation,
             limit,
         } => Request::Logs {
             filter: LogFilter {
+                from_ms,
+                to_ms,
+                job_id,
+                event_id,
+                capture_span_id,
                 component,
                 level: level.map(|value| match value {
                     Level::Debug => LogLevel::Debug,
@@ -781,6 +878,7 @@ fn main() {
                 }),
                 correlation_id: correlation,
                 limit: Some(limit),
+                ..Default::default()
             },
         },
         Command::Source { source, enabled } => Request::SetSource {
@@ -804,6 +902,7 @@ fn main() {
     ) {
         Ok(
             response @ (Response::Status { .. }
+            | Response::Diagnostic { .. }
             | Response::Models { .. }
             | Response::ProbeResult { .. }
             | Response::RecordTestResult { .. }

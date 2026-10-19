@@ -1,3 +1,5 @@
+mod diagnostic;
+pub use diagnostic::*;
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs;
@@ -9,7 +11,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
-pub const PROTOCOL_VERSION: u32 = 17;
+pub const PROTOCOL_VERSION: u32 = 18;
 const MAX_RESPONSE_BYTES: u64 = 48 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,6 +35,9 @@ pub enum ClientKind {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Request {
     Status,
+    Diagnose {
+        filter: DiagnosticFilter,
+    },
     Models,
     PrepareModels,
     Probe {
@@ -283,6 +288,7 @@ impl Request {
     pub fn name(&self) -> &'static str {
         match self {
             Self::Status => "status",
+            Self::Diagnose { .. } => "diagnose",
             Self::Models => "models",
             Self::PrepareModels => "prepare_models",
             Self::Probe { .. } => "probe",
@@ -356,6 +362,10 @@ pub enum LogLevel {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogEvent {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context: Option<LogContext>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub build: Option<BuildInfo>,
     pub component: String,
     pub level: LogLevel,
     pub event: String,
@@ -381,6 +391,14 @@ pub struct LogEvent {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct LogFilter {
+    /// Internal diagnostic event dependency expansion. Intersected with job_id if present.
+    #[serde(skip)]
+    pub related_job_ids: Option<Vec<Uuid>>,
+    pub from_ms: Option<u64>,
+    pub to_ms: Option<u64>,
+    pub job_id: Option<Uuid>,
+    pub event_id: Option<Uuid>,
+    pub capture_span_id: Option<Uuid>,
     pub component: Option<String>,
     pub level: Option<LogLevel>,
     pub correlation_id: Option<Uuid>,
@@ -401,6 +419,8 @@ pub struct LogRecord {
 impl LogEvent {
     pub fn simple(component: &str, level: LogLevel, event: &str) -> Self {
         Self {
+            context: None,
+            build: None,
             component: component.to_owned(),
             level,
             event: event.to_owned(),
@@ -646,6 +666,10 @@ pub struct SearchHit {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Response {
+    Diagnostic {
+        id: Uuid,
+        report: DiagnosticReport,
+    },
     Status {
         id: Uuid,
         state: ServiceState,
@@ -984,6 +1008,7 @@ fn send_with_policy(
     let decoded: Response = serde_json::from_slice(&response).map_err(|error| error.to_string())?;
     match &decoded {
         Response::Status { id, .. }
+        | Response::Diagnostic { id, .. }
         | Response::Models { id, .. }
         | Response::ProbeResult { id, .. }
         | Response::RecordTestResult { id, .. }

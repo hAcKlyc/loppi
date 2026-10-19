@@ -29,7 +29,11 @@ fn unknown_speech_pending() -> bool {
 /// Arbitrary OS/model error strings can contain paths or other private data.
 pub fn failure_code(stage: &str, error: &str) -> String {
     let stage = match stage {
-        "local_analysis_decode"
+        "coarse_manifest"
+        | "coarse_decode"
+        | "coarse_worker_start"
+        | "coarse_recognize"
+        | "local_analysis_decode"
         | "local_analysis_worker_start"
         | "local_analysis_replay_context"
         | "local_analysis_replay_decode"

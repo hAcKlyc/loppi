@@ -1604,6 +1604,7 @@ dependencies = [
 name = "hear-worker"
 version = "0.1.0"
 dependencies = [
+ "hear-protocol",
  "libc",
  "serde",
  "serde_json",
