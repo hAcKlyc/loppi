@@ -132,6 +132,55 @@ pub fn schedule(
     Ok(count)
 }
 
+/// Projection and scheduling must agree on the same next-event horizon.
+/// Failed work outside this range cannot explain why this event is waiting.
+pub fn settling_state(
+    db: &Connection,
+    id: &str,
+    start: i64,
+    end: i64,
+    mask: i64,
+) -> Result<Option<&'static str>, String> {
+    let horizon:i64=db.query_row("SELECT min(?1,coalesce(min(started_ms),?1)) FROM named_events WHERE deleted_ms IS NULL AND id!=?2 AND started_ms>=?3 AND source_mask&?4=?4",params![end+SETTLE_MS,id,end,mask],|r|r.get(0)).map_err(|e|e.to_string())?;
+    let busy: bool=db.query_row("SELECT EXISTS(SELECT 1 FROM audio_blocks b WHERE b.started_ms<?3 AND b.ended_ms>?2
+          AND ((b.source='microphone' AND ?4&1!=0) OR (b.source='system' AND ?4&2!=0))
+          AND (b.analysis_state IN('pending','processing','sealing','failed') OR b.retention_decision='pending_vad_v2'))
+          OR EXISTS(SELECT 1 FROM coarse_jobs WHERE started_ms<?3 AND ended_ms>?2 AND state IN('pending','processing','failed') AND ((source='microphone' AND ?4&1!=0) OR(source='system' AND ?4&2!=0)))
+          OR EXISTS(SELECT 1 FROM candidate_windows WHERE started_ms<?3 AND ended_ms>?2 AND state IN('pending','processing','failed'))
+          OR EXISTS(SELECT 1 FROM coarse_segments c WHERE c.started_ms<?3 AND c.ended_ms>?5
+             AND ((c.source='microphone' AND ?4&1!=0) OR (c.source='system' AND ?4&2!=0))
+             AND NOT EXISTS(SELECT 1 FROM candidate_windows w WHERE w.state='complete' AND w.started_ms<=c.started_ms AND w.ended_ms>=c.ended_ms)
+             AND NOT EXISTS(SELECT 1 FROM named_events n WHERE n.deleted_ms IS NULL AND n.id!=?1
+                AND n.started_ms<=c.started_ms AND n.ended_ms>=c.ended_ms
+                AND ((c.source='microphone' AND n.source_mask&1!=0) OR (c.source='system' AND n.source_mask&2!=0))))",
+          params![id,start,horizon,mask,end],|r|r.get(0)).map_err(|e|e.to_string())?;
+    if !busy {
+        return Ok(None);
+    }
+    let fit_failed: bool = db.query_row(
+        "SELECT EXISTS(SELECT 1 FROM candidate_windows WHERE started_ms<?2 AND ended_ms>?1 AND state='failed')",
+        params![start,horizon], |r| r.get(0)).map_err(|e|e.to_string())?;
+    if fit_failed {
+        return Ok(Some("fit_failed"));
+    }
+    let analysis_failed: bool = db
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM audio_blocks WHERE started_ms<?2 AND ended_ms>?1
+          AND ((source='microphone' AND ?3&1!=0) OR(source='system' AND ?3&2!=0))
+          AND (analysis_state='failed' OR(analysis_state='pending' AND analysis_attempts>=3)))
+          OR EXISTS(SELECT 1 FROM coarse_jobs WHERE started_ms<?2 AND ended_ms>?1 AND state='failed'
+          AND ((source='microphone' AND ?3&1!=0) OR(source='system' AND ?3&2!=0)))",
+            params![start, horizon, mask],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(Some(if analysis_failed {
+        "analysis_failed"
+    } else {
+        "settling_asr"
+    }))
+}
+
 pub fn refresh(db: &mut Connection, now: i64) -> Result<(), String> {
     let tx = db.transaction().map_err(|e| e.to_string())?;
     let events = {
@@ -152,20 +201,7 @@ pub fn refresh(db: &mut Connection, now: i64) -> Result<(), String> {
     };
     let mut planned = 0;
     for (id, start, end, mask) in events {
-        let horizon:i64=tx.query_row("SELECT min(?1,coalesce(min(started_ms),?1)) FROM named_events WHERE deleted_ms IS NULL AND id!=?2 AND started_ms>=?3 AND source_mask&?4=?4",params![end+SETTLE_MS,id,end,mask],|r|r.get(0)).map_err(|e|e.to_string())?;
-        let busy: bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM audio_blocks b WHERE b.started_ms<?3 AND b.ended_ms>?2
-          AND ((b.source='microphone' AND ?4&1!=0) OR (b.source='system' AND ?4&2!=0))
-          AND (b.analysis_state IN('pending','processing','sealing','failed') OR b.retention_decision='pending_vad_v2'))
-          OR EXISTS(SELECT 1 FROM coarse_jobs WHERE started_ms<?3 AND ended_ms>?2 AND state IN('pending','processing','failed') AND ((source='microphone' AND ?4&1!=0) OR(source='system' AND ?4&2!=0)))
-          OR EXISTS(SELECT 1 FROM candidate_windows WHERE started_ms<?3 AND ended_ms>?2 AND state IN('pending','processing','failed'))
-          OR EXISTS(SELECT 1 FROM coarse_segments c WHERE c.started_ms<?3 AND c.ended_ms>?5
-             AND ((c.source='microphone' AND ?4&1!=0) OR (c.source='system' AND ?4&2!=0))
-             AND NOT EXISTS(SELECT 1 FROM candidate_windows w WHERE w.state='complete' AND w.started_ms<=c.started_ms AND w.ended_ms>=c.ended_ms)
-             AND NOT EXISTS(SELECT 1 FROM named_events n WHERE n.deleted_ms IS NULL AND n.id!=?1
-                AND n.started_ms<=c.started_ms AND n.ended_ms>=c.ended_ms
-                AND ((c.source='microphone' AND n.source_mask&1!=0) OR (c.source='system' AND n.source_mask&2!=0))))",
-          params![id,start,horizon,mask,end],|r|r.get(0)).map_err(|e|e.to_string())?;
-        if busy {
+        if settling_state(&tx, &id, start, end, mask)?.is_some() {
             continue;
         }
         planned += 1;
@@ -526,42 +562,44 @@ pub fn map(
             .words
             .as_ref()
             .and_then(serde_json::Value::as_array)
-            .ok_or("provider_unmapped_timing")?;
+            .ok_or("provider_unmapped_timing_words_missing")?;
         let mut cursor = 0;
         let mut fragments: Vec<(usize, i64, i64, i64)> = Vec::new();
         for word in words {
-            let text = word["text"].as_str().ok_or("provider_unmapped_timing")?;
+            let text = word["text"]
+                .as_str()
+                .ok_or("provider_unmapped_timing_word_text_missing")?;
             if text.is_empty() {
-                return Err("provider_unmapped_timing".into());
+                return Err("provider_unmapped_timing_word_text_empty".into());
             }
             let offset = item.text[cursor..]
                 .find(text)
                 .map(|p| p + cursor)
-                .ok_or("provider_unmapped_timing")?;
+                .ok_or("provider_unmapped_timing_text_alignment")?;
             if item.text[cursor..offset].chars().any(char::is_alphanumeric) {
-                return Err("provider_unmapped_timing".into());
+                return Err("provider_unmapped_timing_text_gap".into());
             }
             cursor = offset + text.len();
             let a = word["start_time"]
                 .as_i64()
-                .ok_or("provider_unmapped_timing")?;
+                .ok_or("provider_unmapped_timing_word_start_missing")?;
             let b = word["end_time"]
                 .as_i64()
-                .ok_or("provider_unmapped_timing")?;
+                .ok_or("provider_unmapped_timing_word_end_missing")?;
             if a == -1 && b == -1 && !text.chars().any(char::is_alphanumeric) {
                 continue;
             }
             if a < item.start_ms || b > item.end_ms || b <= a {
-                return Err("provider_unmapped_timing".into());
+                return Err("provider_unmapped_timing_word_bounds".into());
             }
             let &(rstart, rend, delta) = runs
                 .iter()
                 .find(|&&(x, y, _)| a >= x && b <= y)
-                .ok_or("provider_unmapped_timing")?;
+                .ok_or("provider_unmapped_timing_word_in_separator")?;
             let _ = (rstart, rend);
             if let Some(last) = fragments.last_mut() {
                 if a + delta < last.2 {
-                    return Err("provider_unmapped_timing".into());
+                    return Err("provider_unmapped_timing_word_order".into());
                 }
                 if delta == last.3 {
                     last.2 = b + delta;
@@ -571,20 +609,20 @@ pub fn map(
             fragments.push((offset, a + delta, b + delta, delta));
         }
         if fragments.is_empty() || item.text[cursor..].chars().any(char::is_alphanumeric) {
-            return Err("provider_unmapped_timing".into());
+            return Err("provider_unmapped_timing_text_incomplete".into());
         }
         // Validate the original envelope too: bad leading/trailing timing is
         // not repaired by clipping to otherwise plausible word timestamps.
         let first = runs
             .iter()
             .find(|&&(a, b, _)| item.start_ms >= a && item.start_ms < b)
-            .ok_or("provider_unmapped_timing")?;
+            .ok_or("provider_unmapped_timing_start_in_separator")?;
         let last = runs
             .iter()
             .find(|&&(a, b, _)| item.end_ms > a && item.end_ms <= b)
-            .ok_or("provider_unmapped_timing")?;
+            .ok_or("provider_unmapped_timing_end_in_separator")?;
         if first.2 != fragments[0].3 || last.2 != fragments.last().unwrap().3 {
-            return Err("provider_unmapped_timing".into());
+            return Err("provider_unmapped_timing_envelope_mismatch".into());
         }
         fragments[0].0 = 0;
         for (i, &(offset, a, b, _)) in fragments.iter().enumerate() {

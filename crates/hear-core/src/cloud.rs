@@ -300,7 +300,16 @@ fn parse_chat_content(response: &Value) -> Result<Value, Failure> {
         .pointer("/message/content")
         .and_then(Value::as_str)
         .ok_or_else(|| "provider_missing_content".to_owned())?;
-    serde_json::from_str(content).map_err(|_| "provider_invalid_json_content".to_owned().into())
+    serde_json::from_str(content).map_err(|error| {
+        // Parser categories carry no response text, paths or credentials.
+        let code = match error.classify() {
+            serde_json::error::Category::Eof => "provider_invalid_json_content_eof",
+            serde_json::error::Category::Syntax => "provider_invalid_json_content_syntax",
+            serde_json::error::Category::Data => "provider_invalid_json_content_data",
+            serde_json::error::Category::Io => "provider_invalid_json_content_io",
+        };
+        code.to_owned().into()
+    })
 }
 
 fn volc_request(
@@ -601,6 +610,17 @@ pub fn verify_asr(key: &str, meter: &dyn Meter) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn invalid_json_reports_category_without_supplier_content() {
+        for (content, code) in [
+            ("{\"events\":[", "provider_invalid_json_content_eof"),
+            ("secret plaintext", "provider_invalid_json_content_syntax"),
+        ] {
+            let response =
+                json!({"choices":[{"finish_reason":"stop","message":{"content":content}}]});
+            assert_eq!(parse_chat_content(&response).unwrap_err().code, code);
+        }
+    }
     #[test]
     fn prompt_output_example_passes_connectivity_response_parser() {
         let example = VERIFY_SYSTEM

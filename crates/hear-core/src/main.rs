@@ -25,6 +25,8 @@ mod capture;
 mod cleanup;
 mod cloud;
 mod coarse;
+#[cfg(test)]
+mod diagnostic_tests;
 mod diagnostics;
 mod events;
 mod ingestion;
@@ -341,7 +343,10 @@ fn run() -> Result<(), String> {
 // Only the core commits facts. The cleanup gate covers planning through durable
 // acknowledgement; Store is held only for SQL, never Opus, hashing or fsync.
 fn ingest_session(shared: &CoreState, session: uuid::Uuid, closed: bool) -> Result<(), String> {
-    let _gate = shared.cleanup_gate.lock().map_err(|e| e.to_string())?;
+    let _gate = shared
+        .cleanup_gate
+        .lock()
+        .map_err(|_| "ingestion_cleanup_lock")?;
     ingest_session_locked(&shared.store, &shared.directory, session, closed)
 }
 
@@ -351,7 +356,7 @@ fn ingest_session_locked(
     session: uuid::Uuid,
     closed: bool,
 ) -> Result<(), String> {
-    let paths = ingestion::pending(directory, session, closed)?;
+    let paths = ingestion::pending(directory, session, closed).map_err(|_| "ingestion_list")?;
     let mut entries = Vec::new();
     for path in paths {
         // Ready supersedes prepared during the atomic publication window.
@@ -362,22 +367,26 @@ fn ingest_session_locked(
         }
         match ingestion::load(&path) {
             Ok(entry) => entries.push((path, entry)),
-            Err(_) => ingestion::quarantine(directory, &path)?,
+            Err(_) => {
+                ingestion::quarantine(directory, &path).map_err(|_| "ingestion_quarantine")?
+            }
         }
     }
     entries.sort_by_key(|(_, e)| (e.started_ms, e.ended_ms, e.id));
     for (path, entry) in entries {
         let (acknowledged, ranges) = {
             let began = Instant::now();
-            let store = store.lock().map_err(|e| e.to_string())?;
+            let store = store.lock().map_err(|_| "ingestion_store_lock")?;
             store.ingestion_wait_ms.observe(began.elapsed());
-            let ack = ingestion::acknowledged(&store.db, &entry)?;
+            let ack =
+                ingestion::acknowledged(&store.db, &entry).map_err(|_| "ingestion_receipt_read")?;
             (
                 ack,
                 if ack {
                     vec![]
                 } else {
-                    ingestion::surviving_samples(&store.db, &entry)?
+                    ingestion::surviving_samples(&store.db, &entry)
+                        .map_err(|_| "ingestion_ranges")?
                 },
             )
         };
@@ -386,43 +395,59 @@ fn ingest_session_locked(
                 Ok(prepared) => {
                     let result = {
                         let began = Instant::now();
-                        let mut store = store.lock().map_err(|e| e.to_string())?;
+                        let mut store = store.lock().map_err(|_| "ingestion_store_lock")?;
                         store.ingestion_wait_ms.observe(began.elapsed());
                         let began = Instant::now();
                         let result = ingestion::commit(&mut store.db, &entry, &prepared);
                         store.ingestion_commit_ms.observe(began.elapsed());
                         result
                     };
-                    if let Err(error) = result {
+                    if result.is_err() {
                         ingestion::discard_prepared(directory, &prepared);
-                        return Err(error);
+                        return Err("ingestion_commit".into());
                     }
                     ingestion::finish_markers(directory, &prepared);
                 }
-                Err(ingestion::PrepareError::Retry(error)) => return Err(error),
+                Err(ingestion::PrepareError::Retry(code)) => return Err(code.into()),
                 Err(ingestion::PrepareError::Invalid(_reason)) => {
                     // Missing/corrupt sealed media cannot be called a confirmed
                     // recording. Preserve the manifest and expose an explicit gap.
-                    ingestion::reject(&mut store.lock().map_err(|e| e.to_string())?.db, &entry)?;
-                    ingestion::quarantine(directory, &path)?;
+                    ingestion::reject(
+                        &mut store.lock().map_err(|_| "ingestion_store_lock")?.db,
+                        &entry,
+                    )
+                    .map_err(|_| "ingestion_reject")?;
+                    ingestion::quarantine(directory, &path).map_err(|_| "ingestion_quarantine")?;
                 }
             }
         }
-        ingestion::acknowledge(directory, &entry)?;
-        ingestion::forget_receipt(&store.lock().map_err(|e| e.to_string())?.db, &entry)?;
+        ingestion::acknowledge(directory, &entry).map_err(|_| "ingestion_acknowledge")?;
+        ingestion::forget_receipt(
+            &store.lock().map_err(|_| "ingestion_store_lock")?.db,
+            &entry,
+        )
+        .map_err(|_| "ingestion_receipt_delete")?;
     }
-    let free = fs2::available_space(directory).map_err(|e| e.to_string())?;
+    let free = fs2::available_space(directory).map_err(|_| "ingestion_disk_space")?;
     {
-        let mut store = store.lock().map_err(|e| e.to_string())?;
-        let state = store.state()?;
+        let mut store = store.lock().map_err(|_| "ingestion_store_lock")?;
+        let state = store.state().map_err(|_| "ingestion_storage_state")?;
         if !state.storage_paused
             && (state.audio_used_bytes >= state.audio_limit_bytes || free <= 1_073_741_824)
         {
-            store.pause_storage()?;
+            store
+                .pause_storage()
+                .map_err(|_| "ingestion_pause_storage")?;
         }
     }
-    if closed && ingestion::finish_journal(directory, session)? {
-        ingestion::forget_session(&store.lock().map_err(|e| e.to_string())?.db, session)?;
+    if closed
+        && ingestion::finish_journal(directory, session).map_err(|_| "ingestion_finish_journal")?
+    {
+        ingestion::forget_session(
+            &store.lock().map_err(|_| "ingestion_store_lock")?.db,
+            session,
+        )
+        .map_err(|_| "ingestion_session_delete")?;
     }
 
     Ok(())
@@ -455,9 +480,10 @@ fn ingestion_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
                         .ok()
                     })
                     .unwrap_or(false);
-                if ingest_session(&shared, session, closed).is_err() {
+                if let Err(code) = ingest_session(&shared, session, closed) {
                     let mut event = LogEvent::simple("capture", LogLevel::Warn, "ingestion_retry");
                     event.capture_span_id = Some(session);
+                    event.error_code = Some(code);
                     shared.logs.emit(ClientKind::Core, session, event);
                 }
             }
@@ -471,6 +497,13 @@ fn ingestion_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
 fn maintenance_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
     let mut after = String::new();
     while !stop.load(Ordering::Acquire) {
+        if let Ok(mut store) = shared.store.lock() {
+            if let Ok(tx) = store.db.transaction() {
+                if retention::settle_unreachable(&tx).is_ok() {
+                    let _ = tx.commit();
+                }
+            }
+        }
         let batch = shared
             .store
             .lock()
@@ -731,9 +764,11 @@ fn analysis_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
                 continue;
             }
         };
+        let mut stage = "local_analysis_decode";
         let result = (|| -> Result<analysis::VadResult, String> {
             let pcm = decode_saved_block(&shared.directory, &block)?;
             if worker.is_none() {
+                stage = "local_analysis_worker_start";
                 worker = Some(analysis::AnalysisClient::start(
                     &worker_path,
                     "vad",
@@ -745,13 +780,16 @@ fn analysis_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
                 &block.session_id,
                 block.sample_start,
             ) {
+                stage = "local_analysis_replay_context";
                 let context = shared
                     .store
                     .lock()
                     .map_err(|error| error.to_string())?
                     .replay_context(&block)?;
                 for prior in context {
+                    stage = "local_analysis_replay_decode";
                     let prior_pcm = decode_saved_block(&shared.directory, &prior)?;
+                    stage = "local_analysis_replay_worker";
                     let replay = worker.as_mut().unwrap().analyze(
                         &prior.source,
                         &prior.session_id,
@@ -765,12 +803,14 @@ fn analysis_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
                     // Replay can close speech that had not yet been published
                     // when the worker died. Keep that suffix through the same
                     // durable dedupe and cleanup boundary as current results.
+                    stage = "local_analysis_replay_publish";
                     let mut store = shared.store.lock().map_err(|e| e.to_string())?;
                     let tx = store.db.transaction().map_err(|e| e.to_string())?;
                     coarse::enqueue(&tx, &prior, replay.segments)?;
                     tx.commit().map_err(|e| e.to_string())?;
                 }
             }
+            stage = "local_analysis_worker";
             worker.as_mut().unwrap().analyze(
                 &block.source,
                 &block.session_id,
@@ -780,6 +820,7 @@ fn analysis_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
             )
         })();
         let published = result.and_then(|result| {
+            stage = "local_analysis_publish";
             shared
                 .store
                 .lock()
@@ -807,8 +848,9 @@ fn analysis_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
             },
         );
         event.capture_span_id = uuid::Uuid::parse_str(&block.session_id).ok();
-        if !success {
-            event.error_code = Some("local_analysis_failed".to_owned());
+        event.job_id = uuid::Uuid::parse_str(&block.id).ok();
+        if let Err(error) = &published {
+            event.error_code = Some(analysis::failure_code(stage, error));
         }
         shared
             .logs
@@ -1518,19 +1560,8 @@ fn start_source(shared: &Arc<CoreState>, source: AudioSource) -> SourceSlot {
             },
         );
         event.capture_span_id = Some(session_id);
-        if !completed {
-            event.error_code = Some(
-                if source == AudioSource::System
-                    && result
-                        .as_ref()
-                        .is_err_and(|error| error.contains("permission probe"))
-                {
-                    "system_audio_permission_probe_failed"
-                } else {
-                    "capture_source_failed"
-                }
-                .to_owned(),
-            );
+        if let Err(error) = &result {
+            event.error_code = Some(source_process::error_code(error));
         }
         source_shared
             .logs
@@ -3788,6 +3819,17 @@ impl Store {
         ingestion::init(&db)?;
         inventory::init(&db)?;
         coarse::init(&db)?;
+        // Earlier workers could publish an empty VAD marker and exhaust all
+        // local attempts. Give retained failed blocks one bounded upgrade retry.
+        // This neither resets cloud tasks nor changes their paid request IDs.
+        storage::migrate(
+            &db,
+            "vad_nonempty_regions_v1",
+            "UPDATE audio_blocks
+          SET analysis_state='pending',analysis_attempts=0
+          WHERE analysis_state='failed' AND retention_decision='pending_vad_v2'
+            AND media_path IS NOT NULL",
+        )?;
         archive::init(&db)?;
         Ok(Self {
             db,
@@ -4152,6 +4194,9 @@ impl Store {
         // durable journal is still importing. Require an adjacent manifest or
         // a committed discontinuity; the final tail waits for journal drain.
         // Do not skip a waiting prefix and feed a later block from that stream.
+        // A retained successor only continues VAD if it will actually run.
+        // Historical retries can precede already-complete or exhausted blocks;
+        // flush that retry tail instead of leaving speech in an idle worker.
         let idle_before_ms = now_ms()?.saturating_sub(8_000);
         let block = self
             .db
@@ -4168,6 +4213,7 @@ impl Store {
                       WHERE adjacent.session_id = b.session_id
                         AND adjacent.sample_start = b.sample_start + b.frames
                         AND adjacent.media_path IS NOT NULL
+                        AND adjacent.analysis_state = 'pending' AND adjacent.analysis_attempts < 3
                     )
              FROM audio_blocks b JOIN recording_sessions s ON s.id = b.session_id
              WHERE b.analysis_state = 'pending' AND b.analysis_attempts < 3
@@ -4657,7 +4703,104 @@ fn map_sample(db: &Connection, session_id: &str, sample_16k: u64) -> Result<i64,
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn vad_upgrade_retries_retained_failures_once_without_reviving_cleared_media() {
+        let store = Store::new(Connection::open_in_memory().unwrap()).unwrap();
+        store
+            .db
+            .execute(
+                "DELETE FROM core_migrations WHERE name='vad_nonempty_regions_v1'",
+                [],
+            )
+            .unwrap();
+        for (id, decision, path) in [
+            ("failed", "pending_vad_v2", Some("media/system/a.opus")),
+            ("cleared", "all_data", None),
+            ("missing", "pending_vad_v2", None),
+            (
+                "legacy",
+                "pending_conservative_v1",
+                Some("media/system/old.opus"),
+            ),
+        ] {
+            store.db.execute("INSERT INTO audio_blocks(id,session_id,source,started_ms,ended_ms,sample_start,frames,bytes,media_path,retention_decision,analysis_state,analysis_attempts)
+              VALUES(?1,'s','system',0,5000,0,240000,100,?2,?3,'failed',3)", params![id,path,decision]).unwrap();
+        }
+        let store = Store::new(store.db).unwrap();
+        assert_eq!(store.db.query_row("SELECT analysis_attempts FROM audio_blocks WHERE id='failed' AND analysis_state='pending'", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+        assert_eq!(
+            store
+                .db
+                .query_row(
+                    "SELECT count(*) FROM audio_blocks WHERE analysis_state='failed'",
+                    [],
+                    |r| r.get::<_, i64>(0)
+                )
+                .unwrap(),
+            3
+        );
+        store.db.execute("UPDATE audio_blocks SET analysis_state='failed',analysis_attempts=3 WHERE id='failed'", []).unwrap();
+        let store = Store::new(store.db).unwrap();
+        assert_eq!(
+            store
+                .db
+                .query_row(
+                    "SELECT count(*) FROM audio_blocks WHERE analysis_state='pending'",
+                    [],
+                    |r| r.get::<_, i64>(0)
+                )
+                .unwrap(),
+            0
+        );
+    }
     use uuid::Uuid;
+
+    #[test]
+    fn historical_retry_flushes_uncontinued_speech_but_keeps_pending_successors_contiguous() {
+        for (successor_state, attempts, expect_flush) in [
+            ("complete", 1, true),
+            ("failed", 3, true),
+            ("pending", 3, true),
+            ("pending", 0, false),
+        ] {
+            let store = Store::new(Connection::open_in_memory().unwrap()).unwrap();
+            store.db.execute("INSERT INTO recording_sessions VALUES('s','system',0,15000,15000,'closed')", []).unwrap();
+            store.db.execute("DELETE FROM core_migrations WHERE name='vad_nonempty_regions_v1'", []).unwrap();
+            store.db.execute("INSERT INTO audio_blocks(id,session_id,source,started_ms,ended_ms,sample_start,frames,bytes,media_path,retention_decision,analysis_state,analysis_attempts)
+              VALUES('retry','s','system',5000,10000,240000,240000,100,'media/system/b.opus','pending_vad_v2','failed',3)", []).unwrap();
+            store.db.execute("INSERT INTO audio_blocks(id,session_id,source,started_ms,ended_ms,sample_start,frames,bytes,media_path,retention_decision,analysis_state,analysis_attempts,speech_active)
+              VALUES('successor','s','system',10000,15000,480000,240000,100,'media/system/c.opus','retain_speech_v2',?1,?2,1)", params![successor_state,attempts]).unwrap();
+            let mut store = Store::new(store.db).unwrap();
+            let retry = store.take_pending_block().unwrap().unwrap();
+            assert_eq!(retry.id, "retry");
+            assert_eq!(retry.flush, expect_flush, "successor={successor_state}/{attempts}");
+            // Model the worker's open-tail contract: a region is returned only
+            // after a flush or subsequent audio. Exercise real publication and
+            // scheduling so a completed recovery cannot abandon the tail.
+            let region_end = if expect_flush { 160_000 } else { 240_000 };
+            let result = |closed| analysis::VadResult {
+                segments: if closed {
+                    vec![analysis::SpeechRegion { start_sample: 80_000, end_sample: region_end }]
+                } else {
+                    vec![]
+                },
+                speech_active: true,
+                speech_pending: !closed,
+                error: None,
+            };
+            store.publish_analysis(&retry, result(retry.flush)).unwrap();
+            if !expect_flush {
+                let successor = store.take_pending_block().unwrap().unwrap();
+                assert_eq!(successor.id, "successor");
+                assert!(successor.flush);
+                store.publish_analysis(&successor, result(successor.flush)).unwrap();
+            }
+            assert!(store.take_pending_block().unwrap().is_none());
+            assert_eq!(store.db.query_row("SELECT count(*) FROM coarse_jobs WHERE session_id='s' AND start_sample=80000 AND end_sample=?1", [region_end as i64], |r| r.get::<_,i64>(0)).unwrap(), 1);
+            assert_eq!(store.db.query_row("SELECT count(*) FROM audio_blocks WHERE media_path IS NOT NULL", [], |r| r.get::<_,i64>(0)).unwrap(), 2);
+        }
+    }
 
     #[test]
     fn speaker_input_quality_is_not_reported_as_missing_audio() {

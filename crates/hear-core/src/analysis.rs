@@ -25,6 +25,32 @@ fn unknown_speech_pending() -> bool {
     true
 }
 
+/// Only fixed stages and known failure classes leave the local process.
+/// Arbitrary OS/model error strings can contain paths or other private data.
+pub fn failure_code(stage: &str, error: &str) -> String {
+    let stage = match stage {
+        "local_analysis_decode"
+        | "local_analysis_worker_start"
+        | "local_analysis_replay_context"
+        | "local_analysis_replay_decode"
+        | "local_analysis_replay_worker"
+        | "local_analysis_replay_publish"
+        | "local_analysis_worker"
+        | "local_analysis_publish" => stage,
+        _ => "local_analysis",
+    };
+    let cause = match error {
+        "worker_timeout" => "timeout",
+        "worker_failed" => "worker_exited",
+        "worker response exceeded limit" => "response_limit",
+        "worker rejected replay audio" | "local speech worker rejected audio" => "rejected",
+        "invalid VAD segment" => "invalid_region",
+        "speech segment could not map to saved audio" => "sample_mapping",
+        _ => "failed",
+    };
+    format!("{stage}_{cause}")
+}
+
 struct OwnedChild(Child);
 impl Drop for OwnedChild {
     fn drop(&mut self) {
@@ -244,6 +270,28 @@ fn read(
 mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
+    #[test]
+    fn failure_codes_preserve_stage_without_model_or_path_payload() {
+        for (error, expected) in [
+            ("worker_timeout", "local_analysis_worker_timeout"),
+            ("worker_failed", "local_analysis_worker_worker_exited"),
+            (
+                "/Users/private/key-secret: permission denied",
+                "local_analysis_worker_failed",
+            ),
+        ] {
+            let code = failure_code("local_analysis_worker", error);
+            assert_eq!(code, expected);
+            let mut event = hear_protocol::LogEvent::simple(
+                "speech",
+                hear_protocol::LogLevel::Warn,
+                "coarse_failed",
+            );
+            event.error_code = Some(code);
+            assert!(crate::unilogs::valid_event(&event));
+        }
+        assert_eq!(failure_code("secret", "secret"), "local_analysis_failed");
+    }
     fn fixture(code: &str) -> (tempfile::TempDir, std::path::PathBuf) {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("worker");

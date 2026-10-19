@@ -2031,17 +2031,16 @@ fn coarse_for(
 fn event_state(db: &Connection, id: &str, version: &str) -> Result<String, String> {
     let waiting:bool=db.query_row("SELECT EXISTS(SELECT 1 FROM event_asr_state WHERE event_id=?1 AND coalesce(planned_version,'')!=?2)",params![id,version],|r|r.get(0)).map_err(|e|e.to_string())?;
     if waiting {
-        let failed:bool=db.query_row("SELECT EXISTS(SELECT 1 FROM named_events e JOIN candidate_windows w ON w.started_ms<e.ended_ms+900000 AND w.ended_ms>e.started_ms WHERE e.id=?1 AND w.state='failed')",[id],|r|r.get(0)).map_err(|e|e.to_string())?;
-        if failed {
-            return Ok("fit_failed".into());
-        }
-        let failed:bool=db.query_row("SELECT EXISTS(SELECT 1 FROM named_events e JOIN audio_blocks b ON b.started_ms<e.ended_ms+900000 AND b.ended_ms>e.started_ms WHERE e.id=?1 AND ((b.source='microphone' AND e.source_mask&1!=0) OR(b.source='system' AND e.source_mask&2!=0)) AND (b.analysis_state='failed' OR(b.analysis_state='pending' AND b.analysis_attempts>=3))) OR EXISTS(SELECT 1 FROM named_events e JOIN coarse_jobs j ON j.started_ms<e.ended_ms+900000 AND j.ended_ms>e.started_ms WHERE e.id=?1 AND j.state='failed' AND ((j.source='microphone' AND e.source_mask&1!=0) OR(j.source='system' AND e.source_mask&2!=0)))",[id],|r|r.get(0)).map_err(|e|e.to_string())?;
-        return Ok(if failed {
-            "analysis_failed"
-        } else {
-            "settling_asr"
-        }
-        .into());
+        let (start, end, mask) = db
+            .query_row(
+                "SELECT started_ms,ended_ms,source_mask FROM named_events WHERE id=?1",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .map_err(|e| e.to_string())?;
+        return Ok(asr::settling_state(db, id, start, end, mask)?
+            .unwrap_or("settling_asr")
+            .into());
     }
 
     let incomplete_audio: bool = db
@@ -2909,14 +2908,16 @@ pub fn publish_fit_with_input(
         let summary = fit_summary(event.summary.as_deref())?;
         let summary = if context_current { summary } else { None };
         let mask = source_mask(event.sources);
-        if event.start_ms < task.start
-            || event.end_ms > task.end
-            || event.end_ms <= event.start_ms
-            || intervals.iter().any(|&(start, end, source_mask)| {
-                mask & source_mask != 0 && event.start_ms < end && event.end_ms > start
-            })
-        {
-            return Err("invalid_fit_boundary".to_owned());
+        if event.end_ms <= event.start_ms {
+            return Err("invalid_fit_boundary_order".into());
+        }
+        if event.start_ms < task.start || event.end_ms > task.end {
+            return Err("invalid_fit_boundary_outside_window".into());
+        }
+        if intervals.iter().any(|&(start, end, source_mask)| {
+            mask & source_mask != 0 && event.start_ms < end && event.end_ms > start
+        }) {
+            return Err("invalid_fit_boundary_overlap".into());
         }
         let seen = evidence(&tx, event.start_ms, event.end_ms)?;
         if (mask & 1 != 0 && !seen.iter().any(|item| item.source == "microphone"))
@@ -3251,7 +3252,7 @@ pub fn publish_asr(
             return Err("provider_invalid_timing".into());
         }
         if !utterance_has_encoded_audio(&tx, source, start, end, task.submit_attempts > 0)? {
-            return Err("provider_unmapped_timing".into());
+            return Err("provider_unmapped_timing_audio_coverage".into());
         }
         let segment_id = Uuid::new_v4();
         tx.execute(
@@ -4386,7 +4387,7 @@ mod tests {
         let items = crate::cloud::parse_asr_result(&valid).unwrap();
         assert_eq!(
             publish_asr(&mut db, &task, &items, 12_003).unwrap_err(),
-            "provider_unmapped_timing"
+            "provider_unmapped_timing_audio_coverage"
         );
         assert_eq!(
             db.query_row::<i64, _, _>("SELECT count(*) FROM precise_segments", [], |r| r.get(0))
@@ -5100,12 +5101,21 @@ mod tests {
 
     #[test]
     fn fit_accepts_unordered_disjoint_events_but_rejects_overlap_and_outside_bounds() {
-        for (ranges, accepted) in [
-            (vec![(20_000, 30_000), (1_000, 10_000)], true),
-            (vec![(10_000, 30_000), (1_000, 10_000)], true),
-            (vec![(20_000, 30_000), (1_000, 25_000)], false),
-            (vec![(20_000, 30_001), (1_000, 10_000)], false),
-            (vec![(20_000, 30_000), (0, 10_000)], false),
+        for (ranges, failure) in [
+            (vec![(20_000, 30_000), (1_000, 10_000)], None),
+            (vec![(10_000, 30_000), (1_000, 10_000)], None),
+            (
+                vec![(20_000, 30_000), (1_000, 25_000)],
+                Some("invalid_fit_boundary_overlap"),
+            ),
+            (
+                vec![(20_000, 30_001), (1_000, 10_000)],
+                Some("invalid_fit_boundary_outside_window"),
+            ),
+            (
+                vec![(20_000, 30_000), (0, 10_000)],
+                Some("invalid_fit_boundary_outside_window"),
+            ),
         ] {
             let mut db = db();
             coarse(&db, "speech", 1_000, 30_000, "持续讨论");
@@ -5130,7 +5140,7 @@ mod tests {
                 serde_json::json!({"events":events}),
                 100_001,
             );
-            if accepted {
+            if failure.is_none() {
                 assert_eq!(result.unwrap(), 2);
                 // Preserve response slot identities for candidate revisions; do not sort persistence links.
                 let first: i64 = db
@@ -5143,7 +5153,7 @@ mod tests {
                     .unwrap();
                 assert_eq!(first, ranges[0].0);
             } else {
-                assert_eq!(result.unwrap_err(), "invalid_fit_boundary");
+                assert_eq!(result.unwrap_err(), failure.unwrap());
                 assert_eq!(
                     db.query_row::<i64, _, _>("SELECT count(*) FROM named_events", [], |r| r
                         .get(0))
@@ -5880,7 +5890,7 @@ mod tests {
         };
         assert_eq!(
             publish_asr(&mut db, &task, &[utterance], 7_003).unwrap_err(),
-            "provider_unmapped_timing"
+            "provider_unmapped_timing_audio_coverage"
         );
     }
 
@@ -5916,7 +5926,7 @@ mod tests {
                 6_002
             )
             .unwrap_err(),
-            "provider_unmapped_timing"
+            "provider_unmapped_timing_audio_coverage"
         );
         assert_eq!(
             db.query_row::<i64, _, _>("SELECT count(*) FROM precise_segments", [], |row| row

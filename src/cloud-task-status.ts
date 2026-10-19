@@ -22,13 +22,19 @@ export function taskStatus(task: CloudTask): string {
 		return `${state} · 请检查云端配置`;
 	if (reason === "audio_unavailable" || reason === "partial_audio")
 		return `${state} · 原声不可用`;
-	if (reason === "provider_unmapped_timing")
+	if (
+		reason === "provider_unmapped_timing" ||
+		reason.startsWith("provider_unmapped_timing_")
+	)
 		return `${state} · 识别时间与原声不匹配`;
 	if (reason === "provider_invalid_timing")
 		return `${state} · 识别时间超出录音范围`;
 	if (reason === "provider_invalid_utterance")
 		return `${state} · 识别结果格式异常`;
-	if (reason === "invalid_fit_boundary")
+	if (
+		reason === "invalid_fit_boundary" ||
+		reason.startsWith("invalid_fit_boundary_")
+	)
 		return `${state} · 整理结果时间范围异常`;
 	if (reason === "provider_status_45000092")
 		return `${state} · 云端未找到识别任务，可重试`;

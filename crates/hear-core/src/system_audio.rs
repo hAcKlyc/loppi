@@ -229,16 +229,20 @@ impl SystemAudio {
         })
     }
 
-    pub fn failed(&self) -> bool {
+    pub fn error(&self) -> Option<String> {
         unsafe extern "C" {
             fn hear_system_audio_error(handle: *mut c_void) -> i32;
         }
         // A successful foreground permission probe switches the running
         // legacy source to the Tap at the next capture supervisor retry.
-        (self.using_legacy
+        if self.using_legacy
             && self.can_upgrade
-            && tap_ready_marker().is_ok_and(|path| path.is_file()))
-            || unsafe { hear_system_audio_error(self.handle) != 0 }
+            && tap_ready_marker().is_ok_and(|path| path.is_file())
+        {
+            return Some("system_audio_tap_upgrade".into());
+        }
+        let code = unsafe { hear_system_audio_error(self.handle) };
+        (code != 0).then(|| format!("system audio native error {code}"))
     }
 }
 

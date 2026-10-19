@@ -30,6 +30,71 @@ pub struct Progress {
     pub capture: Option<crate::capture::MetricsView>,
 }
 
+/// Keep operational causes while excluding arbitrary OS/provider messages.
+pub fn error_code(error: &str) -> String {
+    for (prefix, code) in [
+        (
+            "system audio capture failed at stage ",
+            "system_audio_start_stage",
+        ),
+        ("system audio native error ", "system_audio_native"),
+        ("capture source exited with code ", "capture_source_exit"),
+        (
+            "capture source terminated by signal ",
+            "capture_source_signal",
+        ),
+    ] {
+        if let Some(number) = error
+            .strip_prefix(prefix)
+            .and_then(|v| v.parse::<i32>().ok())
+        {
+            return format!(
+                "{code}_{}{}",
+                if number < 0 { "neg" } else { "" },
+                number.unsigned_abs()
+            );
+        }
+    }
+    let code = match error {
+        "capture source heartbeat timed out" => "capture_heartbeat_timeout",
+        "capture source start timed out" => "capture_start_timeout",
+        "capture source stop timed out" => "capture_stop_timeout",
+        "capture durable progress timed out" => "capture_progress_timeout",
+        "capture progress exceeded limit" | "invalid capture progress" => {
+            "capture_invalid_progress"
+        }
+        "audio callbacks stalled; source stopped" => "capture_callbacks_stalled",
+        "audio callback queue overflowed; source stopped" => "capture_queue_overflow",
+        "audio source format changed; source stopped" => "capture_format_changed",
+        "audio callback stream disconnected" => "capture_callbacks_disconnected",
+        "audio callbacks arrived out of monotonic order" => "capture_callbacks_out_of_order",
+        "audio hardware clock changed during capture" => "capture_hardware_clock_changed",
+        "wall clock changed during audio capture" => "capture_wall_clock_changed",
+        "audio callback preceded the session clock anchor" => "capture_before_clock_anchor",
+        "no microphone input device is available" => "microphone_device_unavailable",
+        "microphone_stream_failed" => "microphone_stream_failed",
+        "system_audio_tap_upgrade" => "system_audio_tap_upgrade",
+        "storage_low" => "storage_low",
+        _ if error.starts_with("microphone permission unavailable (status ") => {
+            "microphone_permission_unavailable"
+        }
+        _ if error.contains("permission probe") => "system_audio_permission_probe_failed",
+        _ => "capture_source_failed",
+    };
+    code.into()
+}
+
+fn exit_error(status: std::process::ExitStatus) -> String {
+    use std::os::unix::process::ExitStatusExt;
+    if let Some(code) = status.code() {
+        format!("capture source exited with code {code}")
+    } else if let Some(signal) = status.signal() {
+        format!("capture source terminated by signal {signal}")
+    } else {
+        "capture source exited".into()
+    }
+}
+
 fn nonblocking(fd: i32) -> Result<(), String> {
     let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
     if flags < 0 || unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0 {
@@ -180,9 +245,9 @@ fn monitor(
         }
         if let Some(status) = exited {
             if !std::process::ExitStatus::success(&status) {
-                return Err(format!("capture source exited: {status}"));
+                return Err(exit_error(status));
             }
-            return final_result.unwrap_or_else(|| Err(format!("capture source exited: {status}")));
+            return final_result.unwrap_or_else(|| Err(exit_error(status)));
         }
         if let Some(status) = child.0.try_wait().map_err(|e| e.to_string())? {
             exited = Some(status);
@@ -349,6 +414,50 @@ fn finished_progress(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn capture_diagnostics_keep_native_codes_but_never_freeform_payloads() {
+        for (error, expected) in [
+            (
+                "system audio native error -3808",
+                "system_audio_native_neg3808",
+            ),
+            (
+                "system audio capture failed at stage 3",
+                "system_audio_start_stage_3",
+            ),
+            (
+                "capture source exited with code 70",
+                "capture_source_exit_70",
+            ),
+            (
+                "capture source terminated by signal 9",
+                "capture_source_signal_9",
+            ),
+            (
+                "capture durable progress timed out",
+                "capture_progress_timeout",
+            ),
+            (
+                "audio callbacks stalled; source stopped",
+                "capture_callbacks_stalled",
+            ),
+            (
+                "system audio native error -3808 secret",
+                "capture_source_failed",
+            ),
+            ("/Users/private/file: secret", "capture_source_failed"),
+        ] {
+            let code = error_code(error);
+            assert_eq!(code, expected);
+            let mut event = hear_protocol::LogEvent::simple(
+                "capture",
+                hear_protocol::LogLevel::Warn,
+                "source_failed",
+            );
+            event.error_code = Some(code);
+            assert!(crate::unilogs::valid_event(&event));
+        }
+    }
     #[test]
     fn error_exit_keeps_counts_after_the_last_heartbeat() {
         let (mut tx, rx) = crate::capture::channel(48_000, 1).unwrap();

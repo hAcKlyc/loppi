@@ -576,12 +576,7 @@ pub struct Prepared {
 #[derive(Debug)]
 pub enum PrepareError {
     Invalid(String),
-    Retry(String),
-}
-impl From<String> for PrepareError {
-    fn from(value: String) -> Self {
-        Self::Retry(value)
-    }
+    Retry(&'static str),
 }
 
 pub fn prepare(
@@ -612,7 +607,7 @@ pub fn prepare(
             if e.kind() == std::io::ErrorKind::NotFound {
                 PrepareError::Invalid("sealed media missing".into())
             } else {
-                PrepareError::Retry(e.to_string())
+                PrepareError::Retry("ingestion_prepare_metadata")
             }
         })?;
         if !metadata.is_file() || metadata.file_type().is_symlink() || metadata.len() > 10_000_000 {
@@ -620,10 +615,10 @@ pub fn prepare(
         }
         let mut data = Vec::with_capacity(metadata.len() as usize);
         File::open(&full)
-            .map_err(|e| e.to_string())?
+            .map_err(|_| PrepareError::Retry("ingestion_prepare_open"))?
             .take(10_000_001)
             .read_to_end(&mut data)
-            .map_err(|e| e.to_string())?;
+            .map_err(|_| PrepareError::Retry("ingestion_prepare_read"))?;
         if data.len() > 10_000_000
             || bytes.is_some_and(|n| n != data.len() as u64)
             || sha256
@@ -656,7 +651,7 @@ pub fn prepare(
         if replaced && !digital_silence {
             match cleanup::encode_part(directory, &row, &pcm, from, to) {
                 Ok(part) => retained.push(part),
-                Err(e) => {
+                Err(_) => {
                     discard_prepared(
                         directory,
                         &Prepared {
@@ -665,7 +660,7 @@ pub fn prepare(
                             replaced,
                         },
                     );
-                    return Err(PrepareError::Retry(e));
+                    return Err(PrepareError::Retry("ingestion_prepare_encode"));
                 }
             }
         } else {

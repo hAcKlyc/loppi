@@ -156,6 +156,13 @@ void *hear_legacy_system_audio_start(void *context, HearAudioCallback callback, 
     if (stage) *stage = 3;
     return NULL;
   }
+  // SCK produces display frames even for this audio-only consumer. Register
+  // the screen output too; the handler ignores it without retaining pixels.
+  if (![session.stream addStreamOutput:session.output type:SCStreamOutputTypeScreen
+                    sampleHandlerQueue:session.queue error:&add_error]) {
+    if (stage) *stage = 6;
+    return NULL;
+  }
   dispatch_semaphore_t started = dispatch_semaphore_create(0);
   __block NSError *start_error = nil;
   [session.stream startCaptureWithCompletionHandler:^(NSError *error) {
@@ -242,12 +249,17 @@ int64_t hear_legacy_system_audio_probe(uint32_t seconds, uint64_t *peak_milliont
                                        configuration:configuration
                                             delegate:output];
   NSError *add_error = nil;
+  dispatch_queue_t queue = dispatch_queue_create("app.hear.system-audio", DISPATCH_QUEUE_SERIAL);
   if (![stream addStreamOutput:output type:SCStreamOutputTypeAudio
-           sampleHandlerQueue:dispatch_queue_create("app.hear.system-audio", DISPATCH_QUEUE_SERIAL)
+           sampleHandlerQueue:queue
                         error:&add_error]) {
     return -3;
   }
 
+  if (![stream addStreamOutput:output type:SCStreamOutputTypeScreen
+           sampleHandlerQueue:queue error:&add_error]) {
+    return -6;
+  }
   dispatch_semaphore_t started = dispatch_semaphore_create(0);
   __block int start_error = 0;
   [stream startCaptureWithCompletionHandler:^(NSError *error) {
