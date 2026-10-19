@@ -40,7 +40,7 @@ updated: 2026-10-20
   - [x] 只读诊断与健康统计、CLI 导出
   - [x] 统一验证、CI、回归说明与工作流
   - [x] 自验证与三视角审查
-  - [ ] 提交 PR 与远端检查回读
+  - [x] 提交 PR 与远端状态回读
 
 ### 当前批次 Review 基线
 - Base：07b966bf14dfc4d96504bcaf2ed04b3ab3d21442
@@ -59,3 +59,11 @@ updated: 2026-10-20
 - 2026-10-20：计数语义逐一回源：cloud attempts 为失败数，VAD 为领取数，coarse 为失败数；字段和文档已区分。Cloud 完成且当前失败计数非零才计入 completed_after_failure，正常 ASR 轮询不计失败。
 - 2026-10-20：需求审查 PASS；对抗审查发现清理期间 `Ok(false)` 被误记为粗转完成，已区分 complete / not_published / deferred / failed，并在原真实发布与两种清理回归中验证。定向复审 PASS；workspace check/build、274 Core tests、四组件身份及两组隔离 smoke 全通过。待最终架构审查与 PR。
 - 2026-10-20：最终完整候选架构审查 PASS：Core/read pool、usage owner、UniLogs 生命周期、组件边界与验证复用均符合契约；无新增业务状态/队列/恢复路径。代码审查闭环完成。签名安装与真实 OS/长时验收仍未执行，status 保持 in-progress；本轮交付 PR，未发布或替换安装版。
+- 2026-10-20：实现提交 `33d82a3` 已推送，创建 [PR #11](https://github.com/hAcKlyc/hear/pull/11)，base `dev`、head `feat/diagnostics-and-verification` 已回读核对。单批次三视角审查及受影响复测完成；完整 14 项本机门禁通过（291 Rust、43 Node、3 素材、6 Python，以及原生策略/身份/smoke）。GitHub Actions 使用同一门禁，最终运行结果以 PR 最新 head 的 checks 为准。
+
+### 当前交付状态与发布验收
+
+实现、验证、review 与 PR 已齐备；这次未安装或发布，未修改活跃用户库。status 保持 `in-progress`，以下 mandatory 验收仍需在发布前完成：
+- 在授权安装签名包后核对运行 Core、CLI、GUI 和 worker 的编译身份；不要用磁盘新文件身份代替运行中进程。
+- 录制真实会话并执行关屏/唤醒、睡眠/唤醒及设备切换；核对实际音频、封块与缺口，不能只看 UI 状态或进程存活。
+- 长时录制后检查连续覆盖与明确缺口，并确认失败诊断不含正文。采集中断 #5 仍开放，不由本 PR 的诊断能力或 CI 通过推定修复。
