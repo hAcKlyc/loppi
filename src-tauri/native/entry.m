@@ -1,14 +1,28 @@
 #import <AppKit/AppKit.h>
 #import <objc/runtime.h>
 #import <CoreGraphics/CoreGraphics.h>
+#import <QuartzCore/QuartzCore.h>
 #include <stdint.h>
 
 typedef void (*HearEntryEvent)(int, int, uint64_t);
-typedef struct { double width,height,band,rabbit_x,rabbit_y; } HearEntryGeometry;
+typedef struct { double width,height,band,rabbit_x,rabbit_y,top_band,top_shift; } HearEntryGeometry;
 static const void *HearEntryKey=&HearEntryKey;
 
-static BOOL unfolds(NSInteger oldMode, NSInteger oldView, NSInteger mode, NSInteger view, BOOL visible, BOOL reducedMotion) {
-  return oldMode==0 && mode==0 && oldView==0 && view==1 && visible && !reducedMotion;
+// Only user presentation changes animate. System/layout changes settle now.
+static double motionDuration(NSInteger oldMode, NSInteger oldView, NSInteger mode, NSInteger view, BOOL visible, BOOL reducedMotion) {
+  if(oldMode!=0 || mode!=0 || !visible || reducedMotion) return 0;
+  if(oldView==0 && view==1) return 0.30;
+  if(oldView!=0 && view==0) return 0.14;
+  return 0;
+}
+
+static NSRect expansionPeak(NSRect current, NSRect target) {
+  NSRect peak=target;
+  peak.size.width+=(target.size.width-current.size.width)*0.018;
+  peak.size.height+=(target.size.height-current.size.height)*0.018;
+  peak.origin.x+=(target.origin.x-current.origin.x)*0.018;
+  peak.origin.y=NSMaxY(target)-peak.size.height;
+  return peak;
 }
 
 static HearEntryGeometry topLayout(NSRect screen, double safeTop, NSRect left, NSRect right, NSInteger view, BOOL feedback, BOOL detail, NSRect *frame) {
@@ -18,7 +32,8 @@ static HearEntryGeometry topLayout(NSRect screen, double safeTop, NSRect left, N
   // The compact trigger needs room even on a plain display. Expanded content
   // reserves only a real hardware obstruction, not a fictitious 32pt notch.
   double band=view==0 ? MAX(32,notch ? safeTop : 0) : (notch ? safeTop : 0);
-  HearEntryGeometry g={0}; g.band=band;
+  HearEntryGeometry g={0}; g.band=band; g.top_band=notch ? safeTop : 0;
+  g.top_shift=rabbitCenter-center+206-(feedback ? 140 : 22);
   if(view==0) {
     g.width=feedback ? 280 : 44; g.height=band+(feedback ? 48 : 0);
     g.rabbit_x=g.width/2-14; g.rabbit_y=(band-28)/2;
@@ -87,8 +102,9 @@ static BOOL hitRegion(HearEntryGeometry g, NSInteger mode, NSInteger view, BOOL 
 @property NSString *displayUUID;
 @property NSRunningApplication *previous;
 @property HearEntryGeometry geometry;
+@property NSRect targetFrame;
 - (HearEntryGeometry)layout;
-- (HearEntryGeometry)layoutAnimated:(BOOL)animated;
+- (HearEntryGeometry)layoutAnimated:(double)duration;
 - (void)updatePointer:(NSEvent *)event at:(NSPoint)point;
 - (BOOL)confirmFocus;
 - (BOOL)ownsKeyboard;
@@ -122,7 +138,7 @@ static BOOL hitRegion(HearEntryGeometry g, NSInteger mode, NSInteger view, BOOL 
   return NSScreen.screens.firstObject;
 }
 - (BOOL)hit:(NSPoint)point {
-  NSRect f=_window.frame;
+  NSRect f=_mode==0 && _view==0 ? _targetFrame : _window.frame;
   NSPoint p=NSMakePoint(point.x-f.origin.x,NSMaxY(f)-point.y);
   return hitRegion(hitGeometry(_geometry,_mode,_view,f),_mode,_view,_detail,p);
 }
@@ -142,12 +158,14 @@ static BOOL hitRegion(HearEntryGeometry g, NSInteger mode, NSInteger view, BOOL 
   _window.ignoresMouseEvents=!hit;
   if(_inhibited) hit=NO;
   if(hit!=_inside) { _inside=hit; [self notify:1 value:hit]; }
-  if(event && event.type==NSEventTypeLeftMouseDown && !hit && _view!=0) { _view=0; [self releaseFocus:NO]; [self notify:2 value:0]; }
+  // Cancel the user intent now, but let entry_layout own the presentation
+  // transition so this outside click still has an expanded -> compact origin.
+  if(event && event.type==NSEventTypeLeftMouseDown && !hit && _view!=0) { [self releaseFocus:NO]; [self notify:2 value:0]; }
 }
 - (HearEntryGeometry)layout {
-  return [self layoutAnimated:NO];
+  return [self layoutAnimated:0];
 }
-- (HearEntryGeometry)layoutAnimated:(BOOL)animated {
+- (HearEntryGeometry)layoutAnimated:(double)duration {
   NSScreen *s=_mode==0 ? NSScreen.screens.firstObject : [self floatingScreen];
   if(!s) return _geometry;
   NSRect screen=s.frame;
@@ -168,15 +186,30 @@ static BOOL hitRegion(HearEntryGeometry g, NSInteger mode, NSInteger view, BOOL 
     frame=NSMakeRect(_anchor.x-(g.width-34),_anchor.y-34,g.width,g.height);
     _displayUUID=[self uuid:s]; _window.level=NSFloatingWindowLevel;
   }
-  _geometry=g;
+  _geometry=g; _targetFrame=frame;
   uint64_t serial=++_layoutSerial, generation=_layoutGeneration;
   __weak HearEntry *weak=self;
-  // The animator is asynchronous. A zero-duration update also cancels an
-  // in-flight resize, so actions, input focus and screen changes never wait.
+  // NSWindow's animator clamps an overshooting timing curve. Use two native
+  // segments instead: a small geometric overshoot, then a short settle. Both
+  // are canceled by the same layout serial; there is no second UI clock.
+  BOOL opening=duration>0.2;
+  NSRect peak=opening ? expansionPeak(_window.frame,frame) : frame;
   [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
-    context.duration=animated ? 0.16 : 0;
-    [[self.window animator] setFrame:frame display:YES];
-  } completionHandler:^{ [weak finishLayout:serial generation:generation]; }];
+    context.duration=opening ? duration-0.10 : duration;
+    context.timingFunction=opening
+      ? [CAMediaTimingFunction functionWithControlPoints:0.16 :1 :0.3 :1]
+      : [CAMediaTimingFunction functionWithControlPoints:0.4 :0 :0.7 :1];
+    [[self.window animator] setFrame:peak display:YES];
+  } completionHandler:^{
+    if(!opening) { [weak finishLayout:serial generation:generation]; return; }
+    HearEntry *owner=weak;
+    if(!owner || serial!=owner.layoutSerial || generation!=owner.layoutGeneration || owner.mode!=0 || owner.view!=1) return;
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+      context.duration=0.10;
+      context.timingFunction=[CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+      [[owner.window animator] setFrame:frame display:YES];
+    } completionHandler:^{ [weak finishLayout:serial generation:generation]; }];
+  }];
   if(_window.isVisible) [_window orderFrontRegardless];
   [self checkPointer:nil];
   return g;
@@ -275,13 +308,13 @@ void hear_entry_install(void *window,HearEntryEvent callback) {
 HearEntryGeometry hear_entry_layout(void *window,int mode,int view,int feedback,int detail,int suppress,uint64_t generation) {
   HearEntry *e=entry(window);
   e.layoutGeneration=generation;
-  BOOL animated=unfolds(e.mode,e.view,mode,view,e.window.isVisible,NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion);
+  double duration=motionDuration(e.mode,e.view,mode,view,e.window.isVisible,NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion);
   // Arm only for an actual dismissal, never for a feedback-only resize.
   if(view!=0) {
     if(e.inhibited) { e.inhibited=NO; [e notify:7 value:0]; }
   } else if(suppress && e.view!=0) e.inhibited=YES;
   e.mode=mode; e.view=view; e.feedback=feedback; e.detail=detail;
-  HearEntryGeometry geometry=[e layoutAnimated:animated];
+  HearEntryGeometry geometry=[e layoutAnimated:duration];
   if(suppress && !e.inhibited) [e notify:7 value:0];
   return geometry;
 }

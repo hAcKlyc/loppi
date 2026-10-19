@@ -12,6 +12,9 @@ const { JSDOM } = requireTest('jsdom');
 const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost/' });
 for (const name of ['window', 'document', 'HTMLElement', 'HTMLTextAreaElement', 'Event', 'MouseEvent', 'KeyboardEvent']) globalThis[name] = dom.window[name];
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+const style = document.createElement('style');
+style.textContent = readFileSync(new URL('../src/entry.css', import.meta.url), 'utf8');
+document.head.append(style);
 registerHooks({
   resolve(specifier, context, next) {
     if (specifier.startsWith('.') && context.parentURL?.includes('/src/')) {
@@ -49,7 +52,7 @@ mockIPC(async (command, args) => {
     layouts.push(args);
     if (finishLayout && args.view === 'panel')
       await emit('hear-entry-native', { kind: 8, value: 1, generation: args.generation });
-    return { width: args.view === 'collapsed' ? 44 : 412, height: args.view === 'collapsed' ? 32 : 160, band: 32, rabbit_x: 8, rabbit_y: 2 };
+    return { width: args.view === 'collapsed' ? 44 : 412, height: args.view === 'collapsed' ? 32 : 160, band: 32, top_band: 32, top_shift: args.feedback ? 178 : 296, rabbit_x: 8, rabbit_y: 2 };
   }
   if (command === 'entry_focus') { focus.push(args); return confirmFocus; }
   if (command === 'entry_action') { actions.push(args.action); return { outcome, message: 'simulated failure' }; }
@@ -61,16 +64,19 @@ const settle = async (fn = () => {}) => act(async () => { await fn(); await new 
 const native = (kind, value) => settle(() => emit('hear-entry-native', { kind, value }));
 const button = text => [...document.querySelectorAll('button')].find(b => b.textContent === text);
 const click = element => { assert(element, 'target exists'); return settle(() => element.click()); };
-const panel = () => document.querySelector('.notch-surface');
+const panel = () => document.querySelector('.notch-surface:not([data-view=collapsed])');
 const escape = () => settle(() => document.querySelector('.entry-root').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
 try {
   await settle(() => root.render(React.createElement(FloatingWidget)));
+  const persistentRabbit = document.querySelector(".entry-top .entry-rabbit");
   finishLayout = false;
   await native(1, 1);
   assert(panel(), 'native hover opens');
+  assert.equal(document.querySelector('.entry-top .entry-rabbit'), persistentRabbit, 'rabbit keeps its DOM identity while opening');
   assert.equal(panel().dataset.ready, 'false', 'content waits for actual native completion');
   const oldLayout = layouts.at(-1).generation;
   await escape();
+  assert.equal(document.querySelector('.entry-top .entry-rabbit'), persistentRabbit);
   await click(document.querySelector('.entry-rabbit'));
   await settle(() => emit('hear-entry-native', { kind: 8, value: 1, generation: oldLayout }));
   assert.equal(panel().dataset.ready, 'false', 'canceled completion cannot reveal a newer panel');
@@ -80,10 +86,13 @@ try {
   assert(!focus.some(call => call.acquire), 'hover never acquires app focus');
   await click(button('重点'));
   assert(!panel(), 'action immediately collapses');
+  assert.equal(document.querySelector('.entry-top .entry-rabbit'), persistentRabbit, 'rabbit keeps its DOM identity while closing');
   assert(document.querySelector('[role=status]').textContent.includes('已标记'), 'confirmed feedback');
+  assert.equal(window.getComputedStyle(document.querySelector('[role=status]')).left, '8px', 'collapsed feedback retains the full-width endpoint');
   // No kind 7 release: a direct/keyboard-generated click must override the guard.
   await click(document.querySelector('.entry-rabbit'));
   assert(panel(), 'explicit click reopens while inhibited');
+  assert.equal(window.getComputedStyle(document.querySelector('[role=status]')).left, '110px', 'expanded feedback retains its separate endpoint');
   assert.equal(layouts.at(-1).suppress, false, 'native open is also unsuppressed');
   const count = layouts.length;
   await native(1, 1);

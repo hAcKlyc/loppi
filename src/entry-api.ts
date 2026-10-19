@@ -26,6 +26,8 @@ export interface EntryGeometry {
 	band: number;
 	rabbit_x: number;
 	rabbit_y: number;
+	top_band: number;
+	top_shift: number;
 }
 export type EntryView = "collapsed" | "panel" | "comment";
 export type EntryKind = "mark" | "comment" | "screenshot" | "control";
@@ -103,4 +105,34 @@ export function commentEnterSubmits(
 		!composing &&
 		event.keyCode !== 229
 	);
+}
+
+// Position is a function of the native viewport, not a second animation clock.
+// Both directions (and an interrupted reversal) therefore use the same path.
+export function topRabbitMotion(
+	topBand: number,
+	topShift: number,
+	feedback: boolean,
+) {
+	const compact = feedback ? 280 : 44;
+	const along = (from: number, to: number) =>
+		`calc(${from}px + ${(to - from) / (412 - compact)} * (100vw - ${compact}px))`;
+	const startX = compact / 2 - 14;
+	const startY = (Math.max(32, topBand) - 28) / 2;
+	// Hold the screen x until the rabbit clears the physical notch. Compensate
+	// for the native window's simultaneous translation, then join the endpoint.
+	const clear = Math.min(
+		0.9,
+		(topBand - startY) / (topBand + 24 - startY) + 0.04,
+	);
+	const x =
+		topBand > 0
+			? `calc(${startX}px + ${topShift / (412 - compact)} * (100vw - ${compact}px) + ${(20 - startX - topShift) / ((1 - clear) * (412 - compact))} * max(0px, calc(100vw - ${compact + clear * (412 - compact)}px)))`
+			: along(startX, 20);
+	return {
+		"--entry-compact-width": `${compact}px`,
+		"--entry-rabbit-x": x,
+		"--entry-rabbit-y": along(startY, topBand + 24),
+		"--entry-rabbit-size": along(28, 72),
+	};
 }

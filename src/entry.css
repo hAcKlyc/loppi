@@ -74,9 +74,12 @@
 .notch-surface {
 	position: absolute;
 	top: 0;
-	left: 0;
-	right: 0;
 	bottom: 0;
+	/* The backdrop contracts to zero with the real viewport at the compact end. */
+	width: clamp(0px, calc((100vw - var(--entry-compact-width)) * 10), 100vw);
+	left: 50%;
+	transform: translateX(-50%);
+	overflow: hidden;
 	background: var(--entry-surface);
 	border-radius: 0 0 26px 26px;
 	display: flex;
@@ -84,8 +87,10 @@
 	padding: calc(var(--entry-band) + 24px) 18px 26px 20px;
 	gap: 22px;
 }
-.notch-rabbit-control {
+.notch-rabbit-space {
 	flex: 0 0 72px;
+}
+.notch-rabbit-control {
 	width: 72px;
 	height: 72px;
 	padding: 0;
@@ -152,12 +157,10 @@
 	line-height: 18px;
 	padding: 0;
 }
-.notch-surface:not(.comment-surface) > .notch-rabbit-control,
 .notch-surface:not(.comment-surface) > .notch-actions,
 .notch-surface:not(.comment-surface) > .entry-detail {
 	visibility: hidden;
 }
-.notch-surface[data-ready="true"] > .notch-rabbit-control,
 .notch-surface[data-ready="true"] > .notch-actions,
 .notch-surface[data-ready="true"] > .entry-detail {
 	visibility: visible;
@@ -255,7 +258,7 @@
 	left: 5px;
 	right: 5px;
 }
-.entry-top:has(.notch-surface) .entry-feedback {
+.entry-top:has(.notch-surface:not([data-view="collapsed"])) .entry-feedback {
 	top: auto;
 	bottom: 6px;
 	left: 110px;
@@ -311,17 +314,33 @@
 	.entry-root.entry-root * {
 		transition: none;
 	}
-	.entry-root .notch-surface > .notch-rabbit-control,
 	.entry-root .notch-surface > .notch-actions,
 	.entry-root .notch-surface > .entry-detail {
 		animation: none;
 	}
 }
 .entry-top .entry-rabbit {
-	left: calc(50% - 14px);
-	top: calc((var(--entry-band) - 28px) / 2);
+	left: var(--entry-rabbit-x);
+	top: var(--entry-rabbit-y);
+	width: var(--entry-rabbit-size);
+	height: var(--entry-rabbit-size);
+	opacity: 1;
+	z-index: 1;
 }
 .entry-floating .entry-rabbit {
 	right: 8px;
 	bottom: 8px;
+}
+
+.notch-surface[data-view="collapsed"] {
+	pointer-events: none;
+	padding: 0;
+}
+.entry-top .entry-rabbit[data-view="comment"] {
+	visibility: hidden;
+	pointer-events: none;
+}
+.entry-top .entry-rabbit:not([data-view="panel"]) .rabbit-control-overlay,
+.entry-top .entry-rabbit[data-ready="false"] .rabbit-control-overlay {
+	visibility: hidden;
 }

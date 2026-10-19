@@ -13,6 +13,7 @@ import {
 	type EntryView,
 	entryAppearance,
 	getEntrySnapshot,
+	topRabbitMotion,
 } from "./entry-api";
 import { Rabbit } from "./Rabbit";
 import "./App.css";
@@ -79,6 +80,8 @@ export function FloatingWidget() {
 		band: 32,
 		rabbit_x: 8,
 		rabbit_y: 2,
+		top_band: 32,
+		top_shift: 296,
 	});
 	const [draft, setDraft] = useState("");
 	const draftRef = useRef("");
@@ -179,6 +182,7 @@ export function FloatingWidget() {
 			if (
 				!pointerInside.current &&
 				!focusInside.current &&
+				!keyboardExpand.current &&
 				viewRef.current === "panel" &&
 				!dragging.current
 			)
@@ -425,7 +429,7 @@ export function FloatingWidget() {
 		control === "pause" ? "暂停" : control === "start" ? "开始" : "继续";
 	const isTop = snapshot.mode === "top";
 	const expanded = view !== "collapsed";
-	const rabbitSize = isTop ? (expanded ? 72 : 28) : 52;
+	const rabbitSize = 52;
 	const pendingComment = !!busy.comment || !!uncertain.comment;
 	const rabbit = (
 		<Rabbit
@@ -439,7 +443,16 @@ export function FloatingWidget() {
 			role="toolbar"
 			aria-label="hear 常驻入口"
 			className={`entry-root ${isTop ? "entry-top" : "entry-floating"}`}
-			style={{ "--entry-band": `${geometry.band}px` } as React.CSSProperties}
+			style={
+				{
+					"--entry-band": `${geometry.band}px`,
+					...topRabbitMotion(
+						geometry.top_band,
+						geometry.top_shift,
+						hasFeedback,
+					),
+				} as React.CSSProperties
+			}
 			onFocusCapture={() => {
 				focusInside.current = true;
 				openPanel(true);
@@ -461,12 +474,13 @@ export function FloatingWidget() {
 				}
 			}}
 		>
-			{isTop && expanded ? (
+			{isTop ? (
 				<div
 					className={`notch-surface ${view === "comment" ? "comment-surface" : ""}`}
 					data-ready={panelReady}
+					data-view={view}
 				>
-					{view === "comment" ? (
+					{view === "collapsed" ? null : view === "comment" ? (
 						<div className="notch-composer">
 							<textarea
 								ref={textarea}
@@ -530,30 +544,7 @@ export function FloatingWidget() {
 						</div>
 					) : (
 						<>
-							<button
-								type="button"
-								ref={(element) => {
-									if (
-										element &&
-										panelReady &&
-										keyboardExpand.current &&
-										control &&
-										!busy.control
-									) {
-										keyboardExpand.current = false;
-										element.focus();
-									}
-								}}
-								className="notch-rabbit-control"
-								aria-label={controlLabel}
-								disabled={!control || !!busy.control}
-								onClick={() => void perform("control")}
-							>
-								{rabbit}
-								<span className="rabbit-control-overlay">
-									<Glyph kind={control ?? "resume"} />
-								</span>
-							</button>
+							<div className="notch-rabbit-space" aria-hidden="true" />
 							<div
 								className="notch-actions"
 								role="toolbar"
@@ -683,6 +674,47 @@ export function FloatingWidget() {
 						{rabbit}
 					</button>
 				</>
+			)}
+			{isTop && (
+				<button
+					key="top-rabbit"
+					type="button"
+					className="entry-rabbit notch-rabbit-control"
+					data-view={view}
+					data-ready={panelReady}
+					aria-label={expanded ? controlLabel : "hear 快速操作"}
+					tabIndex={view === "comment" ? -1 : 0}
+					disabled={expanded && (!control || !!busy.control)}
+					aria-disabled={
+						expanded && (!panelReady || !control || !!busy.control)
+					}
+					ref={(element) => {
+						if (
+							element &&
+							panelReady &&
+							keyboardExpand.current &&
+							control &&
+							!busy.control
+						) {
+							keyboardExpand.current = false;
+							element.focus();
+						}
+					}}
+					onMouseEnter={() => {
+						pointerInside.current = true;
+						openPanel();
+					}}
+					onClick={() => {
+						if (viewRef.current === "collapsed") openPanel(true);
+						else if (viewRef.current === "panel" && panelReady)
+							void perform("control");
+					}}
+				>
+					{rabbit}
+					<span className="rabbit-control-overlay">
+						<Glyph kind={control ?? "resume"} />
+					</span>
+				</button>
 			)}
 			{feedback && (
 				<div

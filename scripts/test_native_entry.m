@@ -19,16 +19,18 @@
 @interface EntryTest : HearEntry
 @property NSPoint testPoint;
 @property BOOL keyboard;
+@property double lastDuration;
 @end
 @implementation EntryTest
 - (BOOL)ownsKeyboard { return self.keyboard; }
-- (HearEntryGeometry)layoutAnimated:(BOOL)animated {
-  (void)animated;
+- (HearEntryGeometry)layoutAnimated:(double)duration {
+  self.lastDuration=duration;
   HearEntryGeometry g=self.view==0
     ? (HearEntryGeometry){self.feedback ? 280 : 44,self.feedback ? 80 : 32,32,self.feedback ? 126 : 8,2}
     : (HearEntryGeometry){412,160,32,20,56};
   self.geometry=g;
   ((EntryTestWindow *)self.window).frame=NSMakeRect(self.view==0 ? 847-g.width/2 : 529,956-g.height,g.width,g.height);
+  self.targetFrame=self.window.frame;
   [self updatePointer:nil at:self.testPoint];
   return g;
 }
@@ -119,13 +121,40 @@ static void testCompletionAndFocus(void) {
   hear_entry_focus(handle,0,0,9);
   assert(![e confirmFocus] && focused==1); // late notification after dismissal
 }
+static void testOutsideClose(void) {
+  EntryTestWindow *window=[EntryTestWindow new]; window.isVisible=YES;
+  EntryTest *e=[EntryTest new]; e.window=(NSWindow *)window; e.callback=eventReceived;
+  void *handle=(__bridge void *)window;
+  objc_setAssociatedObject(window,HearEntryKey,e,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  e.testPoint=NSMakePoint(100,500);
+  hear_entry_layout(handle,0,1,0,0,0,1);
+  NSEvent *click=[NSEvent mouseEventWithType:NSEventTypeLeftMouseDown location:NSZeroPoint modifierFlags:0 timestamp:0 windowNumber:0 context:nil eventNumber:0 clickCount:1 pressure:1];
+  int before=dismissals;
+  [e updatePointer:click at:e.testPoint];
+  assert(dismissals==before+1 && !e.commentFocus && window.ignoresMouseEvents);
+  // Frontend consumes native cancellation and requests its new presentation.
+  hear_entry_layout(handle,0,0,0,0,1,2);
+  double expected=NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion ? 0 : 0.14;
+  assert(e.lastDuration==expected && e.view==0);
+}
+static void testClosingHit(void) {
+  EntryTestWindow *window=[EntryTestWindow new];
+  HearEntry *e=[HearEntry new]; e.window=(NSWindow *)window;
+  e.mode=0; e.view=0;
+  e.geometry=(HearEntryGeometry){44,32,32,8,2,32};
+  e.targetFrame=NSMakeRect(825,924,44,32);
+  window.frame=NSMakeRect(529,796,412,160); // visual tail is still expanded
+  assert([e hit:NSMakePoint(847,940)]);
+  assert(![e hit:NSMakePoint(551,940)]); // no hit at old-frame + compact offset
+  assert(![e hit:NSMakePoint(830,860)]); // dismissed action passes through now
+}
 static void testTopLayouts(void) {
   NSRect screen=NSMakeRect(-1920,200,1920,1080), frame;
   HearEntryGeometry g=topLayout(screen,0,NSZeroRect,NSZeroRect,0,NO,NO,&frame);
   assert(g.band==32 && g.height==32 && NSMaxY(frame)==NSMaxY(screen));
   assert(NSMidX(frame)==NSMidX(screen));
   g=topLayout(screen,0,NSZeroRect,NSZeroRect,1,NO,NO,&frame);
-  assert(g.band==0 && g.height==128 && g.rabbit_y==24);
+  assert(g.band==0 && g.top_band==0 && g.height==128 && g.rabbit_y==24);
   assert(NSMaxY(frame)==NSMaxY(screen) && NSMidX(frame)==NSMidX(screen));
   assert(hitRegion(g,0,1,NO,NSMakePoint(206,16)));
   g=topLayout(screen,0,NSZeroRect,NSZeroRect,2,NO,NO,&frame);
@@ -133,12 +162,20 @@ static void testTopLayouts(void) {
   screen=NSMakeRect(0,0,1470,956);
   NSRect left=NSMakeRect(0,924,646,32), right=NSMakeRect(825,924,645,32);
   g=topLayout(screen,32,left,right,1,NO,NO,&frame);
-  assert(g.band==32 && g.height==160 && NSMidX(frame)==735.5);
+  assert(g.band==32 && g.top_band==32 && g.height==160 && NSMidX(frame)==735.5);
   g=topLayout(screen,32,NSZeroRect,right,1,NO,NO,&frame);
   assert(g.band==0 && NSMidX(frame)==735); // incomplete safe areas are not a notch
 }
 int main(void) {
+  NSRect target=NSMakeRect(529,796,412,160);
+  NSRect peak=expansionPeak(NSMakeRect(825,924,44,32),target);
+  assert(peak.size.width>412 && peak.size.width<420);
+  assert(peak.size.height>160 && peak.size.height<164);
+  assert(NSMaxY(peak)==NSMaxY(target));
+  assert(NSEqualRects(expansionPeak(target,target),target));
   testTopLayouts();
+  testClosingHit();
+  testOutsideClose();
   testCompletionAndFocus();
   testReopening();
   HearEntryGeometry top={412,160,32,20,56};
@@ -149,12 +186,13 @@ int main(void) {
   assert(hitRegion(top,0,1,NO,NSMakePoint(200,159)));
   assert(!hitRegion(top,0,1,NO,NSMakePoint(0,159)));
   assert(!hitRegion(top,0,1,NO,NSMakePoint(413,80)));
-  assert(unfolds(0,0,0,1,YES,NO));
-  assert(!unfolds(0,0,0,1,YES,YES));
-  assert(!unfolds(0,0,0,1,NO,NO));
-  assert(!unfolds(1,0,0,1,YES,NO));
-  assert(!unfolds(0,1,0,2,YES,NO));
-  assert(!unfolds(0,1,0,0,YES,NO));
+  assert(motionDuration(0,0,0,1,YES,NO)==0.30);
+  assert(!motionDuration(0,0,0,1,YES,YES));
+  assert(!motionDuration(0,0,0,1,NO,NO));
+  assert(!motionDuration(1,0,0,1,YES,NO));
+  assert(!motionDuration(0,1,0,2,YES,NO));
+  assert(motionDuration(0,1,0,0,YES,NO)==0.14);
+  assert(motionDuration(0,2,0,0,YES,NO)==0.14);
   // The physical hover point remains inside throughout the native resize.
   // Transparent corners and the not-yet-expanded area remain click-through.
   for(int step=0;step<=20;step++) {

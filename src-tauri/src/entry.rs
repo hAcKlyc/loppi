@@ -369,6 +369,8 @@ pub struct Geometry {
     band: f64,
     rabbit_x: f64,
     rabbit_y: f64,
+    top_band: f64,
+    top_shift: f64,
 }
 
 async fn native<T: Send + 'static>(

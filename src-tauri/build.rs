@@ -15,5 +15,6 @@ fn main() {
     println!("cargo:rustc-link-lib=framework=ServiceManagement");
     println!("cargo:rustc-link-lib=framework=AVFoundation");
     println!("cargo:rustc-link-lib=framework=CoreGraphics");
+    println!("cargo:rustc-link-lib=framework=QuartzCore");
     tauri_build::build();
 }
