@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: implemented
 updated: 2026-10-21
 ---
 # 粗转就绪、三分钟已知静默连接与并行活动续接
@@ -30,7 +30,7 @@ updated: 2026-10-21
   - [x] 就绪调度与晚到粗转回归
   - [x] 已知静默连接与物理输入/时间映射回归
   - [x] 多前序续接与真实合成模型验证
-  - [ ] 文档、check/build、回归、三路审查和提交
+  - [x] 文档、check/build、回归、三路审查和提交
 
 ### 当前批次 Review 基线
 - Base：fb8c35de043f1e59a05e0028537ce5e1d73d9f1c
@@ -50,6 +50,8 @@ updated: 2026-10-21
 - 2026-10-21：requirements/adversarial 均发现同一 P1：无云任务的等待候选在积压超过两小时、最后本地失败且无新证据时，可能滑出扫描范围。裁决为本次引入、违反失败出口保证的阻塞项。复用 candidate_windows 将 pending 且没有当前版本云任务的最早起点纳入扫描；不新增 owner/状态。新增四小时积压后粗转失败、空结果完成、显式强制及 VAD 尾部失败回归，失败场景修前红、修后绿；93 项事件回归通过，2 项 opt-in 忽略。该修复不改变 prompt/模型输入语义，既有合成模型证据保持有效。
 
 - 2026-10-21：修复后 check/build PASS；requirements/adversarial 定向复核均 PASS，原 P1 关闭；全新 architecture reviewer 审查最终完整差异 PASS，无剩余阻塞或 mandatory 证据缺口。最终 scoped diff whitespace check PASS。
+
+- 2026-10-21：实现提交 `a9a046d44b1dfe927e2995f2bd53ccc4dfc973a6`；重新逐条核对整份契约与非目标，最终 HEAD `cargo check -p hear-core` PASS。单批次完整审查已覆盖最终代码，无临时机制或未决 mandatory 项。共享工作树其它修改保留。安装版未替换、录制未重启；真实语音质量、能耗与费用继续作为 advisory 观察，不冒称已验证提升。
 
 ### Review Contract
 - mode: repair；required lenses: requirements、adversarial、architecture。
