@@ -2,9 +2,9 @@
 use super::*;
 use serde::{Deserialize, Serialize};
 
-pub const VERSION: &str = "volc-event-silence-v3";
+pub const VERSION: &str = "volc-event-silence-v4";
 pub const WINDOW_MS: i64 = 20 * 60 * 1000;
-const MAX_CONFIRMED_SILENCE_MS: i64 = 3 * 60 * 1000;
+const MAX_CONFIRMED_SILENCE_MS: i64 = 60 * 1000;
 const SETTLE_MS: i64 = 15 * 60 * 1000;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

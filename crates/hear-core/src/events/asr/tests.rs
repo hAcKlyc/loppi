@@ -88,7 +88,7 @@ fn long_silence_and_unknown_or_capture_gaps_split_physical_requests() {
 }
 #[test]
 fn short_pauses_preserve_one_linear_clock_and_long_pauses_start_a_new_request() {
-    for gap in [0, 1000, 3000, 20_000, 180_000, 180_001] {
+    for gap in [0, 1000, 3000, 20_000, 60_000, 60_001, 180_000] {
         let mut db = database();
         block(&db, "a", 1000, 6000, true);
         block(&db, "b", 6000 + gap, 11000 + gap, true);
@@ -96,18 +96,11 @@ fn short_pauses_preserve_one_linear_clock_and_long_pauses_start_a_new_request() 
             block(&db, "silence", 6000, 6000 + gap, false);
         }
         event(&mut db, 1000, 11000 + gap);
-        assert_eq!(
-            count(&db),
-            if gap <= MAX_CONFIRMED_SILENCE_MS {
-                1
-            } else {
-                2
-            }
-        );
+        assert_eq!(count(&db), if gap <= 60_000 { 1 } else { 2 });
         let t = task(&mut db);
         let i = input(&db, t.id).unwrap().unwrap();
         assert_eq!(runs(&i).len(), 1);
-        if gap <= MAX_CONFIRMED_SILENCE_MS {
+        if gap <= 60_000 {
             assert_eq!(i.duration_ms, 10000 + gap);
             let out = map(&i, &[utterance(6000 + gap, 7000 + gap, "后半句")]).unwrap();
             assert_eq!((out[0].start_ms, out[0].end_ms), (7000 + gap, 8000 + gap));
@@ -166,10 +159,10 @@ fn silence_requires_complete_matching_source_evidence_and_no_clear_or_capture_ga
 }
 
 #[test]
-fn three_minute_silence_encodes_full_duration_and_does_not_accept_hallucinated_text() {
+fn one_minute_silence_encodes_full_duration_and_does_not_accept_hallucinated_text() {
     let mut db = database();
     let dir = tempfile::tempdir().unwrap();
-    for start in [1000, 186000] {
+    for start in [1000, 66000] {
         let id = Uuid::new_v4();
         let mut encoder =
             crate::media::OpusBlock::create(&dir.path().join("media/microphone"), id).unwrap();
@@ -183,13 +176,13 @@ fn three_minute_silence_encodes_full_duration_and_does_not_accept_hallucinated_t
         encoder.seal().unwrap();
         block(&db, &id.to_string(), start, start + 5000, true);
     }
-    block(&db, "silence", 6000, 186000, false);
-    event(&mut db, 1000, 191000);
+    block(&db, "silence", 6000, 66000, false);
+    event(&mut db, 1000, 71000);
     let t = task(&mut db);
     let frozen = input(&db, t.id).unwrap().unwrap();
     assert_eq!(count(&db), 1);
-    assert_eq!(frozen.duration_ms, 190000);
-    assert_eq!(frozen.parts[1].offset, 185000);
+    assert_eq!(frozen.duration_ms, 70000);
+    assert_eq!(frozen.parts[1].offset, 65000);
     let ogg = assemble(dir.path(), &frozen).unwrap();
     // Inspect the long upload incrementally; the production block decoder
     // intentionally accepts only short source blocks, not whole ASR uploads.
@@ -205,7 +198,7 @@ fn three_minute_silence_encodes_full_duration_and_does_not_accept_hallucinated_t
         let len = decoder
             .decode_float(&packet.data, &mut frame, false)
             .unwrap();
-        if samples > skip + 10 * 48000 && samples + (len as u64) < skip + 180 * 48000 {
+        if samples > skip + 10 * 48000 && samples + (len as u64) < skip + 60 * 48000 {
             // Opus may add very low-level comfort noise to digital silence.
             let rms = (frame[..len].iter().map(|v| v * v).sum::<f32>() / len as f32).sqrt();
             assert!(rms < 0.001, "silence RMS {rms}");
@@ -213,16 +206,16 @@ fn three_minute_silence_encodes_full_duration_and_does_not_accept_hallucinated_t
         samples += len as u64;
         granule = packet.absgp_page();
     }
-    assert_eq!(granule - skip, 190000 * 48);
+    assert_eq!(granule - skip, 70000 * 48);
     assert_eq!(
         publish_asr(&mut db, &t, &[utterance(60000, 61000, "凭空出现")], 5000001).unwrap_err(),
         "provider_unmapped_timing_audio_coverage"
     );
-    publish_asr(&mut db, &t, &[utterance(185000, 186000, "后段")], 5000002).unwrap();
+    publish_asr(&mut db, &t, &[utterance(65000, 66000, "后段")], 5000002).unwrap();
     assert_eq!(
         db.query_row::<i64, _, _>("SELECT started_ms FROM precise_segments", [], |r| r.get(0))
             .unwrap(),
-        186000
+        66000
     );
 }
 
