@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: implemented
 created: 2026-10-21
 updated: 2026-10-21
 ---
@@ -34,7 +34,7 @@ updated: 2026-10-21
   - [x] 原响应查询、根因与最小方案确认。
   - [x] 实现与合成回归；真实快照副本验证。
   - [x] 静态检查、构建、独立 review。
-  - [ ] 提交、PR、CI 和收尾。
+  - [x] 提交、PR、CI 和收尾。
 
 ### 当前批次 Review 基线
 - Batch base：83bc811
@@ -59,3 +59,11 @@ updated: 2026-10-21
 - 2026-10-21：原 P2 定向复查 PASS。修复后 Core 306 测试、check/build、真实快照14→56均通过；共同静态/隔离烟测重跑中，其它未受影响验证沿用完整14项通过记录。最终 architecture 审查待完成。
 
 - 2026-10-21：最终 architecture PASS；requirements PASS、adversarial 修复后定向 PASS。最终组合态复核：无新状态/协议/owner；所有开发验收通过。修复后306 Core +未受影响20 Rust、51 Node、3素材、6 Python、原生策略通过；共同static3项、smoke5项全部通过。发布/安装及历史付费识别未执行，不作效果声明。接下来提交PR并核对远端CI。
+
+- 2026-10-21：实现提交 `09b33f7`，已创建 [PR #12](https://github.com/hAcKlyc/hear/pull/12) → main。该代码提交的远端 [Verify](https://github.com/hAcKlyc/hear/actions/runs/39474195042) SUCCESS。整份开发契约、反向边界、review和适用验证完成；本提交仅收尾台账，不改代码。
+
+### 交付与限制
+- 修复确定坏结果的显式恢复；旧输入与使用历史不改，正常不确定请求继续查询原ID。不能保证供应商每次重新识别的文字质量。
+- 未安装、合并或自动重送历史录音。用户安装含本修复的构建后，任务页“重新识别”才会发起新用量。
+- #2 由 PR 合并后关闭；采集#5与剩余 ingestion_list 诊断缺口#6已补充本机脱敏证据，仍开放，不能由本次ASR验证宣布解决。
+- 主观视觉/长时观察属 advisory；本次不改OS权限或采集生命周期，没有未完成的本范围mandatory验收。
