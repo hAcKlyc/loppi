@@ -113,7 +113,7 @@ VAD 先事务提交 `coarse_jobs` 的来源/session/16 kHz 样本区间与 `spee
 
 每日定时录制由 Core 的 [`schedule.rs`](../crates/hear-core/src/schedule.rs) 管理：单例 `recording_schedule` 存开关、两个当地分钟、处理游标、时区与暂停原因。原生日历 helper 只换算时间；`capture_supervisor` 在决定来源启停前，于同一个 Store 写事务中补最近一次遗漏动作并持久化游标。目标已满足也消费边界，不重启 session。手动控制先结算到期动作再应用用户意图；保存新配置只重建未来起点，关闭规则不改变录制。日历按系统时区处理 DST，时区变化仅重建未来边界，时间回拨不回放游标之前的动作。
 
-查询型启动不执行定时动作。正常登录运行或宿主既有状态刷新携带的幂等 `AppOpened` 恢复信号才开启定时结算；Core 区分本实例的正常运行许可与实际采集许可：先打开 GUI 再启用规则只安排未来动作，Core 中断后下一次宿主刷新可重新激活；重复刷新不把设置保存变成即时录制。完整退出期间宿主刷新已停止，不拉起应用。GUI、CLI 保存共用修订与请求回执；不在前端执行计时。定时开始不清除容量暂停，也不能绕过配置、模型、权限及来源开关；`schedule_pause` 与手动暂停一样保持缺口直到恢复采集意图，停止仍走现有尾块封存路径。设置显示下一次计划，所有录制入口仍由真实采集快照投影。
+查询型启动不执行定时动作。正常登录运行或宿主既有状态刷新携带的幂等 `AppOpened` 恢复信号才开启定时结算；Core 区分本实例的正常运行许可与实际采集许可：先打开 GUI 再启用规则只安排未来动作，Core 中断后下一次宿主刷新可重新激活；重复刷新不把设置保存变成即时录制。完整退出期间宿主刷新已停止，不拉起应用。GUI、CLI 保存共用修订与请求回执；不在前端执行计时。定时开始不清除容量暂停，也不能绕过配置、模型、权限及来源开关；`schedule_pause` 与手动暂停一样保持缺口直到恢复采集意图，停止仍走现有尾块封存路径。设置显示下一次计划，所有录制入口仍由真实采集快照投影。设置页的规则开关即时提交；时间与容量仅在独立弹窗编辑。`useSettingMutation` 复用原修订/幂等回执提交模式，只有 UI 生命周期内的草稿、busy 和待确认请求，不是配置事实源；未知结果由用户确认同一请求，不新增自动重试或前端计时。
 
 启动只恢复有索引的未完成录制/任务状态，媒体历史遍历已移到 `inventory::Scan`：每轮最多 32 个文件、每个文件单独持有媒体生命周期屏障，文件检查和删除不持有 `Store`。它区分 live / pending-deletion / capture-staging / orphan，按扫描代次分批对账孤儿配额；物理分类是带观察时间的扫描结果，不能冒充瞬时精确磁盘快照。旧版本封块 `sealing` 的恢复仍保留；截图、ASR/导出暂存和旧导出文件恢复由 `recovery::run` 在服务接收请求后分批执行，每步最多 32 项。启动只将旧导出作业标记为 recovering，后台永不领取新 pending 作业；文件 IO 后按原 job/state 确认，失联磁盘在下一轮重试。ASR/导出暂存复用各自唯一资源准入槽排除活跃文件，截图复用 cleanup_gate；不按文件时间猜测所有权。容量暂停保持粘滞，扫描不能覆盖用户暂停或自动恢复录制。
 
@@ -179,7 +179,7 @@ GUI 上下文刷新合并在途请求，仅前台聚焦时周期刷新。连续�
 
 首次 GUI 路由由 Tauri 的 `onboarding.json` 管理（app_config_dir；隔离运行时为 `HEAR_DATA_DIR/gui`），仅含 schema_version 与 completed，原子受限写入。缺失时以 Core 的 enabled_intent 或双供应商已配置迁移既有用户；损坏显式恢复，不能根据历史空白重置。完成会重新读取 Core 模型、来源、双云和原生权限，保存元数据后进入首页，不写 Start/Resume、登录项或录制计划。CLI 不依赖 GUI 标记。
 
-`SetupGroups` 在设置和首次页面共用模型/来源操作；`refreshContext` 仍是 GUI 观察入口。`CloudKeyInput` 保留未保存草稿在组件内，`setup.ts` 仅在当前 WebView 保存未确认请求 ID。云配置使用既有稳定 ID 与 mutation_receipts，`CloudConfigurationReceipt` 是只读查询；失败回执也记录，不因传输失败自动重复供应商验证。凭据只由 Core 验证、Keychain 保存。
+`SetupGroups` 在设置和首次页面共用模型/来源操作；`refreshContext` 仍是 GUI 观察入口。`CloudKeyInput` 保留未保存草稿在组件内，`setup.ts` 仅在当前 WebView 保存未确认请求 ID。云配置使用既有稳定 ID 与 mutation_receipts，`CloudConfigurationReceipt` 是只读查询；失败回执也记录，不因传输失败自动重复供应商验证。凭据只由 Core 验证、Keychain 保存。设置页并列显示两个云服务，独立弹窗显式验证并保存；首次引导 compact 输入仍维持既有提交方式。
 
 必要语音模型在启动校验或显式安装后通过 Governor 的 Coarse 预算准入，以现有 AnalysisClient 运行 VAD 和 SenseVoice 合成静音加载检查；每次各有 30 秒请求上限，退出回收子进程，不建立业务录音或发云请求。ModelState 提供 checking/downloading/installing/verifying/loading/ready/failed 和分组件错误。CampPlus 独立失败不阻断完成。模型安装按锁定包体和解包文件预算加 2 GiB 录音余量检查磁盘；废弃暂存清理、完整包复用，未完成下载重新开始。
 

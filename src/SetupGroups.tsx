@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useRef, useState } from "react";
 import { core, type ServiceState, userError } from "./api";
+import { Switch } from "./Controls";
 import { LoadBoundary } from "./LoadingState";
 import {
 	type ModelState,
@@ -8,6 +9,7 @@ import {
 	modelLabels,
 	type PrivacyStatus,
 } from "./setup";
+import { useSettingMutation } from "./useSettingMutation";
 
 export function ModelPreparation({
 	models,
@@ -217,6 +219,9 @@ export function SourcePreparation({
 			onActivity?.(false);
 		}
 	};
+	const sourceMutation = useSettingMutation(onRefresh);
+	const sourceLocked =
+		!!busy || sourceMutation.busy || sourceMutation.uncertain;
 	const [sourceOptionsOpen, setSourceOptionsOpen] = useState(false);
 	const chooseSource = (source: "microphone" | "system", enabled: boolean) =>
 		perform(source, () =>
@@ -303,45 +308,26 @@ export function SourcePreparation({
 						return (
 							<div className="setting-row" key={source}>
 								<div>
-									<label className="setup-source">
-										<input
-											type="checkbox"
-											checked={enabled ?? false}
-											disabled={!!busy || !state}
-											onChange={() =>
-												void perform(source, () =>
-													core({
-														type: "set_source",
-														source,
-														enabled: !enabled,
-														expected_revision: state?.revision,
-													}),
-												)
-											}
-										/>
-										<strong>{label}</strong>
-									</label>
+									<strong>{label}</strong>
 									<p>{mic ? "你和身边的声音" : "会议、课程和电脑播放的声音"}</p>
 									<p aria-live="polite">
-										{unavailable
-											? "来源暂不可用，可在系统设置检查设备，或取消选择"
-											: ready
-												? !mic && privacy?.tap_required
-													? "已完成授权准备 · 实际可用性以开始记录为准"
-													: "已授权"
-												: denied
-													? privacy?.microphone === 1
-														? "访问受系统限制"
-														: "尚未获得授权"
-													: "需要系统授权"}
+										{!enabled
+											? "已关闭此声音来源"
+											: unavailable
+												? "来源暂不可用，尚不能录制"
+												: !ready
+													? denied
+														? "尚未获得系统授权，尚不能录制"
+														: "需要系统授权，尚不能录制"
+													: !mic && privacy?.tap_required
+														? "已启用 · 已完成授权准备，实际可用性以开始录制为准"
+														: "已启用 · 已授权"}
 									</p>
-								</div>
-								<div className="setting-actions">
 									{enabled && (!ready || unavailable) && (
 										<button
 											type="button"
-											className="quiet-button"
-											disabled={!!busy}
+											className="quiet-button source-permission-action"
+											disabled={sourceLocked}
 											onClick={() =>
 												void perform(source, () =>
 													invoke(
@@ -362,26 +348,20 @@ export function SourcePreparation({
 													: "允许访问"}
 										</button>
 									)}
-									{enabled && !mic && (
-										<button
-											type="button"
-											className="quiet-button"
-											disabled={!!busy}
-											onClick={() =>
-												void perform(source, () =>
-													invoke(
-														ready
-															? "request_system_audio_permission"
-															: "open_privacy_settings",
-														{ source },
-													),
-												)
-											}
-										>
-											{ready ? "重新验证" : "系统设置"}
-										</button>
-									)}
 								</div>
+								<Switch
+									label={label}
+									checked={enabled ?? false}
+									disabled={sourceLocked || !state}
+									onChange={() =>
+										void sourceMutation.submit({
+											type: "set_source",
+											source,
+											enabled: !enabled,
+											expected_revision: state?.revision,
+										})
+									}
+								/>
 							</div>
 						);
 					})}
@@ -398,6 +378,26 @@ export function SourcePreparation({
 					</button>
 				)}
 			</div>
+			{!compact && sourceMutation.busy && (
+				<p role="status" className="schedule-note">
+					正在应用声音来源设置…
+				</p>
+			)}
+			{!compact && sourceMutation.error && (
+				<p role="alert" className="schedule-error">
+					{sourceMutation.error}
+				</p>
+			)}
+			{!compact && sourceMutation.uncertain && (
+				<button
+					type="button"
+					className="quiet-button"
+					disabled={sourceMutation.busy}
+					onClick={() => void sourceMutation.confirm()}
+				>
+					确认上次结果
+				</button>
+			)}
 			{compact && sourceOptionsOpen && (
 				<div className="setup-source-options">
 					{(["microphone", "system"] as const).map((source) => {
@@ -460,7 +460,11 @@ export function SourcePreparation({
 				</div>
 			)}
 			{state && !state.microphone_enabled && !state.system_enabled && (
-				<p className="error">至少选择一种声音来源才能完成设置。</p>
+				<p className={compact ? "error" : "schedule-note"}>
+					{compact
+						? "至少选择一种声音来源才能完成设置。"
+						: "两种声音来源均已关闭，不会录制新的音频。"}
+				</p>
 			)}
 			{failure && (
 				<p className="error" role="alert">
@@ -474,6 +478,36 @@ export function SourcePreparation({
 						打开系统设置 → 隐私与安全性 → 麦克风或屏幕与系统音频录制，允许
 						Hear。受系统管理限制时需联系管理员。返回后会重新检查；电脑声音可点击重新验证。授权检查不保存或上传声音。
 					</p>
+					<div className="setting-actions">
+						<button
+							type="button"
+							className="quiet-button"
+							disabled={sourceLocked}
+							onClick={() =>
+								void perform("system", () =>
+									invoke("open_privacy_settings", { source: "system" }),
+								)
+							}
+						>
+							打开系统设置
+						</button>
+						{state?.system_enabled && (
+							<button
+								type="button"
+								className="quiet-button"
+								disabled={sourceLocked}
+								onClick={() =>
+									void perform("system", () =>
+										invoke("request_system_audio_permission", {
+											source: "system",
+										}),
+									)
+								}
+							>
+								重新验证电脑声音
+							</button>
+						)}
+					</div>
 				</details>
 			)}
 		</LoadBoundary>

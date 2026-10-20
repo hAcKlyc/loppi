@@ -46,4 +46,14 @@ function Harness(){
  return React.createElement(OnboardingView,{state,privacy,models,queues,queuesReady:true,errors:{models:'',privacy:'',queues:'',state:''},onRefresh,onComplete:()=>setDone(true),onLater:()=>setDone(true)});
 }
 if(flags.has('frame')){const frame=document.createElement('iframe');frame.width='760';frame.height='540';flags.delete('frame');frame.src='test_onboarding.html?'+flags.toString();document.body.replaceChildren(frame);}else createRoot(document.getElementById('root')).render(React.createElement(Harness));
+if(flags.has('regression')){
+ const run=document.createElement('button'),out=document.createElement('output');run.textContent='运行首次引导回归';document.body.append(run,out);
+ run.onclick=async()=>{const wait=ms=>new Promise(r=>setTimeout(r,ms));let n=0;const check=(v,m)=>{if(!v)throw Error(m);n++};try{
+  const key=document.querySelector('input[aria-label="DeepSeek API Key"]');key.focus();Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(key,'test-only-onboarding');key.dispatchEvent(new Event('input',{bubbles:true}));await wait(30);key.blur();await wait(100);
+  check(calls.filter(c=>c.type==='configure_cloud').length===1,'compact 失焦提交一次');check(key.value==='••••••••••••','成功恢复掩码');
+  document.querySelector('[aria-label="选择声音来源与授权帮助"]').click();await wait(30);document.querySelector('input[type=checkbox]').click();await wait(100);check(!state.microphone_enabled&&calls.some(c=>c.type==='set_source'),'compact 来源选择继续生效');
+  const finish=[...document.querySelectorAll('button')].find(b=>b.textContent.includes('完成设置'));finish.click();await wait(100);check(calls.some(c=>c.command==='complete_onboarding')&&!calls.some(c=>['start','resume'].includes(c.type)),'完成首次设置不开始录音');
+  out.textContent=`PASS · ${n} 项首次引导检查`;
+ }catch(e){out.textContent='FAIL · '+e.message;}};
+}
 </script></body></html>

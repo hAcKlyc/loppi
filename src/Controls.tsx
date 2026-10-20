@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useId, useRef } from "react";
+import { type ReactNode, useId, useLayoutEffect, useRef } from "react";
 
 export function Icon({
 	name,
@@ -113,11 +113,20 @@ export function Modal({
 }) {
 	const ref = useRef<HTMLDialogElement>(null);
 	const id = useId();
-	useEffect(() => {
+	useLayoutEffect(() => {
 		const dialog = ref.current;
+		const opener = document.activeElement;
 		dialog?.showModal();
 		dialog?.querySelector<HTMLInputElement>("input")?.focus();
-		return () => dialog?.close();
+		return () => {
+			// Close before React detaches the dialog so native focus restoration
+			// still sees its opener; passive effect cleanup runs too late.
+			dialog?.close();
+			// Successful saves also re-enable the opener in this commit.
+			queueMicrotask(() => {
+				if (opener instanceof HTMLElement && opener.isConnected) opener.focus();
+			});
+		};
 	}, []);
 	return (
 		<dialog

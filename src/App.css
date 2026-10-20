@@ -2462,7 +2462,16 @@ body.floating-body .float-wrap {
 }
 
 .recording-schedule-panel {
-	margin-bottom: var(--space-7);
+	margin-top: var(--space-7);
+}
+.settings-page .setting-row > .quiet-button {
+	flex: none;
+}
+.source-permission-action {
+	margin-top: var(--space-4);
+}
+.settings-page .setup-help {
+	padding-bottom: var(--space-7);
 }
 .schedule-times {
 	display: flex;

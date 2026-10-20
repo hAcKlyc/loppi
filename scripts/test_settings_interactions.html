@@ -1,0 +1,63 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>设置交互隔离验证</title>
+<div id="root"></div><aside style="position:fixed;bottom:8px;left:8px;background:white;padding:10px;z-index:100"><button id="run">运行设置回归</button><output id="result">隔离模拟数据，不操作真实录制或云服务</output></aside>
+<script type="module">
+import React,{useState} from 'react';import{createRoot}from'react-dom/client';import{mockIPC}from'@tauri-apps/api/mocks';import{SettingsView}from'/src/WorkspaceViews.tsx';import'/src/App.css';
+const h=React.createElement,wait=ms=>new Promise(r=>setTimeout(r,ms));window.isTauri=true;
+let state={revision:1,enabled_intent:false,paused_intent:false,microphone_enabled:true,system_enabled:true,microphone_phase:'idle',system_phase:'idle',audio_limit_bytes:10*1073741824,audio_used_bytes:1073741824,disk_free_bytes:10*1073741824,storage_paused:false,recording_schedule:{enabled:false,start_minute:480,stop_minute:1380,paused_by_schedule:false,next_at_ms:null,next_action:null,error:null}};
+let privacy={microphone:3,microphone_available:true,tap_required:true,tap_ready:false,screen_and_system_audio:0},queues=[{provider:'llm',configured:true},{provider:'asr',configured:false}],login=0,mode='ok',cloudMode='ok',calls=[],refresh,delay=0;
+const receipts=new Map(),cloudReceipts=new Map();
+mockIPC(async(command,args)=>{
+ if(command==='plugin:event|listen')return 1;if(command==='plugin:event|unlisten')return;
+ if(command==='entry_snapshot')return{mode:'top'};
+ if(command==='entry_mode')return;
+ calls.push({command,args:structuredClone(args)});
+ if(command==='register_login_item'){login=1;return;}if(command==='unregister_login_item'){login=0;return;}
+ if(command==='request_system_audio_permission'){privacy={...privacy,tap_ready:true};return;}
+ if(command==='open_privacy_settings')return;
+ if(command!=='core_request')throw Error(command);
+ const r=args.request;
+ if(r.type==='cloud_configuration_receipt')return{type:'receipt',pending:false,response:cloudReceipts.get(r.request_id)??null};
+ if(r.type==='configure_cloud'){
+  await wait(delay);
+  if(cloudMode==='fail')return{type:'error',code:'cloud_validation',message:'测试验证失败'};
+  queues=queues.map(q=>q.provider===r.provider?{...q,configured:true}:q);
+  const result={type:'cloud_status'};cloudReceipts.set(args.requestId,result);
+  if(cloudMode==='lost')throw Error('lost');return result;
+ }
+ if(receipts.has(args.requestId))return receipts.get(args.requestId);
+ await wait(delay);
+ if(mode==='fail')return{type:'error',code:'database_error',message:'测试写入失败'};
+ if(r.expected_revision!==state.revision)return{type:'error',code:'revision_conflict',message:'配置已变化'};
+ state=structuredClone(state);state.revision++;
+ if(r.type==='set_source')state[r.source+'_enabled']=r.enabled;
+ else if(r.type==='set_audio_limit'){state.audio_limit_bytes=r.limit_bytes;state.storage_paused=state.audio_used_bytes>=r.limit_bytes;}
+ else if(r.type==='set_recording_schedule')state.recording_schedule={...state.recording_schedule,enabled:r.enabled,start_minute:r.start_minute,stop_minute:r.stop_minute,next_at_ms:Date.now()+3600000,next_action:'stop'};
+ else throw Error('unexpected '+r.type);
+ const result={type:'status',state};receipts.set(args.requestId,result);if(mode==='lost')throw Error('lost');return result;
+});
+function App(){const[,update]=useState(0);refresh=()=>update(v=>v+1);return h('div',{className:'app-shell'},h('aside',{className:'sidebar'},h('div',{className:'brand'},'hear'),h('nav',null,h('button',{className:'active'},'设置'))),h('main',{className:'main-area'},h(SettingsView,{date:new Date(),state,privacy,queues,loginStatus:login,models:{phase:'ready',speaker_phase:'ready',progress_percent:100},selection:null,busy:false,onStatus:async()=>refresh(),onContext:async()=>refresh(),onTimeline:async()=>{},onMutate:async()=>true,onMessage:message=>{document.getElementById('result').textContent=message;}})));}
+createRoot(document.getElementById('root')).render(h(App));
+const button=(text,scope=document)=>[...scope.querySelectorAll('button')].find(b=>b.textContent.trim()===text);
+const click=async e=>{if(!e||e.disabled)throw Error('按钮不可用');e.click();await wait(80)};
+const input=async(el,value)=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,value);el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));await wait(20)};
+const reqs=type=>calls.filter(c=>c.args?.request?.type===type);
+const dialog=()=>document.querySelector('dialog[open]');
+window.runRegression=async()=>{let n=0;const out=document.getElementById('result'),check=(ok,message)=>{if(!ok)throw Error(message);n++};try{
+ await wait(120);check([...document.querySelectorAll('.settings-page>h2')].map(e=>e.textContent).join('|')==='通用|录制|识别与整理|存储与数据','四个设置分组');check(document.querySelectorAll('[role=switch]').length===4,'四项布尔设置统一开关');check(!document.querySelector('.settings-page input:not([type=radio])')&&!button('保存'),'主页面没有编辑表单');check(document.querySelectorAll('.segmented-options input').length===2,'仅入口模式互斥');
+ await click(document.querySelector('[aria-label="登录时启动"]'));check(login===1&&document.querySelector('[aria-label="登录时启动"]').getAttribute('aria-checked')==='true','登录开关立即调用');
+ await click(document.querySelector('[aria-label="麦克风"]'));check(!state.microphone_enabled&&document.querySelector('[aria-label="麦克风"]').getAttribute('aria-checked')==='false','来源即时提交');mode='fail';await click(document.querySelector('[aria-label="麦克风"]'));check(!state.microphone_enabled&&document.querySelector('[role=alert]'),'来源失败保持原值');mode='lost';await click(document.querySelector('[aria-label="麦克风"]'));let lost=reqs('set_source').at(-1);check(document.querySelector('[aria-label="麦克风"]').disabled&&button('确认上次结果'),'未知来源结果禁止继续提交');await click(button('确认上次结果'));check(reqs('set_source').at(-1).args.requestId===lost.args.requestId&&state.microphone_enabled,'来源确认复用请求');mode='ok';
+ let system=document.querySelector('[aria-label="电脑声音"]').closest('.setting-row');check(system.textContent.includes('尚不能录制')&&system.querySelectorAll('button:not([role=switch])').length===1,'权限与启用区分且只有一个主要操作');await click(button('允许访问',system));check(system.textContent.includes('已完成授权准备'),'权限准备不夸大实际可用性');
+ await click(button('修改上限'));check(dialog()&&document.activeElement.type==='number','容量独立弹窗且聚焦输入');await input(dialog().querySelector('input'),'20');await click(button('取消',dialog()));check(!dialog()&&reqs('set_audio_limit').length===0,'容量取消不提交');
+ await click(button('修改上限'));await input(dialog().querySelector('input'),'0.0625');await click(button('保存上限',dialog()));check(state.audio_limit_bytes===64*1048576&&!dialog(),'最小容量值可保存');
+ await click(button('修改上限'));await input(dialog().querySelector('input'),'1025');check(!dialog().querySelector('input').checkValidity(),'容量上限校验');await input(dialog().querySelector('input'),'10');mode='fail';await click(button('保存上限',dialog()));check(dialog()&&dialog().querySelector('input').value==='10','容量失败保留草稿');mode='ok';state={...state,revision:state.revision+1};refresh();await wait(30);await click(button('保存上限',dialog()));check(dialog()&&dialog().querySelector('[role=alert]'),'容量并发冲突不覆盖');await click(button('保存上限',dialog()));check(!dialog()&&state.audio_limit_bytes===10*1073741824,'明确重试保存');
+ await click(button('修改上限'));await input(dialog().querySelector('input'),'12');mode='lost';await click(button('保存上限',dialog()));lost=reqs('set_audio_limit').at(-1);check(dialog().querySelector('input').disabled,'容量未知结果锁定草稿');await click(button('确认上次结果',dialog()));check(!dialog()&&reqs('set_audio_limit').at(-1).args.requestId===lost.args.requestId,'容量确认复用请求');mode='ok';
+ const llm=()=>[...document.querySelectorAll('.setting-row')].find(e=>e.textContent.includes('内容整理 · DeepSeek'));
+ const asr=()=>[...document.querySelectorAll('.setting-row')].find(e=>e.textContent.includes('语音精转 · 火山引擎'));
+ check(llm()&&asr(),'两个云服务同时展示');await click(button('修改密钥',llm()));let key=dialog().querySelector('input');check(key.value==='••••••••••••','已配置密钥不读回');await input(key,'test-only-llm');key.blur();await wait(50);check(reqs('configure_cloud').length===0,'密钥失焦不提交');await click(button('取消',dialog()));check(!dialog()&&reqs('configure_cloud').length===0,'密钥取消不提交');
+ await click(button('修改密钥',llm()));key=dialog().querySelector('input');await input(key,'test-only-llm');delay=200;button('验证并保存',dialog()).click();await wait(40);check(dialog().querySelector('input').disabled&&button('取消',dialog()).disabled,'验证时锁定弹窗');await wait(240);delay=0;check(!dialog()&&reqs('configure_cloud').length===1,'显式验证成功关闭');
+ await click(button('配置',asr()));key=dialog().querySelector('input');await input(key,'test-only-asr');cloudMode='fail';await click(button('验证并保存',dialog()));check(dialog()&&dialog().querySelector('input').value==='test-only-asr'&&dialog().textContent.includes('测试验证失败'),'密钥失败保留草稿');check(reqs('configure_cloud').at(-1).args.request.provider==='asr','服务身份不串用');cloudMode='lost';await click(button('验证并保存',dialog()));check(button('确认上次结果',dialog())&&dialog().querySelector('input').disabled,'云未知结果查询入口');const cloudWrites=reqs('configure_cloud').length;await click(button('确认上次结果',dialog()));check(!dialog()&&reqs('configure_cloud').length===cloudWrites&&reqs('cloud_configuration_receipt').length===1,'云确认只查询，不重复验证');check(reqs('configure_cloud').every(c=>!c.args.request.api_key.includes('•')),'掩码绝不提交');
+ await click(button('导出'));check(document.querySelectorAll('input[type=checkbox]').length===2,'导出多选仍保留复选框');await click(document.querySelector('.modal-layer [aria-label=关闭]'));
+ out.textContent=`PASS · ${n} 项设置交互检查`;return n;
+}catch(e){out.textContent='FAIL · '+e.message;throw e}};
+document.getElementById('run').onclick=()=>void window.runRegression();
+</script></html>

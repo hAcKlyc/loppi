@@ -8,12 +8,16 @@ export function CloudKeyInput({
 	configured,
 	onRefresh,
 	onActivity,
+	onSaved,
+	onCancel,
 	compact = false,
 }: {
 	provider: CloudProvider;
 	configured?: boolean;
 	onRefresh: () => Promise<void>;
 	onActivity?: (busy: boolean) => void;
+	onSaved?: () => void;
+	onCancel?: () => void;
 	compact?: boolean;
 }) {
 	const [draft, setDraft] = useState<string | null>(null);
@@ -30,12 +34,14 @@ export function CloudKeyInput({
 		if (pending.current) return;
 		pending.current = true;
 		setSaving(true);
+		let saved = false;
 		try {
 			const result = await confirmCloud(provider);
 			if (result === "saved") {
 				setDraft(null);
 				setError("");
 				setUncertain(false);
+				saved = true;
 			} else if (result === "pending") setError("验证仍在进行，请稍后再次确认");
 			else {
 				setUncertain(false);
@@ -47,9 +53,20 @@ export function CloudKeyInput({
 			setError(userError(e));
 			setUncertain(!!cloudOperation(provider));
 		} finally {
-			await onRefresh();
-			pending.current = false;
-			setSaving(false);
+			try {
+				await onRefresh();
+			} catch {
+				setError(
+					saved
+						? "密钥已保存，状态刷新失败，请关闭后重新读取"
+						: "状态刷新失败，请稍后重试",
+				);
+				saved = false;
+			} finally {
+				pending.current = false;
+				setSaving(false);
+				if (saved) onSaved?.();
+			}
 		}
 	};
 	const commit = async (retry = false) => {
@@ -64,20 +81,33 @@ export function CloudKeyInput({
 		pending.current = true;
 		setSaving(true);
 		setError("");
+		let saved = false;
 		try {
 			await saveCloud(provider, key);
 			setDraft(null);
+			saved = true;
 		} catch (e) {
 			setUncertain(!!cloudOperation(provider));
 			setError(
 				cloudOperation(provider)
 					? "验证结果待确认，请先查询上次结果"
-					: userError(e),
+					: `${userError(e)}${configured ? " · 原配置仍保留" : ""}`,
 			);
 		} finally {
-			await onRefresh();
-			pending.current = false;
-			setSaving(false);
+			try {
+				await onRefresh();
+			} catch {
+				setError(
+					saved
+						? "密钥已保存，状态刷新失败，请关闭后重新读取"
+						: "状态刷新失败，请稍后重试",
+				);
+				saved = false;
+			} finally {
+				pending.current = false;
+				setSaving(false);
+				if (saved) onSaved?.();
+			}
 		}
 	};
 	return (
@@ -120,14 +150,15 @@ export function CloudKeyInput({
 					onKeyDown={(e) => {
 						if (e.key === "Enter" && !e.nativeEvent.isComposing) {
 							e.preventDefault();
-							e.currentTarget.blur();
+							if (compact) e.currentTarget.blur();
+							else void commit(true);
 						}
 						if (e.key === "Escape") {
 							setDraft(null);
 							setError("");
 						}
 					}}
-					onBlur={() => void commit()}
+					onBlur={compact ? () => void commit() : undefined}
 				/>
 				{compact && (
 					<span className="setup-key-state" aria-hidden="true">
@@ -146,10 +177,12 @@ export function CloudKeyInput({
 			>
 				{saving
 					? "正在验证或确认…"
-					: (error ? `${error}${configured ? " · 原配置仍保留" : ""}` : "") ||
+					: error ||
 						(configured && draft === null
 							? "已保存 · 选中后输入可替换"
-							: "按回车或离开输入框后验证")}
+							: compact
+								? "按回车或离开输入框后验证"
+								: "输入新密钥后，点击验证并保存")}
 			</span>
 			{uncertain && (
 				<button
@@ -161,7 +194,7 @@ export function CloudKeyInput({
 					确认上次结果
 				</button>
 			)}
-			{error && !uncertain && draft && (
+			{compact && error && !uncertain && draft && (
 				<button
 					type="button"
 					className="quiet-button"
@@ -170,6 +203,28 @@ export function CloudKeyInput({
 				>
 					重新验证
 				</button>
+			)}
+			{!compact && (
+				<div className="modal-actions">
+					<button
+						type="button"
+						className="quiet-button"
+						disabled={saving || uncertain}
+						onClick={onCancel}
+					>
+						取消
+					</button>
+					{!uncertain && (
+						<button
+							type="button"
+							className="primary-button"
+							disabled={saving || !draft?.trim()}
+							onClick={() => void commit(true)}
+						>
+							{saving ? "正在验证…" : "验证并保存"}
+						</button>
+					)}
+				</div>
 			)}
 		</div>
 	);

@@ -19,14 +19,19 @@ const click=async e=>{if(!e||e.disabled)throw Error('按钮不可用');e.click()
 const input=async(index,value)=>{const el=document.querySelectorAll('input[type=time]')[index];Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,value);el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));await wait(30)};
 window.runRegression=async()=>{let n=0;const out=document.getElementById('result'),check=(ok,message)=>{if(!ok)throw Error(message);n++};try{
  await wait(100);setPublished(null);await wait(30);check(document.querySelector('[aria-busy=true]')&&!document.querySelector('[role=switch]')&&!document.querySelector('main').textContent.includes('未启用'),'首次加载不得假装未启用');setPublished(state);await wait(30);check(!state.recording_schedule.enabled&&!button('保存'),'默认关闭且没有未保存草稿');
- await click(document.querySelector('[role=switch]'));check(calls.length===0,'编辑开关不发送');await input(0,'08:00');await click(button('保存'));check(calls.length===0&&document.querySelector('[role=alert]'),'同刻校验');
- await click(button('取消'));check(document.querySelectorAll('input[type=time]')[0].value==='23:00','取消恢复保存值');
- await click(document.querySelector('[role=switch]'));await input(0,'22:30');mode='fail';await click(button('保存'));check(document.querySelectorAll('input[type=time]')[0].value==='22:30'&&button('保存'),'失败保留草稿');check(!state.recording_schedule.enabled,'失败不假装启用');
- mode='conflict';await click(button('保存'));check(button('保存')&&document.querySelector('[role=alert]'),'冲突保留输入并显示错误');const revision=state.revision;
- mode='ok';await click(button('保存'));check(calls.at(-1).request.expected_revision===revision,'显式重试使用刷新修订');check(state.recording_schedule.enabled&&!button('保存'),'保存成功收起草稿');
- await input(1,'09:15');mode='lost';await click(button('保存'));const lost=calls.at(-1);check(button('重试确认')&&document.querySelector('input[type=time]').disabled&&button('取消').disabled,'结果不明保持同一操作且禁止改写');
- await click(button('重试确认'));check(JSON.stringify(calls.at(-1))===JSON.stringify(lost),'确认沿用同一请求与ID');check(!button('保存')&&!button('重试确认'),'回执确认成功');
- await click(document.querySelector('[role=switch]'));mode='ok';await click(button('保存'));check(!state.recording_schedule.enabled&&state.recording_schedule.start_minute===555,'停用保留时间');
+ await click(document.querySelector('[role=switch]'));check(calls.length===1&&state.recording_schedule.enabled,'开关立即提交并生效');check(!button('保存')&&!document.querySelector('input'),'主页面没有草稿输入和保存');
+ await click(button('编辑时间'));await input(1,'08:00');await click(button('保存时间'));check(calls.length===1&&document.querySelector('[role=alert]'),'相同时刻不提交');
+ await click(button('取消'));check(!document.querySelector('dialog')&&state.recording_schedule.stop_minute===1380,'取消不写入');
+ await click(button('编辑时间'));await input(1,'22:30');mode='fail';await click(button('保存时间'));check(document.querySelectorAll('input[type=time]')[1].value==='22:30'&&button('保存时间'),'失败保留草稿');check(state.recording_schedule.stop_minute===1380,'失败保持事实');
+ mode='conflict';await click(button('保存时间'));check(button('保存时间')&&document.querySelector('[role=alert]'),'冲突保留输入并显示错误');const revision=state.revision;
+ mode='ok';await click(button('保存时间'));check(calls.at(-1).request.expected_revision===revision,'显式重试使用刷新修订');check(state.recording_schedule.enabled&&!document.querySelector('dialog'),'保存成功关闭编辑');
+ await click(button('编辑时间'));await input(0,'09:15');mode='lost';await click(button('保存时间'));const lost=calls.at(-1);check(button('确认上次结果')&&document.querySelector('input[type=time]').disabled&&button('取消').disabled,'结果不明禁止改写');
+ await click(button('确认上次结果'));check(JSON.stringify(calls.at(-1))===JSON.stringify(lost),'确认沿用同一请求与ID');check(!document.querySelector('dialog'),'回执确认成功');
+ mode='ok';await click(document.querySelector('[role=switch]'));check(!state.recording_schedule.enabled&&state.recording_schedule.start_minute===555,'停用立即生效并保留时间');
+ await click(button('编辑时间'));await input(0,'10:15');await click(button('保存时间'));check(!state.recording_schedule.enabled&&state.recording_schedule.start_minute===615,'关闭时修改时间不会启用');
+ mode='fail';await click(document.querySelector('[role=switch]'));check(document.querySelector('[role=switch]').getAttribute('aria-checked')==='false','失败开关不显示未提交值');
+ mode='lost';await click(document.querySelector('[role=switch]'));const toggleLost=calls.at(-1);check(document.querySelector('[role=switch]').disabled&&button('确认上次结果'),'未知开关结果显示确认');await click(button('确认上次结果'));check(calls.at(-1).requestId===toggleLost.requestId&&document.querySelector('[role=switch]').getAttribute('aria-checked')==='true','同请求确认开关');
+ const opener=button('编辑时间');opener.focus();await click(opener);document.querySelector('input').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await wait(40);check(!document.querySelector('dialog')&&document.activeElement===opener,'Escape 关闭并恢复发起按钮焦点');mode='ok';await click(opener);await click(button('保存时间'));check(!document.querySelector('dialog')&&document.activeElement===opener,'保存成功解锁按钮后恢复焦点');
  out.textContent=`PASS · ${n} 项交互检查`;return n;
  }catch(e){out.textContent='FAIL · '+e.message;throw e}};
 document.getElementById('run').onclick=()=>void window.runRegression();

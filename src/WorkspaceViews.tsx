@@ -2,9 +2,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
+import { AudioStorageSettings } from "./AudioStorageSettings";
 import {
 	type CleanupPreview,
-	type CloudProvider,
 	type CloudQueue,
 	type CloudTask,
 	core,
@@ -19,7 +19,7 @@ import {
 	time,
 	userError,
 } from "./api";
-import { CloudKeyInput } from "./CloudKeyInput";
+import { CloudServiceSettings } from "./CloudServiceSettings";
 import { SegmentedOptions, Switch } from "./Controls";
 import { taskStatus } from "./cloud-task-status";
 import {
@@ -413,11 +413,9 @@ export function SettingsView({
 	privacy,
 	loginStatus,
 	models,
-	busy,
 	onStatus,
 	onContext,
 	onTimeline,
-	onMutate,
 	onMessage,
 }: {
 	date: Date;
@@ -479,14 +477,6 @@ export function SettingsView({
 			setSwitchingEntry(false);
 		}
 	};
-	const [provider, setProvider] = useState<CloudProvider>("llm");
-	const cloudConfigured = queues.find(
-		(queue) => queue.provider === provider,
-	)?.configured;
-	const selectProvider = (next: CloudProvider) => {
-		if (next === provider) return;
-		setProvider(next);
-	};
 	const [cleanupOpen, setCleanupOpen] = useState(selection?.kind === "cleanup");
 	const [cleanupPreview, setCleanupPreview] = useState<CleanupPreview | null>(
 		null,
@@ -500,13 +490,6 @@ export function SettingsView({
 	const [exportAudio, setExportAudio] = useState(false);
 	const [exportScreenshots, setExportScreenshots] = useState(false);
 	const [working, setWorking] = useState(false);
-	const [audioLimitGiB, setAudioLimitGiB] = useState("");
-	useEffect(() => {
-		if (state?.audio_limit_bytes)
-			setAudioLimitGiB(
-				String(+(state.audio_limit_bytes / 1_073_741_824).toFixed(2)),
-			);
-	}, [state?.audio_limit_bytes]);
 	const [dayStart, dayEnd] = dayBounds(date);
 	const [scope, setScope] = useState<"selection" | "custom" | "all">(
 		selection ? "selection" : "custom",
@@ -635,7 +618,7 @@ export function SettingsView({
 			<div className="page-heading" data-tauri-drag-region>
 				<h1>设置</h1>
 			</div>
-			<h2>常驻入口</h2>
+			<h2>通用</h2>
 			<div className="panel-card setting-panel">
 				<LoadBoundary
 					ready={entryMode !== null}
@@ -661,10 +644,6 @@ export function SettingsView({
 						/>
 					</div>
 				</LoadBoundary>
-			</div>
-			<h2>记录</h2>
-			<RecordingScheduleSettings state={state} refresh={onStatus} />
-			<div className="panel-card setting-panel">
 				<LoadBoundary
 					ready={loginStatus !== null}
 					error={loadErrors.login}
@@ -676,11 +655,13 @@ export function SettingsView({
 						<div>
 							<strong>登录时启动</strong>
 							<p>
-								{loginStatus === 1
-									? "已开启"
-									: loginStatus === 2
-										? "需要在系统设置中批准"
-										: "未开启"}
+								{switchingLogin
+									? "正在应用…"
+									: loginStatus === 1
+										? "已开启"
+										: loginStatus === 2
+											? "需要在系统设置中批准"
+											: "未开启"}
 							</p>
 						</div>
 						<Switch
@@ -705,6 +686,9 @@ export function SettingsView({
 						/>
 					</div>
 				</LoadBoundary>
+			</div>
+			<h2>录制</h2>
+			<div className="panel-card setting-panel">
 				<SourcePreparation
 					state={state}
 					privacy={privacy}
@@ -713,126 +697,45 @@ export function SettingsView({
 						await Promise.all([onContext(), onStatus()]);
 					}}
 				/>
+			</div>
+			<RecordingScheduleSettings
+				state={state}
+				refresh={onStatus}
+				error={loadErrors.state}
+			/>
+			<h2>识别与整理</h2>
+			<div className="panel-card setting-panel">
 				<ModelPreparation
 					models={models}
 					error={loadErrors.models}
 					onRefresh={onContext}
 				/>
 				<LoadBoundary
-					ready={state !== null}
-					error={loadErrors.state}
-					retry={() => void onStatus()}
-					label="音频存储上限"
-					rows={1}
+					ready={queuesReady}
+					error={loadErrors.queues}
+					retry={() => void onContext()}
+					label="云端配置"
+					rows={2}
 				>
-					<div className="setting-row">
-						<div>
-							<strong>音频存储上限</strong>
-							<p>
-								已用{" "}
-								{((state?.audio_used_bytes ?? 0) / 1_073_741_824).toFixed(2)} GB
-								{state?.storage_paused
-									? " · 录音已暂停"
-									: state?.storage_warning
-										? " · 空间即将不足"
-										: ""}
-							</p>
-						</div>
-						<div className="setting-value-action">
-							<input
-								type="number"
-								min="0.0625"
-								max="1024"
-								step="0.25"
-								aria-label="音频存储上限，GB"
-								value={audioLimitGiB}
-								onChange={(event) => setAudioLimitGiB(event.target.value)}
-							/>
-							<span>GB</span>
-							<button
-								type="button"
-								className="quiet-button"
-								disabled={busy}
-								onClick={() => {
-									const value = Number(audioLimitGiB);
-									if (
-										!Number.isFinite(value) ||
-										value < 0.0625 ||
-										value > 1024
-									) {
-										onMessage("请输入 0.0625 至 1024 GB 的上限");
-										return;
-									}
-									void onMutate(
-										{
-											type: "set_audio_limit",
-											limit_bytes: Math.round(value * 1_073_741_824),
-											expected_revision: state?.revision,
-										},
-										"存储上限已更新",
-									);
-								}}
-							>
-								保存
-							</button>
-						</div>
-					</div>
-				</LoadBoundary>
-			</div>
-			<h2>云端能力</h2>
-			<LoadBoundary
-				ready={queuesReady}
-				error={loadErrors.queues}
-				retry={() => void onContext()}
-				label="云端配置"
-				rows={2}
-			>
-				<div className="panel-card cloud-config">
-					<SegmentedOptions
-						label="云端服务"
-						value={provider}
-						options={[
-							{ value: "llm", label: "LLM" },
-							{ value: "asr", label: "ASR" },
-						]}
-						disabled={busy}
-						onChange={selectProvider}
-					/>
-					<div className="cloud-provider-row">
-						<div className="cloud-provider-info">
-							<div className="cloud-provider-heading">
-								<strong>{provider === "llm" ? "DeepSeek" : "火山引擎"}</strong>
-								{cloudConfigured !== undefined && (
-									<span
-										className={`cloud-key-status${cloudConfigured ? " configured" : ""}`}
-									>
-										{cloudConfigured ? "已配置" : "未配置"}
-									</span>
-								)}
-							</div>
-							<span className="cloud-provider-meta">
-								{provider === "llm"
-									? "deepseek-flash · 自动整理事件与新截图"
-									: "语音识别 · volc.seedasr.auc"}
-							</span>
-						</div>
-						<CloudKeyInput
+					{(["llm", "asr"] as const).map((provider) => (
+						<CloudServiceSettings
 							key={provider}
 							provider={provider}
-							configured={cloudConfigured}
-							onRefresh={onContext}
+							configured={
+								queues.find((queue) => queue.provider === provider)?.configured
+							}
+							refresh={onContext}
 						/>
-					</div>
-					{provider === "llm" && (
-						<p className="cloud-key-feedback">
-							配置后，新截图会发送给
-							DeepSeek，生成图片摘要和文字转录。未配置时仅在本机识别文字。
-						</p>
-					)}
-				</div>
-			</LoadBoundary>
-			<h2>数据</h2>
+					))}
+				</LoadBoundary>
+			</div>
+			<h2>存储与数据</h2>
 			<div className="panel-card setting-panel">
+				<AudioStorageSettings
+					state={state}
+					error={loadErrors.state}
+					refresh={onStatus}
+				/>
 				<div className="setting-row">
 					<div>
 						<strong>导出记录</strong>
