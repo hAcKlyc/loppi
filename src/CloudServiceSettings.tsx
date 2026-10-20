@@ -21,16 +21,18 @@ export function CloudServiceSettings({
 	return (
 		<div className="setting-row">
 			<div>
-				<strong>{title}</strong>
-				<p>
-					{cloudOperation(provider)
-						? "配置结果待确认"
-						: configured === undefined
-							? "正在读取配置…"
-							: configured
-								? "已配置"
-								: "未配置"}
-				</p>
+				<div className="setting-heading">
+					<strong>{title}</strong>
+					<span className="setting-status" role="status">
+						{cloudOperation(provider)
+							? "配置结果待确认"
+							: configured === undefined
+								? "正在读取配置…"
+								: configured
+									? "已配置"
+									: "未配置"}
+					</span>
+				</div>
 				<p>
 					{provider === "llm" ? "整理事件与新截图" : "将录音转为更准确的文字"}
 				</p>

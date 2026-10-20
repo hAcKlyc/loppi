@@ -50,18 +50,20 @@ export function AudioStorageSettings({
 			>
 				<div className="setting-row">
 					<div>
-						<strong>
-							音频存储上限 ·{" "}
-							{state && +(state.audio_limit_bytes / GIB).toFixed(4)} GB
-						</strong>
-						<p>
-							已用 {((state?.audio_used_bytes ?? 0) / GIB).toFixed(2)} GB
-							{state?.storage_paused
-								? " · 录音已暂停"
-								: state?.storage_warning
-									? " · 空间即将不足"
-									: ""}
-						</p>
+						<div className="setting-heading">
+							<strong>
+								音频存储上限 ·{" "}
+								{state && +(state.audio_limit_bytes / GIB).toFixed(4)} GB
+							</strong>
+							<span className="setting-status" role="status">
+								已用 {((state?.audio_used_bytes ?? 0) / GIB).toFixed(2)} GB
+								{state?.storage_paused
+									? " · 录音已暂停"
+									: state?.storage_warning
+										? " · 空间即将不足"
+										: ""}
+							</span>
+						</div>
 						<p>达到上限后暂停录音；释放空间或提高上限后，请手动继续录音。</p>
 					</div>
 					<button

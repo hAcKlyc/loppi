@@ -135,14 +135,16 @@ export function ModelPreparation({
 		>
 			<div className="setting-row">
 				<div>
-					<strong>本地语音组件</strong>
+					<div className="setting-heading">
+						<strong>本地语音组件</strong>
+						<span className="setting-status" aria-live="polite">
+							{modelLabels[models?.phase ?? ""]}
+							{models?.phase === "downloading"
+								? ` · ${models.progress_percent}%`
+								: ""}
+						</span>
+					</div>
 					<p>在这台电脑上识别人声，生成初步文字。</p>
-					<p aria-live="polite">
-						{modelLabels[models?.phase ?? ""]}
-						{models?.phase === "downloading"
-							? ` · ${models.progress_percent}%`
-							: ""}
-					</p>
 					{models?.error && (
 						<p className="error">
 							{modelErrors[models.error] ?? "组件准备失败，请重试"}
@@ -308,20 +310,29 @@ export function SourcePreparation({
 						return (
 							<div className="setting-row" key={source}>
 								<div>
-									<strong>{label}</strong>
-									<p>{mic ? "你和身边的声音" : "会议、课程和电脑播放的声音"}</p>
-									<p aria-live="polite">
-										{!enabled
-											? "已关闭此声音来源"
-											: unavailable
-												? "来源暂不可用，尚不能录制"
-												: !ready
-													? denied
-														? "尚未获得系统授权，尚不能录制"
-														: "需要系统授权，尚不能录制"
-													: !mic && privacy?.tap_required
-														? "已启用 · 已完成授权准备，实际可用性以开始录制为准"
-														: "已启用 · 已授权"}
+									<div className="setting-heading">
+										<strong>{label}</strong>
+										<span className="setting-status" aria-live="polite">
+											{!enabled
+												? "已关闭"
+												: unavailable
+													? "来源不可用 · 尚不能录制"
+													: !ready
+														? "待授权 · 尚不能录制"
+														: !mic && privacy?.tap_required
+															? "已完成授权准备"
+															: "已授权"}
+										</span>
+									</div>
+									<p>
+										{mic ? "你和身边的声音" : "会议、课程和电脑播放的声音"}
+										{enabled &&
+										ready &&
+										!unavailable &&
+										!mic &&
+										privacy?.tap_required
+											? "；实际可用性以开始录制为准"
+											: ""}
 									</p>
 									{enabled && (!ready || unavailable) && (
 										<button

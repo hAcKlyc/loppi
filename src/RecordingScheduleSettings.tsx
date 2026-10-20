@@ -74,15 +74,17 @@ export function RecordingScheduleSettings({
 					<>
 						<div className="setting-row">
 							<div>
-								<strong>定时录制</strong>
+								<div className="setting-heading">
+									<strong>定时录制</strong>
+									<span className="setting-status" role="status">
+										{mutation.busy && !draft
+											? "正在应用…"
+											: mutation.uncertain && !draft
+												? "操作结果待确认"
+												: nextScheduleAction(saved)}
+									</span>
+								</div>
 								<p>每天到点开始或停止，仍可随时手动控制</p>
-								<p role="status">
-									{mutation.busy && !draft
-										? "正在应用…"
-										: mutation.uncertain && !draft
-											? "操作结果待确认"
-											: nextScheduleAction(saved)}
-								</p>
 							</div>
 							<Switch
 								label="定时录制"

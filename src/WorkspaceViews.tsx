@@ -653,16 +653,19 @@ export function SettingsView({
 				>
 					<div className="setting-row">
 						<div>
-							<strong>登录时启动</strong>
-							<p>
-								{switchingLogin
-									? "正在应用…"
-									: loginStatus === 1
-										? "已开启"
-										: loginStatus === 2
-											? "需要在系统设置中批准"
-											: "未开启"}
-							</p>
+							<div className="setting-heading">
+								<strong>登录时启动</strong>
+								<span className="setting-status" aria-live="polite">
+									{switchingLogin
+										? "正在应用…"
+										: loginStatus === 1
+											? "已开启"
+											: loginStatus === 2
+												? "需要在系统设置中批准"
+												: "未开启"}
+								</span>
+							</div>
+							<p>登录电脑后自动启动 hear</p>
 						</div>
 						<Switch
 							label="登录时启动"
