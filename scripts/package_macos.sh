@@ -33,13 +33,25 @@ codesign --verify --deep --strict "$hear_mount/hear.app"
 [[ -L "$hear_mount/Applications" && "$(readlink "$hear_mount/Applications")" == /Applications ]]
 hdiutil detach -quiet "$hear_mount"
 
-if [[ -z "${APPLE_NOTARY_PROFILE:-}" ]]; then
+hear_notary_args=()
+if [[ -n "${APPLE_NOTARY_PROFILE:-}" ]]; then
+  hear_notary_args=(--keychain-profile "$APPLE_NOTARY_PROFILE")
+elif [[ -n "${APPLE_API_KEY:-}" && -n "${APPLE_API_KEY_PATH:-}" ]]; then
+  if [[ ! -r "$APPLE_API_KEY_PATH" ]]; then
+    print -u2 'APPLE_API_KEY_PATH must point to a readable App Store Connect private key file.'
+    exit 2
+  fi
+  hear_notary_args=(--key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY")
+  if [[ -n "${APPLE_API_ISSUER:-}" ]]; then
+    hear_notary_args+=(--issuer "$APPLE_API_ISSUER")
+  fi
+else
   print -u2 "Signed disk image: $hear_dmg"
-  print -u2 'Notarization is pending. Set APPLE_NOTARY_PROFILE to a notarytool Keychain profile and rerun this script before distribution.'
+  print -u2 'Notarization is pending. Configure APPLE_NOTARY_PROFILE or APPLE_API_KEY + APPLE_API_KEY_PATH (and APPLE_API_ISSUER for a team key), then rerun before distribution.'
   exit 2
 fi
 
-xcrun notarytool submit "$hear_dmg" --keychain-profile "$APPLE_NOTARY_PROFILE" --wait
+xcrun notarytool submit "$hear_dmg" "${hear_notary_args[@]}" --wait
 xcrun stapler staple "$hear_dmg"
 xcrun stapler validate "$hear_dmg"
 spctl -a -vv -t open --context context:primary-signature "$hear_dmg"

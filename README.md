@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-0.1 macOS 客户端正在开发验收。签名版已跑通几分钟真实声音的录制、粗转、事件、精转、人物、纠错、笔记、导出和清理预览；覆盖升级与原有数据读取已有初验。多小时稳定性、资源测量、Apple 公证及 Gatekeeper 安装仍未通过，当前构建不能当作正式发行版。
+0.1 macOS 客户端正在开发验收。签名版已跑通几分钟真实声音的录制、粗转、事件、精转、人物、纠错、笔记、导出和清理预览；覆盖升级与原有数据读取已有初验。签名 DMG 已通过 Apple 公证、票据装订和 Gatekeeper 包验证，可用于测试分发。多小时稳定性、资源测量及全新 Mac 安装验收仍待完成，当前构建不能当作正式发行版。
 
 | 文档 | 职责 |
 |---|---|
@@ -27,7 +27,33 @@
 
 ## macOS 发行构建
 
-在有 Developer ID Application 证书的 Mac 上执行 `zsh scripts/build_macos.sh`，然后执行 `APPLE_NOTARY_PROFILE=hear-notary zsh scripts/package_macos.sh`。前者构建并逐层签名 GUI、登录项、worker 与 CLI；后者制作含 `hear.app` 和「Applications」入口的磁盘映像，验证签名与内容，提交 Apple 公证、装订公证票据并检查 Gatekeeper。`APPLE_NOTARY_PROFILE` 是使用 `xcrun notarytool store-credentials` 预先保存在本机钥匙串中的配置名。没有此配置时，脚本仍生成签名 `.dmg`，但以非零状态退出并明确标记公证未完成，不能分发。
+在已安装 Rust、Node.js/npm、Xcode Command Line Tools，并有 Developer ID Application 证书的 Mac 上，从仓库根目录执行：
+
+```sh
+npm ci # 首次构建或依赖更新后执行
+./build_release.sh
+```
+
+根目录脚本依次调用 `scripts/build_macos.sh` 和 `scripts/package_macos.sh`，构建并逐层签名 GUI、登录项、worker 与 CLI，再制作含 `hear.app` 和「Applications」入口的磁盘映像，并验证签名与内容。安装包位于 `target/release/bundle/dmg/hear_<版本>_<架构>.dmg`，App 位于 `target/release/bundle/macos/hear.app`。构建架构与当前终端架构一致，`arm64` 包供 Apple Silicon Mac 使用，`x86_64` 包供 Intel Mac 使用。可通过 `APPLE_SIGNING_IDENTITY` 指定签名证书；未指定时自动选择本机 Developer ID Application 证书。
+
+对外分发前需要完成 Apple 公证。`build_release.sh` 自动读取根目录 `.env` 中的以下配置（已有环境变量优先），不会把 `.env` 或私钥文件放进安装包：
+
+```dotenv
+APPLE_SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)"
+APPLE_API_KEY=YOUR_KEY_ID
+APPLE_API_ISSUER=YOUR_ISSUER_ID
+APPLE_API_KEY_PATH=/absolute/path/to/AuthKey_YOUR_KEY_ID.p8
+```
+
+`APPLE_API_KEY` 是 App Store Connect API Key 的 ID，私钥放在 `APPLE_API_KEY_PATH` 指定的文件中。团队 API Key 需要 Issuer ID，个人 API Key 不应填写 Issuer ID。私钥路径支持绝对路径、相对仓库根目录的路径和 `~/`。配置后直接运行 `./build_release.sh`，即可依次完成构建、DMG 打包、公证、装订票据和 Gatekeeper 验证。
+
+也支持钥匙串凭据：首次在本机终端运行 `xcrun notarytool store-credentials hear-notary`，按提示输入开发者 Apple ID、App 专用密码与 Team ID，然后执行：
+
+```sh
+APPLE_NOTARY_PROFILE=hear-notary ./build_release.sh
+```
+
+`APPLE_NOTARY_PROFILE` 是钥匙串中的配置名，可替换为已有配置名，也可写入 `.env`；设置后优先使用钥匙串认证。缺少公证配置时，脚本仍生成签名 `.dmg`，但以非零状态退出并明确标记公证未完成，不能作为已公证安装包分发。已有最新 App 时，也可单独运行 `APPLE_NOTARY_PROFILE=hear-notary zsh scripts/package_macos.sh`，无需重新编译；直接调用子脚本时需自行传入环境变量。仅需构建 App 时运行 `zsh scripts/build_macos.sh`。
 
 长时资源观测可运行 `zsh scripts/measure_macos.sh 600 /tmp/hear-process-usage.csv /Applications/hear.app new /tmp/hear-resource-report.html`。脚本每分钟记录安装版核心、worker 与界面的实际可执行路径/PID、CPU 累计时间、物理内存足迹、常驻内存、磁盘 IO 和进程能耗计数；允许短暂重叠的 worker，并在重启或进程缺席时留下可追溯样本。报告每 15 次采样自动更新一次，同时生成同名 `.html.json` 摘要；`HEAR_REPORT_EVERY` 可调整频率。意外停止后以 `resume` 代替 `new` 续写同一个 CSV，先校验表头，不覆盖原曲线。也可用 `python3 scripts/report_macos_resources.py <一个或多个 CSV> --output /tmp/hear-resource-report.html --summary /tmp/hear-resource-report.json` 合并重叠采样。报告按 PID 分段显示内存和单核 CPU 曲线、峰值、P95、末值与超过 150 秒的采样空档；空档内的峰值未知。进程能耗计数只能用于同机趋势，不能替代整机电池续航实测。录音覆盖、可回放性与来源缺口仍须以核心状态和媒体清单单独核对。
 
