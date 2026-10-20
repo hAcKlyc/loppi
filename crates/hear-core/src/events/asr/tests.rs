@@ -59,7 +59,7 @@ fn auto(db: &mut Connection, a: i64, b: i64) -> Uuid {
 }
 #[test]
 fn long_silence_and_unknown_or_capture_gaps_split_physical_requests() {
-    for reason in ["confirmed", "unknown", "capture", "cleared"] {
+    for reason in ["unknown", "capture", "cleared"] {
         let mut db = database();
         block(&db, "a", 1000, 6000, true);
         block(&db, "silence", 6000, 26000, false);
@@ -88,21 +88,189 @@ fn long_silence_and_unknown_or_capture_gaps_split_physical_requests() {
 }
 #[test]
 fn short_pauses_preserve_one_linear_clock_and_long_pauses_start_a_new_request() {
-    for gap in [0, 1000, 3000, 3001] {
+    for gap in [0, 1000, 3000, 20_000, 180_000, 180_001] {
         let mut db = database();
         block(&db, "a", 1000, 6000, true);
         block(&db, "b", 6000 + gap, 11000 + gap, true);
+        if gap > 0 {
+            block(&db, "silence", 6000, 6000 + gap, false);
+        }
         event(&mut db, 1000, 11000 + gap);
-        assert_eq!(count(&db), if gap <= 3000 { 1 } else { 2 });
+        assert_eq!(
+            count(&db),
+            if gap <= MAX_CONFIRMED_SILENCE_MS {
+                1
+            } else {
+                2
+            }
+        );
         let t = task(&mut db);
         let i = input(&db, t.id).unwrap().unwrap();
         assert_eq!(runs(&i).len(), 1);
-        if gap <= 3000 {
+        if gap <= MAX_CONFIRMED_SILENCE_MS {
             assert_eq!(i.duration_ms, 10000 + gap);
             let out = map(&i, &[utterance(6000 + gap, 7000 + gap, "后半句")]).unwrap();
             assert_eq!((out[0].start_ms, out[0].end_ms), (7000 + gap, 8000 + gap));
         }
     }
+}
+
+#[test]
+fn silence_requires_complete_matching_source_evidence_and_no_clear_or_capture_gap() {
+    for reason in [
+        "known",
+        "digital",
+        "unknown",
+        "partial",
+        "other_source",
+        "cleared",
+        "capture",
+    ] {
+        let mut db = database();
+        block(&db, "a", 1000, 6000, true);
+        block(&db, "b", 26000, 31000, true);
+        if reason != "unknown" {
+            block(&db, "s", 6000, 26000, false);
+        }
+        match reason {
+            "digital" => {
+                db.execute("UPDATE audio_blocks SET retention_decision='discard_digital_silence_v1',analysis_state='not_needed' WHERE id='s'",[]).unwrap();
+            }
+            "partial" => {
+                db.execute("UPDATE audio_blocks SET ended_ms=25000 WHERE id='s'", [])
+                    .unwrap();
+            }
+            "other_source" => {
+                db.execute("UPDATE audio_blocks SET source='system' WHERE id='s'", [])
+                    .unwrap();
+            }
+            "cleared" => {
+                db.execute("INSERT INTO clear_ranges(from_ms,to_ms,source_mask,mode,committed_ms) VALUES(10000,11000,1,'raw_audio',32000)",[]).unwrap();
+            }
+            "capture" => {
+                db.execute("INSERT INTO media_gaps(id,source,started_ms,ended_ms,reason) VALUES('gap','microphone',10000,11000,'capture_failure')",[]).unwrap();
+            }
+            _ => {}
+        }
+        event(&mut db, 1000, 31000);
+        assert_eq!(
+            count(&db),
+            if matches!(reason, "known" | "digital") {
+                1
+            } else {
+                2
+            },
+            "{reason}"
+        );
+    }
+}
+
+#[test]
+fn three_minute_silence_encodes_full_duration_and_does_not_accept_hallucinated_text() {
+    let mut db = database();
+    let dir = tempfile::tempdir().unwrap();
+    for start in [1000, 186000] {
+        let id = Uuid::new_v4();
+        let mut encoder =
+            crate::media::OpusBlock::create(&dir.path().join("media/microphone"), id).unwrap();
+        encoder
+            .push(
+                &(0..240000)
+                    .map(|i| (i as f32 * 0.02).sin() * 0.1)
+                    .collect::<Vec<_>>(),
+            )
+            .unwrap();
+        encoder.seal().unwrap();
+        block(&db, &id.to_string(), start, start + 5000, true);
+    }
+    block(&db, "silence", 6000, 186000, false);
+    event(&mut db, 1000, 191000);
+    let t = task(&mut db);
+    let frozen = input(&db, t.id).unwrap().unwrap();
+    assert_eq!(count(&db), 1);
+    assert_eq!(frozen.duration_ms, 190000);
+    assert_eq!(frozen.parts[1].offset, 185000);
+    let ogg = assemble(dir.path(), &frozen).unwrap();
+    // Inspect the long upload incrementally; the production block decoder
+    // intentionally accepts only short source blocks, not whole ASR uploads.
+    let mut reader = ogg::PacketReader::new(std::io::Cursor::new(ogg));
+    let head = reader.read_packet().unwrap().unwrap();
+    let skip = u16::from_le_bytes([head.data[10], head.data[11]]) as u64;
+    reader.read_packet().unwrap().unwrap();
+    let mut decoder = opus2::Decoder::new(48000, opus2::Channels::Mono).unwrap();
+    let mut frame = [0.0f32; 5760];
+    let mut samples = 0;
+    let mut granule = 0;
+    while let Some(packet) = reader.read_packet().unwrap() {
+        let len = decoder
+            .decode_float(&packet.data, &mut frame, false)
+            .unwrap();
+        if samples > skip + 10 * 48000 && samples + (len as u64) < skip + 180 * 48000 {
+            // Opus may add very low-level comfort noise to digital silence.
+            let rms = (frame[..len].iter().map(|v| v * v).sum::<f32>() / len as f32).sqrt();
+            assert!(rms < 0.001, "silence RMS {rms}");
+        }
+        samples += len as u64;
+        granule = packet.absgp_page();
+    }
+    assert_eq!(granule - skip, 190000 * 48);
+    assert_eq!(
+        publish_asr(&mut db, &t, &[utterance(60000, 61000, "凭空出现")], 5000001).unwrap_err(),
+        "provider_unmapped_timing_audio_coverage"
+    );
+    publish_asr(&mut db, &t, &[utterance(185000, 186000, "后段")], 5000002).unwrap();
+    assert_eq!(
+        db.query_row::<i64, _, _>("SELECT started_ms FROM precise_segments", [], |r| r.get(0))
+            .unwrap(),
+        186000
+    );
+}
+
+#[test]
+fn silence_policy_does_not_rewrite_existing_physical_requests() {
+    let mut db = database();
+    block(&db, "a", 1000, 6000, true);
+    block(&db, "b", 26000, 31000, true);
+    let id = event(&mut db, 1000, 31000);
+    db.execute(
+        "UPDATE cloud_tasks SET processor_version='volc-event-contiguous-v2'",
+        [],
+    )
+    .unwrap();
+    let snapshot = || {
+        db.prepare("SELECT task_id,specification FROM asr_inputs ORDER BY task_id")
+            .unwrap()
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+    };
+    let before = snapshot();
+    block(&db, "s", 6000, 26000, false);
+    let tx = db.transaction().unwrap();
+    schedule(
+        &tx,
+        "event",
+        &id.to_string(),
+        &asr_version(1, 1000, 31000),
+        1000,
+        31000,
+        1,
+        true,
+        32000,
+        VERSION,
+    )
+    .unwrap();
+    tx.commit().unwrap();
+    let after = db
+        .prepare("SELECT task_id,specification FROM asr_inputs ORDER BY task_id")
+        .unwrap()
+        .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(before, after);
+    assert_eq!(count(&db), 2);
 }
 
 #[test]

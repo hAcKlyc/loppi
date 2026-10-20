@@ -2,8 +2,9 @@
 use super::*;
 use serde::{Deserialize, Serialize};
 
-pub const VERSION: &str = "volc-event-contiguous-v2";
+pub const VERSION: &str = "volc-event-silence-v3";
 pub const WINDOW_MS: i64 = 20 * 60 * 1000;
+const MAX_CONFIRMED_SILENCE_MS: i64 = 3 * 60 * 1000;
 const SETTLE_MS: i64 = 15 * 60 * 1000;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -272,12 +273,11 @@ fn plan(
             }
             for (from, to) in spans.into_iter().filter(|(a, b)| b > a) {
                 let gap = parts.last().map(|p| from - p.end).unwrap_or(0).max(0);
-                let capture_gap:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM media_gaps WHERE source=?1 AND started_ms<?3 AND coalesce(ended_ms,?3)>?2)",params![source,from-gap,from],|r|r.get(0)).map_err(|e|e.to_string())?;
                 // A synthetic separator does not make provider word timing
                 // invertible: a single word can span multiple source runs.
-                // Keep one linear clock per request and reuse existing task
-                // splitting for long silence, unknown holes and capture gaps.
-                let can_join = !capture_gap && gap <= MAX_ASR_INTERIOR_SILENCE_MS;
+                // Preserve the entire real pause. Only positively established
+                // no-speech coverage may bridge a missing-media interval.
+                let can_join = gap == 0 || confirmed_silence(tx, source, from - gap, from)?;
                 let encoded_gap = gap;
                 if !parts.is_empty()
                     && (!can_join || duration + encoded_gap + to - from > WINDOW_MS)
@@ -312,6 +312,56 @@ fn plan(
         }
     }
     Ok(count)
+}
+
+fn confirmed_silence(db: &Connection, source: &str, start: i64, end: i64) -> Result<bool, String> {
+    if end - start > MAX_CONFIRMED_SILENCE_MS {
+        return Ok(false);
+    }
+    let forbidden: bool = db
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM media_gaps WHERE source=?1
+           AND started_ms<?3 AND coalesce(ended_ms,?3)>?2)
+         OR EXISTS(SELECT 1 FROM clear_ranges WHERE from_ms<?3 AND to_ms>?2
+           AND mode IN ('all_data','raw_audio')
+           AND source_mask & ?4 != 0)",
+            params![source, start, end, source_bit(source)],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if forbidden {
+        return Ok(false);
+    }
+    // Preserve the existing sub-frame clock tolerance, not unknown pauses.
+    if end - start <= 10 {
+        return Ok(true);
+    }
+    let mut stmt = db
+        .prepare(
+            "SELECT started_ms,ended_ms FROM audio_blocks WHERE source=?1
+           AND started_ms<?3 AND ended_ms>?2
+           AND media_path IS NULL
+           AND retention_decision IN ('discard_no_speech_v2','discard_digital_silence_v1')
+           ORDER BY started_ms,ended_ms",
+        )
+        .map_err(|e| e.to_string())?;
+    let spans = stmt
+        .query_map(params![source, start, end], |r| {
+            Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?))
+        })
+        .map_err(|e| e.to_string())?;
+    let mut covered = start;
+    for span in spans {
+        let (a, b) = span.map_err(|e| e.to_string())?;
+        if a > covered {
+            return Ok(false);
+        }
+        covered = covered.max(b);
+        if covered >= end {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 fn save(

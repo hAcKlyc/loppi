@@ -35,6 +35,302 @@ fn publish_one(db: &mut Connection, task: &CloudTask, merge: Option<&str>, now: 
     .unwrap()
 }
 
+fn local_job(db: &Connection, id: &str, start: i64, end: i64, state: &str) {
+    db.execute("INSERT INTO coarse_jobs(id,block_id,session_id,source,start_sample,end_sample,started_ms,ended_ms,state)
+        VALUES(?1,'block',?1,'microphone',0,16000,?2,?3,?4)",
+        params![id,start,end,state]).unwrap();
+}
+
+#[test]
+fn automatic_fit_coalesces_local_progress_and_failed_text_does_not_block() {
+    let mut db = db();
+    speech(&db, 0, 1000, "microphone", "开会");
+    speech(&db, 5 * MINUTE, 5 * MINUTE + 1000, "microphone", "结束");
+    local_job(&db, "late-a", 1000, 2000, "pending");
+    local_job(&db, "late-b", 2000, 3000, "processing");
+    assert_eq!(refresh_candidates(&mut db, HOUR, false).unwrap(), 0);
+    assert_eq!(
+        db.query_row::<i64, _, _>(
+            "SELECT count(*) FROM candidate_windows WHERE state='pending'",
+            [],
+            |r| r.get(0)
+        )
+        .unwrap(),
+        1
+    );
+    assert!(
+        take_task(&mut db, CloudProvider::Llm, HOUR)
+            .unwrap()
+            .is_none()
+    );
+    speech(&db, 1000, 2000, "microphone", "补齐第一段");
+    db.execute(
+        "UPDATE coarse_jobs SET state='complete' WHERE id='late-a'",
+        [],
+    )
+    .unwrap();
+    assert_eq!(
+        refresh_candidates(&mut db, HOUR + 15_000, false).unwrap(),
+        0
+    );
+    db.execute(
+        "UPDATE coarse_jobs SET state='failed' WHERE id='late-b'",
+        [],
+    )
+    .unwrap();
+    assert_eq!(
+        refresh_candidates(&mut db, HOUR + 30_000, false).unwrap(),
+        1
+    );
+    let task = take_task(&mut db, CloudProvider::Llm, HOUR + 30_000)
+        .unwrap()
+        .unwrap();
+    assert!(llm_input(&db, &task).unwrap().contains("补齐第一段"));
+    publish_one(&mut db, &task, None, HOUR + 30_001);
+    assert_eq!(
+        refresh_candidates(&mut db, HOUR + 45_000, false).unwrap(),
+        0
+    );
+    assert_eq!(
+        db.query_row::<i64, _, _>(
+            "SELECT count(*) FROM cloud_tasks WHERE provider='llm'",
+            [],
+            |r| r.get(0)
+        )
+        .unwrap(),
+        1
+    );
+}
+
+#[test]
+fn aged_deferred_fit_remains_discoverable_after_local_work_or_explicit_force() {
+    for outcome in ["failed", "complete", "force"] {
+        let mut db = db();
+        speech(&db, 0, 1000, "microphone", "讨论");
+        local_job(&db, "late", 0, 1000, "pending");
+        assert_eq!(refresh_candidates(&mut db, HOUR, false).unwrap(), 0);
+        let id: String = db
+            .query_row("SELECT id FROM candidate_windows", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(refresh_candidates(&mut db, 4 * HOUR, false).unwrap(), 0);
+        if outcome != "force" {
+            // Neither terminal failure nor an empty result adds new evidence.
+            db.execute("UPDATE coarse_jobs SET state=?1", [outcome])
+                .unwrap();
+        }
+        let now = 4 * HOUR + 15_000;
+        assert_eq!(
+            refresh_candidates(&mut db, now, outcome == "force").unwrap(),
+            1,
+            "{outcome}"
+        );
+        let task = take_task(&mut db, CloudProvider::Llm, now)
+            .unwrap()
+            .unwrap();
+        assert_eq!(task.target_id, id);
+        publish_one(&mut db, &task, None, now + 1);
+        assert_eq!(refresh_candidates(&mut db, now + 15_000, false).unwrap(), 0);
+        assert_eq!(
+            db.query_row::<i64, _, _>("SELECT count(*) FROM cloud_tasks", [], |r| r.get(0))
+                .unwrap(),
+            1
+        );
+    }
+}
+
+#[test]
+fn newly_pending_local_work_holds_queued_fit_but_explicit_force_can_run() {
+    let mut db = db();
+    speech(&db, 0, 1000, "microphone", "讨论");
+    assert_eq!(refresh_candidates(&mut db, HOUR, false).unwrap(), 1);
+    local_job(&db, "late", 0, 1000, "pending");
+    assert!(
+        take_task(&mut db, CloudProvider::Llm, HOUR)
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(refresh_candidates(&mut db, HOUR, true).unwrap(), 0);
+    assert!(
+        take_task(&mut db, CloudProvider::Llm, HOUR)
+            .unwrap()
+            .is_some()
+    );
+}
+
+#[test]
+fn unanalysed_tail_without_any_text_delays_fit_but_terminal_failure_does_not() {
+    let mut db = db();
+    speech(&db, 0, 1000, "microphone", "已识别的开头");
+    db.execute("INSERT INTO audio_blocks(id,session_id,source,started_ms,ended_ms,sample_start,frames,bytes,media_path,retention_decision,analysis_state)
+        VALUES('tail','session','microphone',600000,605000,0,240000,100,'media/microphone/tail.opus','pending_vad_v2','pending')",[]).unwrap();
+    // No speech_active flag yet: this block is absent from LLM observations.
+    assert_eq!(evidence(&db, 0, HOUR).unwrap().len(), 1);
+    assert_eq!(refresh_candidates(&mut db, HOUR, false).unwrap(), 0);
+    assert!(
+        take_task(&mut db, CloudProvider::Llm, HOUR)
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(refresh_candidates(&mut db, 4 * HOUR, false).unwrap(), 0);
+    db.execute(
+        "UPDATE audio_blocks SET analysis_state='failed' WHERE id='tail'",
+        [],
+    )
+    .unwrap();
+    assert_eq!(
+        refresh_candidates(&mut db, 4 * HOUR + 15000, false).unwrap(),
+        1
+    );
+    assert!(
+        take_task(&mut db, CloudProvider::Llm, 4 * HOUR + 15000)
+            .unwrap()
+            .is_some()
+    );
+}
+
+#[test]
+fn local_waiting_predecessor_blocks_adjacent_fit_without_blocking_distant_work() {
+    let mut db = db();
+    speech(&db, 0, 1000, "microphone", "第一项");
+    speech(&db, 20 * MINUTE, 20 * MINUTE + 1000, "microphone", "第二项");
+    speech(
+        &db,
+        2 * HOUR,
+        2 * HOUR + 1000,
+        "microphone",
+        "很晚的独立活动",
+    );
+    local_job(&db, "late", 0, 1000, "pending");
+    assert_eq!(refresh_candidates(&mut db, 4 * HOUR, false).unwrap(), 2);
+    let task = take_task(&mut db, CloudProvider::Llm, 4 * HOUR)
+        .unwrap()
+        .unwrap();
+    assert_eq!(task.start, 2 * HOUR);
+}
+
+#[test]
+fn parallel_activities_keep_both_ids_across_hours_and_respect_locked_predecessor() {
+    for lock in [false, true] {
+        let mut db = db();
+        synthetic_activity(&db, "independent_parallel_two_hours");
+        assert_eq!(refresh_candidates(&mut db, 4 * HOUR, true).unwrap(), 2);
+        let first = take_task(&mut db, CloudProvider::Llm, 4 * HOUR)
+            .unwrap()
+            .unwrap();
+        let response = |task: &CloudTask, mic: Option<&str>, sys: Option<&str>| {
+            json!({"events":[
+                {"start_ms":task.start,"end_ms":task.end,"title":"家庭聊天","summary":"聊家务。","sources":"microphone","merge_with_event_id":mic},
+                {"start_ms":task.start,"end_ms":task.end,"title":"天文课程","summary":"介绍恒星。","sources":"system","merge_with_event_id":sys}
+            ]})
+        };
+        let input = llm_input(&db, &first).unwrap();
+        publish_fit_with_input(
+            &mut db,
+            &first,
+            &input,
+            response(&first, None, None),
+            4 * HOUR,
+        )
+        .unwrap();
+        let id_for = |mask| {
+            db.query_row::<String, _, _>(
+                "SELECT id FROM named_events WHERE source_mask=?1",
+                [mask],
+                |r| r.get(0),
+            )
+            .unwrap()
+        };
+        let mic = id_for(1);
+        let sys = id_for(2);
+        if lock {
+            db.execute(
+                "UPDATE named_events SET boundary_locked=1,revision=revision+1 WHERE id=?1",
+                [&mic],
+            )
+            .unwrap();
+        }
+        let next = take_task(&mut db, CloudProvider::Llm, 4 * HOUR)
+            .unwrap()
+            .unwrap();
+        let input = llm_input(&db, &next).unwrap();
+        let context: Value = serde_json::from_str(&input).unwrap();
+        assert_eq!(
+            context["context"]["previous_events"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+        let duplicate = response(&next, Some(&sys), Some(&sys));
+        assert_eq!(
+            publish_fit_with_input(&mut db, &next, &input, duplicate, 4 * HOUR).unwrap_err(),
+            "invalid_fit_boundary_duplicate_continuation"
+        );
+        // The publisher also refuses a locked target even if a model ignores the prompt.
+        publish_fit_with_input(
+            &mut db,
+            &next,
+            &input,
+            response(&next, Some(&mic), Some(&sys)),
+            4 * HOUR,
+        )
+        .unwrap();
+        let end_for = |id: &str| {
+            db.query_row::<i64, _, _>("SELECT ended_ms FROM named_events WHERE id=?1", [id], |r| {
+                r.get(0)
+            })
+            .unwrap()
+        };
+        assert_eq!(end_for(&sys), next.end);
+        assert_eq!(end_for(&mic), if lock { first.end } else { next.end });
+        assert_eq!(
+            db.query_row::<i64, _, _>("SELECT count(*) FROM named_events", [], |r| r.get(0))
+                .unwrap(),
+            if lock { 3 } else { 2 }
+        );
+        if !lock {
+            // The microphone activity stops; the computer course continues
+            // through a third window without absorbing or extending it.
+            for minute in (120..180).step_by(2) {
+                speech(
+                    &db,
+                    minute * MINUTE,
+                    minute * MINUTE + 25_000,
+                    "system",
+                    "天文课程继续介绍恒星演化",
+                );
+            }
+            assert_eq!(refresh_candidates(&mut db, 6 * HOUR, true).unwrap(), 1);
+            let third = take_task(&mut db, CloudProvider::Llm, 6 * HOUR)
+                .unwrap()
+                .unwrap();
+            let input = llm_input(&db, &third).unwrap();
+            publish_fit_with_input(&mut db,&third,&input,json!({"events":[{
+                "start_ms":third.start,"end_ms":third.end,"title":"天文课程","summary":"继续介绍恒星演化。",
+                "sources":"system","merge_with_event_id":sys
+            }]}),6*HOUR).unwrap();
+            assert_eq!(
+                db.query_row::<i64, _, _>(
+                    "SELECT ended_ms FROM named_events WHERE id=?1",
+                    [&mic],
+                    |r| r.get(0)
+                )
+                .unwrap(),
+                next.end
+            );
+            assert_eq!(
+                db.query_row::<i64, _, _>(
+                    "SELECT ended_ms FROM named_events WHERE id=?1",
+                    [&sys],
+                    |r| r.get(0)
+                )
+                .unwrap(),
+                third.end
+            );
+        }
+    }
+}
+
 #[test]
 fn hour_window_does_not_close_at_thirty_minutes() {
     let mut db = db();
@@ -237,7 +533,7 @@ fn fitting_keeps_predecessors_first_including_backoff_but_allows_distant_work() 
         .unwrap();
     assert_eq!(second.start, HOUR);
     let input: Value = serde_json::from_str(&llm_input(&db, &second).unwrap()).unwrap();
-    assert_eq!(input["context"]["previous_event"]["id"], id);
+    assert_eq!(input["context"]["previous_events"][0]["id"], id);
 }
 
 #[test]
@@ -270,9 +566,11 @@ fn boundary_excerpt_is_bounded_source_scoped_and_not_published_outside_candidate
         .unwrap()
         .unwrap();
     let input: Value = serde_json::from_str(&llm_input(&db, &second).unwrap()).unwrap();
-    let tail = input["context"]["previous_event_tail"].as_array().unwrap();
+    let tail = input["context"]["previous_events"][0]["tail"]
+        .as_array()
+        .unwrap();
     assert_eq!(tail.len(), FIT_CONTEXT_MAX_LINES);
-    assert_eq!(input["context"]["previous_event"]["id"], id);
+    assert_eq!(input["context"]["previous_events"][0]["id"], id);
     for line in tail {
         assert_eq!(line["source"], "microphone");
         assert_eq!(
@@ -300,7 +598,10 @@ fn boundary_excerpt_is_bounded_source_scoped_and_not_published_outside_candidate
     )
     .unwrap();
     let input: Value = serde_json::from_str(&llm_input(&db, &second).unwrap()).unwrap();
-    assert_eq!(input["context"]["previous_event"]["boundary_locked"], true);
+    assert_eq!(
+        input["context"]["previous_events"][0]["boundary_locked"],
+        true
+    );
     let other = publish_one(&mut db, &second, Some(&id), HOUR);
     assert_ne!(id, other);
 }
@@ -472,7 +773,7 @@ fn synthetic_activity(db: &Connection, case: &str) -> usize {
             }
             2
         }
-        "independent_parallel_sources" => {
+        "independent_parallel_sources" | "independent_parallel_two_hours" => {
             let astronomy = [
                 "欢迎收听天文科普节目，今天介绍恒星的形成，首先从星际气体云讲起。",
                 "星云中的气体在引力作用下聚集，密度逐渐增加，形成更致密的区域。",
@@ -487,20 +788,29 @@ fn synthetic_activity(db: &Connection, case: &str) -> usize {
                 "大质量恒星在生命末期可能发生超新星爆发，将元素抛向星际空间。",
                 "这期节目介绍了恒星从形成到演化的主要过程，下期继续讲星系。",
             ];
-            for i in 0..12 {
+            let length = if case == "independent_parallel_two_hours" {
+                60
+            } else {
+                12
+            };
+            for i in 0..length {
                 speech(
                     db,
                     i as i64 * 2 * MINUTE,
                     i as i64 * 2 * MINUTE + 25_000,
                     "microphone",
-                    family[i],
+                    family[i % family.len()],
                 );
                 speech(
                     db,
                     i as i64 * 2 * MINUTE,
                     i as i64 * 2 * MINUTE + 25_000,
                     "system",
-                    astronomy[i],
+                    astronomy[if length > 12 {
+                        i % (astronomy.len() - 1)
+                    } else {
+                        i
+                    }],
                 );
             }
             2
@@ -613,6 +923,7 @@ fn live_activity_granularity() {
             "back_to_back_meetings",
             "different_activity_at_hour_boundary",
             "independent_parallel_sources",
+            "independent_parallel_two_hours",
             "shared_online_meeting",
             "isolated_low_information",
         ] {
@@ -676,7 +987,24 @@ fn live_activity_granularity() {
                 }
             } else if case == "different_activity_at_hour_boundary" && events.len() == 2 {
                 valid &= events[0].2 <= HOUR && events[1].1 >= HOUR && events[1].2 >= 118 * MINUTE;
-            } else if case == "independent_parallel_sources" && events.len() == 2 {
+            } else if matches!(
+                case,
+                "independent_parallel_sources" | "independent_parallel_two_hours"
+            ) && events.len() == 2
+            {
+                if case == "independent_parallel_two_hours" {
+                    valid &= events.iter().all(|e| e.1 <= MINUTE && e.2 >= 118 * MINUTE);
+                    for e in &events {
+                        let links: i64 = db
+                            .query_row(
+                                "SELECT count(*) FROM event_candidate_links WHERE event_id=?1",
+                                [&e.0],
+                                |r| r.get(0),
+                            )
+                            .unwrap();
+                        valid &= links == windows as i64;
+                    }
+                }
                 valid &= events[0].3 & events[1].3 == 0
                     && events[0].1 < events[1].2
                     && events[1].1 < events[0].2;

@@ -31,6 +31,15 @@ const FIT_CONTINUATION_GAP_MS: i64 = 30 * 60 * 1000;
 const FIT_CONTEXT_TAIL_MS: i64 = 3 * 60 * 1000;
 const FIT_CONTEXT_MAX_LINES: usize = 24;
 const FIT_CONTEXT_TEXT_CHARS: usize = 400;
+// Only work that can still produce local evidence delays automatic fitting.
+// Terminal failures remain visible but cannot hold the LLM queue forever.
+const FIT_LOCAL_PENDING_RANGES: &str = "
+    SELECT started_ms,ended_ms FROM coarse_jobs WHERE state IN ('pending','processing')
+    UNION ALL
+    SELECT started_ms,ended_ms FROM audio_blocks
+    WHERE analysis_state IN ('processing','sealing')
+       OR (analysis_state='pending' AND analysis_attempts<3)
+       OR (analysis_state='complete' AND retention_decision='pending_vad_v2')";
 const ASR_ADAPTER_VERSION: &str = asr::VERSION;
 const ASR_WINDOW_MS: i64 = 15 * 60 * 1000;
 pub(crate) const MAX_ASR_INTERIOR_SILENCE_MS: i64 = 3_000;
@@ -548,6 +557,21 @@ pub fn refresh_candidates(db: &mut Connection, now: i64, force: bool) -> Result<
     Ok(queued)
 }
 
+fn fit_local_pending(db: &Connection, start: i64, end: i64, now: i64) -> Result<bool, String> {
+    // Unanalysed blocks may not yet appear in evidence at all. Include the
+    // remainder of this compute window, not only its last recognized word.
+    let end = end.max(now.min(start.saturating_add(CANDIDATE_POLICY.max_window_ms)));
+    db.query_row(
+        &format!(
+            "SELECT EXISTS(SELECT 1 FROM ({FIT_LOCAL_PENDING_RANGES})
+            WHERE started_ms<?2 AND ended_ms>?1)"
+        ),
+        params![start, end],
+        |r| r.get(0),
+    )
+    .map_err(|e| e.to_string())
+}
+
 pub fn refresh_candidates_in(tx: &Transaction<'_>, now: i64, force: bool) -> Result<usize, String> {
     // A persisted cursor covers shutdowns of arbitrary length. The live
     // lookback bounds repeated work; late local analysis moves it backward.
@@ -559,6 +583,21 @@ pub fn refresh_candidates_in(tx: &Transaction<'_>, now: i64, force: bool) -> Res
         )
         .map_err(|e| e.to_string())?;
     let mut from = checkpoint.min((now - 2 * 60 * 60 * 1000).max(0));
+    // Deferred candidates have no cloud task to wake up. Keep them reachable
+    // even when local work finishes without new text or a cursor rewind.
+    let deferred: Option<i64> = tx
+        .query_row(
+            "SELECT min(started_ms) FROM candidate_windows c
+            WHERE c.state='pending' AND NOT EXISTS(
+                SELECT 1 FROM cloud_tasks t WHERE t.target_kind='candidate'
+                AND t.target_id=c.id AND t.target_version=c.input_hash)",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if let Some(start) = deferred {
+        from = from.min(start);
+    }
     let crossing: Option<i64> = tx
         .query_row(
             "SELECT min(started_ms) FROM candidate_windows
@@ -624,16 +663,38 @@ pub fn refresh_candidates_in(tx: &Transaction<'_>, now: i64, force: bool) -> Res
         if let Some(id) = existing_id {
             candidate.id = id;
         }
-        let current: Option<String> = tx
+        let current: Option<(String, String)> = tx
             .query_row(
-                "SELECT input_hash FROM candidate_windows WHERE id = ?1",
+                "SELECT input_hash,state FROM candidate_windows WHERE id = ?1",
                 params![candidate.id],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .optional()
             .map_err(|error| error.to_string())?;
-        if current.as_deref() == Some(&candidate.hash) {
-            continue;
+        let ready = force || !fit_local_pending(tx, candidate.start, candidate.end, now)?;
+        if current
+            .as_ref()
+            .is_some_and(|(hash, _)| hash == &candidate.hash)
+        {
+            let queued: bool = tx
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM cloud_tasks WHERE target_kind='candidate'
+                 AND target_id=?1 AND target_version=?2)",
+                    params![candidate.id, candidate.hash],
+                    |r| r.get(0),
+                )
+                .map_err(|e| e.to_string())?;
+            if force && queued {
+                tx.execute(
+                    "UPDATE cloud_tasks SET manual=1 WHERE target_kind='candidate'
+                    AND target_id=?1 AND target_version=?2 AND state='pending'",
+                    params![candidate.id, candidate.hash],
+                )
+                .map_err(|e| e.to_string())?;
+            }
+            if queued || !ready || current.as_ref().unwrap().1 != "pending" {
+                continue;
+            }
         }
         tx.execute(
             "INSERT INTO candidate_windows(id,started_ms,ended_ms,input_hash,state,error_code)
@@ -650,6 +711,11 @@ pub fn refresh_candidates_in(tx: &Transaction<'_>, now: i64, force: bool) -> Res
             params![candidate.id, now, candidate.hash],
         )
         .map_err(|error| error.to_string())?;
+        // Keep the pending candidate as the chronological predecessor, but
+        // coalesce local progress before creating a paid inference task.
+        if !ready {
+            continue;
+        }
         insert_task(
             tx,
             "llm",
@@ -659,7 +725,7 @@ pub fn refresh_candidates_in(tx: &Transaction<'_>, now: i64, force: bool) -> Res
             candidate.start,
             candidate.end,
             None,
-            false,
+            force,
             now,
             FIT_POLICY_VERSION,
         )?;
@@ -2424,16 +2490,17 @@ pub fn take_task_fair(
         _ => "manual DESC,started_ms,created_ms",
     };
     let row:Option<(String,String,String,String,String,i64,i64,Option<String>,String,i64,i64,i64,Option<String>)>=tx.query_row(
-        &format!("SELECT id,target_kind,target_id,target_version,model_id,started_ms,ended_ms,source,state,attempts,
+        &format!("WITH local_work AS ({FIT_LOCAL_PENDING_RANGES})
+         SELECT id,target_kind,target_id,target_version,model_id,started_ms,ended_ms,source,state,attempts,
             submit_attempts,updated_ms,remote_id
          FROM cloud_tasks AS task WHERE provider=?1 AND state IN ('pending','submitted') AND next_attempt_ms<=?2
-           AND (provider!='llm' OR target_kind!='candidate' OR NOT EXISTS(
-             SELECT 1 FROM cloud_tasks older JOIN candidate_windows c
-               ON c.id=older.target_id AND c.input_hash=older.target_version
-             WHERE older.provider='llm' AND older.target_kind='candidate'
-               AND older.state IN ('pending','processing')
-               AND older.started_ms<task.started_ms AND older.ended_ms>=task.started_ms-?3))
-         ORDER BY {order} LIMIT 1"),params![provider_name(provider),now,FIT_CONTINUATION_GAP_MS],
+           AND (provider!='llm' OR target_kind!='candidate' OR (
+             (manual=1 OR NOT EXISTS(SELECT 1 FROM local_work
+               WHERE started_ms<max(task.ended_ms,min(?2,task.started_ms+?4)) AND ended_ms>task.started_ms))
+             AND NOT EXISTS(SELECT 1 FROM candidate_windows older
+               WHERE older.state IN ('pending','processing')
+                 AND older.started_ms<task.started_ms AND older.ended_ms>=task.started_ms-?3)))
+         ORDER BY {order} LIMIT 1"),params![provider_name(provider),now,FIT_CONTINUATION_GAP_MS,CANDIDATE_POLICY.max_window_ms],
         |row|Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?,row.get(4)?,row.get(5)?,
             row.get(6)?,row.get(7)?,row.get(8)?,row.get(9)?,row.get(10)?,row.get(11)?,row.get(12)?)))
         .optional().map_err(|e|e.to_string())?;
@@ -2820,20 +2887,25 @@ fn fit_context(db: &Connection, task: &CloudTask) -> Result<serde_json::Value, S
             "revision":row.get::<_,i64>(5)?,"source_mask":row.get::<_,i64>(6)?,
             "boundary_locked":row.get::<_,bool>(7)?}))
     };
-    let previous = db
-        .query_row(
-            "SELECT id,started_ms,ended_ms,title,summary,revision,source_mask,boundary_locked FROM named_events
-         WHERE deleted_ms IS NULL AND origin='automatic' AND ended_ms<=?1 AND ended_ms>=?2
-         ORDER BY ended_ms DESC,id LIMIT 1",
+    // At most one latest predecessor per source mask (microphone/system/both).
+    // Parallel activities must each have a legal continuation target.
+    let mut previous_stmt = db.prepare(
+        "SELECT id,started_ms,ended_ms,title,summary,revision,source_mask,boundary_locked
+         FROM (SELECT *,row_number() OVER (PARTITION BY source_mask ORDER BY ended_ms DESC,id) AS position
+           FROM named_events WHERE deleted_ms IS NULL AND origin='automatic'
+             AND ended_ms<=?1 AND ended_ms>=?2)
+         WHERE position=1 ORDER BY ended_ms DESC,id LIMIT 3"
+    ).map_err(|e| e.to_string())?;
+    let mut previous = previous_stmt
+        .query_map(
             params![task.start, task.start - FIT_CONTINUATION_GAP_MS],
             project,
         )
-        .optional()
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
-    // Boundary dialogue complements the lossy whole-event summary. It is
-    // context only, never a second range the model may publish or transcribe.
-    let mut previous_tail = Vec::new();
-    if let Some(prior) = &previous {
+    // These bounded excerpts are context, never candidate-external output.
+    for prior in &mut previous {
         let end = prior["end_ms"].as_i64().unwrap();
         let start = prior["start_ms"]
             .as_i64()
@@ -2841,6 +2913,7 @@ fn fit_context(db: &Connection, task: &CloudTask) -> Result<serde_json::Value, S
             .max(end - FIT_CONTEXT_TAIL_MS);
         let mask = prior["source_mask"].as_i64().unwrap();
         let items = evidence(db, start, end)?;
+        let mut tail = Vec::new();
         for item in items
             .iter()
             .rev()
@@ -2851,13 +2924,14 @@ fn fit_context(db: &Connection, task: &CloudTask) -> Result<serde_json::Value, S
             .take(FIT_CONTEXT_MAX_LINES)
         {
             let text = item.text.as_ref().unwrap();
-            previous_tail.push(serde_json::json!({
+            tail.push(serde_json::json!({
                 "start_ms": item.start.max(start), "end_ms": item.end.min(end),
                 "source": item.source, "text": text.chars().take(FIT_CONTEXT_TEXT_CHARS).collect::<String>(),
-                "text_truncated": text.chars().count() > FIT_CONTEXT_TEXT_CHARS
+                "text_truncated": text.chars().count()>FIT_CONTEXT_TEXT_CHARS
             }));
         }
-        previous_tail.reverse();
+        tail.reverse();
+        prior["tail"] = serde_json::json!(tail);
     }
     let mut stmt = db
         .prepare(
@@ -2875,9 +2949,7 @@ fn fit_context(db: &Connection, task: &CloudTask) -> Result<serde_json::Value, S
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
-    Ok(
-        serde_json::json!({"previous_event":previous,"previous_event_tail":previous_tail,"linked_events":linked}),
-    )
+    Ok(serde_json::json!({"previous_events":previous,"linked_events":linked}))
 }
 
 fn fit_summary(value: Option<&str>) -> Result<Option<String>, String> {
@@ -2940,8 +3012,8 @@ pub const FIT_SYSTEM: &str = r#"你负责把个人连续录音整理为「真实
 
 3. 计算窗口不是活动边界；检查跨窗口续接。
 - candidate 只是本次可写入的计算范围，大约一小时，不是事件总时长上限。
-- context.previous_event 是前一个已有自动事件；context.previous_event_tail 是其末尾的有限对话摘录（可能截断），用来判断是延续还是已经结束。摘录不代表完整前文，不可据此输出 candidate 之外的新范围。
-- 若当前开头延续 previous_event，且其 boundary_locked=false，填写它的准确 id 到 merge_with_event_id，保留整场活动层级的标题。应用会保留原起点并延长同一事件。不要因为新议题或满一小时而新建事件。
+- context.previous_events 是少量相关前序自动事件；每项的 tail 是其末尾的有限对话摘录（可能截断），用来判断是延续还是已经结束。摘录不代表完整前文，不可据此输出 candidate 之外的新范围。
+- 分别检查每路活动是否延续 previous_events 中的对应事件。若延续且该项 boundary_locked=false，填写它的准确 id 到 merge_with_event_id，保留整场活动层级的标题。并行独立活动分别续接各自的 id，不要合成 both；一个旧 id 在本次输出中最多使用一次。应用会保留原起点并延长同一事件。不要因为新议题或满一小时而新建事件。
 - 若前一活动已经结束、现在是独立活动，merge_with_event_id=null。若当前窗口先延续旧活动、随后开始新活动，分别输出，只有前面的延续部分使用旧 id。
 - context.linked_events 是本候选以前整理出的事件。修订时与相同输出 slot 的 linked entry 对应；若该事件跨出 candidate，只替换本窗口信息，保留窗口外有依据的上下文。
 
@@ -2963,7 +3035,7 @@ pub const FIT_SYSTEM: &str = r#"你负责把个人连续录音整理为「真实
 - title：非空简洁字符串。
 - summary：最多 240 字符的中文字符串，或 null。
 - sources：严格为 "microphone"、"system"、"both" 之一，遵守同场活动和真实来源证据规则。
-- merge_with_event_id：延续时为 context.previous_event.id 原字符串，否则 null。
+- merge_with_event_id：延续时为 context.previous_events 中对应项的 id 原字符串，否则 null。
 不要输出 Markdown 代码围栏、注释、类型占位符或说明文字。
 
 下列 JSON 仅演示结构，标题、摘要、时间和 ID 都是假设值，实际输出只能取自当前输入。
@@ -3041,6 +3113,14 @@ pub fn publish_fit_with_input(
     // Array order is not time order. Validate same-source overlap without
     // reordering persisted candidate slots (which identify prior fit results).
     let mut intervals: Vec<(i64, i64, i64)> = Vec::new();
+    let mut continuation_ids = std::collections::HashSet::new();
+    for event in &fit.events {
+        if let Some(id) = &event.merge_with_event_id {
+            if !continuation_ids.insert(id) {
+                return Err("invalid_fit_boundary_duplicate_continuation".into());
+            }
+        }
+    }
     let output_count = fit.events.len() as i64;
     for (slot, event) in fit.events.into_iter().enumerate() {
         validate_title(&event.title)?;
@@ -3187,7 +3267,15 @@ pub fn publish_fit_with_input(
                 prior_summary,
             )) = prior
             {
-                if sent["context"]["previous_event"]["id"].as_str() == Some(prior_id.as_str())
+                let prior_context =
+                    sent["context"]["previous_events"]
+                        .as_array()
+                        .and_then(|items| {
+                            items
+                                .iter()
+                                .find(|entry| entry["id"].as_str() == Some(prior_id.as_str()))
+                        });
+                if prior_context.is_some()
                     && prior_end <= event.start_ms
                     && event.start_ms - prior_end <= FIT_CONTINUATION_GAP_MS
                 {
@@ -3204,7 +3292,7 @@ pub fn publish_fit_with_input(
                         continue;
                     }
                     let summary = if prior_summary.is_some()
-                        && sent["context"]["previous_event"]["revision"].as_i64()
+                        && prior_context.and_then(|entry| entry["revision"].as_i64())
                             == Some(prior_revision)
                     {
                         summary.clone()
@@ -4363,6 +4451,10 @@ mod tests {
         assert!(unrelated.exists());
     }
 
+    fn confirmed_silence_block(db: &Connection, start: i64, end: i64) {
+        db.execute("INSERT INTO audio_blocks(id,session_id,source,started_ms,ended_ms,sample_start,frames,bytes,retention_decision,analysis_state,speech_active) VALUES(?1,'session','microphone',?2,?3,0,?4,0,'discard_no_speech_v2','complete',0)",params![Uuid::new_v4().to_string(),start,end,(end-start)*48]).unwrap();
+    }
+
     #[test]
     fn short_cloud_speaker_split_is_unknown_until_confirmed() {
         let mut db = db();
@@ -4376,6 +4468,9 @@ mod tests {
             media(&db, id, start, end);
         }
         set_configured(&db, CloudProvider::Asr, "bigmodel").unwrap();
+        for start in [11_000, 22_000, 33_000, 44_000] {
+            confirmed_silence_block(&db, start, start + 1000);
+        }
         let event = create_event(
             &mut db,
             1_000,
@@ -4540,6 +4635,7 @@ mod tests {
         let mut db = db();
         media(&db, "first", 1_000, 6_000);
         media(&db, "short", 9_000, 14_000);
+        confirmed_silence_block(&db, 6_000, 9_000);
         media(&db, "long", 17_001, 22_001);
         set_configured(&db, CloudProvider::Asr, "bigmodel").unwrap();
         let event = create_event(
@@ -4611,6 +4707,7 @@ mod tests {
         let mut db = db();
         media(&db, "first", 1_000, 6_000);
         media(&db, "second", 7_000, 11_000);
+        confirmed_silence_block(&db, 6_000, 7_000);
         set_configured(&db, CloudProvider::Asr, "bigmodel").unwrap();
         let event = create_event(
             &mut db,
@@ -6154,7 +6251,7 @@ mod tests {
                 6_002
             )
             .unwrap_err(),
-            "provider_unmapped_timing_audio_coverage"
+            "provider_invalid_timing"
         );
         assert_eq!(
             db.query_row::<i64, _, _>("SELECT count(*) FROM precise_segments", [], |row| row

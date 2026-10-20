@@ -680,7 +680,24 @@ fn coarse_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
         } else {
             "microphone"
         };
-        let newest = turn % 8 < 6;
+        // Keep live feedback, but spend most turns closing the oldest local
+        // holes when a mature fitting window is waiting for rough text.
+        let closing_window = shared
+            .store
+            .lock()
+            .ok()
+            .and_then(|s| {
+                s.db.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM candidate_windows c WHERE c.state='pending'
+               AND EXISTS(SELECT 1 FROM coarse_jobs j WHERE j.state='pending'
+                 AND j.started_ms<c.ended_ms AND j.ended_ms>c.started_ms))",
+                    [],
+                    |r| r.get::<_, bool>(0),
+                )
+                .ok()
+            })
+            .unwrap_or(false);
+        let newest = turn % 8 < if closing_window { 2 } else { 6 };
         turn = turn.wrapping_add(1);
         let task = shared
             .store
