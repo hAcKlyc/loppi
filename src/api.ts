@@ -5,6 +5,8 @@ export type Sources = Source | "both";
 export type CloudProvider = "llm" | "asr";
 
 const errorLabels: Record<string, string> = {
+	audio_unavailable: "没有可重新识别的保留原声",
+	task_not_retryable: "任务已变化，请刷新处理队列后重试",
 	invalid_schedule: "请选择不同的开始和停止时间",
 	range_no_audio: "所选时间没有可精转的原声",
 	range_invalid: "请选择有效的精转时间和声音来源",

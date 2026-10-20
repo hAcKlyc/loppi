@@ -36,3 +36,35 @@ test('queued retries expose credential and transport failures instead of looking
  assert.equal(taskStatus({state:'pending',error_code:null}),'等待处理');
  assert.equal(taskStatus({state:'submitted',error_code:null}),'等待识别结果');
 });
+
+test('only rejected ASR results offer an explicit paid recognition', async () => {
+ const { taskNeedsRecognition } = await import('../src/cloud-task-status.ts');
+ const invalid=['provider_unmapped_timing','provider_unmapped_timing_word_in_separator','provider_invalid_timing','provider_invalid_utterance','provider_missing_utterances'];
+ for(const error_code of invalid) {
+  assert.equal(taskNeedsRecognition({provider:'asr',state:'failed',error_code}),true);
+  assert.equal(taskNeedsRecognition({provider:'llm',state:'failed',error_code}),false);
+  assert.equal(taskNeedsRecognition({provider:'asr',state:'submitted',error_code}),false);
+ }
+ for(const error_code of ['provider_transport','provider_deadline','provider_read_failed','keychain_read_-25308',null]) {
+  assert.equal(taskNeedsRecognition({provider:'asr',state:'failed',error_code}),false);
+ }
+});
+
+test('queue renders paid reruns separately from request retries and disables busy actions', async () => {
+ const { createServer } = await import('vite');
+ const { createElement } = await import('react');
+ const { renderToStaticMarkup } = await import('react-dom/server');
+ const server=await createServer({server:{middlewareMode:true},appType:'custom'});
+ try {
+  const { QueueView }=await server.ssrLoadModule('/src/WorkspaceViews.tsx');
+  const task={id:'failed',provider:'asr',target_kind:'event',target_id:'event',source:'microphone',started_ms:1000,ended_ms:6000,state:'failed',manual:false};
+  const render=(error_code,busy=false)=>renderToStaticMarkup(createElement(QueueView,{queues:[],tasks:[{...task,error_code}],reviews:[],busy,onRefresh:async()=>{},onMutate:async()=>true}));
+  const rejected=render('provider_invalid_utterance');
+  assert.match(rejected,/>重新识别<\/button>/);
+  assert.match(rejected,/产生新的识别用量/);
+  const uncertain=render('provider_transport');
+  assert.match(uncertain,/>重试<\/button>/);
+  assert.doesNotMatch(uncertain,/产生新的识别用量/);
+  assert.match(render('provider_unmapped_timing_word_in_separator',true),/disabled=""[^>]*>重新识别<\/button>/);
+ } finally { await server.close(); }
+});

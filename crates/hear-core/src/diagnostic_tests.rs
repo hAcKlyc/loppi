@@ -49,7 +49,7 @@ fn query_original_failed_asr_without_resubmission() {
     let key = cloud::credential(hear_protocol::CloudProvider::Asr, &reference)
         .unwrap()
         .unwrap();
-    let mut statement = db.prepare("SELECT id,remote_id FROM cloud_tasks WHERE provider='asr' AND state='failed' AND error_code='provider_unmapped_timing' ORDER BY created_ms").unwrap();
+    let mut statement = db.prepare("SELECT id,remote_id FROM cloud_tasks WHERE provider='asr' AND state='failed' AND (error_code LIKE 'provider_unmapped_timing%' OR error_code IN ('provider_invalid_utterance','provider_invalid_timing','provider_missing_utterances')) ORDER BY created_ms").unwrap();
     let tasks = statement
         .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
         .unwrap()
@@ -280,4 +280,70 @@ fn replay_saved_vad_through_production_decoder_and_publication() {
             jobs_after - jobs_before
         );
     }
+}
+
+#[test]
+#[ignore = "requires HEAR_TEST_DB; replans rejected ASR on a temporary copy without submitting audio"]
+fn snapshot_rejected_asr_recovery_preserves_history() {
+    let (_directory, store) = fixture();
+    let db = &store.db;
+    let mut stmt = db.prepare("SELECT id,remote_id,specification,error_code FROM cloud_tasks t JOIN asr_inputs i ON i.task_id=t.id WHERE t.provider='asr' AND t.state='failed'").unwrap();
+    let tasks = stmt
+        .query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, String>(3)?,
+            ))
+        })
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    let count = |sql| db.query_row(sql, [], |r| r.get::<_, i64>(0)).unwrap();
+    let segments = count("SELECT count(*) FROM precise_segments");
+    let usage = count("SELECT count(*) FROM usage_requests");
+    let mut now = count("SELECT max(updated_ms)+1 FROM cloud_tasks");
+    let mut recovered = 0;
+    let mut replacements = 0;
+    for (id, remote, specification, error) in tasks {
+        if !events::asr::rejected_result(&error) {
+            continue;
+        }
+        let uuid = uuid::Uuid::parse_str(&id).unwrap();
+        events::retry_task(db, uuid, now).unwrap();
+        let history: (String,String,String,String) = db.query_row("SELECT t.state,t.remote_id,i.specification,t.error_code FROM cloud_tasks t JOIN asr_inputs i ON i.task_id=t.id WHERE t.id=?1",[&id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).unwrap();
+        assert_eq!(history, ("superseded".into(), remote, specification, error));
+        let new: Vec<String> = db
+            .prepare("SELECT id FROM cloud_tasks WHERE created_ms=?1 AND provider='asr'")
+            .unwrap()
+            .query_map([now], |r| r.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert!(!new.is_empty());
+        for id in &new {
+            let input = events::asr::input(db, uuid::Uuid::parse_str(id).unwrap())
+                .unwrap()
+                .unwrap();
+            let start = input.parts[0].start;
+            assert_eq!(input.duration_ms, input.parts.last().unwrap().end - start);
+            for p in input.parts {
+                assert_eq!(p.offset, p.start - start);
+            }
+        }
+        eprintln!(
+            "snapshot_asr_recovery original={id} replacements={}",
+            new.len()
+        );
+        replacements += new.len();
+        recovered += 1;
+        now += 1;
+    }
+    assert!(recovered > 0);
+    assert_eq!(segments, count("SELECT count(*) FROM precise_segments"));
+    assert_eq!(usage, count("SELECT count(*) FROM usage_requests"));
+    eprintln!(
+        "snapshot_asr_recovery recovered={recovered} replacements={replacements} existing_segments={segments} usage_records={usage}"
+    );
 }
