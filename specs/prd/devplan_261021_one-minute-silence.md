@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: implemented
 updated: 2026-10-21
 ---
 # 精转已知静默连接上限改为一分钟
@@ -24,7 +24,7 @@ updated: 2026-10-21
 
 ### 行动清单
 - [x] 调整阈值与版本、既有测试、当前算法文档。
-- [ ] 验证、review、实现提交和最终门禁。
+- [x] 验证、review、实现提交和最终门禁。
 
 ### Review Contract
 - mode: repair；required lenses: requirements、adversarial、architecture。
@@ -43,3 +43,5 @@ updated: 2026-10-21
 - 2026-10-21：阈值改为 60 秒，策略版本 v4；既有边界回归覆盖 60000/60001/180000ms，实际编码 5s+60s+5s=70s 并核验后段映射及纯静默虚构文字拒绝。ASR 20 PASS / 1 paid probe ignored；check/build 和 diff check PASS。进入三路审查，代码冻结。
 
 - 2026-10-21：requirements/adversarial/architecture 三路独立审查均 PASS，无阻塞发现或修复；证据齐备，进入作用域提交。
+
+- 2026-10-21：实现提交 `a7c004e`；重新核对完整契约及非目标，最终 HEAD check PASS，单批次审查覆盖最终代码，无未决 mandatory 项。安装版未替换，当前录制未重启；所有无关共享工作树修改保留。
