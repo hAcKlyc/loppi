@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: implemented
 created: 2026-10-21
 updated: 2026-10-21
 ---
@@ -30,7 +30,7 @@ updated: 2026-10-21
 ### 行动清单
 - [x] 实现/视觉验证
 - [x] 静态/回归/三路审查
-- [ ] 签名 dev 包及提交闭环
+- [x] 签名 dev 包及提交闭环
 
 ### 待用户决策
 无。
@@ -42,3 +42,5 @@ updated: 2026-10-21
 
 - 签名 release App 构建通过、build identity 一致、codesign deep/strict 与 zip 完整性通过。原生隔离数据界面已查看，标题旁标签与下一行说明清晰；未改用户真实配置。证据 /tmp/hear-settings-evidence/hierarchy-native.png，预览已退出。
 - 更新 dev 包：build/dev/hear-0.1.2-dev-20261021-002937-arm64.zip；对应目录内 hear.app。既有包保留，未安装覆盖。
+
+- 交付提交 20f08aa；最终 HEAD typecheck/lint 再验通过。逐条核对契约、范围及非目标，单批次整体门禁通过，所有 mandatory 项完成；无待用户决策。仅状态与证据追加，不重复运行无影响的业务测试。
