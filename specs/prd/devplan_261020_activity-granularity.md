@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: implemented
 updated: 2026-10-21
 ---
 # 按连续活动整理事件
@@ -32,7 +32,7 @@ updated: 2026-10-21
   - [x] 一小时窗口与现有候选兼容
   - [x] 活动粒度 prompt、跨窗上下文与顺序
   - [x] 回归与合成模型验证
-  - [ ] 文档、三路 cross-review、提交
+  - [x] 文档、三路 cross-review、提交
 
 ### 当前批次 Review 基线
 - Base：276ab29eb0908cb45ba22597a796cab8446d17ec
@@ -54,6 +54,7 @@ updated: 2026-10-21
 - 2026-10-21：修复后 check/build PASS、events 83 PASS / 2 opt-in ignored；两位原 reviewer 定向复核均 PASS，P2 已关闭。architecture 对完整最终生产 diff PASS，无新 owner/state/协议，无待决策。采纳非阻塞测试灵敏度建议：为 VAD 替换测试补中间桥接证据，显式确认没有持久切点时只产生一个窗口，避免静默规则掩盖测试目标；只改测试，不影响生产架构或模型验证。
 - 2026-10-21：在切点修复直接影响范围发现并复现第二个边缘：晚到较短同起点另一音源出现在原首证据之前时，首窗口内部不能因原首证据位置再切一次，否则会对同一个候选误更新两次。新增回归修复前实测 2 次入队，期望 1；仅当持久切点时间晚于当前组起点时切分，兼顾原旧窗同起点跨源问题和晚到证据修订。无新增机制，安排原 reviewers 对该修复定向复核。
 - 2026-10-21：最终 check/build PASS，events 回归 84 PASS / 2 opt-in ignored；requirements、adversarial、architecture 三路定向复核全部 PASS，无阻塞项。单批次整体已被本轮 review 覆盖；prompt 未再变化，18/18 合成模型证据仍适用。
+- 2026-10-21：实现提交 `ea8c398`，仅包含本任务四个文件。逐条重读契约后完成整体门禁，最终 HEAD 的 `cargo check -p hear-core` PASS；单批次 review 后代码未变，既有 build、84 项事件回归和模型验收覆盖最终实现，无新增中间态机制或未完成 mandatory 项。运行中的 App 未安装/重启加载此改动，历史碎片未自动重写。后续使用新构建时观察长会议、连续闲聊、明确活动切换三类真实录音表现属于 advisory。
 
 ### Review Contract
 - mode: repair；required lenses: requirements、adversarial、architecture。
