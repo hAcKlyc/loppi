@@ -1,0 +1,701 @@
+//! Activity granularity regressions. Live model checks use only synthetic speech
+//! and an in-memory event database, never the user's transcripts or event writes.
+use super::*;
+use serde_json::{Value, json};
+
+const MINUTE: i64 = 60_000;
+const HOUR: i64 = 60 * MINUTE;
+
+fn db() -> Connection {
+    let db = crate::Store::new(Connection::open_in_memory().unwrap())
+        .unwrap()
+        .db;
+    set_configured(&db, CloudProvider::Llm, "deepseek-flash").unwrap();
+    db
+}
+
+fn speech(db: &Connection, start: i64, end: i64, source: &str, text: &str) {
+    db.execute(
+        "INSERT INTO coarse_segments VALUES (?1,'block','session',?2,?3,?4,?5,'test')",
+        params![Uuid::new_v4().to_string(), source, start, end, text],
+    )
+    .unwrap();
+}
+
+fn publish_one(db: &mut Connection, task: &CloudTask, merge: Option<&str>, now: i64) -> String {
+    let input = llm_input(db, task).unwrap();
+    publish_fit_with_input(db, task, &input, json!({"events":[{
+        "start_ms":task.start,"end_ms":task.end,"title":"产品评审会","summary":"讨论产品方案和排期。",
+        "sources":"microphone","merge_with_event_id":merge}]}), now).unwrap();
+    db.query_row(
+        "SELECT event_id FROM event_candidate_links WHERE candidate_id=?1 AND slot=0",
+        [&task.target_id],
+        |r| r.get(0),
+    )
+    .unwrap()
+}
+
+#[test]
+fn hour_window_does_not_close_at_thirty_minutes() {
+    let mut db = db();
+    for minute in (0..60).step_by(2) {
+        speech(
+            &db,
+            1_000 + minute * MINUTE,
+            30_000 + minute * MINUTE,
+            "microphone",
+            "继续讨论方案",
+        );
+    }
+    assert_eq!(
+        refresh_candidates(&mut db, 1_000 + 30 * MINUTE, false).unwrap(),
+        0
+    );
+    assert_eq!(refresh_candidates(&mut db, 1_000 + HOUR, false).unwrap(), 1);
+    let task = take_task(&mut db, CloudProvider::Llm, 2 * HOUR)
+        .unwrap()
+        .unwrap();
+    assert!(task.end - task.start > 58 * MINUTE);
+}
+
+#[test]
+fn stored_half_hour_windows_are_not_absorbed_or_requeued_by_hour_policy() {
+    let mut db = db();
+    for minute in (0..60).step_by(2) {
+        speech(
+            &db,
+            minute * MINUTE,
+            minute * MINUTE + 30_000,
+            "microphone",
+            "原有会议内容",
+        );
+    }
+    let all = evidence(&db, 0, HOUR).unwrap();
+    let cut = all.partition_point(|item| item.start < 30 * MINUTE);
+    let old = build_candidates_with_cuts(&all, &[], &[cut]);
+    assert_eq!(old.len(), 2);
+    for candidate in &old {
+        db.execute(
+            "INSERT INTO candidate_windows VALUES (?1,?2,?3,?4,'complete',NULL)",
+            params![candidate.id, candidate.start, candidate.end, candidate.hash],
+        )
+        .unwrap();
+    }
+    assert_eq!(refresh_candidates(&mut db, 2 * HOUR, true).unwrap(), 0);
+    for minute in (60..120).step_by(2) {
+        speech(
+            &db,
+            minute * MINUTE,
+            minute * MINUTE + 30_000,
+            "microphone",
+            "新的连续讨论",
+        );
+    }
+    // The trailing existing window may grow with new evidence, but never
+    // consumes the next persisted candidate identity.
+    refresh_candidates(&mut db, 3 * HOUR, true).unwrap();
+    for candidate in &old {
+        let start: i64 = db
+            .query_row(
+                "SELECT started_ms FROM candidate_windows WHERE id=?1",
+                [&candidate.id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(start, candidate.start);
+    }
+}
+
+#[test]
+fn legacy_cross_source_cut_at_the_same_start_keeps_exact_evidence_membership() {
+    let mut db = db();
+    speech(&db, 0, 1_000, "microphone", "开始讨论");
+    speech(&db, 900_000, 901_000, "microphone", "继续讨论");
+    speech(&db, 1_799_000, 1_800_000, "microphone", "本地回应");
+    speech(&db, 1_799_000, 1_801_000, "system", "远端发言");
+    speech(&db, 2_100_000, 2_101_000, "system", "继续发言");
+    let all = evidence(&db, 0, HOUR).unwrap();
+    // Actual v1 (30-minute) membership: the shorter same-start utterance
+    // fits the first window; the longer one starts the second. Construct the
+    // released hashes directly, not via the generator under test.
+    for group in [&all[..3], &all[3..]] {
+        let mut hash = Sha256::new();
+        hash.update(b"candidate-v1");
+        hash.update(b"fit-v3");
+        for item in group {
+            hash.update(item.id.as_bytes());
+            hash.update(item.start.to_le_bytes());
+            hash.update(item.end.to_le_bytes());
+            hash.update(item.source.as_bytes());
+            hash.update(item.text.as_ref().unwrap().as_bytes());
+        }
+        db.execute(
+            "INSERT INTO candidate_windows VALUES (?1,?2,?3,?4,'complete',NULL)",
+            params![
+                group[0].id,
+                group[0].start,
+                group.iter().map(|e| e.end).max().unwrap(),
+                format!("{:x}", hash.finalize())
+            ],
+        )
+        .unwrap();
+    }
+    assert_eq!(refresh_candidates(&mut db, 2 * HOUR, true).unwrap(), 0);
+    assert_eq!(
+        db.query_row::<i64, _, _>("SELECT count(*) FROM cloud_tasks", [], |r| r.get(0))
+            .unwrap(),
+        0
+    );
+}
+
+#[test]
+fn replaced_vad_evidence_keeps_the_persisted_candidate_time_cut() {
+    let db = db();
+    speech(&db, 0, MINUTE, "microphone", "早先发言");
+    speech(&db, 15 * MINUTE, 16 * MINUTE, "microphone", "中间持续发言");
+    speech(
+        &db,
+        30 * MINUTE,
+        31 * MINUTE,
+        "microphone",
+        "替代原 VAD 标记的粗转",
+    );
+    let all = evidence(&db, 0, HOUR).unwrap();
+    assert_eq!(build_candidates_with_cuts(&all, &[], &[]).len(), 1);
+    for old_id in ["removed-vad-block".to_owned(), all[0].id.clone()] {
+        // Missing original ID, or an ID reused after a boundary correction:
+        // neither may pull the new window back to unrelated earlier speech.
+        let cuts = candidate_cut_positions(&all, &[(old_id, 30 * MINUTE)]);
+        let windows = build_candidates_with_cuts(&all, &[], &cuts);
+        assert_eq!(windows.len(), 2);
+        assert_eq!(windows[1].start, 30 * MINUTE);
+    }
+}
+
+#[test]
+fn late_shorter_same_start_speech_does_not_split_the_first_candidate() {
+    let mut db = db();
+    speech(&db, 0, 1_000, "microphone", "原有发言");
+    refresh_candidates(&mut db, HOUR, true).unwrap();
+    let first = take_task(&mut db, CloudProvider::Llm, HOUR)
+        .unwrap()
+        .unwrap();
+    publish_one(&mut db, &first, None, HOUR);
+    speech(&db, 0, 500, "system", "晚到的另一音源短句");
+    assert_eq!(refresh_candidates(&mut db, HOUR + 1, true).unwrap(), 1);
+    let revised = take_task(&mut db, CloudProvider::Llm, HOUR + 1)
+        .unwrap()
+        .unwrap();
+    assert_eq!(revised.target_id, first.target_id);
+    assert_ne!(revised.target_version, first.target_version);
+    let all = evidence(&db, 0, HOUR).unwrap();
+    let cuts = candidate_cut_positions(&all, &[(first.target_id, 0)]);
+    assert_eq!(build_candidates_with_cuts(&all, &[], &cuts).len(), 1);
+}
+
+#[test]
+fn fitting_keeps_predecessors_first_including_backoff_but_allows_distant_work() {
+    let mut db = db();
+    for minute in (0..180).step_by(2) {
+        speech(
+            &db,
+            minute * MINUTE,
+            minute * MINUTE + 30_000,
+            "microphone",
+            "会议讨论",
+        );
+    }
+    speech(
+        &db,
+        5 * HOUR,
+        5 * HOUR + MINUTE,
+        "microphone",
+        "另一场独立活动",
+    );
+    assert_eq!(refresh_candidates(&mut db, 6 * HOUR, true).unwrap(), 4);
+    let first = take_task_fair(&mut db, CloudProvider::Llm, 6 * HOUR, 1)
+        .unwrap()
+        .unwrap();
+    assert_eq!(first.start, 0); // Former newest-first turn.
+    defer_paused(&mut db, &first, 6 * HOUR).unwrap();
+    let distant = take_task_fair(&mut db, CloudProvider::Llm, 6 * HOUR, 1)
+        .unwrap()
+        .unwrap();
+    assert_eq!(distant.start, 5 * HOUR);
+    assert!(
+        take_task_fair(&mut db, CloudProvider::Llm, 6 * HOUR, 2)
+            .unwrap()
+            .is_none()
+    );
+    let retry = take_task_fair(&mut db, CloudProvider::Llm, 6 * HOUR + 1_001, 2)
+        .unwrap()
+        .unwrap();
+    assert_eq!(retry.id, first.id);
+    let id = publish_one(&mut db, &retry, None, 6 * HOUR + 1_002);
+    let second = take_task_fair(&mut db, CloudProvider::Llm, 6 * HOUR + 1_003, 1)
+        .unwrap()
+        .unwrap();
+    assert_eq!(second.start, HOUR);
+    let input: Value = serde_json::from_str(&llm_input(&db, &second).unwrap()).unwrap();
+    assert_eq!(input["context"]["previous_event"]["id"], id);
+}
+
+#[test]
+fn boundary_excerpt_is_bounded_source_scoped_and_not_published_outside_candidate() {
+    let mut db = db();
+    for index in 0..40 {
+        speech(
+            &db,
+            index * 5_000,
+            index * 5_000 + 4_000,
+            "microphone",
+            &"甲".repeat(500),
+        );
+        speech(
+            &db,
+            index * 5_000,
+            index * 5_000 + 4_000,
+            "system",
+            "独立的电脑节目",
+        );
+    }
+    refresh_candidates(&mut db, HOUR, true).unwrap();
+    let first = take_task(&mut db, CloudProvider::Llm, HOUR)
+        .unwrap()
+        .unwrap();
+    let id = publish_one(&mut db, &first, None, HOUR);
+    speech(&db, 20 * MINUTE, 21 * MINUTE, "microphone", "会议继续");
+    refresh_candidates(&mut db, HOUR, true).unwrap();
+    let second = take_task(&mut db, CloudProvider::Llm, HOUR)
+        .unwrap()
+        .unwrap();
+    let input: Value = serde_json::from_str(&llm_input(&db, &second).unwrap()).unwrap();
+    let tail = input["context"]["previous_event_tail"].as_array().unwrap();
+    assert_eq!(tail.len(), FIT_CONTEXT_MAX_LINES);
+    assert_eq!(input["context"]["previous_event"]["id"], id);
+    for line in tail {
+        assert_eq!(line["source"], "microphone");
+        assert_eq!(
+            line["text"].as_str().unwrap().chars().count(),
+            FIT_CONTEXT_TEXT_CHARS
+        );
+        assert_eq!(line["text_truncated"], true);
+        assert!(line["start_ms"].as_i64().unwrap() >= first.end - FIT_CONTEXT_TAIL_MS);
+        assert!(line["end_ms"].as_i64().unwrap() <= first.end);
+    }
+    assert!(
+        tail.windows(2)
+            .all(|p| p[0]["start_ms"].as_i64() < p[1]["start_ms"].as_i64())
+    );
+    // Existing boundary checks remain authoritative despite richer context.
+    let bad = json!({"events":[{"start_ms":first.start,"end_ms":second.end,
+        "title":"会议","sources":"microphone","summary":null,"merge_with_event_id":id}]});
+    assert_eq!(
+        publish_fit_with_input(&mut db, &second, &input.to_string(), bad, HOUR).unwrap_err(),
+        "invalid_fit_boundary_outside_window"
+    );
+    db.execute(
+        "UPDATE named_events SET boundary_locked=1 WHERE id=?1",
+        [&id],
+    )
+    .unwrap();
+    let input: Value = serde_json::from_str(&llm_input(&db, &second).unwrap()).unwrap();
+    assert_eq!(input["context"]["previous_event"]["boundary_locked"], true);
+    let other = publish_one(&mut db, &second, Some(&id), HOUR);
+    assert_ne!(id, other);
+}
+
+#[test]
+fn a_new_activity_after_a_continuation_stays_separate() {
+    let mut db = db();
+    for minute in (0..120).step_by(2) {
+        speech(
+            &db,
+            minute * MINUTE,
+            minute * MINUTE + 30_000,
+            "microphone",
+            "持续发言",
+        );
+    }
+    refresh_candidates(&mut db, 3 * HOUR, true).unwrap();
+    let first = take_task(&mut db, CloudProvider::Llm, 3 * HOUR)
+        .unwrap()
+        .unwrap();
+    let id = publish_one(&mut db, &first, None, 3 * HOUR);
+    let second = take_task(&mut db, CloudProvider::Llm, 3 * HOUR)
+        .unwrap()
+        .unwrap();
+    publish_fit(&mut db, &second, json!({"events":[
+        {"start_ms":second.start,"end_ms":90*MINUTE,"title":"产品评审会","summary":null,"sources":"microphone","merge_with_event_id":id},
+        {"start_ms":92*MINUTE,"end_ms":second.end,"title":"单独电话","summary":null,"sources":"microphone","merge_with_event_id":null}
+    ]}), 3 * HOUR).unwrap();
+    let count: i64 = db
+        .query_row(
+            "SELECT count(*) FROM named_events WHERE deleted_ms IS NULL",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(count, 2);
+    let end: i64 = db
+        .query_row(
+            "SELECT ended_ms FROM named_events WHERE id=?1",
+            [&id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(end, 90 * MINUTE);
+}
+
+fn synthetic_activity(db: &Connection, case: &str) -> usize {
+    let meeting = [
+        "今天先看用户反馈，入口的位置有几种方案，大家把意见说一下。",
+        "这个页面上最常用的是搜索，可以放在上面；导出平时用得少。",
+        "我担心按钮太挤，可以试一下把文字缩短。这个方案先记下来。",
+        "刚才那个布局还要考虑小屏幕，内容多了以后会不会挡住列表。",
+        "接下来看看成本，存储量按现有使用情况估算，别只看峰值。",
+        "预算里还得考虑网络请求，有些数据可以复用，不需要再处理。",
+        "刚才说的人员安排也影响进度，测试这边目前还有别的任务。",
+        "我们把时间排一下，先做入口，再验证导出，最后统一验收。",
+        "先别急着定具体日期，接口那边的依赖还需要确认。",
+        "这个地方可以做个小样本测试，看看实际体验再决定。",
+        "前面几个意见我记下了，等会儿把需要确认的项列出来。",
+        "还有一个相关的问题，发布以后怎么判断用户有没有用到这个入口。",
+    ];
+    let family = [
+        "你把那个小杯子递过来吧，宝宝刚才想喝水。水已经不烫了。",
+        "好，喝完我们把桌子收一下。那个玩具是不是掉到沙发下面了？",
+        "今天公司里挺忙的，早上那份材料改了好几遍，下午才弄完。",
+        "嗯，我下午也没来得及买面包，明天早上出门顺路买一点吧。",
+        "你看他又盯着那个小灯了。先把积木放盒子里，别踩到了。",
+        "空调是不是有点冷？我把温度调高一点，毯子放旁边就好。",
+        "刚才说到旅行，那个地方如果带孩子去，路上可能得停几次。",
+        "是啊，先不急着订，我们有空再看看路线。这个衣服你帮我拿一下。",
+        "这个扫地机今天又绕了半天，可能是地上东西太多，收完再开吧。",
+        "他好像困了，我们小声一点。你今天看那个动画后来怎么样了？",
+        "后面那集还没看完，等他睡了再说。现在先把这个枕头放回去。",
+        "嗯，奶瓶洗好了放这边，明天要用的东西也顺手收在一起。",
+    ];
+    match case {
+        "two_hour_meeting" | "meeting_with_short_break" | "continuous_daily_chat" => {
+            let topics = if case == "continuous_daily_chat" {
+                &family
+            } else {
+                &meeting
+            };
+            for i in 0..60 {
+                if case == "meeting_with_short_break" && (27..31).contains(&i) {
+                    continue;
+                }
+                let text = if case == "meeting_with_short_break" && i == 26 {
+                    "大家休息几分钟，一会儿回来继续看后面的排期，会议还没结束。"
+                } else if case == "meeting_with_short_break" && i == 31 {
+                    "大家回来了，我们接着刚才那场评审，继续看测试和发布安排。"
+                } else {
+                    topics[i % topics.len()]
+                };
+                speech(
+                    db,
+                    i as i64 * 2 * MINUTE,
+                    i as i64 * 2 * MINUTE + 25_000,
+                    "microphone",
+                    text,
+                );
+            }
+            1
+        }
+        "meeting_then_same_project_call" | "back_to_back_meetings" => {
+            for i in 0..10 {
+                speech(
+                    db,
+                    i * 2 * MINUTE,
+                    i * 2 * MINUTE + 25_000,
+                    "microphone",
+                    meeting[i as usize % meeting.len()],
+                );
+            }
+            speech(
+                db,
+                20 * MINUTE,
+                20 * MINUTE + 25_000,
+                "microphone",
+                "今天产品评审到这里结束，大家散会吧，我先退出会议了。",
+            );
+            let next = if case == "meeting_then_same_project_call" {
+                [
+                    "喂，是供应商那边吗？刚散会，现在单独给你打个电话，确认一下这个项目的合同。",
+                    "我们这边主要想确认报价是不是包含售后，和刚才内部评审是两件事。",
+                    "好的，你把合同发来，我们再核对付款条款。",
+                    "那今天电话就先这样，谢谢，再见。",
+                ]
+            } else {
+                [
+                    "下午的客户沟通会现在开始，刚才内部评审的同事已经离开，请客户这边介绍需求。",
+                    "我们这次主要想了解交付以后如何做培训，使用部门有很多人。",
+                    "培训可以安排分批进行，我们需要先确认账号和资料准备。",
+                    "好的，这场客户会就到这里，下次再确认培训时间。",
+                ]
+            };
+            for (i, text) in next.iter().enumerate() {
+                speech(
+                    db,
+                    (22 + i as i64 * 4) * MINUTE,
+                    (22 + i as i64 * 4) * MINUTE + 25_000,
+                    "microphone",
+                    text,
+                );
+            }
+            2
+        }
+        "different_activity_at_hour_boundary" => {
+            for i in 0..60 {
+                let text = match i {
+                    29 => "产品评审到这里正式结束，大家散会。我先退出这个会议。",
+                    30 => {
+                        "喂，供应商你好。刚刚内部会议结束了，现在单独打电话和你谈同一项目的合同。"
+                    }
+                    31..=59 => [
+                        "这个项目的付款条款，我们需要按交付节点来谈。",
+                        "电话里先确认报价包含哪些服务，合同附件里还需要补上。",
+                        "这个供应商合同的售后期限和结算方式，我们逐条核对。",
+                        "刚才电话里说的那条我记下来了，请把修改后的合同发过来。",
+                    ][i % 4],
+                    _ => meeting[i % meeting.len()],
+                };
+                speech(
+                    db,
+                    i as i64 * 2 * MINUTE,
+                    i as i64 * 2 * MINUTE + 25_000,
+                    "microphone",
+                    text,
+                );
+            }
+            2
+        }
+        "independent_parallel_sources" => {
+            let astronomy = [
+                "欢迎收听天文科普节目，今天介绍恒星的形成，首先从星际气体云讲起。",
+                "星云中的气体在引力作用下聚集，密度逐渐增加，形成更致密的区域。",
+                "气体坍缩时温度升高，中心逐渐形成原恒星，外面还包围着尘埃。",
+                "当核心温度足够高时，氢核聚变开始，恒星进入相对稳定的阶段。",
+                "恒星的颜色与表面温度有关，蓝色恒星通常比红色恒星更热。",
+                "质量更大的恒星消耗燃料更快，因此它们的寿命反而更短。",
+                "我们通过光谱分析恒星成分，不需要直接取得恒星表面的样品。",
+                "恒星的亮度和温度在赫罗图上呈现规律，主序带是其中重要的区域。",
+                "太阳也是一颗恒星，目前处于主序阶段，能量主要来自核心核聚变。",
+                "当核心的氢逐渐耗尽，恒星的结构会变化，外层可能显著膨胀。",
+                "大质量恒星在生命末期可能发生超新星爆发，将元素抛向星际空间。",
+                "这期节目介绍了恒星从形成到演化的主要过程，下期继续讲星系。",
+            ];
+            for i in 0..12 {
+                speech(
+                    db,
+                    i as i64 * 2 * MINUTE,
+                    i as i64 * 2 * MINUTE + 25_000,
+                    "microphone",
+                    family[i],
+                );
+                speech(
+                    db,
+                    i as i64 * 2 * MINUTE,
+                    i as i64 * 2 * MINUTE + 25_000,
+                    "system",
+                    astronomy[i],
+                );
+            }
+            2
+        }
+        "shared_online_meeting" => {
+            for i in 0..60 {
+                let (question, answer) = [
+                    (
+                        "线上评审继续看这个入口，屏幕上的搜索按钮位置大家能看到吗？",
+                        "能看到你共享的页面，我同意搜索放上面，导出放菜单里。",
+                    ),
+                    (
+                        "刚才远端同事提到成本，那我们在这场评审里继续核对存储预算吧。",
+                        "好的，回应刚才的问题，存储按日常使用估算，网络请求还可以复用。",
+                    ),
+                    (
+                        "我想接着你刚才说的进度问一下，这个入口和导出谁来测试？",
+                        "这两个都由我们测试组负责，先测入口，再测导出，结果发到同一份评审纪要。",
+                    ),
+                ][i % 3];
+                speech(
+                    db,
+                    i as i64 * 2 * MINUTE,
+                    i as i64 * 2 * MINUTE + 10_000,
+                    "microphone",
+                    question,
+                );
+                speech(
+                    db,
+                    i as i64 * 2 * MINUTE + 11_000,
+                    i as i64 * 2 * MINUTE + 25_000,
+                    "system",
+                    answer,
+                );
+            }
+            1
+        }
+        "isolated_low_information" => {
+            speech(db, 0, 1_000, "microphone", "嗯");
+            speech(db, 8 * MINUTE, 8 * MINUTE + 1_000, "microphone", "Yeah");
+            speech(db, 16 * MINUTE, 16 * MINUTE + 1_000, "microphone", "松手");
+            0
+        }
+        _ => panic!("unknown synthetic case"),
+    }
+}
+
+// Opt-in, paid external check. Only reads the configured model/credential
+// reference; never reads production audio/text or opens its DB for writing.
+// HEAR_FIT_EVAL_CONFIG=/absolute/path/hear.sqlite cargo test -p hear-core
+// live_activity_granularity -- --ignored --nocapture --test-threads=1
+#[test]
+#[ignore = "requires explicit configured credential and paid LLM calls with synthetic data"]
+fn live_activity_granularity() {
+    use std::cell::Cell;
+    use std::time::{Duration, Instant};
+    struct EvalMeter(Cell<u64>);
+    impl crate::usage::Meter for EvalMeter {
+        fn begin(&self, _: &str, _: Option<Uuid>, _: Option<i64>) -> Result<String, String> {
+            Ok(Uuid::new_v4().to_string())
+        }
+        fn llm_response(&self, _: &str, response: &Value) -> Result<(), String> {
+            self.0
+                .set(self.0.get() + response["usage"]["total_tokens"].as_u64().unwrap_or(0));
+            Ok(())
+        }
+        fn asr_response(&self, _: Uuid, _: &str, _: &Value) -> Result<(), String> {
+            unreachable!()
+        }
+        fn rejected(&self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+        fn observation_failed(&self) {}
+    }
+    let path = std::env::var("HEAR_FIT_EVAL_CONFIG")
+        .expect("explicit read-only configuration DB required");
+    let config =
+        Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
+    let model: String = config
+        .query_row(
+            "SELECT model FROM cloud_queues WHERE provider='llm' AND configured=1",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    // A development test key avoids asking the OS to grant an unsigned test
+    // binary access to the installed app's Keychain entry.
+    let key = std::env::var("HEAR_FIT_EVAL_KEY").unwrap_or_else(|_| {
+        let reference = credential_reference(&config, CloudProvider::Llm)
+            .unwrap()
+            .unwrap();
+        crate::cloud::credential(CloudProvider::Llm, &reference)
+            .unwrap()
+            .expect("credential unavailable")
+    });
+    drop(config);
+    let repeats = std::env::var("HEAR_FIT_EVAL_REPEATS")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(2);
+    assert!((1..=5).contains(&repeats));
+    let meter = EvalMeter(Cell::new(0));
+    let mut failures = Vec::new();
+    for run in 0..repeats {
+        for case in [
+            "two_hour_meeting",
+            "meeting_with_short_break",
+            "continuous_daily_chat",
+            "meeting_then_same_project_call",
+            "back_to_back_meetings",
+            "different_activity_at_hour_boundary",
+            "independent_parallel_sources",
+            "shared_online_meeting",
+            "isolated_low_information",
+        ] {
+            let mut db = db();
+            set_configured(&db, CloudProvider::Llm, &model).unwrap();
+            let expected = synthetic_activity(&db, case);
+            let now = 4 * HOUR;
+            let windows = refresh_candidates(&mut db, now, true).unwrap();
+            let mut details = Vec::new();
+            for turn in 0..windows {
+                let task = take_task_fair(&mut db, CloudProvider::Llm, now, turn as u64)
+                    .unwrap()
+                    .unwrap();
+                let input = llm_input(&db, &task).unwrap();
+                match crate::cloud::chat(
+                    &key,
+                    &model,
+                    FIT_SYSTEM,
+                    &input,
+                    Instant::now() + Duration::from_secs(90),
+                    &meter,
+                ) {
+                    Ok(output) => {
+                        details.push(output.clone());
+                        if let Err(error) =
+                            publish_fit_with_input(&mut db, &task, &input, output, now)
+                        {
+                            failures.push(format!("{case} run {run}: publication {error}"));
+                            break;
+                        }
+                    }
+                    Err(error) => {
+                        failures.push(format!("{case} run {run}: network {error:?}"));
+                        break;
+                    }
+                }
+            }
+            let mut stmt = db.prepare("SELECT id,started_ms,ended_ms,source_mask FROM named_events WHERE deleted_ms IS NULL ORDER BY started_ms,id").unwrap();
+            let events: Vec<(String, i64, i64, i64)> = stmt
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+                .unwrap()
+                .collect::<Result<_, _>>()
+                .unwrap();
+            let mut valid = events.len() == expected;
+            if expected == 1 {
+                valid &= events
+                    .first()
+                    .is_some_and(|e| e.1 <= MINUTE && e.2 >= 118 * MINUTE);
+                if valid {
+                    let links: i64 = db
+                        .query_row(
+                            "SELECT count(*) FROM event_candidate_links WHERE event_id=?1",
+                            [&events[0].0],
+                            |r| r.get(0),
+                        )
+                        .unwrap();
+                    valid &= links == windows as i64;
+                }
+                if case == "shared_online_meeting" {
+                    valid &= events.first().is_some_and(|e| e.3 == 3);
+                }
+            } else if case == "different_activity_at_hour_boundary" && events.len() == 2 {
+                valid &= events[0].2 <= HOUR && events[1].1 >= HOUR && events[1].2 >= 118 * MINUTE;
+            } else if case == "independent_parallel_sources" && events.len() == 2 {
+                valid &= events[0].3 & events[1].3 == 0
+                    && events[0].1 < events[1].2
+                    && events[1].1 < events[0].2;
+            } else if expected == 2 && events.len() == 2 {
+                valid &= events[0].2 <= 22 * MINUTE
+                    && events[1].1 >= 20 * MINUTE
+                    && events[0].2 <= events[1].1
+                    && events[1].2 >= 34 * MINUTE;
+            }
+            println!(
+                "{}",
+                json!({"case":case,"run":run+1,"model":model,"windows":windows,
+                "expected_events":expected,"actual_events":events.len(),"pass":valid,"synthetic_outputs":details})
+            );
+            if !valid {
+                failures.push(format!("{case} run {}: unexpected grouping", run + 1));
+            }
+        }
+    }
+    println!("Synthetic evaluation total tokens: {}", meter.0.get());
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
