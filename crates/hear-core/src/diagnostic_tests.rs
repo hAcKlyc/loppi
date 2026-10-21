@@ -283,6 +283,104 @@ fn replay_saved_vad_through_production_decoder_and_publication() {
 }
 
 #[test]
+#[ignore = "private offline replay of existing ASR results"]
+fn replay_oct21_asr_publication() {
+    let (directory, mut store) = fixture();
+    let response_dir = std::path::PathBuf::from(std::env::var("HEAR_ASR_RESPONSES").unwrap());
+    let tasks = {
+        let mut q=store.db.prepare("SELECT id,target_kind,target_id,target_version,model_id,started_ms,ended_ms,source,remote_id,attempts,submit_attempts,updated_ms FROM cloud_tasks WHERE provider='asr' AND state='failed' AND error_code='provider_unmapped_timing_audio_coverage' ORDER BY started_ms").unwrap();
+        q.query_map([], |r| {
+            let id: String = r.get(0)?;
+            let remote: String = r.get(8)?;
+            Ok(events::CloudTask {
+                id: uuid::Uuid::parse_str(&id).unwrap(),
+                provider: hear_protocol::CloudProvider::Asr,
+                target_kind: r.get(1)?,
+                target_id: r.get(2)?,
+                target_version: r.get(3)?,
+                model_id: r.get(4)?,
+                start: r.get(5)?,
+                end: r.get(6)?,
+                source: r.get(7)?,
+                remote_id: uuid::Uuid::parse_str(&remote).unwrap(),
+                attempts: r.get(9)?,
+                submit_attempts: r.get(10)?,
+                updated_ms: r.get(11)?,
+            })
+        })
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap()
+    };
+    let mut successes = 0;
+    let mut total = 0;
+    for task in &tasks {
+        let data = std::fs::read(response_dir.join(format!("{}.json", task.id))).unwrap();
+        let response = serde_json::from_slice(&data).unwrap();
+        let parsed = cloud::parse_asr_result(&response).unwrap();
+        total += parsed.len();
+        let input = events::asr::input(&store.db, task.id).unwrap().unwrap();
+        let mapped = events::asr::map(&input, &parsed).unwrap();
+        let before: i64 = store
+            .db
+            .query_row(
+                "SELECT count(*) FROM precise_segments WHERE task_id=?1",
+                [task.id.to_string()],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let result = events::publish_asr(&mut store.db, task, &parsed, task.updated_ms + 1);
+        let after: i64 = store
+            .db
+            .query_row(
+                "SELECT count(*) FROM precise_segments WHERE task_id=?1",
+                [task.id.to_string()],
+                |r| r.get(0),
+            )
+            .unwrap();
+        if result.is_ok() {
+            successes += 1;
+        }
+        eprintln!(
+            "offline_asr {} parsed={} result={:?} saved={}",
+            task.id,
+            parsed.len(),
+            result,
+            after - before
+        );
+        assert!(result.is_ok());
+        assert_eq!(after - before, mapped.len() as i64);
+        assert_eq!(
+            events::publish_asr(&mut store.db, task, &parsed, task.updated_ms + 2).unwrap(),
+            0
+        );
+    }
+    eprintln!(
+        "offline_asr_summary tasks={} successful={} parsed={}",
+        tasks.len(),
+        successes,
+        total
+    );
+    assert_eq!(tasks.len(), 18);
+    assert_eq!(successes, 18);
+    let mut events = std::collections::BTreeSet::new();
+    for task in &tasks {
+        if events.insert(&task.target_id) {
+            let id = uuid::Uuid::parse_str(&task.target_id).unwrap();
+            let state = events::event_detail(&store.db, id, 0, 1)
+                .unwrap()
+                .processing_state;
+            assert_ne!(state, "asr_failed");
+            eprintln!("offline_event {} state={}", id, state);
+        }
+    }
+    // The installed-version pause gap is now after the final confirmed block.
+    let overlapping:bool=store.db.query_row("SELECT EXISTS(SELECT 1 FROM media_gaps g JOIN audio_blocks b ON b.session_id=g.source_session_id WHERE g.reason='manual_pause' AND g.started_ms<b.ended_ms AND coalesce(g.ended_ms,b.ended_ms)>b.started_ms)",[],|r|r.get(0)).unwrap();
+    assert!(!overlapping);
+    drop(directory);
+}
+
+#[test]
 #[ignore = "requires HEAR_TEST_DB; replans rejected ASR on a temporary copy without submitting audio"]
 fn snapshot_rejected_asr_recovery_preserves_history() {
     let (_directory, store) = fixture();

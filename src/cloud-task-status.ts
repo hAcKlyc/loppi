@@ -22,6 +22,8 @@ export function taskStatus(task: CloudTask): string {
 		return `${state} · 请检查云端配置`;
 	if (reason === "audio_unavailable" || reason === "partial_audio")
 		return `${state} · 原声不可用`;
+	if (reason === "provider_unmapped_timing_audio_coverage")
+		return `${state} · 结果未保存，可重试获取`;
 	if (
 		reason === "provider_unmapped_timing" ||
 		reason.startsWith("provider_unmapped_timing_")
@@ -51,6 +53,7 @@ export function taskNeedsRecognition(task: CloudTask): boolean {
 	return (
 		task.provider === "asr" &&
 		task.state === "failed" &&
+		error !== "provider_unmapped_timing_audio_coverage" &&
 		(error === "provider_unmapped_timing" ||
 			error.startsWith("provider_unmapped_timing_") ||
 			[

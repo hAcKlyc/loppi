@@ -74,6 +74,11 @@ pub fn input(db: &Connection, id: Uuid) -> Result<Option<Input>, String> {
 /// A completed but unusable provider result cannot improve by querying its ID.
 /// Keep uncertain transport failures on the original request instead.
 pub fn rejected_result(error: &str) -> bool {
+    // Retention-based publication rejection was removed. Query the original
+    // result again instead of discarding usable text and charging for a rerun.
+    if error == "provider_unmapped_timing_audio_coverage" {
+        return false;
+    }
     error == "provider_unmapped_timing"
         || error.starts_with("provider_unmapped_timing_")
         || matches!(

@@ -6,6 +6,7 @@ test('ASR mapping and response errors are distinguished from transport failures'
  const reasons = {
   provider_unmapped_timing: '识别时间与原声不匹配',
   provider_unmapped_timing_word_in_separator: '识别时间与原声不匹配',
+  provider_unmapped_timing_audio_coverage: '结果未保存，可重试获取',
   provider_invalid_timing: '识别时间超出录音范围',
   provider_invalid_utterance: '识别结果格式异常',
   invalid_fit_boundary: '整理结果时间范围异常',
@@ -45,7 +46,7 @@ test('only rejected ASR results offer an explicit paid recognition', async () =>
   assert.equal(taskNeedsRecognition({provider:'llm',state:'failed',error_code}),false);
   assert.equal(taskNeedsRecognition({provider:'asr',state:'submitted',error_code}),false);
  }
- for(const error_code of ['provider_transport','provider_deadline','provider_read_failed','keychain_read_-25308',null]) {
+ for(const error_code of ['provider_unmapped_timing_audio_coverage','provider_transport','provider_deadline','provider_read_failed','keychain_read_-25308',null]) {
   assert.equal(taskNeedsRecognition({provider:'asr',state:'failed',error_code}),false);
  }
 });
@@ -65,6 +66,10 @@ test('queue renders paid reruns separately from request retries and disables bus
   const uncertain=render('provider_transport');
   assert.match(uncertain,/>重试<\/button>/);
   assert.doesNotMatch(uncertain,/产生新的识别用量/);
+  const recoverable=render('provider_unmapped_timing_audio_coverage');
+  assert.match(recoverable,/>重试<\/button>/);
+  assert.match(recoverable,/结果未保存，可重试获取/);
+  assert.doesNotMatch(recoverable,/重新识别|产生新的识别用量/);
   assert.match(render('provider_unmapped_timing_word_in_separator',true),/disabled=""[^>]*>重新识别<\/button>/);
  } finally { await server.close(); }
 });

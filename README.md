@@ -59,6 +59,8 @@ APPLE_NOTARY_PROFILE=hear-notary ./build_release.sh
 
 CLI 的 `transcribe-range` 返回 `range_id` 和 `tasks`；每条任务有可用于 `cloud retry` 的真实 `id`、`source`、起止时间和当前 `state`。双路或长范围可能产生多条任务；无可用原声会返回 `range_no_audio`，不会留下空的精转范围。
 
+精转文字优先保留完整内容与供应商时间：时间能映射到原请求且当前归属有效，就保存文字，允许偶发长静默跨度；VAD、当前原声留存和声纹质量不再导致整段文字丢失。声纹和回放各自检查真实原声。最新修复、证据与安装状态见 [精转失败调查](specs/research/2026-10-22-asr-publication-failures.md)。
+
 已有事件可以在详情的「音频信息」中重新精转；命令行可运行 `hear event retranscribe <event-id> <revision>`。新任务按当前云端适配器处理整场可用原声，原有人工修正只在可确认的同一时段自动恢复，其余进入待核对。
 
 ## 开发验证用云端配置

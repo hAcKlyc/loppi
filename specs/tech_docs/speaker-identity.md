@@ -29,6 +29,10 @@ flowchart LR
 
 当前用 sherpa-onnx 的 **3D-Speaker CAMPPlus 中文 16 kHz** ONNX 权重：`3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx`。模型由[模型包管理](../../crates/hear-core/src/model_pack.rs)按固定 SHA-256 下载校验，位于私有目录 `models/speaker-v1/model.onnx`；[`hear-worker embed`](../../crates/hear-worker/src/main.rs)以 CPU、单线程运行。输出经过归一化后存为 **192 维 float 向量**，内部版本为 `campplus-zh-v1`。[向量编码与策略常量](../../crates/hear-core/src/knowledge.rs)。
 
+### 文字与身份处理的边界
+
+文字按提交请求的输入时间轴和当前归属发布，保留供应商原文与时间，允许长停顿或补入静默内结果。当前原声缺失、VAD 结论、声纹长度/音质不合格都不再拒绝文字，也不再把它们转成整请求精转失败。`voice_manifest` 等真实媒体校验仅约束后续声纹提取与样例使用；没有合格声音证据时仍保留文字，人物保持未确定。长句超过提取时长也按此处理，不猜测裁词或裁时间。[文字发布](algorithms.md#6-两条云队列与精转)。
+
 ### 从精转句段取得“观察”
 
 `publish_asr` 对有云 speaker 标签的精转句段尝试登记 `voice_observation`。当前只给 **2–15 秒**句段排本地提取任务；这是一项可调的资源/质量策略，短句并非被云端丢弃，而是仍有精转文字却没有足够本机身份声音证据。取得原声后还检查来源、区间、重叠说话、音量过低/削波、模型可用性等。成功为 `ready`，不合格/失败为 `unavailable` 并带原因码；待处理与处理中分别有持久状态。[`enqueue_voice_observation`、`take_voice`、`publish_voice`](../../crates/hear-core/src/knowledge.rs)；[原声组装与音质检查](../../crates/hear-core/src/events.rs)。
