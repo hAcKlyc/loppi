@@ -21,7 +21,7 @@ import {
 } from "./api";
 import { CloudServiceSettings } from "./CloudServiceSettings";
 import { SegmentedOptions, Switch } from "./Controls";
-import { taskStatus } from "./cloud-task-status";
+import { taskNeedsRecognition, taskStatus } from "./cloud-task-status";
 import {
 	type EntryMode,
 	type EntrySnapshot,
@@ -309,19 +309,25 @@ export function QueueView({
 											<p title={task.error_code ?? undefined}>
 												{taskStatus(task)}
 											</p>
+											{taskNeedsRecognition(task) && (
+												<p>将用保留原声重新识别，产生新的识别用量</p>
+											)}
 										</div>
 										{task.state === "failed" && (
 											<button
 												type="button"
 												className="quiet-button"
+												disabled={busy}
 												onClick={() =>
 													void onMutate(
 														{ type: "retry_cloud_task", task_id: task.id },
-														"任务已重新排队",
+														taskNeedsRecognition(task)
+															? "已加入重新识别队列"
+															: "任务已重新排队",
 													)
 												}
 											>
-												重试
+												{taskNeedsRecognition(task) ? "重新识别" : "重试"}
 											</button>
 										)}
 									</div>

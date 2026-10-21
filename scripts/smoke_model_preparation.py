@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Isolated Core load-check integration. No capture, keys or cloud calls.
-Usage: python3 scripts/test_model_preparation.py /path/to/existing/models [core binary]
+Usage: python3 scripts/smoke_model_preparation.py /path/to/existing/models [core binary]
 """
 import json, os, pathlib, re, shutil, socket, sqlite3, subprocess, sys, tempfile, time, uuid
 root=pathlib.Path(__file__).resolve().parent.parent

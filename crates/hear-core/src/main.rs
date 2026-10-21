@@ -2602,6 +2602,11 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                     })
                 }) {
                     Ok(response) => response,
+                    Err(error) if error == "audio_unavailable" => Response::Error {
+                        id: envelope.id,
+                        code: error,
+                        message: "no retained audio for the failed task".to_owned(),
+                    },
                     Err(_) => Response::Error {
                         id: envelope.id,
                         code: "task_not_retryable".to_owned(),
