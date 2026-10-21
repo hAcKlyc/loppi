@@ -22,6 +22,8 @@ export function taskStatus(task: CloudTask): string {
 		return `${state} · 请检查云端配置`;
 	if (reason === "audio_unavailable" || reason === "partial_audio")
 		return `${state} · 原声不可用`;
+	if (reason === "provider_unmapped_timing_audio_coverage")
+		return `${state} · 结果未保存，可重试获取`;
 	if (
 		reason === "provider_unmapped_timing" ||
 		reason.startsWith("provider_unmapped_timing_")
@@ -42,4 +44,22 @@ export function taskStatus(task: CloudTask): string {
 		return `${state} · 服务繁忙，请稍后重试`;
 	if (reason.startsWith("provider_")) return `${state} · 云端服务异常`;
 	return state;
+}
+
+// Mirror Core's rejected-result policy; transport/credential failures still
+// query the original request and must not be described as a paid rerun.
+export function taskNeedsRecognition(task: CloudTask): boolean {
+	const error = task.error_code ?? "";
+	return (
+		task.provider === "asr" &&
+		task.state === "failed" &&
+		error !== "provider_unmapped_timing_audio_coverage" &&
+		(error === "provider_unmapped_timing" ||
+			error.startsWith("provider_unmapped_timing_") ||
+			[
+				"provider_invalid_timing",
+				"provider_invalid_utterance",
+				"provider_missing_utterances",
+			].includes(error))
+	);
 }

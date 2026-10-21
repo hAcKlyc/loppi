@@ -2658,6 +2658,10 @@ pub fn retry_task_in(tx: &Transaction<'_>, id: Uuid, now: i64) -> Result<(), Str
     let Some((provider, error, state, submit_attempts)) = row else {
         return Err("task is not retryable".to_owned());
     };
+    if provider == "asr" && state == "failed" && error.as_deref().is_some_and(asr::rejected_result)
+    {
+        return asr::replan_failed(tx, id, now);
+    }
     // Once a request may have been accepted, every uncertain failure first
     // queries its original remote ID. Only a confirmed missing request or an
     // explicitly retried completed empty result gets a new paid submission.

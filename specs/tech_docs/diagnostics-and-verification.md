@@ -98,3 +98,5 @@ python3 scripts/verify_ingestion_quality.py \
 沿用运行中 build bundle 禁止覆盖的保护。验证只使用隔离数据目录；日常录制运行 `/Applications/hear.app`。发布仍须整包停止/替换/重新启动并确认运行身份；本 PR 不安装、不重启现有客户端。
 
 LLM 返回 evidence IDs 后让 Core 导出时间看似更简单，但 coarse observation 可覆盖同一段内多个主题，只选择整段 ID 会丢失片段内部毫秒切分；要保留精度仍需额外边界协议。本轮继续当前毫秒契约与严格校验、有限重试，不在可观测性改动中切换整理语义。
+
+2026-10-22 的 0.1.4 打包检查将上述手动模型入口重命名为 `scripts/smoke_model_preparation.py`，避免普通 unittest discovery 导入需要显式模型目录的脚本。它仍是单独运行的模型烟测，不加入默认离线门禁。

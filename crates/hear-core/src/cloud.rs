@@ -1082,6 +1082,25 @@ mod tests {
     }
 
     #[test]
+    fn repeated_response_with_zero_duration_tail_is_rejected_atomically() {
+        // Synthetic structure of a real 5-second provider response. Dropping
+        // only its zero-duration tail would publish repeated hallucinations.
+        let mut utterances = Vec::new();
+        for i in 0..42 {
+            utterances.push(
+                json!({"start_time":i*120,"end_time":((i+1)*120).min(5000),"text":"重复内容"}),
+            );
+        }
+        for _ in 0..12 {
+            utterances.push(json!({"start_time":5000,"end_time":5000,"text":"重复内容"}));
+        }
+        assert_eq!(
+            parse_asr_result(&json!({"result":{"utterances":utterances}})).unwrap_err(),
+            "provider_invalid_utterance"
+        );
+    }
+
+    #[test]
     fn malformed_utterances_still_fail_the_whole_response() {
         for (start, end) in [(-1, 300), (300, 300), (400, 300)] {
             assert_eq!(

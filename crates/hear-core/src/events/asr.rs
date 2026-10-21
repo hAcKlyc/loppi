@@ -71,6 +71,85 @@ pub fn input(db: &Connection, id: Uuid) -> Result<Option<Input>, String> {
         .transpose()
 }
 
+/// A completed but unusable provider result cannot improve by querying its ID.
+/// Keep uncertain transport failures on the original request instead.
+pub fn rejected_result(error: &str) -> bool {
+    // Retention-based publication rejection was removed. Query the original
+    // result again instead of discarding usable text and charging for a rerun.
+    if error == "provider_unmapped_timing_audio_coverage" {
+        return false;
+    }
+    error == "provider_unmapped_timing"
+        || error.starts_with("provider_unmapped_timing_")
+        || matches!(
+            error,
+            "provider_invalid_timing"
+                | "provider_invalid_utterance"
+                | "provider_missing_utterances"
+        )
+}
+
+/// Explicitly replace only a failed physical request's current projections.
+/// The original input, remote ID, usage and history remain immutable. Using the
+/// current memberships handles split/merged events without rerunning siblings.
+pub fn replan_failed(tx: &Transaction<'_>, id: Uuid, now: i64) -> Result<(), String> {
+    let mut statement = tx.prepare("SELECT t.target_kind,t.target_id,t.target_version,t.started_ms,t.ended_ms,t.source
+        FROM transcript_tasks t WHERE t.id=?1 AND (
+          (t.target_kind='event' AND EXISTS(SELECT 1 FROM named_events e WHERE e.id=t.target_id
+            AND e.deleted_ms IS NULL AND t.target_version=printf('%d:%d:%d',e.source_mask,e.started_ms,e.ended_ms)))
+          OR (t.target_kind='range' AND EXISTS(SELECT 1 FROM manual_ranges m WHERE m.id=t.target_id
+            AND t.target_version=cast(m.revision AS TEXT))))").map_err(|e| e.to_string())?;
+    let targets = statement
+        .query_map([id.to_string()], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, i64>(3)?,
+                r.get::<_, i64>(4)?,
+                r.get::<_, String>(5)?,
+            ))
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    if targets.is_empty() {
+        return Err("task is no longer current".into());
+    }
+    tx.execute(
+        "UPDATE cloud_tasks SET state='superseded',updated_ms=?2 WHERE id=?1",
+        params![id.to_string(), now],
+    )
+    .map_err(|e| e.to_string())?;
+    let run = format!("{VERSION}:{}", Uuid::new_v4());
+    for (kind, target, version, start, end, source) in targets {
+        let retained: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM audio_blocks WHERE source=?1 AND media_path IS NOT NULL
+             AND started_ms<?3 AND ended_ms>?2)",
+            params![source,start,end], |r| r.get(0),
+        ).map_err(|e| e.to_string())?;
+        if !retained {
+            // Never commit half of a shared task's replacement.
+            return Err("audio_unavailable".into());
+        }
+        // Zero new requests can mean a successful sibling already covers this
+        // projection. Do not confuse new-work count with audio availability.
+        plan(
+            tx,
+            &kind,
+            &target,
+            &version,
+            start,
+            end,
+            source_bit(&source),
+            true,
+            now,
+            &run,
+        )?;
+    }
+    Ok(())
+}
+
 pub fn schedule(
     tx: &Transaction<'_>,
     kind: &str,

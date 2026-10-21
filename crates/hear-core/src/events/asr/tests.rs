@@ -993,3 +993,293 @@ fn persisted_request_clock_owns_text_while_voice_requires_actual_audio() {
         4
     );
 }
+
+#[test]
+fn rejected_legacy_input_is_replanned_without_changing_successful_siblings() {
+    let mut db = database();
+    block(&db, "a", 1000, 6000, true);
+    block(&db, "silence", 6000, 26000, false);
+    block(&db, "b", 26000, 31000, true);
+    block(&db, "sibling", 100000, 105000, true);
+    let event_id = event(&mut db, 1000, 105000);
+    let failed = task(&mut db);
+    let mut old_input = input(&db, failed.id).unwrap().unwrap();
+    old_input.parts[1].offset = 5500;
+    old_input.duration_ms = 10500;
+    let specification = serde_json::to_string(&old_input).unwrap();
+    db.execute(
+        "UPDATE asr_inputs SET specification=?2 WHERE task_id=?1",
+        params![failed.id.to_string(), specification],
+    )
+    .unwrap();
+    db.execute(
+        "UPDATE cloud_tasks SET processor_version='volc-event-compact-v1' WHERE id=?1",
+        [failed.id.to_string()],
+    )
+    .unwrap();
+    mark_submit_intent(&db, &failed, 5000001).unwrap();
+    task_failed(
+        &db,
+        &failed,
+        "provider_unmapped_timing_word_in_separator",
+        5000002,
+    )
+    .unwrap();
+    let sibling = task(&mut db);
+    publish_asr(
+        &mut db,
+        &sibling,
+        &[utterance(0, 1000, "有效结果")],
+        5000003,
+    )
+    .unwrap();
+    let segment = event_detail(&db, event_id, 0, 10).unwrap().precise_segments[0].id;
+    let tx = db.transaction().unwrap();
+    crate::knowledge::correct_text(&tx, segment, "人工修订", 5000004).unwrap();
+    tx.commit().unwrap();
+
+    retry_task(&db, failed.id, 5000005).unwrap();
+    let replacement = take_task(&mut db, CloudProvider::Asr, 5000006)
+        .unwrap()
+        .unwrap();
+    assert_ne!(replacement.id, failed.id);
+    assert_eq!((replacement.start, replacement.end), (1000, 31000));
+    assert_eq!(replacement.submit_attempts, 0);
+    let rebuilt = input(&db, replacement.id).unwrap().unwrap();
+    assert_eq!(rebuilt.duration_ms, 30000);
+    assert_eq!(rebuilt.parts[1].offset, 25000);
+    assert_eq!(runs(&rebuilt).len(), 1);
+    let history: (String,String,String,i64) = db.query_row("SELECT t.state,t.remote_id,i.specification,t.submit_attempts FROM cloud_tasks t JOIN asr_inputs i ON i.task_id=t.id WHERE t.id=?1",[failed.id.to_string()],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).unwrap();
+    assert_eq!(
+        history,
+        (
+            "superseded".into(),
+            failed.remote_id.to_string(),
+            specification,
+            1
+        )
+    );
+    let detail = event_detail(&db, event_id, 0, 10).unwrap();
+    assert_eq!(detail.precise_segments[0].id, segment);
+    assert_eq!(detail.precise_segments[0].text, "人工修订");
+    assert_eq!(count(&db), 2);
+    assert_eq!(
+        publish_asr(
+            &mut db,
+            &failed,
+            &[utterance(0, 1000, "迟到旧结果")],
+            5000007
+        )
+        .unwrap(),
+        0
+    );
+    assert!(retry_task(&db, failed.id, 5000008).is_err());
+    assert_eq!(count(&db), 2);
+}
+
+#[test]
+fn rejected_shared_input_uses_current_cropped_memberships_and_rolls_back_if_audio_is_missing() {
+    for missing in [false, true] {
+        let mut db = database();
+        block(&db, "a", 1000, 3500, true);
+        block(&db, "b", 3500, 6000, true);
+        let original = event(&mut db, 1000, 6000);
+        let failed = task(&mut db);
+        mark_submit_intent(&db, &failed, 5000001).unwrap();
+        let (left, right) = split_event(&mut db, original, 1, 3500, "前", "后", 5000002).unwrap();
+        task_failed(&db, &failed, "provider_invalid_utterance", 5000003).unwrap();
+        if missing {
+            db.execute("UPDATE audio_blocks SET media_path=NULL WHERE id='b'", [])
+                .unwrap();
+            assert_eq!(
+                retry_task(&db, failed.id, 5000004).unwrap_err(),
+                "audio_unavailable"
+            );
+            assert_eq!(
+                db.query_row("SELECT count(*) FROM cloud_tasks", [], |r| r
+                    .get::<_, i64>(0))
+                    .unwrap(),
+                1
+            );
+            assert_eq!(
+                db.query_row(
+                    "SELECT state FROM cloud_tasks WHERE id=?1",
+                    [failed.id.to_string()],
+                    |r| r.get::<_, String>(0)
+                )
+                .unwrap(),
+                "failed"
+            );
+        } else {
+            retry_task(&db, failed.id, 5000004).unwrap();
+            assert_eq!(count(&db), 2);
+            for (event_id, expected) in [(left, (1000, 3500)), (right, (3500, 6000))] {
+                let span = db
+                    .query_row(
+                        "SELECT started_ms,ended_ms FROM transcript_tasks WHERE target_id=?1",
+                        [event_id.to_string()],
+                        |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)),
+                    )
+                    .unwrap();
+                assert_eq!(span, expected);
+            }
+        }
+    }
+}
+
+#[test]
+fn uncertain_manual_retry_keeps_original_request_and_input() {
+    let mut db = database();
+    block(&db, "a", 1000, 6000, true);
+    event(&mut db, 1000, 6000);
+    let failed = task(&mut db);
+    mark_submit_intent(&db, &failed, 5000001).unwrap();
+    for error in [
+        "provider_transport",
+        "provider_deadline",
+        "provider_read_failed",
+        "keychain_read_-25308",
+    ] {
+        db.execute(
+            "UPDATE cloud_tasks SET state='failed',error_code=?2 WHERE id=?1",
+            params![failed.id.to_string(), error],
+        )
+        .unwrap();
+        retry_task(&db, failed.id, 5000002).unwrap();
+        let retried = take_task(&mut db, CloudProvider::Asr, 5000003)
+            .unwrap()
+            .unwrap();
+        assert_eq!(retried.id, failed.id);
+        assert_eq!(retried.remote_id, failed.remote_id);
+        assert_eq!(retried.submit_attempts, 1);
+        assert_eq!(count(&db), 1);
+    }
+}
+
+#[test]
+fn removed_coverage_rejection_retries_and_publishes_original_result_without_new_input() {
+    let mut db = database();
+    block(&db, "first", 1000, 6000, true);
+    block(&db, "silence", 6000, 51000, false);
+    block(&db, "last", 51000, 56000, true);
+    event(&mut db, 1000, 56000);
+    let failed = task(&mut db);
+    let original_input = serde_json::to_string(&input(&db, failed.id).unwrap()).unwrap();
+    mark_submit_intent(&db, &failed, 5000001).unwrap();
+    task_failed(
+        &db,
+        &failed,
+        "provider_unmapped_timing_audio_coverage",
+        5000002,
+    )
+    .unwrap();
+    // Already paid text remains recoverable even after raw-audio retention.
+    db.execute(
+        "UPDATE audio_blocks SET media_path=NULL,retention_decision='raw_audio'",
+        [],
+    )
+    .unwrap();
+    retry_task(&db, failed.id, 5000003).unwrap();
+    let retried = take_task(&mut db, CloudProvider::Asr, 5000004)
+        .unwrap()
+        .unwrap();
+    assert_eq!(retried.id, failed.id);
+    assert_eq!(retried.remote_id, failed.remote_id);
+    assert_eq!(retried.submit_attempts, 1);
+    assert_eq!(
+        serde_json::to_string(&input(&db, retried.id).unwrap()).unwrap(),
+        original_input
+    );
+    let text = [
+        utterance(4000, 51000, "长停顿完整句子"),
+        utterance(10000, 11000, "供应商静默内结果"),
+    ];
+    assert_eq!(publish_asr(&mut db, &retried, &text, 5000005).unwrap(), 2);
+    assert_eq!(publish_asr(&mut db, &retried, &text, 5000006).unwrap(), 0);
+    assert_eq!(
+        db.query_row("SELECT count(*) FROM cloud_tasks", [], |r| r
+            .get::<_, i64>(0))
+            .unwrap(),
+        1
+    );
+}
+
+#[test]
+fn rejected_manual_range_replans_once_and_does_not_change_the_range_identity() {
+    for error in [
+        "provider_unmapped_timing",
+        "provider_unmapped_timing_word_in_separator",
+        "provider_invalid_utterance",
+        "provider_invalid_timing",
+        "provider_missing_utterances",
+    ] {
+        let mut db = database();
+        block(&db, "a", 1000, 6000, true);
+        let range = transcribe_range(&mut db, 1000, 6000, EventSources::Microphone, 7000).unwrap();
+        let failed = task(&mut db);
+        mark_submit_intent(&db, &failed, 5000001).unwrap();
+        task_failed(&db, &failed, error, 5000002).unwrap();
+        retry_task(&db, failed.id, 5000003).unwrap();
+        let new = take_task(&mut db, CloudProvider::Asr, 5000004)
+            .unwrap()
+            .unwrap();
+        assert_ne!(new.id, failed.id);
+        assert_eq!(new.target_id, range.to_string());
+        assert_eq!(new.target_version, "1");
+        assert_eq!(new.submit_attempts, 0);
+        assert_eq!(
+            transcribe_range(&mut db, 1000, 6000, EventSources::Microphone, 5000005).unwrap(),
+            range
+        );
+        assert_eq!(count(&db), 1);
+    }
+}
+
+#[test]
+fn shared_recovery_skips_already_covered_member_without_blocking_the_other() {
+    let mut db = database();
+    block(&db, "a", 1000, 10000, true);
+    let original = event(&mut db, 1000, 10000);
+    let failed = task(&mut db);
+    mark_submit_intent(&db, &failed, 5000001).unwrap();
+    task_failed(
+        &db,
+        &failed,
+        "provider_unmapped_timing_word_in_separator",
+        5000002,
+    )
+    .unwrap();
+    let (left, right) = split_event(&mut db, original, 1, 5000, "前", "后", 5000003).unwrap();
+    edit_event(&mut db, right, 1, 5000, 7000, "后", None, 5000004).unwrap();
+    let sibling_event = event(&mut db, 7000, 10000);
+    let sibling = task(&mut db);
+    publish_asr(
+        &mut db,
+        &sibling,
+        &[utterance(0, 1000, "成功范围")],
+        5000005,
+    )
+    .unwrap();
+    let merged = merge_events(&mut db, right, 2, sibling_event, 1, "合并", 5000006).unwrap();
+    edit_event(&mut db, merged, 1, 7000, 10000, "已覆盖", None, 5000007).unwrap();
+
+    retry_task(&db, failed.id, 5000008).unwrap();
+    assert_eq!(count(&db), 2);
+    let recovered = take_task(&mut db, CloudProvider::Asr, 5000009)
+        .unwrap()
+        .unwrap();
+    assert_eq!(recovered.target_id, left.to_string());
+    assert_eq!((recovered.start, recovered.end), (1000, 5000));
+    let current_sibling: String = db
+        .query_row(
+            "SELECT id FROM transcript_tasks WHERE target_id=?1",
+            [merged.to_string()],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(current_sibling, sibling.id.to_string());
+    assert_eq!(
+        event_detail(&db, merged, 0, 10).unwrap().precise_segments[0].text,
+        "成功范围"
+    );
+}
