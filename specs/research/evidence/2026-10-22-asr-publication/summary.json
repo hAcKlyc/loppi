@@ -520,7 +520,14 @@
       "adversarial": "PASS; no blocking findings",
       "architecture": "PASS; final production and extended docs reviewed"
     },
-    "installed_acceptance": "not executed; devplan in-progress"
+    "installed_acceptance": "not executed; devplan in-progress",
+    "post_commit_static": {
+      "workspace_check": "passed",
+      "rust_format": "passed",
+      "typescript": "passed",
+      "lint": "passed"
+    }
   },
-  "documentation_scope": "Architecture, algorithms, speaker identity, diagnostics, usage, technical index, README, PRD/RFC, historical supersession notes and investigation synchronized; 30 added local links checked."
+  "documentation_scope": "Architecture, algorithms, speaker identity, diagnostics, usage, technical index, README, PRD/RFC, historical supersession notes and investigation synchronized; 30 added local links checked.",
+  "production_commit": "b12197daeb4f37e0bcdce55e78ceb08cdf5d413b"
 }

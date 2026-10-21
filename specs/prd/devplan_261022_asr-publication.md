@@ -30,8 +30,8 @@ updated: 2026-10-22
 - [x] 移除文字启发式过滤与旧假设测试，保留位置/生命周期约束。
 - [x] 同 owner 修复意图缺口、限定历史修复及回归。
 - [x] 原响应离线回放、验证与文档同步（默认 all 入口的既有手动脚本发现问题及独立补验见下）。
-- [ ] cross-review（requirements/adversarial 并行，最终 architecture）、修复、提交。
-- [ ] 记录发布验收边界及交付状态。
+- [x] cross-review（requirements/adversarial 并行，最终 architecture）、修复、提交。
+- [x] 记录发布验收边界及交付状态。
 
 ### 当前批次 Review 基线
 - 单批次，base: 83bc811。
@@ -61,7 +61,7 @@ updated: 2026-10-22
 - 默认 `verify all` 已执行：typecheck、lint、workspace cargo check/test、49 个前端测试、3 个兔子资源测试通过。Rust core 304 通过/9 opt-in 跳过，protocol 11、worker 9 通过。
 - 默认入口未整体通过：既有 `scripts/test_model_preparation.py` 在 unittest discovery 导入时直接执行，把 argv 的 discover 当模型目录。该文件与 base 的 SHA256 相同；本次不改无关模型脚本，不宣称 all 绿灯。
 - 按原入口顺序补验其余项目：6 个普通 Python 测试（正确设置 scripts 模块路径）通过；native entry policy 编译/实跑通过；`verify --suite smoke` 全部通过，含前端构建、workspace 二进制构建、四组件身份、隔离 Core/CLI 与只读诊断烟测。需要真实模型夹具的手动脚本未执行；它不是本次变更的验收证据。
-- Phase 1 requirements：产品契约 PASS、无代码阻塞；唯一证据项是同步以上剩余检查。该证据现已补齐，等待原 reviewer 定向确认。
+- Phase 1 requirements：产品契约 PASS、无代码阻塞；唯一证据项是同步以上剩余检查。该证据已补齐，原 reviewer 定向复核 PASS。
 - Phase 1 adversarial：PASS，无可达契约违反；没有追加文字过滤或架构机制。
 - 裁决：默认测试发现问题为 baseline/out-of-scope，单独记录，不驱动额外代码；其余默认检查均已独立完成。安装版暂停/恢复、定时停止仍未做，不以离线结果冒充；状态保持 in-progress。
 
@@ -76,3 +76,9 @@ updated: 2026-10-22
 - 生产代码自 Phase 1 后未改变；后续仅文档/证据更新，不失效已通过测试与构建。diff/格式检查通过，30 个新增本地文档链接已核对。
 - 对整份计划重读：当前代码范围、文档、离线回放与三路审查均完成；未引入临时 flag、兼容壳或新队列。旧持久数据迁移有真实已安装版 owner；普通云重试不承诺 query-only，未操作活跃任务。
 - 状态保持 in-progress：签名安装版的真实暂停/恢复与定时停止尚未执行，本轮不替换安装版、不写活跃库。发布前须确认最终封块后的 gap 起点、精转文字保留及声纹/回放独立可用性；不能把本轮代码门禁当作已发布修复。
+
+### 提交与交付备忘
+- 实现提交：`b12197daeb4f37e0bcdce55e78ceb08cdf5d413b`（`fix: publish ASR text against its submitted input clock`）。单批次，无代码修复遗留，三路 PASS。
+- 提交后最终静态门禁：workspace cargo check、cargo fmt --check、TypeScript typecheck 与 lint 均通过；后续仅本台账/脱敏摘要收尾，不改变已验证代码。
+- 文档与实现随 `fix/asr-publication-input-clock` 分支交付；独立 worktree 完成审查后，将该分支切回用户原工作区，便于后续构建。原工作区早期未跟踪调查材料先保留私有备份，避免覆盖；已安装 App、活跃 DB 与录制意图不动。
+- 真机验收（mandatory，尚未执行）：① 签名修复版实际暂停后核对最终封块终点与 gap 起点，恢复后缺口范围有效；② 定时停止走同样边界，保留完整尾句；③ 长静默文字保留、声纹/回放按真实原声独立可用；④ 历史精转任务未自动重送，任何恢复先核对原 ID 与实际查询/提交行为。状态保持 in-progress，不能宣称已安装发布。
