@@ -1,0 +1,526 @@
+{
+  "day": "2026-10-21",
+  "tasks": [
+    {
+      "task_id": "045c3182-03b9-49f8-b9e9-149666041d80",
+      "parsed_segments": 15,
+      "invalid": [
+        {
+          "end_ms": 48985,
+          "idx": 4,
+          "start_ms": 32395,
+          "reasons": [
+            "interior_silence"
+          ]
+        },
+        {
+          "end_ms": 85940,
+          "idx": 13,
+          "start_ms": 75855,
+          "reasons": [
+            "interior_silence"
+          ]
+        }
+      ],
+      "failure_conditions": {
+        "interior_silence": 2
+      }
+    },
+    {
+      "task_id": "b24b56e3-3e99-451a-b54d-0a4ce2fecb84",
+      "parsed_segments": 16,
+      "invalid": [
+        {
+          "end_ms": 43530,
+          "idx": 12,
+          "start_ms": 33425,
+          "reasons": [
+            "interior_silence"
+          ]
+        }
+      ],
+      "failure_conditions": {
+        "interior_silence": 1
+      }
+    },
+    {
+      "task_id": "66e8c231-2a23-4221-a621-89b6d006bbc2",
+      "parsed_segments": 120,
+      "invalid": [
+        {
+          "end_ms": 122955,
+          "idx": 29,
+          "start_ms": 109065,
+          "reasons": [
+            "interior_silence"
+          ]
+        }
+      ],
+      "failure_conditions": {
+        "interior_silence": 1
+      }
+    },
+    {
+      "task_id": "47615b5e-f7ba-4221-9026-f92c773f5f10",
+      "parsed_segments": 29,
+      "invalid": [
+        {
+          "end_ms": 25030,
+          "idx": 2,
+          "start_ms": 20745,
+          "reasons": [
+            "trailing_silence"
+          ]
+        },
+        {
+          "end_ms": 33215,
+          "idx": 3,
+          "start_ms": 25750,
+          "reasons": [
+            "leading_silence",
+            "majority_silence"
+          ]
+        }
+      ],
+      "failure_conditions": {
+        "trailing_silence": 1,
+        "majority_silence": 1,
+        "leading_silence": 1
+      }
+    },
+    {
+      "task_id": "d7ff84a0-c0df-4d04-8f08-eb670cb55537",
+      "parsed_segments": 18,
+      "invalid": [
+        {
+          "end_ms": 46810,
+          "idx": 14,
+          "start_ms": 38615,
+          "reasons": [
+            "interior_silence",
+            "majority_silence"
+          ]
+        }
+      ],
+      "failure_conditions": {
+        "interior_silence": 1,
+        "majority_silence": 1
+      }
+    },
+    {
+      "task_id": "84f8b3d9-3ceb-42d6-a140-7dee2bf15534",
+      "parsed_segments": 68,
+      "invalid": [
+        {
+          "end_ms": 51780,
+          "idx": 10,
+          "start_ms": 44995,
+          "reasons": [
+            "interior_silence",
+            "majority_silence"
+          ]
+        },
+        {
+          "end_ms": 140044,
+          "idx": 30,
+          "start_ms": 133844,
+          "reasons": [
+            "trailing_silence"
+          ]
+        },
+        {
+          "end_ms": 156974,
+          "idx": 31,
+          "start_ms": 147769,
+          "reasons": [
+            "interior_silence",
+            "majority_silence"
+          ]
+        },
+        {
+          "end_ms": 297765,
+          "idx": 61,
+          "start_ms": 285130,
+          "reasons": [
+            "leading_silence"
+          ]
+        }
+      ],
+      "failure_conditions": {
+        "interior_silence": 2,
+        "majority_silence": 2,
+        "trailing_silence": 1,
+        "leading_silence": 1
+      }
+    },
+    {
+      "task_id": "c0515418-2532-4a1f-a419-3ba47414bf81",
+      "parsed_segments": 19,
+      "invalid": [
+        {
+          "end_ms": 45330,
+          "idx": 7,
+          "start_ms": 40985,
+          "reasons": [
+            "leading_silence",
+            "majority_silence"
+          ]
+        }
+      ],
+      "failure_conditions": {
+        "majority_silence": 1,
+        "leading_silence": 1
+      }
+    },
+    {
+      "task_id": "eab6e46f-2239-4979-a42c-765ebea4cc39",
+      "parsed_segments": 52,
+      "invalid": [
+        {
+          "end_ms": 121444,
+          "idx": 10,
+          "start_ms": 68889,
+          "reasons": [
+            "interior_silence",
+            "majority_silence"
+          ]
+        },
+        {
+          "end_ms": 170525,
+          "idx": 22,
+          "start_ms": 157770,
+          "reasons": [
+            "interior_silence"
+          ]
+        },
+        {
+          "end_ms": 207575,
+          "idx": 25,
+          "start_ms": 188100,
+          "reasons": [
+            "interior_silence",
+            "majority_silence"
+          ]
+        },
+        {
+          "end_ms": 322095,
+          "idx": 48,
+          "start_ms": 315600,
+          "reasons": [
+            "leading_silence",
+            "majority_silence"
+          ]
+        }
+      ],
+      "failure_conditions": {
+        "interior_silence": 3,
+        "majority_silence": 3,
+        "leading_silence": 1
+      }
+    },
+    {
+      "task_id": "97520e9d-ffda-4839-a5fe-dc4b054dfad3",
+      "parsed_segments": 51,
+      "invalid": [
+        {
+          "end_ms": 45020,
+          "idx": 16,
+          "start_ms": 41700,
+          "reasons": [
+            "trailing_silence"
+          ]
+        },
+        {
+          "end_ms": 84615,
+          "idx": 31,
+          "start_ms": 75260,
+          "reasons": [
+            "leading_silence",
+            "majority_silence"
+          ]
+        },
+        {
+          "end_ms": 156790,
+          "idx": 44,
+          "start_ms": 150805,
+          "reasons": [
+            "leading_silence",
+            "majority_silence"
+          ]
+        }
+      ],
+      "failure_conditions": {
+        "trailing_silence": 1,
+        "majority_silence": 2,
+        "leading_silence": 2
+      }
+    },
+    {
+      "task_id": "362404db-ac8c-4724-8cc7-581889e467f5",
+      "parsed_segments": 71,
+      "invalid": [
+        {
+          "end_ms": 115800,
+          "idx": 26,
+          "start_ms": 102505,
+          "reasons": [
+            "interior_silence",
+            "majority_silence"
+          ]
+        },
+        {
+          "end_ms": 216875,
+          "idx": 49,
+          "start_ms": 201840,
+          "reasons": [
+            "interior_silence"
+          ]
+        }
+      ],
+      "failure_conditions": {
+        "interior_silence": 2,
+        "majority_silence": 1
+      }
+    },
+    {
+      "task_id": "78b352b0-7ff8-4472-bb0d-4d2515abad03",
+      "parsed_segments": 49,
+      "invalid": [
+        {
+          "end_ms": 146685,
+          "idx": 33,
+          "start_ms": 132390,
+          "reasons": [
+            "interior_silence",
+            "majority_silence"
+          ]
+        }
+      ],
+      "failure_conditions": {
+        "interior_silence": 1,
+        "majority_silence": 1
+      }
+    },
+    {
+      "task_id": "381e28be-3f79-4dcb-828b-847b8ada46d4",
+      "parsed_segments": 28,
+      "invalid": [
+        {
+          "end_ms": 72895,
+          "idx": 3,
+          "start_ms": 72455,
+          "reasons": [
+            "leading_silence"
+          ]
+        }
+      ],
+      "failure_conditions": {
+        "leading_silence": 1
+      }
+    },
+    {
+      "task_id": "914a7db9-1f2a-41a7-984f-9f65d2c0acbe",
+      "parsed_segments": 32,
+      "invalid": [
+        {
+          "end_ms": 84815,
+          "idx": 8,
+          "start_ms": 66400,
+          "reasons": [
+            "interior_silence"
+          ]
+        },
+        {
+          "end_ms": 303180,
+          "idx": 30,
+          "start_ms": 289945,
+          "reasons": [
+            "leading_silence"
+          ]
+        }
+      ],
+      "failure_conditions": {
+        "interior_silence": 1,
+        "leading_silence": 1
+      }
+    },
+    {
+      "task_id": "c6912ee6-aac9-44bf-a1a0-4d6889c345b6",
+      "parsed_segments": 36,
+      "invalid": [
+        {
+          "end_ms": 52975,
+          "idx": 9,
+          "start_ms": 42340,
+          "reasons": [
+            "interior_silence"
+          ]
+        }
+      ],
+      "failure_conditions": {
+        "interior_silence": 1
+      }
+    },
+    {
+      "task_id": "45651481-7717-4f6c-955c-9406c70cf017",
+      "parsed_segments": 120,
+      "invalid": [
+        {
+          "end_ms": 446395,
+          "idx": 58,
+          "start_ms": 432000,
+          "reasons": [
+            "interior_silence"
+          ]
+        },
+        {
+          "end_ms": 790340,
+          "idx": 101,
+          "start_ms": 789980,
+          "reasons": [
+            "leading_silence"
+          ]
+        }
+      ],
+      "failure_conditions": {
+        "interior_silence": 1,
+        "leading_silence": 1
+      }
+    },
+    {
+      "task_id": "efad40c7-e010-4661-a0ce-79347e0b671a",
+      "parsed_segments": 20,
+      "invalid": [
+        {
+          "end_ms": 97860,
+          "idx": 10,
+          "start_ms": 85295,
+          "reasons": [
+            "leading_silence",
+            "majority_silence"
+          ]
+        }
+      ],
+      "failure_conditions": {
+        "majority_silence": 1,
+        "leading_silence": 1
+      }
+    },
+    {
+      "task_id": "ac2b4474-cb12-40ec-b150-fa934a7aaf62",
+      "parsed_segments": 31,
+      "invalid": [
+        {
+          "end_ms": 84790,
+          "idx": 9,
+          "start_ms": 34485,
+          "reasons": [
+            "interior_silence",
+            "majority_silence"
+          ]
+        }
+      ],
+      "failure_conditions": {
+        "interior_silence": 1,
+        "majority_silence": 1
+      }
+    },
+    {
+      "task_id": "ca1f5b84-29af-43ae-9f7a-d8b799f40864",
+      "parsed_segments": 4,
+      "invalid": [
+        {
+          "end_ms": 7400,
+          "idx": 3,
+          "start_ms": 4760,
+          "reasons": [
+            "explicit_gap"
+          ]
+        }
+      ],
+      "failure_conditions": {
+        "explicit_gap": 1
+      }
+    }
+  ],
+  "parsed_total": 779,
+  "invalid_total": 31,
+  "failure_conditions": {
+    "interior_silence": 17,
+    "trailing_silence": 3,
+    "majority_silence": 14,
+    "leading_silence": 10,
+    "explicit_gap": 1
+  },
+  "installed_core_build": {
+    "built_at_epoch": 1792517802,
+    "component": "core",
+    "dirty": true,
+    "git_sha": "7848b03d4fcd5c251348f59ccae59d723b6706b4",
+    "protocol_version": 20,
+    "version": "0.1.3"
+  },
+  "day_summary": {
+    "asr_complete": 220,
+    "asr_failed": 18,
+    "events_total": 18,
+    "events_with_failed_tasks": 10,
+    "llm_complete": 10,
+    "llm_failed": 0
+  },
+  "baseline_replay": {
+    "tasks": 18,
+    "published": 0,
+    "withheld_segments": 779,
+    "rejected_segments": 31
+  },
+  "proposal_replay": {
+    "tasks": 18,
+    "published": 18,
+    "saved_segments": 779,
+    "duplicate_insertions": 0
+  },
+  "proposal_scope": "final production change on fix/asr-publication-input-clock: delete transcript coverage heuristics, reconcile session-owned intent gaps; installed app and active DB untouched",
+  "accepted_product_contract": "Keep complete provider text and timing, including within encoded silence; retain task/cleanup ownership, request-clock mapping and bounds; voice/playback check actual media independently.",
+  "original_replay": {
+    "tasks": 18,
+    "published": 18,
+    "saved_segments": 779,
+    "duplicate_insertions": 0,
+    "affected_events_without_asr_failed": 10,
+    "pause_event_state": "transcribed"
+  },
+  "verification": {
+    "events_targeted_passed": 94,
+    "ingestion_targeted_passed": 19,
+    "original_result_replay_passed": 1,
+    "workspace_rust_check": "passed",
+    "workspace_rust_tests": {
+      "core_passed": 304,
+      "core_ignored": 9,
+      "protocol_passed": 11,
+      "worker_passed": 9
+    },
+    "frontend_tests_passed": 49,
+    "rabbit_asset_tests_passed": 3,
+    "python_default_modules_passed": 6,
+    "native_entry_policy": "passed",
+    "workspace_binary_build": "passed",
+    "frontend_build": "passed",
+    "component_identities": "passed",
+    "isolated_core_smoke": "passed",
+    "isolated_diagnostics_smoke": "passed",
+    "default_verify_all": {
+      "passed": false,
+      "baseline_issue": "unittest discovery imports unchanged manual scripts/test_model_preparation.py and treats discover as model path; file SHA256 matches base",
+      "remaining_checks": "all remaining equivalent checks passed independently; manual model fixture script not executed"
+    },
+    "review": {
+      "requirements": "PASS; verification synchronization follow-up closed",
+      "adversarial": "PASS; no blocking findings",
+      "architecture": "PASS; final production and extended docs reviewed"
+    },
+    "installed_acceptance": "not executed; devplan in-progress"
+  },
+  "documentation_scope": "Architecture, algorithms, speaker identity, diagnostics, usage, technical index, README, PRD/RFC, historical supersession notes and investigation synchronized; 30 added local links checked."
+}

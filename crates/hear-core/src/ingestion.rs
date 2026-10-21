@@ -77,7 +77,25 @@ pub fn init(db: &Connection) -> Result<(), String> {
         WHERE source_session_id IS NOT NULL;
       CREATE INDEX audio_blocks_session_pending ON audio_blocks(session_id,sample_start)
         WHERE analysis_state='pending' AND analysis_attempts<3 AND media_path IS NOT NULL;",
-    )
+    )?;
+    // Installed versions wrote stop intent before the final block arrived.
+    // Associate only unambiguous, physically evidenced overlap; no new gaps.
+    crate::storage::migrate(db, "intent_gap_confirmed_audio_v1", "
+      UPDATE media_gaps AS g SET source_session_id=(
+        SELECT min(b.session_id) FROM audio_blocks b JOIN recording_sessions s ON s.id=b.session_id
+        WHERE b.source=g.source AND s.source=g.source AND b.started_ms<=g.started_ms AND b.ended_ms>g.started_ms)
+      WHERE source_session_id IS NULL
+        AND reason IN ('manual_pause','schedule_pause','storage_limit','source_disabled')
+        AND (SELECT count(DISTINCT b.session_id) FROM audio_blocks b JOIN recording_sessions s ON s.id=b.session_id
+          WHERE b.source=g.source AND s.source=g.source AND b.started_ms<=g.started_ms AND b.ended_ms>g.started_ms)=1;
+      UPDATE media_gaps AS g SET started_ms=max(started_ms,min(coalesce(ended_ms,
+        (SELECT last_confirmed_ms FROM recording_sessions WHERE id=g.source_session_id)),
+        (SELECT last_confirmed_ms FROM recording_sessions WHERE id=g.source_session_id)))
+      WHERE reason IN ('manual_pause','schedule_pause','storage_limit','source_disabled')
+        AND EXISTS(SELECT 1 FROM recording_sessions s WHERE s.id=g.source_session_id AND s.source=g.source);
+      DELETE FROM media_gaps WHERE reason IN ('manual_pause','schedule_pause','storage_limit','source_disabled')
+        AND ended_ms<=started_ms;
+    ")
 }
 
 /// Lifecycle gaps belong to the session, including after cleanup splits them.
@@ -701,6 +719,41 @@ pub fn discard_prepared(directory: &Path, prepared: &Prepared) {
     }
 }
 
+fn settle_intent_gaps(db: &Connection, entry: &Entry) -> Result<(), String> {
+    let session = entry.session.id.to_string();
+    // An old unowned stop gap may predate an upgrade's pending final journal.
+    // Bind it only once that session's actual block covers its start.
+    db.execute(
+        "UPDATE media_gaps AS g SET source_session_id=?1
+      WHERE source_session_id IS NULL AND source=?2 AND started_ms>=?3 AND started_ms<?4
+        AND reason IN ('manual_pause','schedule_pause','storage_limit','source_disabled')
+        AND (SELECT count(DISTINCT b.session_id) FROM audio_blocks b
+          WHERE b.source=g.source AND b.started_ms<=g.started_ms AND b.ended_ms>g.started_ms)=1
+        AND EXISTS(SELECT 1 FROM audio_blocks b WHERE b.session_id=?1
+          AND b.started_ms<=g.started_ms AND b.ended_ms>g.started_ms)",
+        params![
+            session,
+            source_name(entry.session.source),
+            entry.started_ms,
+            entry.ended_ms
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+    db.execute(
+        "UPDATE media_gaps SET started_ms=max(started_ms,min(coalesce(ended_ms,
+        (SELECT last_confirmed_ms FROM recording_sessions WHERE id=?1)),
+        (SELECT last_confirmed_ms FROM recording_sessions WHERE id=?1)))
+      WHERE source_session_id=?1 AND source=(SELECT source FROM recording_sessions WHERE id=?1)
+        AND reason IN ('manual_pause','schedule_pause','storage_limit','source_disabled')",
+        [&session],
+    )
+    .map_err(|e| e.to_string())?;
+    db.execute("DELETE FROM media_gaps WHERE source_session_id=?1
+      AND reason IN ('manual_pause','schedule_pause','storage_limit','source_disabled') AND ended_ms<=started_ms", [&session])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 pub fn commit(db: &mut Connection, entry: &Entry, prepared: &Prepared) -> Result<(), String> {
     let tx = db.transaction().map_err(|e| e.to_string())?;
     if acknowledged(&tx, entry)? {
@@ -725,6 +778,7 @@ pub fn commit(db: &mut Connection, entry: &Entry, prepared: &Prepared) -> Result
             )
             .map_err(|e| e.to_string())?;
             tx.execute("UPDATE recording_sessions SET last_confirmed_ms=max(last_confirmed_ms,?2) WHERE id=?1",params![entry.session.id.to_string(),entry.ended_ms]).map_err(|e|e.to_string())?;
+            settle_intent_gaps(&tx, entry)?;
             // A helper may finish publishing just before core observes its
             // death. Recovered audio shortens that session's unfinished tail.
             tx.execute(
@@ -961,6 +1015,157 @@ mod tests {
         let ranges = surviving_samples(&store.lock().unwrap().db, &entry).unwrap();
         let prepared = prepare(dir, &entry, &ranges).unwrap();
         commit(&mut store.lock().unwrap().db, &entry, &prepared).unwrap();
+    }
+
+    #[test]
+    fn confirmed_final_audio_shortens_only_its_session_intent_gaps() {
+        for reason in [
+            "manual_pause",
+            "schedule_pause",
+            "storage_limit",
+            "source_disabled",
+        ] {
+            for closed in [false, true] {
+                let (dir, store, session) = setup();
+                let id = publish(dir.path(), &session, 0, true);
+                let wall = session.wall_anchor_ms;
+                {
+                    let mut s = store.lock().unwrap();
+                    s.db.execute("UPDATE service_state SET enabled_intent=1 WHERE id=1", [])
+                        .unwrap();
+                    let tx = s.db.transaction().unwrap();
+                    crate::open_intent_gap(&tx, "microphone", reason, wall + 500).unwrap();
+                    crate::open_intent_gap(&tx, "system", reason, wall + 500).unwrap();
+                    tx.execute("INSERT INTO media_gaps(id,source,started_ms,ended_ms,reason,source_session_id) VALUES('callback','microphone',?1,?2,'callback_gap',?3),('other','microphone',?1,NULL,?4,'another-session')",params![wall+600,wall+700,session.id.to_string(),reason]).unwrap();
+                    if closed {
+                        crate::close_intent_gaps(&tx, reason, wall + 750).unwrap();
+                    }
+                    tx.commit().unwrap();
+                    s.end_recording_session(session.id, true).unwrap();
+                }
+                import_one(dir.path(), &store, &session, id);
+                let db = &store.lock().unwrap().db;
+                let own:Option<i64> = db.query_row("SELECT started_ms FROM media_gaps WHERE reason=?1 AND source_session_id=?2",params![reason,session.id.to_string()],|r|r.get(0)).optional().unwrap();
+                assert_eq!(own, if closed { None } else { Some(wall + 1000) });
+                let sibling: i64 = db
+                    .query_row(
+                        "SELECT started_ms FROM media_gaps WHERE source='system' AND reason=?1",
+                        [reason],
+                        |r| r.get(0),
+                    )
+                    .unwrap();
+                assert_eq!(sibling, wall + 500);
+                let other: i64 = db
+                    .query_row(
+                        "SELECT started_ms FROM media_gaps WHERE id='other'",
+                        [],
+                        |r| r.get(0),
+                    )
+                    .unwrap();
+                assert_eq!(other, wall + 600);
+                let callback: (i64, i64) = db
+                    .query_row(
+                        "SELECT started_ms,ended_ms FROM media_gaps WHERE id='callback'",
+                        [],
+                        |r| Ok((r.get(0)?, r.get(1)?)),
+                    )
+                    .unwrap();
+                assert_eq!(callback, (wall + 600, wall + 700));
+            }
+        }
+    }
+
+    #[test]
+    fn intent_gap_correction_survives_cleanup_split_and_late_upgrade_journal() {
+        for unowned in [false, true] {
+            let (dir, store, session) = setup();
+            publish(dir.path(), &session, 0, true);
+            let wall = session.wall_anchor_ms;
+            {
+                let mut s = store.lock().unwrap();
+                s.db.execute("UPDATE service_state SET enabled_intent=1 WHERE id=1", [])
+                    .unwrap();
+                let tx = s.db.transaction().unwrap();
+                crate::open_intent_gap(&tx, "microphone", "manual_pause", wall + 100).unwrap();
+                if unowned {
+                    tx.execute("UPDATE media_gaps SET source_session_id=NULL", [])
+                        .unwrap();
+                }
+                tx.commit().unwrap();
+                s.end_recording_session(session.id, true).unwrap();
+                execute_clear(&mut s, dir.path(), wall + 250, wall + 750, wall + 2000);
+            }
+            crate::ingest_session_locked(&store, dir.path(), session.id, true).unwrap();
+            let s = store.lock().unwrap();
+            let spans: Vec<(i64, Option<i64>)> = s
+                .db
+                .prepare("SELECT started_ms,ended_ms FROM media_gaps WHERE reason='manual_pause'")
+                .unwrap()
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+                .unwrap()
+                .collect::<Result<_, _>>()
+                .unwrap();
+            assert_eq!(spans, vec![(wall + 1000, None)]);
+            assert_eq!(count_blocks(&s.db), 2);
+        }
+    }
+
+    #[test]
+    fn intent_gap_open_after_confirmed_tail_and_old_gap_migration_are_idempotent() {
+        let (dir, store, session) = setup();
+        let id = publish(dir.path(), &session, 0, true);
+        import_one(dir.path(), &store, &session, id);
+        let wall = session.wall_anchor_ms;
+        let mut s = store.lock().unwrap();
+        s.db.execute("UPDATE service_state SET enabled_intent=1 WHERE id=1", [])
+            .unwrap();
+        let tx = s.db.transaction().unwrap();
+        crate::open_intent_gap(&tx, "microphone", "manual_pause", wall + 500).unwrap();
+        let start: i64 = tx
+            .query_row(
+                "SELECT started_ms FROM media_gaps WHERE reason='manual_pause'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(start, wall + 1000);
+        tx.execute(
+            "UPDATE media_gaps SET started_ms=?1,source_session_id=NULL",
+            [wall + 500],
+        )
+        .unwrap();
+        tx.execute("INSERT INTO media_gaps(id,source,started_ms,ended_ms,reason) VALUES('unknown','microphone',?1,NULL,'schedule_pause'),('real','microphone',?2,?3,'callback_gap')",params![wall+2000,wall+200,wall+300]).unwrap();
+        tx.execute(
+            "DELETE FROM core_migrations WHERE name='intent_gap_confirmed_audio_v1'",
+            [],
+        )
+        .unwrap();
+        tx.commit().unwrap();
+        init(&s.db).unwrap();
+        let migrated: (i64, String) =
+            s.db.query_row(
+                "SELECT started_ms,source_session_id FROM media_gaps WHERE reason='manual_pause'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(migrated, (wall + 1000, session.id.to_string()));
+        let unknown: (i64, Option<String>) =
+            s.db.query_row(
+                "SELECT started_ms,source_session_id FROM media_gaps WHERE id='unknown'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(unknown, (wall + 2000, None));
+        let before: i64 =
+            s.db.query_row("SELECT total_changes()", [], |r| r.get(0))
+                .unwrap();
+        init(&s.db).unwrap();
+        let after: i64 =
+            s.db.query_row("SELECT total_changes()", [], |r| r.get(0))
+                .unwrap();
+        assert_eq!(before, after);
     }
 
     #[test]

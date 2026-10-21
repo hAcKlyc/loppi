@@ -1977,11 +1977,14 @@ fn open_intent_gap(
     at: i64,
 ) -> rusqlite::Result<()> {
     tx.execute(
-        "INSERT INTO media_gaps(id,source,started_ms,ended_ms,reason)
-         SELECT ?1,?2,?3,NULL,?4 WHERE EXISTS(
-           SELECT 1 FROM service_state WHERE id=1 AND enabled_intent=1 AND
-           ((?2='microphone' AND microphone_enabled=1) OR (?2='system' AND system_enabled=1))
-         ) AND NOT EXISTS(
+        "INSERT INTO media_gaps(id,source,started_ms,ended_ms,reason,source_session_id)
+         SELECT ?1,?2,max(?3,coalesce(s.last_confirmed_ms,?3)),NULL,?4,s.id
+         FROM service_state u LEFT JOIN recording_sessions s ON s.id=(
+           SELECT id FROM recording_sessions WHERE source=?2 AND state='open'
+           ORDER BY started_ms DESC,id LIMIT 1)
+         WHERE u.id=1 AND u.enabled_intent=1 AND
+           ((?2='microphone' AND u.microphone_enabled=1) OR (?2='system' AND u.system_enabled=1))
+         AND NOT EXISTS(
            SELECT 1 FROM media_gaps WHERE source=?2 AND reason=?4 AND ended_ms IS NULL
          )",
         params![uuid::Uuid::new_v4().to_string(), source, at, reason],

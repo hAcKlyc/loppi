@@ -3471,15 +3471,14 @@ pub fn publish_asr(
             })
             .collect::<Result<Vec<_>, String>>()?
     };
+    // The submitted input owns the transcript clock. Retention, VAD and later
+    // capture-gap metadata govern playback/voice, not whether text is kept.
     let mut inserted_segments = Vec::new();
     for utterance in &mapped {
         let start = utterance.start_ms;
         let end = utterance.end_ms;
         if start < task.start || end > task.end || end <= start {
             return Err("provider_invalid_timing".into());
-        }
-        if !utterance_has_encoded_audio(&tx, source, start, end, task.submit_attempts > 0)? {
-            return Err("provider_unmapped_timing_audio_coverage".into());
         }
         let segment_id = Uuid::new_v4();
         tx.execute(
@@ -3568,63 +3567,6 @@ pub(crate) fn utterance_has_retained_audio(
         }
     }
     Ok(false)
-}
-
-fn utterance_has_encoded_audio(
-    db: &Connection,
-    source: &str,
-    start: i64,
-    end: i64,
-    allow_cleared_original: bool,
-) -> Result<bool, String> {
-    // The cloud input places silence in ordinary holes between retained
-    // blocks. A provider sentence may span a short pause, while a sentence
-    // over a capture failure, a long hole, or mostly silence is not grounded.
-    let explicit_gap: bool = db
-        .query_row(
-            "SELECT EXISTS(SELECT 1 FROM media_gaps WHERE source=?1
-             AND started_ms<?3 AND coalesce(ended_ms,?3)>?2)",
-            params![source, start, end],
-            |row| row.get(0),
-        )
-        .map_err(|error| error.to_string())?;
-    if explicit_gap {
-        return Ok(false);
-    }
-    let mut statement = db
-        .prepare(
-            "SELECT started_ms,ended_ms FROM audio_blocks WHERE source=?1
-             AND (media_path IS NOT NULL OR (?4 AND retention_decision='raw_audio'))
-             AND started_ms<?3 AND ended_ms>?2 ORDER BY started_ms,ended_ms",
-        )
-        .map_err(|error| error.to_string())?;
-    let spans = statement
-        .query_map(params![source, start, end, allow_cleared_original], |row| {
-            Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
-        })
-        .map_err(|error| error.to_string())?;
-    let mut covered = start;
-    let mut voiced_ms = 0;
-    let mut seen = false;
-    for span in spans {
-        let (block_start, block_end) = span.map_err(|error| error.to_string())?;
-        if !seen && block_start - start > 10 {
-            return Ok(false);
-        }
-        let hole = block_start - covered;
-        if seen && hole > MAX_ASR_INTERIOR_SILENCE_MS {
-            return Ok(false);
-        }
-        let from = block_start.max(covered).max(start);
-        let to = block_end.min(end);
-        voiced_ms += (to - from).max(0);
-        covered = covered.max(block_end);
-        seen = true;
-        if covered >= end {
-            break;
-        }
-    }
-    Ok(seen && end - covered <= 10 && voiced_ms * 2 >= end - start)
 }
 
 #[derive(Debug, Clone)]
@@ -4578,7 +4520,7 @@ mod tests {
     }
 
     #[test]
-    fn normalized_response_keeps_original_bounds_and_publication_atomic() {
+    fn normalized_response_keeps_request_bounds_despite_late_gap_metadata() {
         let mut db = db();
         media(&db, "saved", 1_000, 11_000);
         set_configured(&db, CloudProvider::Asr, "bigmodel").unwrap();
@@ -4619,14 +4561,11 @@ mod tests {
         let mut valid = response;
         valid["result"]["utterances"][0]["end_time"] = serde_json::json!(10_000);
         let items = crate::cloud::parse_asr_result(&valid).unwrap();
-        assert_eq!(
-            publish_asr(&mut db, &task, &items, 12_003).unwrap_err(),
-            "provider_unmapped_timing_audio_coverage"
-        );
+        assert_eq!(publish_asr(&mut db, &task, &items, 12_003).unwrap(), 2);
         assert_eq!(
             db.query_row::<i64, _, _>("SELECT count(*) FROM precise_segments", [], |r| r.get(0))
                 .unwrap(),
-            0
+            2
         );
     }
 
@@ -4703,7 +4642,7 @@ mod tests {
     }
 
     #[test]
-    fn cloud_sentence_can_cross_short_encoded_silence_but_not_a_capture_gap() {
+    fn cloud_text_survives_encoded_silence_while_voice_requires_retained_audio() {
         let mut db = db();
         media(&db, "first", 1_000, 6_000);
         media(&db, "second", 7_000, 11_000);
@@ -4736,13 +4675,12 @@ mod tests {
                 .len(),
             1
         );
-        assert!(utterance_has_encoded_audio(&db, "microphone", 1_000, 11_000, false).unwrap());
         db.execute(
             "INSERT INTO media_gaps(id,source,started_ms,ended_ms,reason) VALUES ('failure','microphone',6000,7000,'source_failure')",
             [],
         )
         .unwrap();
-        assert!(!utterance_has_encoded_audio(&db, "microphone", 4_000, 8_000, false).unwrap());
+        assert!(voice_manifest(&db, "microphone", 4_000, 8_000).is_err());
     }
 
     #[test]
@@ -6174,7 +6112,7 @@ mod tests {
     }
 
     #[test]
-    fn provider_timing_must_map_inside_selected_audio_without_a_real_gap() {
+    fn provider_timing_stays_inside_request_despite_late_gap_metadata() {
         let mut db = db();
         media(&db, "saved", 1_000, 6_000);
         set_configured(&db, CloudProvider::Asr, "bigmodel").unwrap();
@@ -6213,10 +6151,7 @@ mod tests {
             text: "缺口".to_owned(),
             speaker: None,
         };
-        assert_eq!(
-            publish_asr(&mut db, &task, &[utterance], 7_003).unwrap_err(),
-            "provider_unmapped_timing_audio_coverage"
-        );
+        assert_eq!(publish_asr(&mut db, &task, &[utterance], 7_003).unwrap(), 1);
     }
 
     #[test]

@@ -33,6 +33,12 @@ hear logs --from-ms 1792339200000 --to-ms 1792425600000 --capture-span-id <uuid>
 - `logs.retained_from_ms/to_ms` 是当前轮转文件可解析记录的最早/最晚时间，不保证其中没有丢失。`malformed_lines`、`truncated` 和 `logs_available` 分别表示坏行、返回记录截断、日志不可用。最多返回 500 条，但 `matched` 和最多 128 类 `failure_counts` 统计全部匹配记录；分类超限单独标记。事件过滤可联查报告中列出的云任务日志；任务列表截断时事件日志依赖展开也不完整。
 - 日志的时间是故障发生时刻，DB 的筛选是任务音频时间范围，历史音频延后处理可能需要扩大日志查询时间窗。VAD 失败的 `context.start_ms/end_ms` 保留领取时的原音频范围，即使该块不在故障发生窗口的 DB 查询结果中，仍可定位处理对象。
 
+## 已保存 ASR 结果的离线发布回放
+
+`diagnostic_tests::replay_oct21_asr_publication` 为显式 ignored 的私有回归：`HEAR_TEST_DB` 指向 SQLite backup 冻结库，`HEAR_ASR_RESPONSES` 指向原请求响应目录。测试只在临时数据库副本调用生产解析/映射/发布和迁移，核对 18 个请求、779 个句段、重复发布、事件状态及暂停缺口；不启动采集、不调用云端。私有正文不进入仓库，默认 CI 使用合成回归。调查与安装边界见 [10/21 精转发布失败调查](../research/2026-10-22-asr-publication-failures.md)。
+
+历史日志中的 `provider_unmapped_timing_audio_coverage` 表示旧版以当前原声留存过滤云端文字。当前已删除该过滤；文字可用、原声回放、声纹质量分别核对，不能据声纹不可用推断精转失败。查询远端原 ID 与离线发布是不同操作；普通队列重试遇到远端不存在仍可能重传，不能标成 query-only。
+
 ## 日志写法
 
 继续使用已有 `LogEvent`/`LogWorker`。字段为固定代码、UUID 或数值；禁止 `error.to_string()`、转录、请求/响应正文或路径直接进入事件。未知错误降为固定分类。`LogContext` 用 typed 字段，不能用任意 JSON map 加料。
@@ -58,6 +64,8 @@ python3 scripts/verify.py --suite smoke
 
 macOS、Node 24、当前稳定 Rust、Xcode 26.0.1 或更新版本（含 macOS 26 SDK）是前提；现有 Audio Tap 代码引用该 SDK 的字段，部署最低版本仍为 macOS 13。GitHub Actions 采用相同入口与 [macos-15 runner](https://github.com/actions/runner-images/blob/main/images/macos/macos-15-arm64-Readme.md)。CI 通过 `DEVELOPER_DIR` 选择 runner 已安装的 Xcode 26.0.1，避免默认 Xcode 16.4 头文件缺字段。测试依赖由 package-lock/Cargo.lock 固定，React 交互测试不再依赖开发者 `/tmp` 下手动安装的 jsdom。
 
+2026-10-22 验证发现一个既有入口问题：unittest discovery 会导入手动 `scripts/test_model_preparation.py` 并把 `discover` 当作模型目录，导致默认 `all` 返回失败。该手动入口不属于本次修复；普通 Python 模块的 6 项测试、native entry policy 和 `--suite smoke` 已独立补验通过，完整结果见本次 devplan。不能把这些结果写成默认 `all` 已通过。
+
 默认门禁包含前端静态检查、Rust workspace check/test、Node 逻辑/React 交互、Python 资源测试、真实 native entry policy、全工作区构建、四组件身份校验、隔离 Core 和诊断导出烟测。禁用私有 fixture 环境；不启用 ignored 测试、不读用户活跃库、不调用付费 API。脚本及 CI 报告明列未覆盖项。
 
 默认门禁复用生产函数的合成最小回归，避免复制一份“模拟处理器”：
@@ -65,7 +73,8 @@ macOS、Node 24、当前稳定 Rust、Xcode 26.0.1 或更新版本（含 macOS 2
 | 真实故障结构 | 默认回归 |
 | --- | --- |
 | VAD 尾段/旧失败块、保留卡住、历史覆盖空洞 | `coarse::tests`、`tests::upgraded*` / retention tests（Rust suite） |
-| ASR 跨长静音接缝、真实采集缺口 | `events::tests::asr_windows_cut_long_silence_but_keep_short_pauses_and_real_origins`、`cloud_sentence_can_cross_short_encoded_silence_but_not_a_capture_gap` |
+| ASR 跨长静音接缝、真实采集缺口 | `events::tests::asr_windows_cut_long_silence_but_keep_short_pauses_and_real_origins`、`persisted_request_clock_owns_text_while_voice_requires_actual_audio` |
+| 暂停意图早于最终封块、迟到/清理分片与旧数据 | `ingestion::tests::confirmed_final_audio_shortens_only_its_session_intent_gaps`、`intent_gap_correction_survives_cleanup_split_and_late_upgrade_journal`、`intent_gap_open_after_confirmed_tail_and_old_gap_migration_are_idempotent` |
 | observation 越出 candidate、无效输出无限重试 | `fit_input_intersects_crossing_observations_without_retiming_evidence`、`invalid_fit_output_retries_are_bounded_and_keep_task_identity` |
 | 失败日志泄漏正文、查询漏报/错误归因 | `unilogs::tests`、`diagnostic_report::tests`、`cloud::tests::malformed_output_preserves_only_numeric_parser_context`、`scripts/smoke_diagnostics.py` |
 

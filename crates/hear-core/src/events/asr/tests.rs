@@ -159,7 +159,7 @@ fn silence_requires_complete_matching_source_evidence_and_no_clear_or_capture_ga
 }
 
 #[test]
-fn one_minute_silence_encodes_full_duration_and_does_not_accept_hallucinated_text() {
+fn one_minute_silence_encodes_full_duration_and_preserves_provider_text() {
     let mut db = database();
     let dir = tempfile::tempdir().unwrap();
     for start in [1000, 66000] {
@@ -208,13 +208,25 @@ fn one_minute_silence_encodes_full_duration_and_does_not_accept_hallucinated_tex
     }
     assert_eq!(granule - skip, 70000 * 48);
     assert_eq!(
-        publish_asr(&mut db, &t, &[utterance(60000, 61000, "凭空出现")], 5000001).unwrap_err(),
-        "provider_unmapped_timing_audio_coverage"
+        publish_asr(
+            &mut db,
+            &t,
+            &[
+                utterance(60000, 61000, "供应商静默内结果"),
+                utterance(65000, 66000, "后段")
+            ],
+            5000002
+        )
+        .unwrap(),
+        2
     );
-    publish_asr(&mut db, &t, &[utterance(65000, 66000, "后段")], 5000002).unwrap();
     assert_eq!(
-        db.query_row::<i64, _, _>("SELECT started_ms FROM precise_segments", [], |r| r.get(0))
-            .unwrap(),
+        db.query_row::<i64, _, _>(
+            "SELECT started_ms FROM precise_segments WHERE text='后段'",
+            [],
+            |r| r.get(0)
+        )
+        .unwrap(),
         66000
     );
 }
@@ -312,7 +324,10 @@ fn failed_mapping_is_atomic_and_publishing_is_idempotent() {
         publish_asr(
             &mut db,
             &t,
-            &[utterance(0, 1000, "有效"), utterance(4000, 7000, "未对齐")],
+            &[
+                utterance(0, 1000, "有效"),
+                utterance(29000, 31000, "请求越界")
+            ],
             5000001
         )
         .is_err()
@@ -948,4 +963,33 @@ fn split_survivor_extension_reuses_all_completed_parent_inputs() {
             2
         );
     }
+}
+
+#[test]
+fn persisted_request_clock_owns_text_while_voice_requires_actual_audio() {
+    let mut db = database();
+    block(&db, "first", 1_000, 6_000, true);
+    block(&db, "silent", 6_000, 51_000, false);
+    block(&db, "last", 51_000, 56_000, true);
+    event(&mut db, 1_000, 56_000);
+    let task = task(&mut db);
+    db.execute("INSERT INTO media_gaps(id,source,started_ms,ended_ms,reason) VALUES('stop','microphone',55000,NULL,'manual_pause')", []).unwrap();
+    let items = [
+        utterance(4_000, 51_000, "长停顿完整句子"),
+        utterance(49_900, 50_300, "边界"),
+        utterance(10_000, 11_000, "供应商静默内结果"),
+        utterance(53_000, 54_900, "尾句"),
+    ];
+    assert!(voice_manifest(&db, "microphone", 54_000, 55_900).is_err());
+    assert_eq!(publish_asr(&mut db, &task, &items, 5_000_001).unwrap(), 4);
+    assert_eq!(publish_asr(&mut db, &task, &items, 5_000_002).unwrap(), 0);
+    assert_eq!(
+        db.query_row::<i64, _, _>(
+            "SELECT count(*) FROM precise_segments WHERE task_id=?1",
+            [task.id.to_string()],
+            |r| r.get(0)
+        )
+        .unwrap(),
+        4
+    );
 }
