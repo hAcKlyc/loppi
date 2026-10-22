@@ -1,8 +1,4 @@
 .usage-statistics {
-	--usage-green: #277761;
-	--usage-blue: #467c9a;
-	--usage-purple: #8b6cab;
-	--usage-amber: #ad7938;
 	display: grid;
 	gap: var(--space-8);
 }
@@ -106,7 +102,7 @@
 }
 .usage-grid text,
 .usage-date {
-	font-size: 11px;
+	font-size: var(--type-caption);
 	fill: var(--color-text-muted);
 }
 .usage-crosshair {

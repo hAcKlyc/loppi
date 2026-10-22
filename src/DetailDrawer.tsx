@@ -1,6 +1,7 @@
 import {
 	useCallback,
 	useEffect,
+	useId,
 	useLayoutEffect,
 	useRef,
 	useState,
@@ -20,6 +21,7 @@ import {
 	time,
 	userError,
 } from "./api";
+import { Button, Dialog, Icon, IconButton, TabPanel, Tabs } from "./Controls";
 import { entryTime, nearestSegmentIndex, pageCoversTime } from "./detail-entry";
 import { MomentList } from "./MomentList";
 import { type Chunk, ContinuousPlayback } from "./playback";
@@ -156,9 +158,9 @@ function LoadError({ message, retry }: { message: string; retry: () => void }) {
 	return (
 		<div className="detail-load-error" role="alert">
 			<span>{message}</span>
-			<button type="button" className="quiet-button" onClick={retry}>
+			<Button type="button" tone="quiet" onClick={retry}>
 				重新加载
-			</button>
+			</Button>
 		</div>
 	);
 }
@@ -179,6 +181,14 @@ export function DetailDrawer({
 	onMessage,
 	refreshToken,
 }: Props) {
+	const tabsId = useId();
+	const headingId = useId();
+	const heading = useRef<HTMLHeadingElement>(null);
+	const [feedback, setFeedback] = useState("");
+	const report = (message: string) => {
+		setFeedback(message);
+		onMessage(message);
+	};
 	const [detail, setDetail] = useState<TimelineItem>(item);
 	const [localSpeakers, setLocalSpeakers] = useState<LocalSpeaker[]>([]);
 	const [detailReady, setDetailReady] = useState(false);
@@ -206,6 +216,7 @@ export function DetailDrawer({
 	const [playing, setPlaying] = useState(false);
 	const [playSource, setPlaySource] = useState<Sources>(item.sources);
 	const [shownImage, setShownImage] = useState<string | null>(null);
+	const imageTrigger = useRef<HTMLButtonElement | null>(null);
 	const [imageBusy, setImageBusy] = useState<string | null>(null);
 	const [asrFrom, setAsrFrom] = useState(
 		localDateTime(Math.ceil(item.started_ms / 1000) * 1000),
@@ -479,7 +490,7 @@ export function DetailDrawer({
 			await loadMoments();
 			onChanged();
 		} catch (error) {
-			onMessage(userError(error));
+			report(userError(error));
 		} finally {
 			setBusy(false);
 		}
@@ -499,7 +510,7 @@ export function DetailDrawer({
 			});
 			setShownImage(`data:image/png;base64,${response.png_base64}`);
 		} catch (error) {
-			onMessage(userError(error));
+			report(userError(error));
 		} finally {
 			setImageBusy(null);
 		}
@@ -520,11 +531,11 @@ export function DetailDrawer({
 					? response.range_id
 					: undefined,
 			);
-			onMessage(typeof success === "string" ? success : success(response));
+			report(typeof success === "string" ? success : success(response));
 			setEditing(null);
 			setAssigning(null);
 		} catch (error) {
-			onMessage(userError(error));
+			report(userError(error));
 		} finally {
 			setBusy(false);
 		}
@@ -642,7 +653,7 @@ export function DetailDrawer({
 			}
 			await load(offset.current);
 			onChanged();
-			onMessage(
+			report(
 				creationMessage ??
 					(action.kind === "sample"
 						? "已提交声纹筛选"
@@ -655,7 +666,7 @@ export function DetailDrawer({
 			if (String(error).includes("revision_conflict"))
 				await load(offset.current);
 			const message = userError(error);
-			onMessage(message);
+			report(message);
 			throw new Error(message);
 		} finally {
 			setBusy(false);
@@ -721,73 +732,80 @@ export function DetailDrawer({
 			: 0;
 
 	return (
-		<div className="drawer-layer">
-			<button
-				className="drawer-scrim"
-				type="button"
-				aria-label="关闭详情"
-				onClick={onClose}
-			/>
+		<Dialog
+			className="drawer-layer"
+			labelledBy={headingId}
+			initialFocusRef={heading}
+			closeDisabled={busy}
+			surfaceDismiss
+			onClose={() => {
+				stopAudio();
+				onClose();
+			}}
+		>
 			<section className="detail-drawer" aria-label="事件详情">
 				<header className="detail-header">
-					<div>
+					<div className="detail-heading">
 						<span className="eyebrow">
 							{wallClock(detail.started_ms, shortEvent, crossesDay)} —{" "}
 							{wallClock(detail.ended_ms, shortEvent, crossesDay)}
 						</span>
-						<h2>
+						<h2 id={headingId} ref={heading} tabIndex={-1} data-dialog-title>
 							{detail.title ||
 								(detail.manual_range_id ? "未命名事件" : "未整理")}
 						</h2>
 					</div>
 					<div className="detail-header-actions">
-						<button
+						<Button
 							type="button"
-							className="quiet-button"
+							tone="quiet"
+							disabled={busy}
 							onClick={() => onDataAction("export", detail)}
 						>
 							导出
-						</button>
-						<button
+						</Button>
+						<Button
 							type="button"
-							className="quiet-button"
+							tone="quiet"
+							disabled={busy}
 							onClick={() => {
 								stopAudio();
 								onDataAction("cleanup", detail);
 							}}
 						>
 							清理
-						</button>
+						</Button>
 						{detail.id && (
 							<>
-								<button
+								<Button
 									type="button"
-									className="quiet-button"
+									tone="quiet"
+									disabled={busy}
 									onClick={() => onEdit(detail)}
 								>
 									编辑
-								</button>
-								<button
+								</Button>
+								<IconButton
 									type="button"
-									className="icon-button"
-									aria-label="更多事件操作"
+									label="更多事件操作"
+									disabled={busy}
 									onClick={() => onTools(detail)}
 								>
-									···
-								</button>
+									<Icon name="more" />
+								</IconButton>
 							</>
 						)}
-						<button
+						<IconButton
 							type="button"
-							className="icon-button"
-							aria-label="关闭详情"
+							label="关闭详情"
+							disabled={busy}
 							onClick={() => {
 								stopAudio();
 								onClose();
 							}}
 						>
-							×
-						</button>
+							<Icon name="close" />
+						</IconButton>
 					</div>
 				</header>
 				<div className="detail-columns">
@@ -807,7 +825,7 @@ export function DetailDrawer({
 											)
 								}
 							>
-								{playing ? "Ⅱ" : "▷"}
+								<Icon name={playing ? "pause" : "play"} />
 							</button>
 							<div className="player-timeline">
 								<input
@@ -850,38 +868,27 @@ export function DetailDrawer({
 							</select>
 						</div>
 						<div className="detail-toolbar">
-							<div className="detail-tabs" role="tablist" aria-label="详情内容">
-								<button
-									type="button"
-									role="tab"
-									disabled={busy}
-									aria-selected={tab === "transcript"}
-									className={tab === "transcript" ? "active" : ""}
-									onClick={() => setTab("transcript")}
-								>
-									文本转录
-								</button>
-								<button
-									type="button"
-									role="tab"
-									disabled={busy}
-									aria-selected={tab === "info"}
-									className={tab === "info" ? "active" : ""}
-									onClick={() => {
-										setAssigning(null);
-										setTab("info");
-									}}
-								>
-									音频信息
-								</button>
-							</div>
+							<Tabs
+								id={tabsId}
+								label="详情内容"
+								value={tab}
+								disabled={busy}
+								items={[
+									{ value: "transcript", label: "文本转录" },
+									{ value: "info", label: "音频信息" },
+								]}
+								onChange={(value) => {
+									setAssigning(null);
+									setTab(value);
+								}}
+							/>
 							{tab === "transcript" && (
 								<div className="transcript-toolbar">
 									{detail.coarse_segments.length > 0 &&
 										detail.precise_segments.length > 0 && (
-											<button
+											<Button
 												type="button"
-												className="quiet-button"
+												tone="quiet"
 												disabled={busy}
 												onClick={() => {
 													setAssigning(null);
@@ -893,22 +900,22 @@ export function DetailDrawer({
 												{transcriptSource === "best"
 													? "查看本地粗转"
 													: "返回精转"}
-											</button>
+											</Button>
 										)}
 									{!detail.id &&
 										!detail.manual_range_id &&
 										detail.processing_state !== "moment_only" &&
 										segments.length > 0 && (
-											<button
+											<Button
 												type="button"
-												className="quiet-button"
+												tone="quiet"
 												onClick={() => {
 													setAssigning(null);
 													setTab("info");
 												}}
 											>
 												选择范围精转
-											</button>
+											</Button>
 										)}
 								</div>
 							)}
@@ -919,82 +926,85 @@ export function DetailDrawer({
 								retry={() => void load(offset.current)}
 							/>
 						)}
-						{tab === "transcript" ? (
-							<div
-								className={`detail-scroll transcript-list${crossesDay ? " crosses-day" : ""}`}
-								key="transcript"
-								ref={transcriptRef}
-								onWheel={() => {
-									initialScroll.current = undefined;
-								}}
-								onPointerDown={() => {
-									initialScroll.current = undefined;
-								}}
-							>
-								{!detailReady && !detailError && <DetailSkeleton />}
-								{detailReady && segments.length === 0 && (
-									<div className="detail-empty">
-										<strong>还没有转录文字</strong>
-										{(detail.id || detail.manual_range_id) && (
-											<span>
-												{processingLabel(
-													detail.processing_state,
-													detail.transcription,
-												)}
-											</span>
-										)}
-										{!detail.id &&
-											!detail.manual_range_id &&
-											detail.processing_state !== "moment_only" && (
-												<button
-													type="button"
-													className="secondary-button"
-													onClick={() => {
-														setAssigning(null);
-														setTab("info");
-													}}
-												>
-													选择范围精转
-												</button>
+						<TabPanel
+							tabsId={tabsId}
+							value="transcript"
+							selected={tab}
+							className={`detail-scroll transcript-list${crossesDay ? " crosses-day" : ""}`}
+							key="transcript"
+							ref={transcriptRef}
+							onWheel={() => {
+								initialScroll.current = undefined;
+							}}
+							onPointerDown={() => {
+								initialScroll.current = undefined;
+							}}
+						>
+							{!detailReady && !detailError && <DetailSkeleton />}
+							{detailReady && segments.length === 0 && (
+								<div className="detail-empty">
+									<strong>还没有转录文字</strong>
+									{(detail.id || detail.manual_range_id) && (
+										<span>
+											{processingLabel(
+												detail.processing_state,
+												detail.transcription,
 											)}
-									</div>
-								)}
-								{(detailReady ? segments : []).map((segment, index) => {
-									const precise =
-										"revision" in segment ? (segment as PreciseSegment) : null;
-									const current =
-										playhead >= segment.started_ms &&
-										playhead < segment.ended_ms &&
-										playhead < detail.ended_ms &&
-										(playSource === "both" || playSource === segment.source);
-									return (
-										<div
-											className={`transcript-row${current || index === positionedIndex ? " is-current" : ""}`}
-											aria-current={
-												current
-													? "time"
-													: index === positionedIndex
-														? true
-														: undefined
-											}
-											key={segment.id}
-										>
-											<button
+										</span>
+									)}
+									{!detail.id &&
+										!detail.manual_range_id &&
+										detail.processing_state !== "moment_only" && (
+											<Button
 												type="button"
-												className="transcript-time"
-												title={
-													current
-														? "当前位置 · 点击回听"
-														: index === positionedIndex
-															? "定位到此处 · 点击回听"
-															: "从这里播放"
-												}
-												onClick={() => playFrom(segment.started_ms)}
+												tone="secondary"
+												onClick={() => {
+													setAssigning(null);
+													setTab("info");
+												}}
 											>
-												{wallClock(segment.started_ms, true, crossesDay)}
-											</button>
-											<div className="transcript-content">
-												<div className="transcript-meta">
+												选择范围精转
+											</Button>
+										)}
+								</div>
+							)}
+							{(detailReady ? segments : []).map((segment, index) => {
+								const precise =
+									"revision" in segment ? (segment as PreciseSegment) : null;
+								const current =
+									playhead >= segment.started_ms &&
+									playhead < segment.ended_ms &&
+									playhead < detail.ended_ms &&
+									(playSource === "both" || playSource === segment.source);
+								return (
+									<div
+										className={`transcript-row${current || index === positionedIndex ? " is-current" : ""}`}
+										aria-current={
+											current
+												? "time"
+												: index === positionedIndex
+													? true
+													: undefined
+										}
+										key={segment.id}
+									>
+										<button
+											type="button"
+											className="transcript-time"
+											title={
+												current
+													? "当前位置 · 点击回听"
+													: index === positionedIndex
+														? "定位到此处 · 点击回听"
+														: "从这里播放"
+											}
+											onClick={() => playFrom(segment.started_ms)}
+										>
+											{wallClock(segment.started_ms, true, crossesDay)}
+										</button>
+										<div className="transcript-content">
+											<div className="transcript-meta">
+												<div className="transcript-identity">
 													{precise ? (
 														<button
 															type="button"
@@ -1034,282 +1044,278 @@ export function DetailDrawer({
 													{precise?.corrected && (
 														<span className="corrected-label">已修正</span>
 													)}
-													{precise && (
-														<button
-															type="button"
-															className="text-action"
-															onClick={() => {
-																setEditing(segment.id);
-																setDraft(segment.text);
-															}}
-														>
-															修正
-														</button>
-													)}
 												</div>
-												{editing === segment.id && precise ? (
-													<div className="inline-editor">
-														<textarea
-															aria-label="修正这句文字"
-															value={draft}
-															onChange={(event) => setDraft(event.target.value)}
-														/>
-														<div>
-															<button
-																type="button"
-																onClick={() => setEditing(null)}
-															>
-																取消
-															</button>
-															<button
-																type="button"
-																disabled={busy || !draft.trim()}
-																onClick={() =>
-																	void mutate(
-																		{
-																			type: "correct_text",
-																			segment_id: segment.id,
-																			text: draft.trim(),
-																			expected_revision: precise.revision,
-																		},
-																		"文字已修正",
-																	)
-																}
-															>
-																保存
-															</button>
-														</div>
-													</div>
-												) : (
-													<p>{segment.text}</p>
+												{precise && (
+													<button
+														type="button"
+														className="text-action"
+														onClick={() => {
+															setEditing(segment.id);
+															setDraft(segment.text);
+														}}
+													>
+														修正
+													</button>
 												)}
-												{precise?.corrected && precise.original_text && (
-													<details className="original-text">
-														<summary>查看原识别文字</summary>
-														<p>{precise.original_text}</p>
+											</div>
+											{editing === segment.id && precise ? (
+												<div className="inline-editor">
+													<textarea
+														aria-label="修正这句文字"
+														value={draft}
+														onChange={(event) => setDraft(event.target.value)}
+													/>
+													<div>
 														<button
 															type="button"
-															disabled={busy}
+															onClick={() => setEditing(null)}
+														>
+															取消
+														</button>
+														<button
+															type="button"
+															disabled={busy || !draft.trim()}
 															onClick={() =>
 																void mutate(
 																	{
-																		type: "revert_text",
+																		type: "correct_text",
 																		segment_id: segment.id,
+																		text: draft.trim(),
 																		expected_revision: precise.revision,
 																	},
-																	"已恢复原识别文字",
+																	"文字已修正",
 																)
 															}
 														>
-															撤销修正
+															保存
 														</button>
-													</details>
-												)}
-												{assigning === segment.id &&
-													precise &&
-													speakerAnchor.current && (
-														<SpeakerPicker
-															peopleReady={peopleReady}
-															peopleError={peopleError}
-															onPeopleRetry={onPeopleRetry}
-															key={segment.id}
-															anchor={speakerAnchor.current}
-															people={people}
-															localSpeakers={localSpeakers}
-															currentGroup={precise.speaker}
-															personId={precise.person_id}
-															confirmed={precise.person_origin === "manual"}
-															onClose={() => setAssigning(null)}
-															onApply={(action) =>
-																updateSpeaker(precise, action)
-															}
-														/>
-													)}
-											</div>
-										</div>
-									);
-								})}
-								{hasMore && (
-									<button
-										type="button"
-										className="load-more"
-										onClick={() => void load(offset.current + 100)}
-									>
-										显示更多文字
-									</button>
-								)}
-							</div>
-						) : (
-							<div className="detail-scroll information-panel" key="info">
-								<div>
-									<span>时间范围</span>
-									<strong>
-										{new Date(detail.started_ms).toLocaleString("zh-CN")} —{" "}
-										{new Date(detail.ended_ms).toLocaleString("zh-CN")}
-									</strong>
-								</div>
-								<div>
-									<span>声音来源</span>
-									<strong>{sourceText}</strong>
-								</div>
-								<div>
-									<span>处理状态</span>
-									<strong>
-										{processingLabel(
-											detail.processing_state,
-											detail.transcription,
-										)}
-									</strong>
-								</div>
-								{(detail.transcription?.empty_ranges?.length ?? 0) > 0 && (
-									<div className="empty-transcription-ranges">
-										<span>
-											这些片段已完成精转，但未识别出文字，可回听原声核对。
-										</span>
-										{detail.transcription?.empty_ranges
-											?.filter(
-												(range) =>
-													range.started_ms < detail.ended_ms &&
-													range.ended_ms > detail.started_ms,
-											)
-											.map((range) => (
-												<button
-													type="button"
-													className="quiet-button"
-													key={`${range.source}:${range.started_ms}:${range.ended_ms}`}
-													onClick={() =>
-														playFrom(range.started_ms, range.source)
-													}
-												>
-													回听{" "}
-													{range.source === "system" ? "电脑声音" : "麦克风"}{" "}
-													{wallClock(
-														Math.max(range.started_ms, detail.started_ms),
-														true,
-														crossesDay,
-													)}
-													—
-													{wallClock(
-														Math.min(range.ended_ms, detail.ended_ms),
-														true,
-														crossesDay,
-													)}
-												</button>
-											))}
-									</div>
-								)}
-								{manualStatus && (
-									<div>
-										<span>手动精转</span>
-										<strong>{manualStatus}</strong>
-									</div>
-								)}
-								<div>
-									<span>文字</span>
-									<strong>
-										{!detailReady ? (
-											detailError ? (
-												"读取失败"
+													</div>
+												</div>
 											) : (
-												<span
-													className="skeleton-bar skeleton-meta"
-													role="status"
-													aria-label="正在加载文字信息"
-												/>
-											)
-										) : detail.precise_segments.length > 0 ? (
-											"精转"
-										) : detail.coarse_segments.length > 0 ? (
-											"本地粗转"
-										) : (
-											"尚无文字"
-										)}
-									</strong>
-								</div>
-								{infoError && <p className="inline-error">{infoError}</p>}
-								{!detail.id &&
-									!detail.manual_range_id &&
-									detail.processing_state !== "moment_only" && (
-										<div className="asr-range-form">
-											<label>
-												开始时间
-												<input
-													type="datetime-local"
-													step="1"
-													value={asrFrom}
-													onChange={(event) => setAsrFrom(event.target.value)}
-												/>
-											</label>
-											<label>
-												结束时间
-												<input
-													type="datetime-local"
-													step="1"
-													value={asrTo}
-													onChange={(event) => setAsrTo(event.target.value)}
-												/>
-											</label>
-											{detail.sources === "both" && (
-												<label>
-													声音来源
-													<select
-														value={asrSources}
-														onChange={(event) =>
-															setAsrSources(event.target.value as Sources)
+												<p>{segment.text}</p>
+											)}
+											{precise?.corrected && precise.original_text && (
+												<details className="original-text">
+													<summary>查看原识别文字</summary>
+													<p>{precise.original_text}</p>
+													<button
+														type="button"
+														disabled={busy}
+														onClick={() =>
+															void mutate(
+																{
+																	type: "revert_text",
+																	segment_id: segment.id,
+																	expected_revision: precise.revision,
+																},
+																"已恢复原识别文字",
+															)
 														}
 													>
-														<option value="both">双路声音</option>
-														<option value="microphone">麦克风</option>
-														<option value="system">电脑声音</option>
-													</select>
-												</label>
+														撤销修正
+													</button>
+												</details>
 											)}
+											{assigning === segment.id &&
+												precise &&
+												speakerAnchor.current && (
+													<SpeakerPicker
+														peopleReady={peopleReady}
+														peopleError={peopleError}
+														onPeopleRetry={onPeopleRetry}
+														key={segment.id}
+														anchor={speakerAnchor.current}
+														people={people}
+														localSpeakers={localSpeakers}
+														currentGroup={precise.speaker}
+														personId={precise.person_id}
+														confirmed={precise.person_origin === "manual"}
+														onClose={() => setAssigning(null)}
+														onApply={(action) => updateSpeaker(precise, action)}
+													/>
+												)}
 										</div>
-									)}
-								{queueRelevant && (
-									<button
-										type="button"
-										className="secondary-button"
-										onClick={onQueue}
-									>
-										查看处理队列
-									</button>
-								)}
-								{detail.id && (
-									<button
-										type="button"
-										className="secondary-button"
-										disabled={busy}
-										onClick={() =>
-											void mutate(
-												{
-													type: "retranscribe_event",
-													event_id: detail.id,
-													expected_revision: detail.revision,
-												},
-												"已加入精转队列",
-											)
-										}
-									>
-										重新精转
-									</button>
-								)}
-								{!detail.id &&
-									!detail.manual_range_id &&
-									detail.processing_state !== "moment_only" && (
-										<button
-											type="button"
-											className="secondary-button"
-											onClick={() => void transcribe()}
-											disabled={busy}
-										>
-											{manualStatus || detail.precise_segments.length > 0
-												? "重新精转"
-												: "开始精转"}
-										</button>
-									)}
+									</div>
+								);
+							})}
+							{hasMore && (
+								<button
+									type="button"
+									className="load-more"
+									onClick={() => void load(offset.current + 100)}
+								>
+									显示更多文字
+								</button>
+							)}
+						</TabPanel>
+						<TabPanel
+							tabsId={tabsId}
+							value="info"
+							selected={tab}
+							className="detail-scroll information-panel"
+							key="info"
+						>
+							<div>
+								<span>时间范围</span>
+								<strong>
+									{new Date(detail.started_ms).toLocaleString("zh-CN")} —{" "}
+									{new Date(detail.ended_ms).toLocaleString("zh-CN")}
+								</strong>
 							</div>
-						)}
+							<div>
+								<span>声音来源</span>
+								<strong>{sourceText}</strong>
+							</div>
+							<div>
+								<span>处理状态</span>
+								<strong>
+									{processingLabel(
+										detail.processing_state,
+										detail.transcription,
+									)}
+								</strong>
+							</div>
+							{(detail.transcription?.empty_ranges?.length ?? 0) > 0 && (
+								<div className="empty-transcription-ranges">
+									<span>
+										这些片段已完成精转，但未识别出文字，可回听原声核对。
+									</span>
+									{detail.transcription?.empty_ranges
+										?.filter(
+											(range) =>
+												range.started_ms < detail.ended_ms &&
+												range.ended_ms > detail.started_ms,
+										)
+										.map((range) => (
+											<Button
+												type="button"
+												tone="quiet"
+												key={`${range.source}:${range.started_ms}:${range.ended_ms}`}
+												onClick={() => playFrom(range.started_ms, range.source)}
+											>
+												回听 {range.source === "system" ? "电脑声音" : "麦克风"}{" "}
+												{wallClock(
+													Math.max(range.started_ms, detail.started_ms),
+													true,
+													crossesDay,
+												)}
+												—
+												{wallClock(
+													Math.min(range.ended_ms, detail.ended_ms),
+													true,
+													crossesDay,
+												)}
+											</Button>
+										))}
+								</div>
+							)}
+							{manualStatus && (
+								<div>
+									<span>手动精转</span>
+									<strong>{manualStatus}</strong>
+								</div>
+							)}
+							<div>
+								<span>文字</span>
+								<strong>
+									{!detailReady ? (
+										detailError ? (
+											"读取失败"
+										) : (
+											<span
+												className="skeleton-bar skeleton-meta"
+												role="status"
+												aria-label="正在加载文字信息"
+											/>
+										)
+									) : detail.precise_segments.length > 0 ? (
+										"精转"
+									) : detail.coarse_segments.length > 0 ? (
+										"本地粗转"
+									) : (
+										"尚无文字"
+									)}
+								</strong>
+							</div>
+							{infoError && <p className="inline-error">{infoError}</p>}
+							{!detail.id &&
+								!detail.manual_range_id &&
+								detail.processing_state !== "moment_only" && (
+									<div className="asr-range-form">
+										<label>
+											开始时间
+											<input
+												type="datetime-local"
+												step="1"
+												value={asrFrom}
+												onChange={(event) => setAsrFrom(event.target.value)}
+											/>
+										</label>
+										<label>
+											结束时间
+											<input
+												type="datetime-local"
+												step="1"
+												value={asrTo}
+												onChange={(event) => setAsrTo(event.target.value)}
+											/>
+										</label>
+										{detail.sources === "both" && (
+											<label>
+												声音来源
+												<select
+													value={asrSources}
+													onChange={(event) =>
+														setAsrSources(event.target.value as Sources)
+													}
+												>
+													<option value="both">双路声音</option>
+													<option value="microphone">麦克风</option>
+													<option value="system">电脑声音</option>
+												</select>
+											</label>
+										)}
+									</div>
+								)}
+							{queueRelevant && (
+								<Button type="button" tone="secondary" onClick={onQueue}>
+									查看处理队列
+								</Button>
+							)}
+							{detail.id && (
+								<Button
+									type="button"
+									tone="secondary"
+									disabled={busy}
+									onClick={() =>
+										void mutate(
+											{
+												type: "retranscribe_event",
+												event_id: detail.id,
+												expected_revision: detail.revision,
+											},
+											"已加入精转队列",
+										)
+									}
+								>
+									重新精转
+								</Button>
+							)}
+							{!detail.id &&
+								!detail.manual_range_id &&
+								detail.processing_state !== "moment_only" && (
+									<Button
+										type="button"
+										tone="secondary"
+										onClick={() => void transcribe()}
+										disabled={busy}
+									>
+										{manualStatus || detail.precise_segments.length > 0
+											? "重新精转"
+											: "开始精转"}
+									</Button>
+								)}
+						</TabPanel>
 					</div>
 					<aside className="notes-panel">
 						<div className="notes-heading">
@@ -1341,7 +1347,10 @@ export function DetailDrawer({
 								moments={moments}
 								formatTime={(at) => wallClock(at, true, crossesDay)}
 								onPlay={playFrom}
-								onScreenshot={(id) => void showScreenshot(id)}
+								onScreenshot={(id, trigger) => {
+									imageTrigger.current = trigger;
+									void showScreenshot(id);
+								}}
 								loadingImage={imageBusy}
 							/>
 						)}
@@ -1376,8 +1385,19 @@ export function DetailDrawer({
 					</aside>
 				</div>
 			</section>
+			{(busy || feedback) && (
+				<div className="dialog-feedback drawer-feedback" role="status">
+					{busy ? "正在处理，请稍候…" : feedback}
+				</div>
+			)}
 			{shownImage && (
-				<div className="image-preview" role="dialog" aria-label="截图预览">
+				<Dialog
+					className="image-preview"
+					label="截图预览"
+					returnFocusRef={imageTrigger}
+					surfaceDismiss
+					onClose={() => setShownImage(null)}
+				>
 					<button
 						className="image-preview-close"
 						type="button"
@@ -1386,8 +1406,8 @@ export function DetailDrawer({
 						关闭
 					</button>
 					<img src={shownImage} alt="主动截取的屏幕画面" />
-				</div>
+				</Dialog>
 			)}
-		</div>
+		</Dialog>
 	);
 }

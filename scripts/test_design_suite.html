@@ -1,0 +1,23 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Hear 设计系统验证</title>
+<style>body{margin:0;font:14px/1.5 system-ui;background:#f0f3ee;color:#25352e}header{padding:50px 20px 12px}button,select{font:inherit;padding:6px 12px}iframe{display:block;border:0;transform-origin:top left}#frame{overflow:hidden;margin:0 12px}pre{white-space:pre-wrap;margin:12px 20px}h1{font-size:20px;margin:0 0 8px}</style>
+<header><h1>设计系统 · 隔离验证</h1><button id="run">运行全部界面回归</button> <label>窗口 <select id="size"><option value="1120">1120 × 760</option><option value="760">760 × 540</option><option value="1440">1440 × 900</option></select></label> <label>页面 <select id="page"><option value="test_design_system">公共组件</option><option value="../specs/research/evidence/2026-10-22-design-system/timeline">时间线</option><option value="test_moment_sidebar">事件详情</option></select></label> <a href="/scripts/test_design_native.html">原生时间线</a> <a href="/scripts/test_design_system.html">原生公共组件</a></header>
+<div id="frame"><iframe id="preview" title="隔离样例"></iframe></div><pre id="result">仅使用内存样例；不访问用户数据、录音或云端。</pre>
+<script>
+const frame=document.getElementById('preview'),result=document.getElementById('result'),size=document.getElementById('size'),page=document.getElementById('page');
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+function fit(){const width=Number(size.value),height=width===760?540:width===1440?900:760,scale=Math.min(1,frame.parentElement.clientWidth/width);frame.width=width;frame.height=height;frame.style.transform=`scale(${scale})`;frame.parentElement.style.height=`${height*scale}px`;}
+size.onchange=fit;new ResizeObserver(fit).observe(frame.parentElement);
+page.onchange=()=>frame.src=`/scripts/${page.value}.html`;
+const tests=['design_system','design_forms','settings_interactions','date_navigation','detail_entry','detail_loading','moment_sidebar','speaker_picker','page_loading','people_settings','onboarding'];
+document.getElementById('run').onclick=async()=>{
+ const runner=document.getElementById('run');runner.disabled=true;size.value='1120';fit();const lines=[];
+ try{for(const test of tests.filter(t=>!new URLSearchParams(location.search).has('only')||t===new URLSearchParams(location.search).get('only'))){result.textContent=lines.join('\n')+`\n运行 ${test}…`;
+  await new Promise(resolve=>{frame.onload=resolve;frame.src=`/scripts/test_${test}.html${test==='onboarding'?'?ready&regression':''}`;});
+  const doc=frame.contentDocument;let run;
+  for(let i=0;i<100;i++){run=[...doc.querySelectorAll('button')].find(b=>b.textContent.includes('运行'));if(run)break;await wait(50);}
+  if(!run)throw Error(`${test}: 未找到运行入口`);run.click();let text='';
+  for(let i=0;i<600;i++){text=(doc.querySelector('#result')??doc.querySelector('output'))?.textContent??'';if(/^(PASS|FAIL)/.test(text))break;await wait(50);}
+  lines.push(`${test}: ${text}`);if(!text.startsWith('PASS'))throw Error(`${test} 未通过`);
+ }result.textContent=lines.join('\n')+'\n全部通过';}catch(error){result.textContent=lines.join('\n')+'\n'+String(error);}finally{runner.disabled=false;}
+};page.onchange();fit();
+</script></html>

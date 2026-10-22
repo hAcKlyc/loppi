@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Button } from "./Controls";
 
 export function LoadingSkeleton({
 	label = "正在加载",
@@ -55,9 +56,9 @@ export function LoadBoundary({
 						{label}读取失败：{error}
 					</span>
 					{retry && (
-						<button type="button" className="quiet-button" onClick={retry}>
+						<Button type="button" tone="quiet" onClick={retry}>
 							重试
-						</button>
+						</Button>
 					)}
 				</div>
 			)}

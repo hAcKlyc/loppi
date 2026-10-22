@@ -1,0 +1,16 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Hear 布局断点验证</title>
+<style>body{margin:0;background:#f0f3ee;font:14px/1.6 system-ui;color:#25352e}header{padding:20px}button,select{font:inherit;padding:6px}iframe{border:0;display:block;transform-origin:top left}#frame{overflow:hidden}pre{white-space:pre-wrap}</style>
+<header><button id="run">运行布局边界检查</button> <label>窗口 <select id="size"><option>1120</option><option>760</option><option>849</option><option>850</option><option>851</option><option>1099</option><option>1100</option><option>1101</option><option>1440</option></select></label> <button id="detail">查看长标题详情</button><pre id="result">使用真实 App 和隔离数据，检查可达性与几何。</pre></header><div id="frame"><iframe id="preview" title="布局样例"></iframe></div>
+<script>
+const frame=document.getElementById('preview'),size=document.getElementById('size'),result=document.getElementById('result'),wait=ms=>new Promise(r=>setTimeout(r,ms));
+function fit(){const width=Number(size.value),height=width<=850?540:width===1440?900:760,scale=Math.min(1,innerWidth/width);frame.width=width;frame.height=height;frame.style.transform=`scale(${scale})`;frame.parentElement.style.height=`${height*scale}px`;}
+async function load(){await new Promise(resolve=>{frame.onload=resolve;frame.src='/specs/research/evidence/2026-10-22-design-system/timeline.html';});for(let i=0;i<100&&!frame.contentDocument.querySelector('.event-card');i++)await wait(30);}
+async function detail(){frame.contentDocument.querySelectorAll('.event-card')[2].click();await wait(350);}
+size.onchange=fit;document.getElementById('detail').onclick=detail;new ResizeObserver(fit).observe(document.body);
+document.getElementById('run').onclick=async()=>{const runner=document.getElementById('run');runner.disabled=true;const lines=[];try{for(const width of [760,849,850,851,1099,1100,1101,1120,1440]){size.value=String(width);fit();await load();await wait(100);const doc=frame.contentDocument,win=frame.contentWindow;const check=(ok,message)=>{if(!ok)throw Error(width+': '+message)};const inside=el=>{const r=el.getBoundingClientRect();return r.left>=0&&r.right<=win.innerWidth+1&&r.top>=0&&r.bottom<=win.innerHeight+1;};
+ check(win.innerWidth===width,'窗口尺寸不符');check(doc.querySelector('.main-area').scrollWidth<=doc.querySelector('.main-area').clientWidth+1,'主区域横向溢出');check(inside(doc.querySelector('.create-event')),'新建入口不在窗口');check(inside(doc.querySelector('.sidebar nav button:last-child')),'侧栏导航不可达');check(inside(doc.querySelector('.event-card')),'首卡不在视口');
+ await detail();check(inside(doc.querySelector('[aria-label=关闭详情]')),'详情关闭被裁切');check(inside(doc.querySelector('.note-composer')),'笔记输入被裁切');check(doc.querySelector('.detail-columns').scrollWidth<=doc.querySelector('.detail-columns').clientWidth+1,'详情横向溢出');
+ lines.push(`${width} × ${win.innerHeight}: PASS · 入口 / 关闭 / 笔记可达；列 ${win.getComputedStyle(doc.querySelector('.detail-columns')).gridTemplateColumns}`);result.textContent=lines.join('\n');}
+ result.textContent=lines.join('\n')+'\n全部通过';}catch(e){result.textContent=lines.join('\n')+'\nFAIL · '+e.message;}finally{runner.disabled=false;}};
+fit();load();
+</script></html>

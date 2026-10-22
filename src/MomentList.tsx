@@ -2,6 +2,7 @@ import { useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Moment } from "./api";
+import { Button } from "./Controls";
 
 const labels = { mark: "重点", comment: "笔记", screenshot: "截图" };
 
@@ -68,13 +69,9 @@ function ScreenshotText({ moment }: { moment: Moment }) {
 									{moment.image_transcript}
 								</Markdown>
 							</div>
-							<button
-								type="button"
-								className="quiet-button"
-								onClick={() => void copy()}
-							>
+							<Button type="button" tone="quiet" onClick={() => void copy()}>
 								复制 Markdown
-							</button>
+							</Button>
 							<span className="moment-status" role="status">
 								{copyState}
 							</span>
@@ -134,7 +131,7 @@ export function MomentList({
 	moments: Moment[];
 	formatTime: (at: number) => string;
 	onPlay: (at: number) => void;
-	onScreenshot: (id: string) => void;
+	onScreenshot: (id: string, trigger: HTMLButtonElement) => void;
 	loadingImage: string | null;
 }) {
 	return (
@@ -177,7 +174,10 @@ export function MomentList({
 								className="screenshot-card"
 								disabled={loadingImage !== null}
 								aria-label={`查看 ${formatTime(moment.anchor_ms)} 的截图`}
-								onClick={() => onScreenshot(moment.id)}
+								onClick={(event) => {
+									event.currentTarget.focus({ preventScroll: true });
+									onScreenshot(moment.id, event.currentTarget);
+								}}
 							>
 								<span>
 									{loadingImage === moment.id ? "正在打开…" : "查看截图"}

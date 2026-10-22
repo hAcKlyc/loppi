@@ -3,6 +3,7 @@
 <div id="root"></div>
 <aside style="position:fixed;bottom:8px;left:8px;z-index:101;background:white;padding:10px;max-width:240px;font:12px system-ui"><button id="run">运行现场记录回归</button><output id="result">仅模拟记录</output></aside>
 <script type="module">
+import "/scripts/fixture-controls.ts";
 import React from 'react';
 import {createRoot} from 'react-dom/client';
 import {mockIPC} from '@tauri-apps/api/mocks';
@@ -19,11 +20,11 @@ let moments=[
  make('failed','screenshot',1186000,{ocr_state:'failed'}),
  make('empty','screenshot',1190000,{ocr_state:'complete',ocr_text:'  '}),
 ];
-const requests=[],messages=[];let rejectNote=false,holdImage=null;
+const requests=[],messages=[];let rejectNote=false,holdImage=null,noteDelay=0;
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 // The preview only needs a valid image, not actual captured pixels.
 const canvas=document.createElement('canvas');canvas.width=800;canvas.height=450;const ctx=canvas.getContext('2d');ctx.fillStyle='#eff5f0';ctx.fillRect(0,0,800,450);ctx.fillStyle='#215d50';ctx.font='32px system-ui';ctx.fillText('截图预览 · 测试画面',40,80);const png=canvas.toDataURL().split(',')[1];
-window.isTauri=true;
+if(!window.isTauri)window.isTauri=true;
 mockIPC(async(command,args)=>{
  if(command!=='core_request')return null;
  const r=args.request;requests.push(r);
@@ -31,7 +32,7 @@ mockIPC(async(command,args)=>{
  if(r.type==='moments')return {type:'moments',moments};
  if(r.type==='screenshot_data'){if(holdImage)await holdImage;return {type:'screenshot_data',png_base64:png};}
  if(r.type==='playback_chunk')return {type:'playback_chunk',has_audio:false,wav_base64:'',next_audio_ms:null};
- if(r.type==='add_moment'){if(rejectNote)throw Error('simulated save failure');moments=[...moments,make('saved','comment',r.anchor_ms-base,{text:r.text})].sort((a,b)=>a.anchor_ms-b.anchor_ms);return {type:'ok'};}
+ if(r.type==='add_moment'){await wait(noteDelay);if(rejectNote)throw Error('simulated save failure');moments=[...moments,make('saved','comment',r.anchor_ms-base,{text:r.text})].sort((a,b)=>a.anchor_ms-b.anchor_ms);return {type:'ok'};}
  return {type:'ok'};
 });
 let token=0;const root=createRoot(document.getElementById('root'));
@@ -52,6 +53,7 @@ document.getElementById('run').onclick=async()=>{
  assert(document.querySelector('.moment-status.failed').textContent.includes('图片已保存'),'识别失败误报图片丢失');
  assert([...document.querySelectorAll('.moment-status')].some(e=>e.textContent==='未识别到文字'),'无文字状态不准确');
  assert(!requests.some(r=>r.type==='screenshot_data'),'列表主动读取全部截图');
+ rows[2].querySelector('.screenshot-card').focus();document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',bubbles:true,cancelable:true}));assert(document.activeElement===disclosure.querySelector('summary'),'Tab 跳过识别文字');
  await click(disclosure.querySelector('summary'));assert(disclosure.open,'识别文字无法展开');
  const ocr=disclosure.querySelector('.moment-ocr-text');assert(ocr.textContent.endsWith('最后一行')&&ocr.scrollHeight<=ocr.clientHeight+1,'识别文字被截断');
  await click(disclosure.querySelector('summary'));
@@ -63,10 +65,11 @@ document.getElementById('run').onclick=async()=>{
  assert(document.querySelector('.image-preview img'),'原图未打开');
  assert(requests.filter(r=>r.type==='playback_chunk').length===replayBefore,'截图触发回听');
  await click(document.querySelector('.image-preview-close'));
+ assert(document.activeElement===shots[0],'原图关闭后未回到截图入口');
  await click(rows[1].querySelector('.note-time'));
  assert(requests.filter(r=>r.type==='playback_chunk').at(-1).from_ms===base+210000,'回听时间错误');
  assert(document.querySelector('.note-composer-footer').textContent.includes('19:47:30'),'笔记时间未跟随选择');
- await input('保存回归笔记');rejectNote=true;await click(document.querySelector('.note-composer button'));
+ await input('保存回归笔记');rejectNote=true;noteDelay=220;document.querySelector('.note-composer button').click();await wait(40);assert(document.querySelector('[aria-label=关闭详情]').disabled&&document.querySelector('.drawer-feedback')?.textContent.includes('正在处理'),'笔记提交缺少忙碌反馈');await wait(260);noteDelay=0;
  assert(document.querySelector('.note-composer textarea').value==='保存回归笔记','失败清空草稿');
  rejectNote=false;await click(document.querySelector('.note-composer button'));
  assert(requests.filter(r=>r.type==='add_moment').at(-1).anchor_ms===base+210000,'保存时刻与提示不一致');

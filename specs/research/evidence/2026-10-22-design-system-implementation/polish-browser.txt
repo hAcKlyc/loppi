@@ -1,0 +1,12 @@
+design_system: PASS · 32 项公共组件检查；另以真实按键检查 Tab / Escape
+design_forms: PASS · 9 项真实 App 表单反馈检查
+settings_interactions: PASS · 39 项设置交互检查
+date_navigation: PASS：DOM 连续；尺寸 49.8 → 95.1；紧凑间距、双向窗口位移、快速切换、过期响应、月请求失败、日历选日均通过。
+detail_entry: PASS：句间选中态、播放/暂停切换、来源筛选、17:54 播放器定位、后页文本滚动、暂停打开、刷新不抢位置、键盘/卡片默认起点、关闭淘汰请求。
+detail_loading: PASS：首次双区域骨架、音频信息、独立完成、定位选中态、真实空态、刷新保留、失败重试、关闭淘汰。
+moment_sidebar: PASS：对齐/紧凑重点/OCR折叠与完整阅读/原图与回听隔离/加载反馈/笔记锚点与失败保稿/窄栏/空状态/图片摘要与Markdown/复制/安全呈现/后台刷新/云状态
+speaker_picker: PASS · 47 项检查
+page_loading: PASS：首页、队列、人物、设置、统计、日历、声纹的延迟/独立完成/真实空/失败重试/刷新保留与范围切换。
+people_settings: PASS · 21 项交互检查
+onboarding: PASS · 4 项首次引导检查
+全部通过

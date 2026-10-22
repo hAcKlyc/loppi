@@ -162,6 +162,8 @@ GUI 上下文刷新合并在途请求，仅前台聚焦时周期刷新。连续�
 
 前端是 React/TypeScript/Vite，Tauri 2 使用 macOS WebView；主窗口与透明悬浮窗共用样式 token，产品视觉规则见 [DESIGN.md](DESIGN.md) 与 [`src/tokens.css`](../src/tokens.css)。`src-tauri/tauri.conf.json` 将签名登录项与 CLI 放入 `.app`；本机核心和推理 worker 不应因 GUI 关闭而丢失采集状态。[`build_macos.sh`](../scripts/build_macos.sh) 构建并签名各组件；[`package_macos.sh`](../scripts/package_macos.sh) 生成 `.dmg`、送公证、装订并检查 Gatekeeper。
 
+公共 UI 原语在 [`Controls.tsx`](../src/Controls.tsx)，样式在 [`controls.css`](../src/controls.css)。原生 `dialog` 负责 top layer 和背景模态，公共 Dialog 负责局部键盘序列与焦点生命周期；Modal、详情抽屉和图片预览复用它。Tabs 受控切换，Field 仅关联标签 / 错误。短期焦点、弹窗反馈和清理预览代次留在页面 / 组件，保存结果、请求 ID、播放资源仍归既有 owner，不产生新的业务状态源。
+
 目前有已签名的本机测试应用，但公证凭据和组合态发行验收尚未齐备；**不能将本目录或本地签名成功当成可分发 DMG 的证明**。模型权重属于首次安装后的受控下载，不把开发机密钥或录音数据塞入安装包。[发行状态](../plan.md)。
 
 ## 7. 观察与验收

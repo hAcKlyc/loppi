@@ -1,6 +1,7 @@
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { LocalSpeaker, Person } from "./api";
+import { Button, Icon, IconButton } from "./Controls";
 import { LoadBoundary } from "./LoadingState";
 
 export type SpeakerChoice =
@@ -44,6 +45,7 @@ export function SpeakerPicker({
 	const panel = useRef<HTMLDivElement>(null);
 	const search = useRef<HTMLInputElement>(null);
 	const submitting = useRef(false);
+	const restoreFocus = useRef(true);
 	const [query, setQuery] = useState("");
 	const [choice, setChoice] = useState<SpeakerChoice | null>(
 		personId ? { kind: "existing", personId } : null,
@@ -110,8 +112,10 @@ export function SpeakerPicker({
 				event.target instanceof Node &&
 				!element.contains(event.target) &&
 				!anchor.contains(event.target)
-			)
+			) {
+				restoreFocus.current = false;
 				closeRef.current();
+			}
 		};
 		const scroll = (event: Event) => {
 			if (
@@ -122,7 +126,10 @@ export function SpeakerPicker({
 				closeRef.current();
 		};
 		position();
-		search.current?.focus({ preventScroll: true });
+		const initial = search.current?.disabled
+			? element.querySelector<HTMLButtonElement>("button:not(:disabled)")
+			: search.current;
+		initial?.focus({ preventScroll: true });
 		const observer = new ResizeObserver(position);
 		observer.observe(element);
 		window.addEventListener("resize", position);
@@ -134,6 +141,7 @@ export function SpeakerPicker({
 			document.removeEventListener("pointerdown", dismiss, true);
 			document.removeEventListener("scroll", scroll, true);
 			if (
+				restoreFocus.current &&
 				anchor.isConnected &&
 				(element.contains(document.activeElement) ||
 					document.activeElement === document.body)
@@ -165,28 +173,22 @@ export function SpeakerPicker({
 			role="dialog"
 			aria-labelledby={`${id}-title`}
 			aria-busy={pending}
+			onBlur={(event) => {
+				if (
+					!submitting.current &&
+					event.relatedTarget instanceof Node &&
+					!event.currentTarget.contains(event.relatedTarget) &&
+					!anchor.contains(event.relatedTarget)
+				) {
+					restoreFocus.current = false;
+					onClose();
+				}
+			}}
 			onKeyDown={(event) => {
 				if (event.key === "Escape") {
+					event.preventDefault();
 					event.stopPropagation();
 					if (!submitting.current) onClose();
-				}
-				if (event.key === "Tab") {
-					const controls = panel.current?.querySelectorAll<HTMLElement>(
-						"button:not(:disabled), input:not(:disabled)",
-					);
-					if (!controls?.length) {
-						event.preventDefault();
-						return;
-					}
-					const first = controls[0],
-						last = controls[controls.length - 1];
-					if (event.shiftKey && document.activeElement === first) {
-						event.preventDefault();
-						last.focus();
-					} else if (!event.shiftKey && document.activeElement === last) {
-						event.preventDefault();
-						first.focus();
-					}
 				}
 			}}
 		>
@@ -194,15 +196,14 @@ export function SpeakerPicker({
 				<div>
 					<h3 id={`${id}-title`}>指定人物</h3>
 				</div>
-				<button
+				<IconButton
 					type="button"
-					className="icon-button"
-					aria-label="关闭人物选择"
+					label="关闭人物选择"
 					disabled={pending}
 					onClick={onClose}
 				>
-					×
-				</button>
+					<Icon name="close" />
+				</IconButton>
 			</header>
 			<div className="speaker-picker-body">
 				<input
@@ -393,9 +394,9 @@ export function SpeakerPicker({
 				>
 					取消
 				</button>
-				<button
+				<Button
 					type="button"
-					className="primary-button"
+					tone="primary"
 					disabled={pending || !peopleReady || !validChoice}
 					onClick={() => {
 						if (choice && validChoice)
@@ -403,9 +404,9 @@ export function SpeakerPicker({
 					}}
 				>
 					{pending ? "正在保存…" : "确认"}
-				</button>
+				</Button>
 			</footer>
 		</div>,
-		document.body,
+		anchor.closest("dialog") ?? document.body,
 	);
 }

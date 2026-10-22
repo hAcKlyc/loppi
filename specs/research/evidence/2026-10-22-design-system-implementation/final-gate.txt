@@ -1,0 +1,108 @@
+Final production snapshot: 854b7b9
+Date: 2026-10-23
+
+LINT
+
+> hear@0.1.4 lint
+> biome check src
+
+Checked 44 files in 29ms. No fixes applied.
+
+TYPECHECK AND BUILD
+
+> hear@0.1.4 build
+> npm run typecheck && vite build
+
+
+> hear@0.1.4 typecheck
+> tsc --noEmit
+
+vite v8.3.1 building client environment for production...
+transforming...
+✓ 318 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                             0.39 kB │ gzip:   0.26 kB
+dist/assets/sleeping-BgVXm_5y.png           7.58 kB
+dist/assets/listening-BAMb9n6n.png          7.84 kB
+dist/assets/sprite-atlas-CJmSGthc.png      60.44 kB
+dist/assets/app-icon-square-DV-awzxf.png  827.74 kB
+dist/assets/index-BA0kT6wc.css             75.95 kB │ gzip:  14.00 kB
+dist/assets/index-C4USqmBW.js             556.37 kB │ gzip: 170.52 kB
+
+✓ built in 90ms
+[plugin builtin:vite-reporter]
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+
+FRONTEND LOGIC REGRESSION
+✔ main, notch and floating share the host appearance, including unknown/error observations (0.573042ms)
+✔ healthy copy names only actual recording sources, and partial never claims healthy capture (1.198667ms)
+✔ paused, never started, and query-only are distinct from real capture (0.168292ms)
+✔ unknown or failed observations disable blind controls even with stale healthy data (0.086875ms)
+✔ stopping, source startup and maintenance do not claim stopped or recording (0.101834ms)
+✔ capacity and setup blockers lead to existing settings rather than a futile blind resume (0.115166ms)
+✔ a control click is single-flight; a lost outcome confirms the original operation with the same ID (2.737125ms)
+✔ a competing control refused before dispatch is not retained as an uncertain confirmation (0.215375ms)
+✔ confirming an accepted control still in flight retains its ID until its receipt is known (0.372291ms)
+✔ ASR mapping and response errors are distinguished from transport failures (3.066584ms)
+✔ a stale error cannot make an active or complete task look failed (0.237625ms)
+✔ queued retries expose credential and transport failures instead of looking idle (0.333125ms)
+✔ only rejected ASR results offer an explicit paid recognition (0.242708ms)
+✔ queue renders paid reruns separately from request retries and disables busy actions (530.0855ms)
+✔ entry clamps to real range and defaults to start without inventing a seek (0.883ms)
+✔ nearest text prefers containing intervals and resolves gaps and empty results (75.055584ms)
+✔ initial paging continues until each stream covers the target or is exhausted (14.373834ms)
+✔ positioned text respects playback source, including gaps and missing sources (0.178458ms)
+✔ comment validates Unicode length, whitespace and IME composition (1.518458ms)
+✔ an uncertain request retries its original identity, time and text (2.179ms)
+✔ pending save prevents duplicate submission while leaving pause available (0.6665ms)
+✔ a lost bridge reply preserves the operation; a definite rejection allows a new edit (0.486458ms)
+✔ Enter submits only outside IME; Shift Enter remains a newline (0.079125ms)
+✔ top rabbit follows native width continuously and avoids the physical notch (23.677958ms)
+PASS: hover/click, suppression, idempotence, comment focus/cancel/failure/retry, floating click/drag
+✔ scripts/test_entry_interaction.mjs (4677.264958ms)
+✔ completion checks selected sources, both providers and necessary model, not optional speaker (0.440333ms)
+✔ lost verification reply is queried using original ID, never resubmitted; providers remain independent (2.8315ms)
+✔ pending and unknown receipts never claim success; definite failures allow explicit retry (0.182959ms)
+✔ audio-clock continuation prefetches only one ahead, releases buffers, and completes (6.903959ms)
+✔ seek/source/close discard late responses without concurrent requests or stale audio (0.993959ms)
+✔ empty ranges jump to real next media while preserving its absolute playhead (0.700333ms)
+✔ prefetch failure preserves current audio and reports only at its boundary (1.09325ms)
+✔ seek cancels deferred prefetch error and first-chunk failures still stop immediately (1.45175ms)
+✔ external committed cleanup cancels both scheduled buffers without changing event boundaries (353.344917ms)
+✔ legacy chunks without a cleanup generation never prefetch stale future media (1.157625ms)
+✔ late validity responses cannot cancel a new seek/source or resurrect closed playback (0.929ms)
+✔ time controls round trip every minute and reject incomplete or invalid input (2.403042ms)
+✔ schedule presentation uses actual capture and reports the next plan separately (13.663625ms)
+✔ hover cursor maps exact track position to local time and keeps the right edge at 24:00 (8.054625ms)
+✔ day spans clip cross-day and future ranges without inflating short durations (0.718667ms)
+✔ hide coarse preserves moment clues without exposing hidden transcript (0.107167ms)
+✔ empty and legacy summaries use honest placeholders; screenshot text remains bounded (0.091833ms)
+✔ monthly dates respect leap years, year boundaries and recorded-day-only navigation (0.217291ms)
+✔ only newest matching live card glows; pause, errors, history and other sources do not (0.217ms)
+WebSocket server error: Port 24678 is already in use
+✔ rendered live cards name the ongoing recording and use an open time range (463.653458ms)
+✔ event cards use generated summary independently of transcript state and coarse filter (0.146375ms)
+WebSocket server error: Port 24678 is already in use
+✔ date header retains selected day while month availability is unknown or empty (102.494792ms)
+✔ coarse filtering preserves the active recording and its excerpt, but not paused or historical coarse cards (86.748292ms)
+✔ ranges contain exactly N local calendar days including today (4.301917ms)
+✔ calendar boundaries preserve 23-hour and 25-hour local days (3.034416ms)
+✔ small nonzero costs are never formatted as zero (8.613209ms)
+ℹ tests 51
+ℹ suites 0
+ℹ pass 51
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4687.407083
+
+AUDIT
+Final computed JSON exactly matches polish-audit.json.
+
+FINAL REVIEW
+Requirements PASS; adversarial PASS; architecture PASS. No blocking defect or required evidence gap.

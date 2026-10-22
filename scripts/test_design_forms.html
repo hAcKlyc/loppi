@@ -1,0 +1,74 @@
+<!-- Review fixture based on the existing date-navigation harness. Real App, mocked IPC; no native or cloud access. -->
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Hear 当前工作树 · 审阅样例</title>
+<div id="root"></div><aside style="position:fixed;bottom:8px;right:8px;z-index:10000;background:white;padding:12px;border-radius:12px;max-width:650px;font:13px system-ui"><button id="run">运行表单反馈回归</button><output id="result">使用本地模拟数据，不连接录音或云端</output></aside>
+<script>window.addEventListener("error",event=>{const report=document.createElement("pre");report.textContent=event.message;const link=document.createElement("a");link.href="/scripts/test_design_suite.html";link.textContent="返回验证入口";document.body.append(link);document.body.append(report);});</script>
+<script type="module">
+import '/scripts/fixture-controls.ts';
+import {emit} from '@tauri-apps/api/event';
+import React from 'react';
+import {createRoot} from 'react-dom/client';
+import {mockIPC} from '@tauri-apps/api/mocks';
+import App from '/src/App.tsx';
+const NativeDate=Date, fixedNow=new NativeDate(2026,9,22,18,30).getTime();
+window.Date=class extends NativeDate {
+  constructor(...args){super(...(args.length?args:[fixedNow]));}
+  static now(){return fixedNow;}
+};
+const now=new Date(), y=now.getFullYear(), m=now.getMonth();
+const day=n=>new Date(y,m,n).getTime();
+const current=now.getDate();
+const older=Math.max(1,current-1), oldest=Math.max(1,current-2);
+const days=[day(oldest-1),day(oldest),day(older),day(current)];
+let fixtureItems=[];
+const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+const state={revision:1,enabled_intent:true,paused_intent:true,storage_paused:false,microphone_enabled:true,system_enabled:true,capture_state:'paused',microphone_phase:'idle',system_phase:'idle',microphone_recording:false,system_recording:false,audio_limit_bytes:10737418240,audio_used_bytes:1073741824,disk_free_bytes:50000000000,recording_schedule:{enabled:false,start_minute:480,stop_minute:1380,paused_by_schedule:false,next_at_ms:null,next_action:null,error:null}};
+if(!window.isTauri)window.isTauri=true;
+mockIPC(async(command,args)=>{
+  if(command==='onboarding_status') return {completed:true};
+  if(command==='entry_snapshot') return {sequence:1,state,error:null,mode:'top',appearance:'sleeping',detail:null,control:'resume',notice:null};
+  if(command==='privacy_status') return {microphone:1,screen_and_system_audio:1,tap_required:false,tap_ready:true};
+  if(command==='login_item_status') return 1;
+  if(command!=='core_request') return null;
+  const r=args.request;
+  if(r.type==='calendar_days') {await wait(80);return {type:r.type,days};}
+  if(r.type==='timeline') {
+    await wait(r.from_ms===day(older)?700:150);
+    const d=new Date(r.from_ms).getDate();
+    const fixture=[
+      {title:'产品讨论与下一步安排',summary:'确认首页的信息层级与回看路径。下一轮先完善事件详情，再统一设置与反馈。',start:16.5,end:17.75,sources:'both'},
+      {title:'下午的阅读与灵感',summary:'从声音、文字和现场笔记中，留下今天值得回看的片段。',start:14,end:15.2,sources:'microphone'},
+      {title:'关于声音记录、人物识别与长期使用体验的设计讨论',summary:'围绕真实使用场景梳理录音、精转和整理之间的关系。保持信息来源清楚，让处理状态退到内容之后。',start:10,end:11.5,sources:'both'}
+    ];
+    fixtureItems=fixture.map((x,i)=>({id:`fixture-${d}-${i}`,manual_range_id:null,title:x.title,summary:x.summary,started_ms:r.from_ms+x.start*3600000,ended_ms:r.from_ms+x.end*3600000,sources:x.sources,revision:1,processing_state:'transcribed',recording_sources:[],preview:null,coarse_segments:[],precise_segments:[]}));
+    return {type:"timeline",gaps:[],items:fixtureItems};
+  }
+  if(r.type==='event_detail' || r.type==='range_detail') {
+    const item=fixtureItems.find(x=>x.id===r.event_id) || fixtureItems[0];
+    if(!item)throw Error('请先从时间线选择示例事件');
+    return {type:'event',event:{...item,coarse_segments:[{id:'demo-text',source:'microphone',started_ms:item.started_ms,ended_ms:item.started_ms+60000,text:'这是一段隔离的审阅样例。我们希望回看时先读到内容，再按需要播放录音或留下笔记。'}]}};
+  }
+  if(r.type==='usage_statistics') return {type:r.type,statistics:{started_ms:fixedNow,days:[]}};
+  if(r.type==='voice_samples') return {type:r.type,samples:[]};
+  if(r.type==='playback_chunk') return {type:r.type,has_audio:false,wav_base64:'',next_audio_ms:null};
+  if(/^(create|update|delete|set_|clear|export|add_|remove|correct|split|merge|enqueue|retry|configure|prepare)/.test(r.type)) {await wait(240);throw Error('模拟提交失败，草稿保留');}
+  if(r.type==='moments') return {type:r.type,moments:[]};
+  if(r.type==='cloud_status') return {type:r.type,queues:['llm','asr'].map(provider=>({provider,configured:true,paused:false,pending:0,processing:0,failed:0}))};
+  if(r.type==='people') return {type:r.type,people:[]};
+  if(r.type==='models') return {type:r.type,state:{phase:'ready',speaker_phase:'ready',progress_percent:100}};
+  return {type:r.type,state,items:[],tasks:[]};
+},{shouldMockEvents:true});
+createRoot(document.getElementById('root')).render(React.createElement(App));
+
+const button=(text,scope=document)=>[...scope.querySelectorAll('button')].find(b=>b.textContent.trim()===text);
+const click=async el=>{if(!el)throw Error('未找到控件');el.click();await wait(80)};
+const dialog=()=>[...document.querySelectorAll('dialog[open]')].at(-1);
+const enter=async(el,text)=>{Object.getOwnPropertyDescriptor(el.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype,'value').set.call(el,text);el.dispatchEvent(new Event('input',{bubbles:true}));await wait(30)};
+document.getElementById('run').onclick=async()=>{let n=0;const check=(ok,label)=>{if(!ok)throw Error(label);n++};const out=document.getElementById('result');try{
+ const busy=async text=>{button(text,dialog()).click();await wait(40);const d=dialog();check(d.textContent.includes('正在处理')&&d.querySelector('[aria-label=关闭弹窗]').disabled,'提交反馈缺失');d.dispatchEvent(new Event('cancel',{cancelable:true}));await wait(30);check(d.open,'写入中允许关闭');await wait(260);check(d.open&&d.textContent.includes('模拟提交失败')&&!d.querySelector('[aria-label=关闭弹窗]').disabled,'失败未恢复或丢失反馈');await click(d.querySelector('[aria-label=关闭弹窗]'));};
+ await wait(350);await click(document.querySelector('.create-event'));await enter(dialog().querySelector('input'),'隔离事件名称');await busy('保存');
+ await emit('hear-open-comment',{anchor_ms:Date.now()});await wait(80);await enter(dialog().querySelector('textarea'),'隔离评论');await busy('发送');
+ await click(document.querySelector('.event-card'));await wait(200);await click(document.querySelector('[aria-label=更多事件操作]'));await wait(80);
+ await busy('保存');
+ out.textContent=`PASS · ${n} 项真实 App 表单反馈检查`;
+}catch(e){out.textContent='FAIL · '+e.message;}};
+</script></html>

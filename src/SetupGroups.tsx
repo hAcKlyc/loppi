@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useRef, useState } from "react";
 import { core, type ServiceState, userError } from "./api";
-import { Switch } from "./Controls";
+import { Button, Switch } from "./Controls";
 import { LoadBoundary } from "./LoadingState";
 import {
 	type ModelState,
@@ -61,8 +61,8 @@ export function ModelPreparation({
 							✓ 已就绪
 						</span>
 					) : (
-						<button
-							className="quiet-button"
+						<Button
+							tone="quiet"
 							type="button"
 							disabled={busy || running}
 							onClick={() => void prepare()}
@@ -75,7 +75,7 @@ export function ModelPreparation({
 									: models?.phase === "failed"
 										? "重试安装"
 										: "下载并安装 ↓"}
-						</button>
+						</Button>
 					)}
 					{models?.error && (
 						<p className="error" role="alert">
@@ -110,14 +110,14 @@ export function ModelPreparation({
 									: ""}
 							</p>
 							{needed && (
-								<button
-									className="quiet-button"
+								<Button
+									tone="quiet"
 									type="button"
 									disabled={busy || running}
 									onClick={() => void prepare()}
 								>
 									准备人物识别
-								</button>
+								</Button>
 							)}
 						</details>
 					)}
@@ -169,8 +169,8 @@ export function ModelPreparation({
 					)}
 				</div>
 				{needed && (
-					<button
-						className="quiet-button"
+					<Button
+						tone="quiet"
 						type="button"
 						disabled={busy || running}
 						onClick={() => void prepare()}
@@ -180,7 +180,7 @@ export function ModelPreparation({
 							: phases.includes("failed")
 								? "重试"
 								: "下载并安装"}
-					</button>
+					</Button>
 				)}
 			</div>
 		</LoadBoundary>
@@ -271,8 +271,8 @@ export function SourcePreparation({
 											{mic || !privacy?.tap_required ? "已授权" : "已准备"} ✓
 										</span>
 									) : (
-										<button
-											className="quiet-button"
+										<Button
+											tone="quiet"
 											type="button"
 											disabled={!!busy}
 											onClick={() =>
@@ -293,7 +293,7 @@ export function SourcePreparation({
 												: denied || unavailable
 													? `${label} · 系统设置 ↗`
 													: `授权${label}`}
-										</button>
+										</Button>
 									)}
 									{(denied || unavailable) && (
 										<p className="error">
@@ -335,9 +335,10 @@ export function SourcePreparation({
 											: ""}
 									</p>
 									{enabled && (!ready || unavailable) && (
-										<button
+										<Button
 											type="button"
-											className="quiet-button source-permission-action"
+											tone="quiet"
+											className="source-permission-action"
 											disabled={sourceLocked}
 											onClick={() =>
 												void perform(source, () =>
@@ -357,7 +358,7 @@ export function SourcePreparation({
 												: denied || unavailable
 													? "打开系统设置"
 													: "允许访问"}
-										</button>
+										</Button>
 									)}
 								</div>
 								<Switch
@@ -400,14 +401,14 @@ export function SourcePreparation({
 				</p>
 			)}
 			{!compact && sourceMutation.uncertain && (
-				<button
+				<Button
 					type="button"
-					className="quiet-button"
+					tone="quiet"
 					disabled={sourceMutation.busy}
 					onClick={() => void sourceMutation.confirm()}
 				>
 					确认上次结果
-				</button>
+				</Button>
 			)}
 			{compact && sourceOptionsOpen && (
 				<div className="setup-source-options">
@@ -490,9 +491,9 @@ export function SourcePreparation({
 						Hear。受系统管理限制时需联系管理员。返回后会重新检查；电脑声音可点击重新验证。授权检查不保存或上传声音。
 					</p>
 					<div className="setting-actions">
-						<button
+						<Button
 							type="button"
-							className="quiet-button"
+							tone="quiet"
 							disabled={sourceLocked}
 							onClick={() =>
 								void perform("system", () =>
@@ -501,11 +502,11 @@ export function SourcePreparation({
 							}
 						>
 							打开系统设置
-						</button>
+						</Button>
 						{state?.system_enabled && (
-							<button
+							<Button
 								type="button"
-								className="quiet-button"
+								tone="quiet"
 								disabled={sourceLocked}
 								onClick={() =>
 									void perform("system", () =>
@@ -516,7 +517,7 @@ export function SourcePreparation({
 								}
 							>
 								重新验证电脑声音
-							</button>
+							</Button>
 						)}
 					</div>
 				</details>

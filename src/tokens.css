@@ -1,8 +1,8 @@
 :root {
 	/* Surfaces and text */
-	--color-canvas: #f0f3ee;
+	--color-canvas: #f3f5f1;
 	--color-surface: #fff;
-	--color-sidebar: #e7ede3;
+	--color-sidebar: #e9eee5;
 	--color-surface-subtle: #f4f7f1;
 	--color-surface-hover: #edf5ed;
 	--color-surface-selected: #dce9d6;
@@ -38,13 +38,21 @@
 	--color-warning-soft: #f4f0e7;
 	--color-warning-surface: #fff8e9;
 	--color-warning-border: #e8ddc9;
-	--color-danger: #a85e58;
+	--color-danger: #954d49;
 	--color-danger-hover: #8c4843;
 	--color-danger-surface: #fff4ed;
 	--color-audio: #242b27;
 	--color-overlay: #17271d79;
 	--color-overlay-strong: #111b14e6;
-	--color-focus: #81aa8f;
+	--color-focus: #39745a;
+	--color-switch-off: var(--color-text-muted);
+	--color-on-brand: var(--color-surface);
+	--color-warning-text: var(--color-warning-strong);
+	--color-placeholder: var(--color-text-muted);
+	--color-chart-usage: #277761;
+	--color-chart-output: #467c9a;
+	--color-chart-cached: #8b6cab;
+	--color-chart-cost: #ad7938;
 	--color-focus-ring: #d7eadb80;
 	--color-recording-light: #64d494;
 
@@ -75,8 +83,10 @@
 	--type-caption: 12px;
 	--type-meta: 13px;
 	--type-body: 14px;
+	--type-reading: 15px;
 	--type-control: 14px;
 	--type-lead: 16px;
+	--type-entry-menu: 15px;
 	--type-icon: 18px;
 	--type-heading-sm: 20px;
 	--type-heading: 22px;
@@ -85,11 +95,12 @@
 	--type-display-sm: 38px;
 	--type-display: 42px;
 	--weight-regular: 400;
+	--weight-medium: 500;
 	--weight-semibold: 600;
 	--weight-strong: 650;
 	--weight-bold: 700;
 	--tracking-tight: -0.055em;
-	--tracking-heading: -0.035em;
+	--tracking-heading: -0.015em;
 	--leading-none: 1;
 	--leading-tight: 1.1;
 	--leading-body: 1.6;
@@ -142,6 +153,9 @@
 	--layer-toast: 50;
 	--layer-image-preview: 100;
 
+	--control-height-compact: 28px;
+	--control-height-default: 34px;
+	--control-height-comfortable: 36px;
 	--layout-sidebar-width: 184px;
 	--layout-sidebar-compact-width: 104px;
 	--layout-content-max: 1170px;

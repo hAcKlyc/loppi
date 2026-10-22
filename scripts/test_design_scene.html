@@ -1,0 +1,271 @@
+<!doctype html>
+<!--
+  Isolated visual fixture: real App and mockIPC, with no native/data/cloud access.
+  Run the existing Vite server and open /scripts/test_design_scene.html?scene=…
+  Scenes: timeline (the original three-event comparison), detail (long text),
+  recording (real ServiceState/live projection), empty, error, crossday.
+  error deliberately rejects every timeline request, including retries.
+  #fixture-evidence exposes the selected scene and rendered state without adding
+  a toolbar to screenshots. The parent agent owns browser/viewport verification.
+-->
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>hear · 隔离视觉样例</title>
+</head>
+<body>
+  <div id="root"></div>
+  <aside id="fixture-description" hidden>
+    本页使用真实 App 和内存模拟数据，时间固定为本地 2026-10-22 18:30。
+    URL 参数 scene 可选 timeline、detail、recording、empty、error、crossday。
+    timeline 保留原三条对照事件；detail/crossday 自动打开详情；error 重试仍模拟失败。
+    播放返回无音频，截图为本页生成的示意图，所有写入和未声明的请求均被拒绝。
+  </aside>
+  <output id="fixture-evidence" hidden>正在加载隔离样例</output>
+  <script type="module">
+    import React from 'react';
+    import { createRoot } from 'react-dom/client';
+    import { mockIPC } from '@tauri-apps/api/mocks';
+    import App from '/src/App.tsx';
+
+    // Simulate only this fixture's preference; never change the user's OS setting.
+    if (new URLSearchParams(location.search).has('reduce')) {
+      const originalMatchMedia = window.matchMedia.bind(window);
+      window.matchMedia = query => query.includes('prefers-reduced-motion')
+        ? { matches: true, media: query, onchange: null, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent() { return true; } }
+        : originalMatchMedia(query);
+      const activate = rules => { for (const rule of rules) {
+        if (rule instanceof CSSMediaRule && rule.conditionText.includes('prefers-reduced-motion: reduce')) rule.media.mediaText = 'all';
+        if (rule.cssRules) activate(rule.cssRules);
+      }};
+      for (const sheet of document.styleSheets) activate(sheet.cssRules);
+      document.documentElement.dataset.reducedFixture = 'true';
+    }
+    const scenes = ['timeline', 'detail', 'recording', 'empty', 'error', 'crossday'];
+    const requested = new URLSearchParams(location.search).get('scene') ?? 'timeline';
+    const scene = scenes.includes(requested) ? requested : 'timeline';
+    const NativeDate = Date;
+    const fixedNow = new NativeDate(2026, 9, 22, 18, 30).getTime();
+    window.Date = class extends NativeDate {
+      constructor(...args) { super(...(args.length ? args : [fixedNow])); }
+      static now() { return fixedNow; }
+    };
+    const day = (date) => new Date(2026, 9, date).getTime();
+    const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+    const isRecording = scene === 'recording';
+    const hasDetail = scene === 'detail' || scene === 'crossday';
+    const evidence = document.getElementById('fixture-evidence');
+    document.documentElement.dataset.designScene = scene;
+    document.title = `hear · ${scene} · 隔离视觉样例`;
+    const requests = [];
+    window.__HEAR_DESIGN_FIXTURE__ = { scene, fixedNow, requests };
+
+    const state = {
+      revision: 1, enabled_intent: true, paused_intent: !isRecording,
+      storage_paused: false, storage_warning: false,
+      audio_limit_bytes: 10737418240, audio_used_bytes: 1073741824,
+      disk_free_bytes: 50000000000, microphone_enabled: true, system_enabled: true,
+      microphone_recording: isRecording, system_recording: isRecording,
+      microphone_phase: isRecording ? 'recording' : 'idle',
+      system_phase: isRecording ? 'recording' : 'idle',
+      capture_state: isRecording ? 'recording' : 'paused', capture_blocker: 'none',
+      microphone_reason: null, system_reason: null, reason: null,
+      recording_schedule: {
+        enabled: false, start_minute: 480, stop_minute: 1380,
+        paused_by_schedule: false, next_at_ms: null, next_action: null, error: null,
+      },
+    };
+    const people = [
+      { id: 'person-chen', display_name: '陈以宁', sample_count: 3, created_ms: day(20), revision: 1 },
+      { id: 'person-ouyang', display_name: '欧阳若宁（产品体验与长期记录研究）', sample_count: 2, created_ms: day(20), revision: 1 },
+    ];
+    const originalEvents = [
+      { title: '产品讨论与下一步安排', summary: '确认首页的信息层级与回看路径。下一轮先完善事件详情，再统一设置与反馈。', start: 16.5, end: 17.75, sources: 'both' },
+      { title: '下午的阅读与灵感', summary: '从声音、文字和现场笔记中，留下今天值得回看的片段。', start: 14, end: 15.2, sources: 'microphone' },
+      { title: '关于声音记录、人物识别与长期使用体验的设计讨论', summary: '围绕真实使用场景梳理录音、精转和整理之间的关系。保持信息来源清楚，让处理状态退到内容之后。', start: 10, end: 11.5, sources: 'both' },
+    ];
+    const baseItem = {
+      manual_range_id: null, revision: 1, fit_state: null,
+      processing_state: 'transcribed', manual_asr_state: null,
+      manual_asr_started_ms: null, manual_asr_ended_ms: null, manual_asr_source: null,
+      recording_sources: [], preview: null, coarse_segments: [], precise_segments: [],
+    };
+    function itemsFor(from) {
+      if (scene === 'empty') return [];
+      const items = originalEvents.map((event, index) => ({
+        ...baseItem, id: `fixture-${new Date(from).getDate()}-${index}`,
+        title: event.title, summary: event.summary, sources: event.sources,
+        started_ms: from + event.start * 3600000, ended_ms: from + event.end * 3600000,
+      }));
+      if (scene === 'crossday') return [{
+        ...items[0], id: 'fixture-crossday',
+        title: '跨日讨论：产品信息层级与长期回看体验',
+        started_ms: new Date(2026, 9, 21, 23, 48).getTime(),
+        ended_ms: new Date(2026, 9, 22, 1, 3).getTime(),
+      }];
+      if (isRecording && from === day(22)) items.unshift({
+        ...baseItem, id: null, title: null, summary: null, revision: null,
+        started_ms: new Date(2026, 9, 22, 18, 10).getTime(), ended_ms: fixedNow,
+        sources: 'both', processing_state: 'unorganized',
+        recording_sources: ['microphone', 'system'],
+        preview: {
+          text: '今天先把阅读的顺序梳理清楚。正在记录的内容会继续补充，回看时可以从具体时间进入，也可以留下现场笔记。',
+          source: 'microphone', is_precise: false,
+        },
+      });
+      return items;
+    }
+    let fixtureItems = itemsFor(day(22));
+    const paragraphs = [
+      '我们先从一个具体的回看场景开始。昨天讨论的内容很多，今天再打开记录时，我希望先知道这是哪一段对话，再决定是阅读摘要、查看原话，还是从某个时刻重新听一遍。',
+      '我同意把内容放在最前面，不过来源也需要容易找到。例如有些话来自麦克风，有些来自电脑里的会议声音；两路文字同时出现时，来源标签应该清楚，但不必比正文更醒目。',
+      '时间可以作为稳定的阅读锚点。用户向下浏览时，句子的长度会变化，说话人的名字也可能很长。只要时间和正文的起始位置保持一致，找到上一句或下一句就会轻松一些。',
+      '关于现场记录，我更希望它像当时留下的便签。记下来的重点、随手写的一句话和一张截图，应该都能回到原来的时刻，而不是在整理完成后才被重新解释成另外一种内容。',
+      '这里还有一个实际问题：如果我们在深夜开始讨论，过了零点才结束，播放器显示的时间和左边的句子时间都需要带上日期。不然两天里相同的时刻很容易让人误以为播放位置发生了跳动。',
+      '窄窗口里也需要保留连续阅读的感觉。我们可以让名字自然换行，让修改操作跟随这句话，但不要为了放下所有标签，把主要文字缩得太小。阅读时看清句子比一行放满信息更重要。',
+      '当前正在播放的句子可以有一层浅绿色背景，时间稍微加重就够了。暂停后，如果用户是从概览里的某个时间点进入，也应该看得出定位到了哪里，然后允许他自己继续向下阅读。',
+      '截图的识别文字默认折叠是合适的。用户先看到当时留下的截图入口，需要核对内容时再展开。即使识别失败，截图本身仍然存在，界面也应该把这两个结果分别说明。',
+      '我们把这句话稍微修正一下：内容摘要是一段整理后的概括，精转文字则是对原始声音的记录。两种内容可以互相帮助，但不应该用局部原话代替摘要，再让用户误判它的来源。',
+      '如果这次处理没有完成，最好直接告诉用户是哪一步失败了，以及能在哪里重试。已经读到的内容应当继续留在原处，不能因为一次后台刷新，就把整页替换成空白或重新跳回顶部。',
+      '对于人物名称，先显示已经确认的姓名，再说明这是自动匹配还是人工确认。较长的名字需要真实占据空间，这样我们才能看出来源文字、修正按钮和正文之间是否还保留了清楚的顺序。',
+      '最后再看一下底部的输入区。写笔记的时候，当前选定的时间应该一直可见；如果保存失败，刚刚输入的文字要留下来。用户可以修改后重试，不需要记住原句再输入一遍。',
+      '这一轮我们先把时间线和详情的阅读节奏确认下来，再把相同的间距和文字规则应用到其他页面。不要一次改变太多变量，否则很难知道视觉上的改善究竟来自哪一处调整。',
+      '下一步安排已经清楚了：保留同一组样例，分别检查常规窗口、最小窗口和大窗口。除了第一屏，还要滚动到长段落、跨日句子和最后一条现场记录，确认完整任务都可以继续完成。',
+    ];
+    function segmentsFor(item) {
+      return paragraphs.map((text, index) => {
+        const person = people[index % people.length];
+        return {
+          id: `${item.id ?? 'live'}-segment-${index}`, source: index % 2 ? 'system' : 'microphone',
+          started_ms: item.started_ms + index * 4 * 60000,
+          ended_ms: item.started_ms + index * 4 * 60000 + 145000,
+          text, speaker: `speaker-${index % 2}`, person_id: person.id,
+          person_name: person.display_name, person_origin: index % 2 ? 'automatic' : 'manual',
+          corrected: index === 8,
+          original_text: index === 8 ? '内容摘要和精转文字是一回事，可以放在一起显示。' : null,
+          revision: 1, speaker_revision: 1,
+        };
+      }).filter(segment => segment.ended_ms <= item.ended_ms);
+    }
+    function momentsFor(item) {
+      const make = (id, kind, offset, extra = {}) => ({
+        id, kind, anchor_ms: item.started_ms + offset, created_ms: item.started_ms + offset,
+        captured_ms: null, text: null, ocr_text: null, ocr_state: null,
+        image_summary: null, image_transcript: null, image_state: null, ...extra,
+      });
+      return [
+        make('design-note-1', 'comment', 187000, { text: '回看时先读到内容，再按需要核对时间和声音来源。\n下一轮重点检查长段落与窄窗口。' }),
+        make('design-mark-1', 'mark', 210000),
+        make('design-shot', 'screenshot', 297000, {
+          captured_ms: item.started_ms + 297000, ocr_state: 'complete',
+          ocr_text: '设计讨论 · 下一步安排\n\n1. 核对时间线与详情的信息层级。\n2. 检查 760 × 540 窗口里的双栏阅读。\n3. 确认跨日时间、长姓名与失败重试。\n\n负责人：陈以宁、欧阳若宁\n备注：这张示意图仅用于隔离视觉验证。',
+        }),
+        make('design-note-2', 'comment', 22 * 60000, { text: '保留来源与处理状态，但不要让辅助标签挤压正文。较长的人名允许换行，原始时间仍然可以回听。' }),
+        make('design-mark-2', 'mark', 39 * 60000),
+        make('design-note-3', 'comment', 51 * 60000, { text: '验收时记得滚动到最后一条记录，并确认底部输入和保存笔记仍然可达。' }),
+      ];
+    }
+    const screenshot = document.createElement('canvas');
+    screenshot.width = 960; screenshot.height = 540;
+    const context = screenshot.getContext('2d');
+    context.fillStyle = '#f0f3ee'; context.fillRect(0, 0, 960, 540);
+    context.fillStyle = '#25352e'; context.font = '32px system-ui';
+    context.fillText('设计讨论 · 下一步安排', 48, 80);
+    context.font = '24px system-ui';
+    ['核对时间线与详情的信息层级', '检查双栏阅读、跨日时间和长姓名', '仅用于隔离样例，不包含真实截图'].forEach((text, i) => context.fillText(text, 48, 160 + i * 64));
+    const png = screenshot.toDataURL('image/png').split(',')[1];
+
+    window.isTauri = true;
+    mockIPC(async (command, args) => {
+      requests.push({ command, type: args?.request?.type ?? null });
+      if (command === 'gui_ready') return null;
+      if (command === 'onboarding_status') return { completed: true };
+      if (command === 'entry_snapshot') return {
+        sequence: 1, state, error: null, mode: 'top',
+        appearance: isRecording ? 'listening' : 'sleeping', detail: null,
+        control: isRecording ? 'pause' : 'resume', notice: null,
+      };
+      if (command === 'privacy_status') return { microphone: 1, screen_and_system_audio: 1, tap_required: false, tap_ready: true };
+      if (command === 'login_item_status') return 1;
+      if (command !== 'core_request') throw Error(`隔离样例未执行原生命令：${command}`);
+      const request = args.request;
+      const response = (extra = {}) => ({ type: request.type, id: 'design-fixture', ...extra });
+      if (request.type === 'status') return response({ state });
+      if (request.type === 'calendar_days') return response({ days: scene === 'empty' ? [] : [day(19), day(20), day(21), day(22)] });
+      if (request.type === 'timeline') {
+        await wait(150);
+        if (scene === 'error') throw Error('模拟读取失败，请重试；此请求没有连接真实数据');
+        fixtureItems = itemsFor(request.from_ms);
+        return response({ items: fixtureItems, gaps: [] });
+      }
+      if (request.type === 'event_detail' || request.type === 'range_detail') {
+        const item = fixtureItems.find(item => request.event_id ? item.id === request.event_id : item.started_ms === request.started_ms) ?? fixtureItems[0];
+        if (!item) throw Error('隔离样例没有对应事件');
+        await wait(120);
+        const precise = segmentsFor(item);
+        return { type: 'event', id: 'design-fixture', event: {
+          ...item, precise_segments: precise.slice(request.offset ?? 0, (request.offset ?? 0) + (request.limit ?? 100)), coarse_segments: [],
+        } };
+      }
+      if (request.type === 'session_speakers') return response({ speakers: people.map((person, index) => ({
+        group_id: `speaker-${index}`, segment_id: request.segment_id,
+        name: person.display_name, anonymous: false, revision: 1,
+      })) });
+      if (request.type === 'moments') {
+        const item = fixtureItems.find(item => item.id !== null);
+        const all = hasDetail && item ? momentsFor(item).filter(moment => moment.anchor_ms >= request.from_ms && moment.anchor_ms < request.to_ms) : [];
+        return response({ moments: all.slice(request.offset ?? 0, (request.offset ?? 0) + (request.limit ?? 200)) });
+      }
+      if (request.type === 'people') return response({ people });
+      if (request.type === 'cloud_status') return response({ queues: ['llm', 'asr'].map(provider => ({ provider, configured: true, paused: false, pending: 0, processing: 0, failed: 0 })) });
+      if (request.type === 'models') return response({ state: { phase: 'ready', speaker_phase: 'ready', progress_percent: 100 } });
+      if (request.type === 'cloud_tasks') return response({ tasks: [] });
+      if (request.type === 'review_items') return response({ items: [] });
+      if (request.type === 'voice_samples') return response({ samples: [] });
+      if (request.type === 'usage_statistics') return response({ statistics: { started_ms: fixedNow, days: [] } });
+      if (request.type === 'screenshot_data') return response({ png_base64: png });
+      if (request.type === 'playback_chunk') return response({ has_audio: false, wav_base64: '', next_audio_ms: null });
+      if (request.type === 'playback_valid') return response({ valid: false });
+      throw Error(`隔离样例未执行操作：${request.type}`);
+    }, { shouldMockEvents: true });
+
+    let opened = false;
+    function updateEvidence() {
+      if (hasDetail && !opened) {
+        const card = document.querySelector('.event-card');
+        if (card) { opened = true; card.click(); }
+      }
+      const result = {
+        scene, fixedNow, isolated: true,
+        cards: document.querySelectorAll('.event-card').length,
+        detailOpen: !!document.querySelector('.detail-drawer'),
+        transcriptRows: document.querySelectorAll('.transcript-row').length,
+        people: [...new Set([...document.querySelectorAll('.speaker-chip')].map(node => node.textContent))],
+        moments: document.querySelectorAll('.moment-record').length,
+        crossday: !!document.querySelector('.transcript-list.crosses-day'),
+        recording: !!document.querySelector('.event-card.is-recording'),
+        empty: document.querySelector('.list-empty')?.textContent ?? null,
+        errors: [...document.querySelectorAll('#root [role="alert"]')].map(node => node.textContent),
+        timelineRequests: requests.filter(request => request.type === 'timeline').length,
+      };
+      result.ready = hasDetail ? result.transcriptRows >= 10 && result.moments === 6
+        : scene === 'recording' ? result.recording
+        : scene === 'empty' ? !!result.empty
+        : scene === 'error' ? result.errors.length > 0 : result.cards === 3;
+      evidence.dataset.ready = String(result.ready);
+      evidence.dataset.scene = scene;
+      evidence.textContent = JSON.stringify(result, null, 2);
+    }
+    new MutationObserver(updateEvidence).observe(document.getElementById('root'), { childList: true, subtree: true, attributes: true });
+    window.addEventListener('error', event => {
+      evidence.dataset.ready = 'false'; evidence.textContent = `样例错误：${event.message}`;
+    });
+    window.addEventListener('unhandledrejection', event => {
+      evidence.dataset.ready = 'false'; evidence.textContent = `样例请求错误：${String(event.reason)}`;
+    });
+    createRoot(document.getElementById('root')).render(React.createElement(App));
+    updateEvidence();
+  </script>
+</body>
+</html>

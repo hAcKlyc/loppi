@@ -1,0 +1,50 @@
+{
+  "date": "2026-10-22",
+  "baseline_commit": "0666e02",
+  "production_edits": false,
+  "checks": [
+    {
+      "name": "npm run typecheck",
+      "result": "passed"
+    },
+    {
+      "name": "scripts/test_settings_interactions.html",
+      "result": "PASS · 32 项设置交互检查",
+      "environment": "mocked IPC in browser"
+    },
+    {
+      "name": "legacy export modal keyboard",
+      "result": "focus remains on background Export; Tab goes to background Cleanup; Escape leaves modal open"
+    },
+    {
+      "name": "scripts/test_date_navigation.html baseline",
+      "result": "blocked before regression by null onboarding_status response; fixture drift, not a demonstrated production failure"
+    },
+    {
+      "name": "timeline minimum viewport",
+      "viewport": [
+        760,
+        540
+      ],
+      "document_scroll_size": [
+        760,
+        600
+      ],
+      "app_shell_height": 600
+    },
+    {
+      "name": "css-variable scan",
+      "undefined": [
+        "--weight-medium"
+      ],
+      "scope": "src top-level CSS/TS/TSX; dynamic JS variables included"
+    }
+  ],
+  "limitations": [
+    "Browser snapshots use mock data and a scaled iframe.",
+    "Settings and people preview navigation is a simplified test shell.",
+    "No native Tauri/VoiceOver/notch/hitbox/1x-2x acceptance performed.",
+    "No full browser state and viewport matrix executed.",
+    "Proposed visual CSS does not implement interaction repairs."
+  ]
+}

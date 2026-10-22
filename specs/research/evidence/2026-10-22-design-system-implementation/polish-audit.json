@@ -1,0 +1,345 @@
+{
+  "scope": "Current src/*.css, src/*.ts and src/*.tsx; lexical inventory only",
+  "css_lines": {
+    "src/App.css": 2374,
+    "src/capture-status.css": 157,
+    "src/controls.css": 306,
+    "src/entry.css": 346,
+    "src/onboarding.css": 241,
+    "src/people-settings.css": 290,
+    "src/tokens.css": 171,
+    "src/usage-statistics.css": 202
+  },
+  "token_count": 154,
+  "undefined_css_variables": [],
+  "literal_colors_outside_tokens": [],
+  "literal_font_sizes_outside_tokens": [],
+  "control_pairs": [
+    {
+      "control": "primary",
+      "foreground": "--color-surface",
+      "background": "--color-brand",
+      "ratio": 7.646806853140462
+    },
+    {
+      "control": "primary hover",
+      "foreground": "--color-surface",
+      "background": "--color-brand-hover",
+      "ratio": 10.047959823855013
+    },
+    {
+      "control": "secondary / create-event",
+      "foreground": "--color-brand",
+      "background": "--color-surface-selected",
+      "ratio": 6.0699996137789345
+    },
+    {
+      "control": "secondary / create-event hover",
+      "foreground": "--color-brand",
+      "background": "--color-surface-selected-hover",
+      "ratio": 5.619679743270446
+    },
+    {
+      "control": "quiet",
+      "foreground": "--color-brand-accent",
+      "background": "--color-control",
+      "ratio": 4.885431975801666
+    },
+    {
+      "control": "quiet hover",
+      "foreground": "--color-brand-accent",
+      "background": "--color-control-hover",
+      "ratio": 4.532395095620492
+    },
+    {
+      "control": "danger",
+      "foreground": "--color-surface",
+      "background": "--color-danger",
+      "ratio": 6.11234320668675
+    },
+    {
+      "control": "danger hover",
+      "foreground": "--color-surface",
+      "background": "--color-danger-hover",
+      "ratio": 6.724119976491079
+    },
+    {
+      "control": "focus on selected hover",
+      "foreground": "--color-focus",
+      "background": "--color-surface-selected-hover",
+      "ratio": 4.040304545964306
+    }
+  ],
+  "contrast": [
+    {
+      "foreground": "--color-text",
+      "background": "--color-surface",
+      "ratio": 12.904371449135411
+    },
+    {
+      "foreground": "--color-text",
+      "background": "--color-canvas",
+      "ratio": 11.762688000140214
+    },
+    {
+      "foreground": "--color-text",
+      "background": "--color-sidebar",
+      "ratio": 10.953949728150839
+    },
+    {
+      "foreground": "--color-text",
+      "background": "--color-recording-surface",
+      "ratio": 10.647473699729396
+    },
+    {
+      "foreground": "--color-text",
+      "background": "--color-recording-surface-hover",
+      "ratio": 10.11076373005907
+    },
+    {
+      "foreground": "--color-text",
+      "background": "--color-danger-surface",
+      "ratio": 11.930495978149622
+    },
+    {
+      "foreground": "--color-text-strong",
+      "background": "--color-surface",
+      "ratio": 9.59249600365525
+    },
+    {
+      "foreground": "--color-text-strong",
+      "background": "--color-canvas",
+      "ratio": 8.743822826112803
+    },
+    {
+      "foreground": "--color-text-strong",
+      "background": "--color-sidebar",
+      "ratio": 8.142645258290939
+    },
+    {
+      "foreground": "--color-text-strong",
+      "background": "--color-recording-surface",
+      "ratio": 7.91482555475584
+    },
+    {
+      "foreground": "--color-text-strong",
+      "background": "--color-recording-surface-hover",
+      "ratio": 7.515860889217677
+    },
+    {
+      "foreground": "--color-text-strong",
+      "background": "--color-danger-surface",
+      "ratio": 8.868563296021128
+    },
+    {
+      "foreground": "--color-text-secondary",
+      "background": "--color-surface",
+      "ratio": 5.757526404055357
+    },
+    {
+      "foreground": "--color-text-secondary",
+      "background": "--color-canvas",
+      "ratio": 5.248143004129803
+    },
+    {
+      "foreground": "--color-text-secondary",
+      "background": "--color-sidebar",
+      "ratio": 4.887309315073146
+    },
+    {
+      "foreground": "--color-text-secondary",
+      "background": "--color-recording-surface",
+      "ratio": 4.750569309347047
+    },
+    {
+      "foreground": "--color-text-secondary",
+      "background": "--color-recording-surface-hover",
+      "ratio": 4.511106129456664
+    },
+    {
+      "foreground": "--color-text-secondary",
+      "background": "--color-danger-surface",
+      "ratio": 5.323013668540586
+    },
+    {
+      "foreground": "--color-text-muted",
+      "background": "--color-surface",
+      "ratio": 5.777774005613863
+    },
+    {
+      "foreground": "--color-text-muted",
+      "background": "--color-canvas",
+      "ratio": 5.266599247490639
+    },
+    {
+      "foreground": "--color-text-muted",
+      "background": "--color-sidebar",
+      "ratio": 4.9044966078027254
+    },
+    {
+      "foreground": "--color-text-muted",
+      "background": "--color-recording-surface",
+      "ratio": 4.767275725922746
+    },
+    {
+      "foreground": "--color-text-muted",
+      "background": "--color-recording-surface-hover",
+      "ratio": 4.526970421356921
+    },
+    {
+      "foreground": "--color-text-muted",
+      "background": "--color-danger-surface",
+      "ratio": 5.341733210977279
+    },
+    {
+      "foreground": "--color-text-faint",
+      "background": "--color-surface",
+      "ratio": 3.2867834845287605
+    },
+    {
+      "foreground": "--color-text-faint",
+      "background": "--color-canvas",
+      "ratio": 2.9959931644028885
+    },
+    {
+      "foreground": "--color-text-faint",
+      "background": "--color-sidebar",
+      "ratio": 2.7900050148708866
+    },
+    {
+      "foreground": "--color-text-faint",
+      "background": "--color-recording-surface",
+      "ratio": 2.7119446186253136
+    },
+    {
+      "foreground": "--color-text-faint",
+      "background": "--color-recording-surface-hover",
+      "ratio": 2.5752429225180964
+    },
+    {
+      "foreground": "--color-text-faint",
+      "background": "--color-danger-surface",
+      "ratio": 3.038734377554378
+    },
+    {
+      "foreground": "--color-focus",
+      "background": "--color-surface",
+      "ratio": 5.497720493387836
+    },
+    {
+      "foreground": "--color-focus",
+      "background": "--color-canvas",
+      "ratio": 5.011322801005605
+    },
+    {
+      "foreground": "--color-focus",
+      "background": "--color-sidebar",
+      "ratio": 4.666771577474223
+    },
+    {
+      "foreground": "--color-focus",
+      "background": "--color-recording-surface",
+      "ratio": 4.536201905884555
+    },
+    {
+      "foreground": "--color-focus",
+      "background": "--color-recording-surface-hover",
+      "ratio": 4.3075443993262015
+    },
+    {
+      "foreground": "--color-focus",
+      "background": "--color-danger-surface",
+      "ratio": 5.082814958782737
+    },
+    {
+      "foreground": "--color-warning",
+      "background": "--color-surface",
+      "ratio": 4.215493361304585
+    },
+    {
+      "foreground": "--color-warning",
+      "background": "--color-canvas",
+      "ratio": 3.8425376525417976
+    },
+    {
+      "foreground": "--color-warning",
+      "background": "--color-sidebar",
+      "ratio": 3.5783457211453586
+    },
+    {
+      "foreground": "--color-warning",
+      "background": "--color-recording-surface",
+      "ratio": 3.4782286663703927
+    },
+    {
+      "foreground": "--color-warning",
+      "background": "--color-recording-surface-hover",
+      "ratio": 3.302900691427233
+    },
+    {
+      "foreground": "--color-warning",
+      "background": "--color-danger-surface",
+      "ratio": 3.897355775226882
+    },
+    {
+      "foreground": "--color-warning-strong",
+      "background": "--color-surface",
+      "ratio": 6.638623510610609
+    },
+    {
+      "foreground": "--color-warning-strong",
+      "background": "--color-canvas",
+      "ratio": 6.051287148196589
+    },
+    {
+      "foreground": "--color-warning-strong",
+      "background": "--color-sidebar",
+      "ratio": 5.63523364822399
+    },
+    {
+      "foreground": "--color-warning-strong",
+      "background": "--color-recording-surface",
+      "ratio": 5.477567776954183
+    },
+    {
+      "foreground": "--color-warning-strong",
+      "background": "--color-recording-surface-hover",
+      "ratio": 5.201458596659993
+    },
+    {
+      "foreground": "--color-warning-strong",
+      "background": "--color-danger-surface",
+      "ratio": 6.137615567404944
+    },
+    {
+      "foreground": "--color-danger",
+      "background": "--color-surface",
+      "ratio": 6.11234320668675
+    },
+    {
+      "foreground": "--color-danger",
+      "background": "--color-canvas",
+      "ratio": 5.571568237432432
+    },
+    {
+      "foreground": "--color-danger",
+      "background": "--color-sidebar",
+      "ratio": 5.188497593328101
+    },
+    {
+      "foreground": "--color-danger",
+      "background": "--color-recording-surface",
+      "ratio": 5.043330765349071
+    },
+    {
+      "foreground": "--color-danger",
+      "background": "--color-recording-surface-hover",
+      "ratio": 4.789110282778007
+    },
+    {
+      "foreground": "--color-danger",
+      "background": "--color-danger-surface",
+      "ratio": 5.651052926667905
+    }
+  ]
+}

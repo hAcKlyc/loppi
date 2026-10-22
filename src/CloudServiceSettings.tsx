@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { CloudProvider } from "./api";
 import { CloudKeyInput } from "./CloudKeyInput";
-import { Modal } from "./Controls";
+import { Button, Modal } from "./Controls";
 import { cloudOperation } from "./setup";
 
 export function CloudServiceSettings({
@@ -37,9 +37,9 @@ export function CloudServiceSettings({
 					{provider === "llm" ? "整理事件与新截图" : "将录音转为更准确的文字"}
 				</p>
 			</div>
-			<button
+			<Button
 				type="button"
-				className="quiet-button"
+				tone="quiet"
 				disabled={configured === undefined}
 				onClick={() => setEditing(true)}
 			>
@@ -48,7 +48,7 @@ export function CloudServiceSettings({
 					: configured
 						? "修改密钥"
 						: "配置"}
-			</button>
+			</Button>
 			{editing && (
 				<Modal title={title} busy={busy} onClose={close}>
 					<p className="schedule-note">

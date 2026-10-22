@@ -1,41 +1,4 @@
 /* C surfaces: clear grouping, controls communicate their own interaction. */
-.control-icon {
-	width: 18px;
-	height: 18px;
-	flex: none;
-}
-.button-with-icon {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	gap: var(--space-3);
-}
-.app-dialog {
-	border: 0;
-	color: var(--color-text);
-	margin: auto;
-	max-width: calc(100vw - 32px);
-}
-.app-dialog::backdrop {
-	background: var(--color-overlay);
-}
-.app-dialog[open] {
-	animation: dialog-enter var(--motion-standard) var(--ease-standard);
-}
-@keyframes dialog-enter {
-	from {
-		opacity: 0;
-		transform: translateY(8px) scale(0.98);
-	}
-	to {
-		opacity: 1;
-		transform: none;
-	}
-}
-.app-dialog .form-field {
-	display: grid;
-	gap: var(--space-4);
-}
 .form-error,
 .app-dialog .form-error {
 	color: var(--color-danger);

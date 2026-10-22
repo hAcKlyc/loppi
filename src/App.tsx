@@ -19,6 +19,7 @@ import {
 } from "./api";
 import appIcon from "./assets/rabbit/app-icon-square.png";
 import { CaptureStatus, useCaptureControl } from "./CaptureStatus";
+import { Button, Field, Modal } from "./Controls";
 import { DetailDrawer } from "./DetailDrawer";
 import { type EntrySnapshot, getEntrySnapshot } from "./entry-api";
 import { PeopleView } from "./PeopleView";
@@ -118,6 +119,7 @@ function App() {
 	const [from, setFrom] = useState("");
 	const [to, setTo] = useState("");
 	const [sources, setSources] = useState<Sources>("both");
+	const [dialogError, setDialogError] = useState("");
 	const [toast, setToast] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [busy, setBusy] = useState(false);
@@ -520,6 +522,7 @@ function App() {
 			listen<{ anchor_ms: number }>("hear-open-comment", (event) => {
 				setCommentAnchor(event.payload.anchor_ms);
 				setCommentDraft("");
+				setDialogError("");
 				setCommentOpen(true);
 			}),
 		]).then((callbacks) => {
@@ -541,6 +544,7 @@ function App() {
 		request: { type: string; [key: string]: unknown },
 		success: string,
 	) => {
+		setDialogError("");
 		setBusy(true);
 		try {
 			await core(request);
@@ -554,6 +558,7 @@ function App() {
 				setSelection(null);
 				await refreshTimeline();
 			}
+			setDialogError(errorText(cause));
 			message(errorText(cause));
 			return false;
 		} finally {
@@ -563,6 +568,7 @@ function App() {
 
 	const openForm = (next: EventForm) => {
 		const [day] = dayBounds(date);
+		setDialogError("");
 		setForm(next);
 		setTitle(next.item?.title ?? "");
 		setFrom(localInput(next.item?.started_ms ?? day + 9 * 3_600_000));
@@ -584,7 +590,7 @@ function App() {
 			!Number.isFinite(started_ms) ||
 			ended_ms <= started_ms
 		) {
-			message("请填写标题和有效的时间范围");
+			setDialogError("请填写标题和有效的时间范围");
 			return;
 		}
 		const request =
@@ -612,6 +618,7 @@ function App() {
 	};
 
 	const openTools = (item: TimelineItem) => {
+		setDialogError("");
 		setTool({ item, mode: "split" });
 		setSplitAt(localInput((item.started_ms + item.ended_ms) / 2));
 		setLeftTitle(item.title || "前半段");
@@ -678,6 +685,7 @@ function App() {
 		anchor: number,
 		text?: string,
 	) => {
+		setDialogError("");
 		setBusy(true);
 		try {
 			await core(
@@ -697,6 +705,7 @@ function App() {
 			setCommentOpen(false);
 			setCommentDraft("");
 		} catch (cause) {
+			setDialogError(errorText(cause));
 			message(errorText(cause));
 		} finally {
 			setBusy(false);
@@ -826,7 +835,7 @@ function App() {
 					))}
 				</nav>
 			</aside>
-			<main className="main-area">
+			<main className="main-area" tabIndex={-1} data-focus-fallback>
 				{setupCompleted === false && (
 					<div className="connection-banner">
 						首次准备尚未完成
@@ -962,248 +971,216 @@ function App() {
 				/>
 			)}
 			{commentOpen && (
-				<div className="modal-layer">
-					<button
-						type="button"
-						className="modal-scrim"
-						aria-label="关闭评论"
-						onClick={() => setCommentOpen(false)}
+				<Modal
+					title="评论"
+					busy={busy}
+					feedback={dialogError}
+					onClose={() => setCommentOpen(false)}
+				>
+					<p className="comment-context">
+						{new Date(commentAnchor).toLocaleString("zh-CN")}
+					</p>
+					<textarea
+						aria-label="评论内容"
+						className="comment-input"
+						value={commentDraft}
+						onChange={(event) => setCommentDraft(event.target.value)}
+						placeholder="写下这一刻的想法…"
 					/>
-					<div className="modal">
-						<div className="modal-title">
-							<h2>评论</h2>
-							<button
-								type="button"
-								className="icon-button"
-								onClick={() => setCommentOpen(false)}
-							>
-								×
-							</button>
-						</div>
-						<p className="comment-context">
-							{new Date(commentAnchor).toLocaleString("zh-CN")}
-						</p>
-						<textarea
-							aria-label="评论内容"
-							className="comment-input"
-							value={commentDraft}
-							onChange={(event) => setCommentDraft(event.target.value)}
-							placeholder="写下这一刻的想法…"
-						/>
-						<div className="modal-actions">
-							<button
-								type="button"
-								className="quiet-button"
-								onClick={() => setCommentOpen(false)}
-							>
-								取消
-							</button>
-							<button
-								type="button"
-								className="primary-button"
-								disabled={busy || !commentDraft.trim()}
-								onClick={() =>
-									void addMoment("comment", commentAnchor, commentDraft.trim())
-								}
-							>
-								发送
-							</button>
-						</div>
+					<div className="modal-actions">
+						<Button
+							type="button"
+							tone="quiet"
+							disabled={busy}
+							onClick={() => setCommentOpen(false)}
+						>
+							取消
+						</Button>
+						<Button
+							type="button"
+							tone="primary"
+							disabled={busy || !commentDraft.trim()}
+							onClick={() =>
+								void addMoment("comment", commentAnchor, commentDraft.trim())
+							}
+						>
+							发送
+						</Button>
 					</div>
-				</div>
+				</Modal>
 			)}
 			{form && (
-				<div className="modal-layer">
-					<button
-						type="button"
-						className="modal-scrim"
-						aria-label="关闭"
-						onClick={() => setForm(null)}
-					/>
-					<div className="modal">
-						<div className="modal-title">
-							<h2>{form.mode === "create" ? "新建事件" : "编辑事件"}</h2>
-							<button
-								type="button"
-								className="icon-button"
-								onClick={() => setForm(null)}
-							>
-								×
-							</button>
-						</div>
-						<label>
-							名称
+				<Modal
+					title={form.mode === "create" ? "新建事件" : "编辑事件"}
+					busy={busy}
+					feedback={dialogError}
+					onClose={() => setForm(null)}
+				>
+					<Field label="名称">
+						{(attributes) => (
 							<input
+								{...attributes}
+								disabled={busy}
 								value={title}
 								onChange={(event) => setTitle(event.target.value)}
 								placeholder="例如，产品周会"
 							/>
-						</label>
-						<div className="field-grid">
-							<label>
-								开始
-								<input
-									type="datetime-local"
-									value={from}
-									onChange={(event) => setFrom(event.target.value)}
-								/>
-							</label>
-							<label>
-								结束
-								<input
-									type="datetime-local"
-									value={to}
-									onChange={(event) => setTo(event.target.value)}
-								/>
-							</label>
-						</div>
+						)}
+					</Field>
+					<div className="field-grid">
 						<label>
-							声音来源
-							<select
-								value={sources}
-								onChange={(event) => setSources(event.target.value as Sources)}
-							>
-								<option value="both">双路声音</option>
-								<option value="microphone">麦克风</option>
-								<option value="system">电脑声音</option>
-							</select>
+							开始
+							<input
+								type="datetime-local"
+								value={from}
+								onChange={(event) => setFrom(event.target.value)}
+							/>
 						</label>
-						<div className="modal-actions">
-							<button
-								type="button"
-								className="quiet-button"
-								onClick={() => setForm(null)}
-							>
-								取消
-							</button>
-							<button
-								type="button"
-								className="primary-button"
-								disabled={busy}
-								onClick={() => void saveEvent()}
-							>
-								保存
-							</button>
-						</div>
+						<label>
+							结束
+							<input
+								type="datetime-local"
+								value={to}
+								onChange={(event) => setTo(event.target.value)}
+							/>
+						</label>
 					</div>
-				</div>
+					<label>
+						声音来源
+						<select
+							value={sources}
+							onChange={(event) => setSources(event.target.value as Sources)}
+						>
+							<option value="both">双路声音</option>
+							<option value="microphone">麦克风</option>
+							<option value="system">电脑声音</option>
+						</select>
+					</label>
+					<div className="modal-actions">
+						<Button
+							type="button"
+							tone="quiet"
+							disabled={busy}
+							onClick={() => setForm(null)}
+						>
+							取消
+						</Button>
+						<Button
+							type="button"
+							tone="primary"
+							disabled={busy}
+							onClick={() => void saveEvent()}
+						>
+							保存
+						</Button>
+					</div>
+				</Modal>
 			)}
 			{tool && (
-				<div className="modal-layer">
-					<button
-						type="button"
-						className="modal-scrim"
-						aria-label="关闭事件操作"
-						onClick={() => setTool(null)}
-					/>
-					<div className="modal">
-						<div className="modal-title">
-							<h2>管理事件</h2>
+				<Modal
+					title="管理事件"
+					busy={busy}
+					feedback={dialogError}
+					onClose={() => setTool(null)}
+				>
+					<div className="tool-tabs">
+						{(["split", "merge", "delete"] as const).map((mode) => (
 							<button
+								key={mode}
 								type="button"
-								className="icon-button"
-								onClick={() => setTool(null)}
-							>
-								×
-							</button>
-						</div>
-						<div className="tool-tabs">
-							{(["split", "merge", "delete"] as const).map((mode) => (
-								<button
-									key={mode}
-									type="button"
-									className={tool.mode === mode ? "active" : ""}
-									onClick={() => setTool({ ...tool, mode })}
-								>
-									{mode === "split"
-										? "拆分"
-										: mode === "merge"
-											? "合并"
-											: "取消标注"}
-								</button>
-							))}
-						</div>
-						{tool.mode === "split" && (
-							<>
-								<label>
-									分割时刻
-									<input
-										type="datetime-local"
-										value={splitAt}
-										onChange={(event) => setSplitAt(event.target.value)}
-									/>
-								</label>
-								<div className="field-grid">
-									<label>
-										前半段名称
-										<input
-											value={leftTitle}
-											onChange={(event) => setLeftTitle(event.target.value)}
-										/>
-									</label>
-									<label>
-										后半段名称
-										<input
-											value={rightTitle}
-											onChange={(event) => setRightTitle(event.target.value)}
-										/>
-									</label>
-								</div>
-							</>
-						)}
-						{tool.mode === "merge" && (
-							<>
-								<label>
-									合并到
-									<select
-										value={mergeTarget}
-										onChange={(event) => setMergeTarget(event.target.value)}
-									>
-										<option value="">选择事件</option>
-										{items
-											.filter((item) => item.id && item.id !== tool.item.id)
-											.map((item) => (
-												<option key={item.id} value={item.id || ""}>
-													{time(item.started_ms)} · {item.title}
-												</option>
-											))}
-									</select>
-								</label>
-								<label>
-									合并后名称
-									<input
-										value={mergeTitle}
-										onChange={(event) => setMergeTitle(event.target.value)}
-									/>
-								</label>
-							</>
-						)}
-						{tool.mode === "delete" && (
-							<p>
-								这会取消当前事件的命名和边界。声音、转录、截图与笔记会留在原来的时间位置。
-							</p>
-						)}
-						<div className="modal-actions">
-							<button
-								type="button"
-								className="quiet-button"
-								onClick={() => setTool(null)}
-							>
-								返回
-							</button>
-							<button
-								type="button"
-								className={
-									tool.mode === "delete" ? "danger-button" : "primary-button"
-								}
+								className={tool.mode === mode ? "active" : ""}
 								disabled={busy}
-								onClick={() => void saveTool()}
+								onClick={() => setTool({ ...tool, mode })}
 							>
-								{tool.mode === "delete" ? "取消标注" : "保存"}
+								{mode === "split"
+									? "拆分"
+									: mode === "merge"
+										? "合并"
+										: "取消标注"}
 							</button>
-						</div>
+						))}
 					</div>
-				</div>
+					{tool.mode === "split" && (
+						<>
+							<label>
+								分割时刻
+								<input
+									type="datetime-local"
+									value={splitAt}
+									onChange={(event) => setSplitAt(event.target.value)}
+								/>
+							</label>
+							<div className="field-grid">
+								<label>
+									前半段名称
+									<input
+										value={leftTitle}
+										onChange={(event) => setLeftTitle(event.target.value)}
+									/>
+								</label>
+								<label>
+									后半段名称
+									<input
+										value={rightTitle}
+										onChange={(event) => setRightTitle(event.target.value)}
+									/>
+								</label>
+							</div>
+						</>
+					)}
+					{tool.mode === "merge" && (
+						<>
+							<label>
+								合并到
+								<select
+									value={mergeTarget}
+									onChange={(event) => setMergeTarget(event.target.value)}
+								>
+									<option value="">选择事件</option>
+									{items
+										.filter((item) => item.id && item.id !== tool.item.id)
+										.map((item) => (
+											<option key={item.id} value={item.id || ""}>
+												{time(item.started_ms)} · {item.title}
+											</option>
+										))}
+								</select>
+							</label>
+							<label>
+								合并后名称
+								<input
+									value={mergeTitle}
+									onChange={(event) => setMergeTitle(event.target.value)}
+								/>
+							</label>
+						</>
+					)}
+					{tool.mode === "delete" && (
+						<p>
+							这会取消当前事件的命名和边界。声音、转录、截图与笔记会留在原来的时间位置。
+						</p>
+					)}
+					<div className="modal-actions">
+						<Button
+							type="button"
+							tone="quiet"
+							disabled={busy}
+							onClick={() => setTool(null)}
+						>
+							返回
+						</Button>
+						<button
+							type="button"
+							className={
+								tool.mode === "delete" ? "danger-button" : "primary-button"
+							}
+							disabled={busy}
+							onClick={() => void saveTool()}
+						>
+							{tool.mode === "delete" ? "取消标注" : "保存"}
+						</button>
+					</div>
+				</Modal>
 			)}
 			{toast && (
 				<div className="toast" role="status">

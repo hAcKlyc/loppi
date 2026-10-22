@@ -10,7 +10,7 @@ import {ModelPreparation,SourcePreparation} from '../src/SetupGroups.tsx';
 import {CloudKeyInput} from '../src/CloudKeyInput.tsx';
 import '../src/App.css';
 const flags=new URLSearchParams(location.search), ready=flags.has('ready');
-window.isTauri=true;
+if(!window.isTauri)window.isTauri=true;
 const state={disk_free_bytes:flags.has('disk')?0:3_000_000_000,audio_used_bytes:0,audio_limit_bytes:1000,revision:0,enabled_intent:false,paused_intent:false,microphone_enabled:true,system_enabled:true,microphone_phase:'idle',system_phase:'idle'};
 const privacy={microphone:flags.has('denied')?2:ready?3:0,microphone_available:true,tap_required:true,tap_ready:ready,screen_and_system_audio:0};
 const models={phase:ready?'ready':'missing',speaker_phase:flags.has('speaker')?'failed':ready?'ready':'missing',progress_percent:0,error:null,speaker_error:flags.has('speaker')?'model_network':null};
@@ -47,8 +47,8 @@ function Harness(){
 }
 if(flags.has('frame')){const frame=document.createElement('iframe');frame.width='760';frame.height='540';flags.delete('frame');frame.src='test_onboarding.html?'+flags.toString();document.body.replaceChildren(frame);}else createRoot(document.getElementById('root')).render(React.createElement(Harness));
 if(flags.has('regression')){
- const run=document.createElement('button'),out=document.createElement('output');run.textContent='运行首次引导回归';document.body.append(run,out);
- run.onclick=async()=>{const wait=ms=>new Promise(r=>setTimeout(r,ms));let n=0;const check=(v,m)=>{if(!v)throw Error(m);n++};try{
+ const run=document.createElement('button'),out=document.createElement('output');out.id='result';run.textContent='运行首次引导回归';document.body.append(run,out);
+ run.onclick=async()=>{const wait=ms=>new Promise(r=>setTimeout(r,ms));let n=0;const check=(v,m)=>{if(!v)throw Error(m);n++};try{await wait(100);
   const key=document.querySelector('input[aria-label="DeepSeek API Key"]');key.focus();Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(key,'test-only-onboarding');key.dispatchEvent(new Event('input',{bubbles:true}));await wait(30);key.blur();await wait(100);
   check(calls.filter(c=>c.type==='configure_cloud').length===1,'compact 失焦提交一次');check(key.value==='••••••••••••','成功恢复掩码');
   document.querySelector('[aria-label="选择声音来源与授权帮助"]').click();await wait(30);document.querySelector('input[type=checkbox]').click();await wait(100);check(!state.microphone_enabled&&calls.some(c=>c.type==='set_source'),'compact 来源选择继续生效');
