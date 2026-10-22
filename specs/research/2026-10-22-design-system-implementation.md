@@ -39,3 +39,38 @@ requirements / adversarial 两路都复现了自定义 Tab 序列遗漏 summary�
 ### 待完成
 
 Batch 1 requirements / adversarial 定向复核 PASS，最终 architecture PASS。原四项 blocker 与两项验收证据缺口均关闭。下一步：Batch 2 时间线 / 详情审美样板及组合验收。
+
+
+## Batch 2 · 视觉样板
+
+基线 `28d3ae3`。先用同一三事件时间线和 14 段长中文 / 两个姓名 / 六条现场记录保存 before，再修改生产 CSS；没有把研究候选覆盖样式作为运行时主题。
+
+采用更清澈的 canvas / sidebar，保留已达标的正文与 muted。常规卡片 16/20px 内边距、16px 间隔，窄窗回到 12/16px 与 12px；时间、圆点和首行元信息中心在 1120 窗口分别为 391.70 / 391.80 / 391.89px。日期 / 详情标题 600、普通导航 500。卡片不再悬停上移，实时卡片取消持续扫光，仍保留真实录音文案、绿底、状态点与 Rabbit 动效。
+
+详情正文采用独立 reading 15px / 1.75；长姓名与来源在同组内换行，修正操作保持右侧，避免额外一整行空白。播放器间距收敛到 12px，按钮组 8px。静态标题的程序焦点不画默认蓝框，交互焦点与原生 summary 均保留清晰指示。按压反馈改为内描边：原 brightness(.94) 会使 quiet hover 的文字对比度由 4.53 降至约 4.38，现按压时保留原前景和背景。
+
+### 同数据前后对照
+
+| 场景 | 基础收敛后 | 视觉打磨后 |
+| --- | --- | --- |
+| 1120 时间线 | [before](evidence/2026-10-22-design-system-implementation/timeline-before-1120.png) | [after](evidence/2026-10-22-design-system-implementation/timeline-after-1120.png) |
+| 1120 长文详情 | [before](evidence/2026-10-22-design-system-implementation/detail-before-1120.png) | [after](evidence/2026-10-22-design-system-implementation/detail-after-1120.png) |
+| 760 长文详情 | [before](evidence/2026-10-22-design-system-implementation/detail-before-760.png) | [after](evidence/2026-10-22-design-system-implementation/detail-after-760.png) |
+
+[1440 详情](evidence/2026-10-22-design-system-implementation/detail-after-1440.png)、[760 跨日](evidence/2026-10-22-design-system-implementation/crossday-after-760.png)补验长文和跨日时间列。浏览器截图使用固定逻辑视口的 full-page capture；原生证据另列。
+
+### 验证结果
+
+- [视觉场景](evidence/2026-10-22-design-system-implementation/polish-visual.txt)：760×540、1120×760、1440×900 × 时间线 / 长文 / 跨日 / 录音 / 空态 / 失败，共18组通过；长文和现场记录滚到底后输入区仍可达。另通过减少动态效果模拟：仅样例内将实际 CSS media 分支与 React matchMedia 偏好激活，未更改 OS，不能据此宣称全平台原生偏好认证。
+- [9 尺寸边界](evidence/2026-10-22-design-system-implementation/polish-layout.txt)：含850 / 1100两侧均通过。长标题、关闭、新建、侧栏与笔记可达，无横向溢出。
+- [11 组组合回归](evidence/2026-10-22-design-system-implementation/polish-browser.txt)通过，含日期布局、详情加载 / 定位、人物浮层、表单 busy / 错误、设置 / 准备；51项前端逻辑测试通过；lint / typecheck / build通过，仍只有已有大chunk提示。
+- [Token / 配对审计](evidence/2026-10-22-design-system-implementation/polish-audit.json)：无未定义变量、生产裸色或字号；quiet hover最低4.53，secondary hover5.62，muted在录音hover表面4.53。本轮没有引入候选中不达标的浅色辅助文字。
+- 同一隔离签名 Tauri 宿主复验760和1120，签名深层校验通过。前端由本地Vite加载，业务场景在完整WebView同源iframe内mock；不能混同发行安装包的真实IPC验收。原生实际操作：图片预览Escape返回截图入口，Tab到summary，Enter展开，Escape关闭详情回到卡片。
+
+原生截图：[760 时间线](evidence/2026-10-22-design-system-implementation/native-polish-timeline-760.png)、[760 长文详情](evidence/2026-10-22-design-system-implementation/native-polish-detail-760.png)、[1120 时间线](evidence/2026-10-22-design-system-implementation/native-polish-timeline-1120.png)、[1120 长文详情](evidence/2026-10-22-design-system-implementation/native-polish-detail-1120.png)。macOS顶部屏幕控制标记为验证环境UI。
+
+### Batch 2 审查与补验
+
+requirements 确认实现符合规则，指出 contract 第9条缺少独立“修正”键盘执行记录，裁决为 required evidence gap；adversarial PASS，无实现 blocker。2026-10-23 在 Chrome 的隔离 `test_design_scene.html?scene=detail`、760×540 视口补验：第一句人物按钮 Tab → 实际焦点为“修正” BUTTON；Enter 打开编辑器；Tab → “修正这句文字” TEXTAREA，原文完整；Tab → “取消” BUTTON；Enter 后编辑器移除、详情仍打开、第一句原文不变。没有点击保存或调用真实写入。此次仅补运行证据，生产代码未修改，不使已通过的视觉 / 原生 / 组合检查失效。
+
+Batch 2 requirements 定向 PASS、adversarial PASS、最终 architecture PASS；已同步 §6.2 旧扫光文字，消除规范与实现冲突。未引入业务状态、资源 owner 或第二套样式机制。跨批次最终门禁尚待完成；未改录音、播放、修订、请求ID、持久化或费用算法。

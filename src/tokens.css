@@ -1,8 +1,8 @@
 :root {
 	/* Surfaces and text */
-	--color-canvas: #f0f3ee;
+	--color-canvas: #f3f5f1;
 	--color-surface: #fff;
-	--color-sidebar: #e7ede3;
+	--color-sidebar: #e9eee5;
 	--color-surface-subtle: #f4f7f1;
 	--color-surface-hover: #edf5ed;
 	--color-surface-selected: #dce9d6;
@@ -83,6 +83,7 @@
 	--type-caption: 12px;
 	--type-meta: 13px;
 	--type-body: 14px;
+	--type-reading: 15px;
 	--type-control: 14px;
 	--type-lead: 16px;
 	--type-entry-menu: 15px;
@@ -99,7 +100,7 @@
 	--weight-strong: 650;
 	--weight-bold: 700;
 	--tracking-tight: -0.055em;
-	--tracking-heading: -0.035em;
+	--tracking-heading: -0.015em;
 	--leading-none: 1;
 	--leading-tight: 1.1;
 	--leading-body: 1.6;

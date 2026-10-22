@@ -743,12 +743,12 @@ export function DetailDrawer({
 		>
 			<section className="detail-drawer" aria-label="事件详情">
 				<header className="detail-header">
-					<div>
+					<div className="detail-heading">
 						<span className="eyebrow">
 							{wallClock(detail.started_ms, shortEvent, crossesDay)} —{" "}
 							{wallClock(detail.ended_ms, shortEvent, crossesDay)}
 						</span>
-						<h2 id={headingId} ref={heading} tabIndex={-1}>
+						<h2 id={headingId} ref={heading} tabIndex={-1} data-dialog-title>
 							{detail.title ||
 								(detail.manual_range_id ? "未命名事件" : "未整理")}
 						</h2>
@@ -997,45 +997,47 @@ export function DetailDrawer({
 										</button>
 										<div className="transcript-content">
 											<div className="transcript-meta">
-												{precise ? (
-													<button
-														type="button"
-														className="speaker-chip"
-														aria-haspopup="dialog"
-														aria-expanded={assigning === segment.id}
-														disabled={busy}
-														onClick={(event) => {
-															speakerAnchor.current = event.currentTarget;
-															setAssigning(
-																assigning === segment.id ? null : segment.id,
-															);
-														}}
-													>
-														{speakerName(precise, labels)}⌄
-													</button>
-												) : (
-													<span className="speaker-chip static">
-														粗转 ·{" "}
-														{segment.source === "system"
-															? "电脑声音"
-															: "麦克风"}
-													</span>
-												)}
-												{precise && (
-													<span className="transcript-source">
-														{precise.source === "system"
-															? "电脑声音"
-															: "麦克风"}
-														{precise.person_origin === "automatic"
-															? " · 自动匹配"
-															: precise.person_origin === "manual"
-																? " · 已确认"
-																: ""}
-													</span>
-												)}
-												{precise?.corrected && (
-													<span className="corrected-label">已修正</span>
-												)}
+												<div className="transcript-identity">
+													{precise ? (
+														<button
+															type="button"
+															className="speaker-chip"
+															aria-haspopup="dialog"
+															aria-expanded={assigning === segment.id}
+															disabled={busy}
+															onClick={(event) => {
+																speakerAnchor.current = event.currentTarget;
+																setAssigning(
+																	assigning === segment.id ? null : segment.id,
+																);
+															}}
+														>
+															{speakerName(precise, labels)}⌄
+														</button>
+													) : (
+														<span className="speaker-chip static">
+															粗转 ·{" "}
+															{segment.source === "system"
+																? "电脑声音"
+																: "麦克风"}
+														</span>
+													)}
+													{precise && (
+														<span className="transcript-source">
+															{precise.source === "system"
+																? "电脑声音"
+																: "麦克风"}
+															{precise.person_origin === "automatic"
+																? " · 自动匹配"
+																: precise.person_origin === "manual"
+																	? " · 已确认"
+																	: ""}
+														</span>
+													)}
+													{precise?.corrected && (
+														<span className="corrected-label">已修正</span>
+													)}
+												</div>
 												{precise && (
 													<button
 														type="button"

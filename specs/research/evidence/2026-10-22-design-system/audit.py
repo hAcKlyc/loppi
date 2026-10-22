@@ -36,7 +36,7 @@ foregrounds = ['--color-text', '--color-text-strong', '--color-text-secondary',
                '--color-text-muted', '--color-text-faint', '--color-focus',
                '--color-warning', '--color-warning-strong', '--color-danger']
 backgrounds = ['--color-surface', '--color-canvas', '--color-sidebar',
-               '--color-recording-surface', '--color-danger-surface']
+               '--color-recording-surface', '--color-recording-surface-hover', '--color-danger-surface']
 literal_colors = []
 literal_font_sizes = []
 for path in css_files:

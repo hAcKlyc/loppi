@@ -38,14 +38,14 @@ updated: 2026-10-23
   - [x] 修复日期等失效夹具，添加交互回归并验证相邻页面。
   - [x] 更新 DESIGN 实现状态；三路 review、修复与 commit。
 - Batch 2：时间线 / 详情审美打磨，不改变业务状态和信息架构。
-  - [ ] 同数据比较排版、对齐、空间、表面与动效；落实选定方案。
-  - [ ] 三尺寸与边界 / 长内容 / 错误检查，记录证据。
-  - [ ] 同步 DESIGN；三路 review、修复与 commit。
+  - [x] 同数据比较排版、对齐、空间、表面与动效；落实选定方案。
+  - [x] 三尺寸与边界 / 长内容 / 错误检查，记录证据。
+  - [x] 同步 DESIGN；三路 review、修复与 commit。
 - [ ] 最终组合门禁、跨批次 review 与交付台账。
 
 ### 当前批次 Review 基线
-- 批次：Batch 1
-- Batch base：0666e02
+- 批次：Batch 2
+- Batch base：28d3ae3
 - 预期范围：src 相关 React / CSS，scripts 浏览器与公共组件验证，specs/DESIGN.md，本计划及本任务证据。
 - 前置已有改动：DESIGN.md 为本对话上一轮产出，可纳入本任务；设计研究报告 / 预览同属本对话，验证期间保留。其他未跟踪 playground、旧 PRD / 研究与素材 ZIP 不属于本次，禁止批量 stage。
 
@@ -60,3 +60,9 @@ updated: 2026-10-23
 - 2026-10-23 Batch 1 修复：采纳 summary 焦点、加载中人物浮层焦点、secondary hover 对比度、写入反馈四项 blocker；补齐 9 尺寸边界及组合输入事件验证，进入原 reviewer 定向复核。
 
 - 2026-10-23 Batch 1 门禁：requirements / adversarial 定向 PASS，完整最终 architecture PASS；静态 / build、51 项逻辑、11 组浏览器与 9 尺寸布局证据通过。基础收敛进入独立提交。
+
+- 2026-10-23：Batch 1 已提交 `28d3ae3`。Batch 2 开始，以真实同数据截图比较和长转录 / 跨日 / 录音 / 空态 / 错误样例落实成品视觉品质；保留灰绿体系和业务 owner。
+
+- 2026-10-23 Batch 2：采纳卡片空间 / 时间轴对齐、阅读15/1.75、长姓名组与独立操作、轻表面与稳定动效。18组视觉+减少动态模拟、9尺寸、11组组合回归、51逻辑与静态构建通过；隔离原生760/1120复验。进入固定快照review。
+
+- 2026-10-23 Batch 2 门禁：requirements / adversarial / 最终 architecture 均 PASS；补齐修正入口 Tab → Enter → 编辑 → 取消的运行证据，关闭唯一 required gap。同步 DESIGN §6.2 旧扫光文字，无生产代码修复。静态 / build 与51项逻辑复验通过，进入独立提交。
