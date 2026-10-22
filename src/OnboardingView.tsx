@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useRef, useState } from "react";
 import { type CloudQueue, type ServiceState, userError } from "./api";
 import { CloudKeyInput } from "./CloudKeyInput";
+import { Button } from "./Controls";
 import { LoadBoundary } from "./LoadingState";
 import { ModelPreparation, SourcePreparation } from "./SetupGroups";
 import { type ModelState, type PrivacyStatus, setupBlocker } from "./setup";
@@ -180,16 +181,16 @@ export function OnboardingView({
 						稍后
 					</button>
 					<div className="setup-complete-control">
-						<button
+						<Button
 							type="button"
-							className="primary-button"
+							tone="primary"
 							disabled={busy}
 							aria-disabled={busy || !!blocker}
 							aria-describedby="setup-completion-reason"
 							onClick={() => void finish()}
 						>
 							{busy ? "正在核对…" : "完成设置 →"}
-						</button>
+						</Button>
 						<span
 							id="setup-completion-reason"
 							className={

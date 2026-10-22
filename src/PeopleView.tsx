@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { core, type Person, userError, type VoiceSample } from "./api";
-import { Icon, Modal } from "./Controls";
+import { Button, Icon, IconButton, Modal } from "./Controls";
 import { LoadBoundary, LoadingSkeleton } from "./LoadingState";
 import { SamplePlayback, sampleParts } from "./sample-playback";
 
@@ -40,15 +40,16 @@ export function PeopleView({
 				<>
 					<div className="page-heading" data-tauri-drag-region>
 						<h1>人物库</h1>
-						<button
+						<Button
 							type="button"
-							className="quiet-button button-with-icon"
+							tone="quiet"
+							className="button-with-icon"
 							disabled={busy}
 							onClick={() => setCreating(true)}
 						>
 							<Icon name="plus" />
 							新建人物
-						</button>
+						</Button>
 					</div>
 					<div className="panel-card people-list">
 						<LoadBoundary
@@ -158,13 +159,9 @@ function CreatePerson({
 					>
 						取消
 					</button>
-					<button
-						type="submit"
-						className="primary-button"
-						disabled={busy || !name.trim()}
-					>
+					<Button type="submit" tone="primary" disabled={busy || !name.trim()}>
 						{busy ? "创建中…" : "创建人物"}
-					</button>
+					</Button>
 				</div>
 			</form>
 		</Modal>
@@ -316,13 +313,13 @@ function PersonDetail({
 									if (e.key === "Escape" && !busy) setEditing(false);
 								}}
 							/>
-							<button
+							<Button
 								type="submit"
-								className="quiet-button"
+								tone="quiet"
 								disabled={busy || !name.trim()}
 							>
 								保存
-							</button>
+							</Button>
 							<button
 								type="button"
 								className="text-action"
@@ -446,10 +443,10 @@ function PersonDetail({
 									秒
 								</span>
 							)}
-							<button
+							<IconButton
 								type="button"
-								className="icon-button destructive"
-								aria-label={`删除样例 ${index + 1}`}
+								className="destructive"
+								label={`删除样例 ${index + 1}`}
 								disabled={busy}
 								onClick={() => {
 									player.current?.stop();
@@ -458,7 +455,7 @@ function PersonDetail({
 								}}
 							>
 								<Icon name="delete" />
-							</button>
+							</IconButton>
 						</div>
 					);
 				})}
@@ -480,17 +477,17 @@ function PersonDetail({
 						</p>
 					)}
 					<div className="modal-actions">
-						<button
+						<Button
 							type="button"
-							className="quiet-button"
+							tone="quiet"
 							disabled={busy}
 							onClick={() => setConfirm(null)}
 						>
 							取消
-						</button>
-						<button
+						</Button>
+						<Button
 							type="button"
-							className="danger-button"
+							tone="danger"
 							disabled={busy}
 							onClick={async () => {
 								if (submitting.current) return;
@@ -525,7 +522,7 @@ function PersonDetail({
 							}}
 						>
 							{busy ? "删除中…" : "确认删除"}
-						</button>
+						</Button>
 					</div>
 				</Modal>
 			)}

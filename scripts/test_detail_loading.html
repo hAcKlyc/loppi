@@ -1,6 +1,7 @@
 <!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>hear 详情加载回归</title>
 <div id="root"></div><aside style="position:fixed;z-index:999;bottom:8px;left:8px;background:white;padding:8px"><button id="run">运行加载回归</button> <button id="preview">预览骨架</button> <output id="result">模拟延迟响应，不连接真实数据</output></aside>
 <script type="module">
+import "/scripts/fixture-controls.ts";
 import React from 'react';import {createRoot} from 'react-dom/client';import {flushSync} from 'react-dom';
 import {DetailDrawer} from '/src/DetailDrawer.tsx';import '/src/App.css';
 const from=new Date(2026,9,18,15,46).getTime();
@@ -8,7 +9,7 @@ const base={id:'fixture',manual_range_id:null,title:'详情加载体验',summary
 const rows=Array.from({length:25},(_,i)=>({id:`row-${i}`,source:'microphone',started_ms:from+i*60000,ended_ms:from+(i+1)*60000,text:`第 ${i+1} 条模拟文字，用来检查加载与刷新。`}));
 let detailHold=null,momentsHold=null,detailFail=false,momentsFail=false,empty=false,withNote=false,version=0,opened=true,requests=[];
 function deferred(){let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve};}
-window.isTauri=true;
+if(!window.isTauri)window.isTauri=true;
 window.__TAURI_INTERNALS__={invoke:async(command,{request})=>{
  requests.push(request.type);
  if(request.type==='event_detail'){if(detailHold)await detailHold.promise;if(detailFail)throw Error('模拟转录读取失败');return {type:'event',event:{...base,coarse_segments:empty?[]:rows}};}

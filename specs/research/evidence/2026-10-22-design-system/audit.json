@@ -1,0 +1,312 @@
+{
+  "scope": "Current src/*.css, src/*.ts and src/*.tsx; lexical inventory only",
+  "css_lines": {
+    "src/App.css": 2527,
+    "src/capture-status.css": 157,
+    "src/entry.css": 346,
+    "src/onboarding.css": 241,
+    "src/people-settings.css": 327,
+    "src/tokens.css": 157,
+    "src/usage-statistics.css": 206
+  },
+  "token_count": 140,
+  "undefined_css_variables": [
+    "--weight-medium"
+  ],
+  "literal_colors_outside_tokens": [
+    {
+      "file": "src/usage-statistics.css",
+      "line": 2,
+      "value": "--usage-green: #277761;"
+    },
+    {
+      "file": "src/usage-statistics.css",
+      "line": 3,
+      "value": "--usage-blue: #467c9a;"
+    },
+    {
+      "file": "src/usage-statistics.css",
+      "line": 4,
+      "value": "--usage-purple: #8b6cab;"
+    },
+    {
+      "file": "src/usage-statistics.css",
+      "line": 5,
+      "value": "--usage-amber: #ad7938;"
+    }
+  ],
+  "literal_font_sizes_outside_tokens": [
+    {
+      "file": "src/entry.css",
+      "line": 9,
+      "value": "font-size: 13px;"
+    },
+    {
+      "file": "src/entry.css",
+      "line": 156,
+      "value": "font-size: 12px;"
+    },
+    {
+      "file": "src/entry.css",
+      "line": 199,
+      "value": "font-size: 14px;"
+    },
+    {
+      "file": "src/entry.css",
+      "line": 217,
+      "value": "font-size: 11px;"
+    },
+    {
+      "file": "src/entry.css",
+      "line": 226,
+      "value": "font-size: 12px;"
+    },
+    {
+      "file": "src/entry.css",
+      "line": 251,
+      "value": "font-size: 12px;"
+    },
+    {
+      "file": "src/entry.css",
+      "line": 267,
+      "value": "font-size: 11px;"
+    },
+    {
+      "file": "src/entry.css",
+      "line": 297,
+      "value": "font-size: 15px;"
+    },
+    {
+      "file": "src/usage-statistics.css",
+      "line": 109,
+      "value": "font-size: 11px;"
+    }
+  ],
+  "contrast": [
+    {
+      "foreground": "--color-text",
+      "background": "--color-surface",
+      "ratio": 12.904371449135411
+    },
+    {
+      "foreground": "--color-text",
+      "background": "--color-canvas",
+      "ratio": 11.527843188063747
+    },
+    {
+      "foreground": "--color-text",
+      "background": "--color-sidebar",
+      "ratio": 10.827793729042376
+    },
+    {
+      "foreground": "--color-text",
+      "background": "--color-recording-surface",
+      "ratio": 10.647473699729396
+    },
+    {
+      "foreground": "--color-text",
+      "background": "--color-danger-surface",
+      "ratio": 11.930495978149622
+    },
+    {
+      "foreground": "--color-text-strong",
+      "background": "--color-surface",
+      "ratio": 9.59249600365525
+    },
+    {
+      "foreground": "--color-text-strong",
+      "background": "--color-canvas",
+      "ratio": 8.569250362029432
+    },
+    {
+      "foreground": "--color-text-strong",
+      "background": "--color-sidebar",
+      "ratio": 8.048866888530346
+    },
+    {
+      "foreground": "--color-text-strong",
+      "background": "--color-recording-surface",
+      "ratio": 7.91482555475584
+    },
+    {
+      "foreground": "--color-text-strong",
+      "background": "--color-danger-surface",
+      "ratio": 8.868563296021128
+    },
+    {
+      "foreground": "--color-text-secondary",
+      "background": "--color-surface",
+      "ratio": 5.757526404055357
+    },
+    {
+      "foreground": "--color-text-secondary",
+      "background": "--color-canvas",
+      "ratio": 5.143362603804589
+    },
+    {
+      "foreground": "--color-text-secondary",
+      "background": "--color-sidebar",
+      "ratio": 4.8310224591995405
+    },
+    {
+      "foreground": "--color-text-secondary",
+      "background": "--color-recording-surface",
+      "ratio": 4.750569309347047
+    },
+    {
+      "foreground": "--color-text-secondary",
+      "background": "--color-danger-surface",
+      "ratio": 5.323013668540586
+    },
+    {
+      "foreground": "--color-text-muted",
+      "background": "--color-surface",
+      "ratio": 5.777774005613863
+    },
+    {
+      "foreground": "--color-text-muted",
+      "background": "--color-canvas",
+      "ratio": 5.161450363957874
+    },
+    {
+      "foreground": "--color-text-muted",
+      "background": "--color-sidebar",
+      "ratio": 4.848011806882805
+    },
+    {
+      "foreground": "--color-text-muted",
+      "background": "--color-recording-surface",
+      "ratio": 4.767275725922746
+    },
+    {
+      "foreground": "--color-text-muted",
+      "background": "--color-danger-surface",
+      "ratio": 5.341733210977279
+    },
+    {
+      "foreground": "--color-text-faint",
+      "background": "--color-surface",
+      "ratio": 3.2867834845287605
+    },
+    {
+      "foreground": "--color-text-faint",
+      "background": "--color-canvas",
+      "ratio": 2.936177461421717
+    },
+    {
+      "foreground": "--color-text-faint",
+      "background": "--color-sidebar",
+      "ratio": 2.7578726901018484
+    },
+    {
+      "foreground": "--color-text-faint",
+      "background": "--color-recording-surface",
+      "ratio": 2.7119446186253136
+    },
+    {
+      "foreground": "--color-text-faint",
+      "background": "--color-danger-surface",
+      "ratio": 3.038734377554378
+    },
+    {
+      "foreground": "--color-focus",
+      "background": "--color-surface",
+      "ratio": 2.599026111906032
+    },
+    {
+      "foreground": "--color-focus",
+      "background": "--color-canvas",
+      "ratio": 2.321784178162598
+    },
+    {
+      "foreground": "--color-focus",
+      "background": "--color-sidebar",
+      "ratio": 2.180789567863765
+    },
+    {
+      "foreground": "--color-focus",
+      "background": "--color-recording-surface",
+      "ratio": 2.144471916397254
+    },
+    {
+      "foreground": "--color-focus",
+      "background": "--color-danger-surface",
+      "ratio": 2.402881124231608
+    },
+    {
+      "foreground": "--color-warning",
+      "background": "--color-surface",
+      "ratio": 4.215493361304585
+    },
+    {
+      "foreground": "--color-warning",
+      "background": "--color-canvas",
+      "ratio": 3.765820491218028
+    },
+    {
+      "foreground": "--color-warning",
+      "background": "--color-sidebar",
+      "ratio": 3.5371341225156474
+    },
+    {
+      "foreground": "--color-warning",
+      "background": "--color-recording-surface",
+      "ratio": 3.4782286663703927
+    },
+    {
+      "foreground": "--color-warning",
+      "background": "--color-danger-surface",
+      "ratio": 3.897355775226882
+    },
+    {
+      "foreground": "--color-warning-strong",
+      "background": "--color-surface",
+      "ratio": 6.638623510610609
+    },
+    {
+      "foreground": "--color-warning-strong",
+      "background": "--color-canvas",
+      "ratio": 5.930471787530555
+    },
+    {
+      "foreground": "--color-warning-strong",
+      "background": "--color-sidebar",
+      "ratio": 5.5703329914979225
+    },
+    {
+      "foreground": "--color-warning-strong",
+      "background": "--color-recording-surface",
+      "ratio": 5.477567776954183
+    },
+    {
+      "foreground": "--color-warning-strong",
+      "background": "--color-danger-surface",
+      "ratio": 6.137615567404944
+    },
+    {
+      "foreground": "--color-danger",
+      "background": "--color-surface",
+      "ratio": 4.765185551697578
+    },
+    {
+      "foreground": "--color-danger",
+      "background": "--color-canvas",
+      "ratio": 4.256876208075766
+    },
+    {
+      "foreground": "--color-danger",
+      "background": "--color-sidebar",
+      "ratio": 3.998369578694305
+    },
+    {
+      "foreground": "--color-danger",
+      "background": "--color-recording-surface",
+      "ratio": 3.931782964867293
+    },
+    {
+      "foreground": "--color-danger",
+      "background": "--color-danger-surface",
+      "ratio": 4.4055634390060625
+    }
+  ]
+}

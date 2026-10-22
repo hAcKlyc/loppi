@@ -12,11 +12,11 @@ import {
 import "./usage-statistics.css";
 
 const metrics: Record<UsageMetric, { label: string; color: string }> = {
-	count: { label: "次数", color: "var(--usage-green)" },
-	input_tokens: { label: "输入 Token", color: "var(--usage-green)" },
-	output_tokens: { label: "输出 Token", color: "var(--usage-blue)" },
-	cached_tokens: { label: "缓存 Token", color: "var(--usage-purple)" },
-	cost_nano: { label: "成本", color: "var(--usage-amber)" },
+	count: { label: "次数", color: "var(--color-chart-usage)" },
+	input_tokens: { label: "输入 Token", color: "var(--color-chart-usage)" },
+	output_tokens: { label: "输出 Token", color: "var(--color-chart-output)" },
+	cached_tokens: { label: "缓存 Token", color: "var(--color-chart-cached)" },
+	cost_nano: { label: "成本", color: "var(--color-chart-cost)" },
 };
 const asrMetrics: UsageMetric[] = ["count", "cost_nano"];
 const llmMetrics: UsageMetric[] = [

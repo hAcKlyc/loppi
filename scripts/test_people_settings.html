@@ -7,7 +7,7 @@ let people=[{id:'a',display_name:'陈老师',sample_count:2,revision:1,created_m
 let samples=[{id:'s1',person_id:'a',source:'microphone',started_ms:base,ended_ms:base+7600,parts:[{started_ms:base,ended_ms:base+3600},{started_ms:base+4000,ended_ms:base+7600}],audio_available:true,revision:1},{id:'s2',person_id:'a',source:'system',started_ms:base-3600000,ended_ms:base-3594000,parts:[],audio_available:false,revision:1}];
 let requests=[],mutations=[],delay=0,fail=false,readFail=false,configureFail=false,setView,refresh,login=1;
 const state={recording_schedule:{enabled:false,start_minute:480,stop_minute:1380,paused_by_schedule:false,next_at_ms:null,next_action:null,error:null},revision:1,microphone_enabled:true,system_enabled:true,microphone_recording:true,system_recording:true,audio_limit_bytes:10737418240,audio_used_bytes:805306368};
-window.isTauri=true;
+if(!window.isTauri)window.isTauri=true;
 class FakeAudioContext { constructor(){this.origin=performance.now();this.destination={};}get currentTime(){return(performance.now()-this.origin)/100;}resume(){return Promise.resolve();}suspend(){return Promise.resolve();}close(){return Promise.resolve();}decodeAudioData(bytes){const data=JSON.parse(new TextDecoder().decode(bytes));return Promise.resolve({numberOfChannels:1,sampleRate:48000,duration:data.duration});}createBufferSource(){let timer;const ctx=this;return{buffer:null,onended:null,connect(){},disconnect(){},stop(){clearTimeout(timer)},start(at){timer=setTimeout(()=>this.onended?.(),Math.max(0,(at+this.buffer.duration-ctx.currentTime)*100));}}}}
 window.AudioContext=FakeAudioContext;
 mockIPC(async(command,args)=>{

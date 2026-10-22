@@ -3,6 +3,7 @@
 <div id="root"></div>
 <aside style="position:fixed;bottom:8px;left:8px;z-index:101;background:white;padding:12px;max-width:250px;font:13px system-ui"><button id="run">运行人物选择回归</button><output id="result">仅使用模拟人物与转录</output></aside>
 <script type="module">
+import "/scripts/fixture-controls.ts";
 import React from 'react';
 import {createRoot} from 'react-dom/client';
 import {mockIPC} from '@tauri-apps/api/mocks';
@@ -12,9 +13,9 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
 const base=Date.now()-600000;
 let people=[{id:'person-a',display_name:'陈老师',sample_count:2,created_ms:base,revision:1},{id:'person-b',display_name:'林同学',sample_count:0,created_ms:base,revision:1}];
 let revision=7, groupRevision=33, failure=null, delay=0, requests=[];
-let assigned=null, closed=false, messages=[];
+let assigned=null, closed=false, messages=[], peopleReady=true, peopleError=null;
 const item=()=>({id:'event',title:'复杂性科学讨论',started_ms:base,ended_ms:base+60000,sources:'system',revision:1,processing_state:'transcribed',coarse_segments:[{id:'coarse',started_ms:base,ended_ms:base+5000,source:'system',text:'本地粗转内容'}],precise_segments:Array.from({length:7},(_,i)=>({id:`sentence-${i}`,started_ms:base+i*8000,ended_ms:base+i*8000+6000,source:'system',text:['我们讨论复杂性科学，以及它和心理学的关系。','比如涌现和复杂系统之间有什么关系？','还有反馈与临界点的问题。'][i%3],speaker:'group-a',person_id:assigned,person_name:people.find(p=>p.id===assigned)?.display_name??null,person_origin:assigned?'manual':null,corrected:false,original_text:null,revision,speaker_revision:groupRevision}))});
-window.isTauri=true;
+if(!window.isTauri)window.isTauri=true;
 mockIPC(async(command,args)=>{
  if(command!=='core_request') return null;
  const r=args.request;
@@ -30,14 +31,15 @@ mockIPC(async(command,args)=>{
  return {type:'ok'};
 });
 const root=createRoot(document.getElementById('root'));
-function render(){if(closed){root.render(null);return;}root.render(React.createElement(React.StrictMode,null,React.createElement(DetailDrawer,{item:item(),people,onClose:()=>{closed=true;render();},onEdit:()=>{},onTools:()=>{},onQueue:()=>{},onDataAction:()=>{},onChanged:render,onMessage:m=>messages.push(m),refreshToken:0})));}
+function render(){if(closed){root.render(null);return;}root.render(React.createElement(React.StrictMode,null,React.createElement(DetailDrawer,{item:item(),people,peopleReady,peopleError,onClose:()=>{closed=true;render();},onEdit:()=>{},onTools:()=>{},onQueue:()=>{},onDataAction:()=>{},onChanged:render,onMessage:m=>messages.push(m),refreshToken:0})));}
 render();
 const assert=(v,m)=>{if(!v)throw Error(m)};
 const panel=()=>document.querySelector('.speaker-picker');
 const chips=()=>[...document.querySelectorAll('button.speaker-chip')];
 const buttons=()=>[...panel().querySelectorAll('button')];
 const button=text=>buttons().find(x=>x.textContent.trim()===text);
-const open=async(i=0)=>{chips()[i].scrollIntoView({block:'center'});await wait(30);chips()[i].click();await wait(180);assert(panel(),'未打开人物浮层');};
+let openCount=0;
+const open=async(i=0)=>{openCount++;chips()[i].scrollIntoView({block:'center'});await wait(30);chips()[i].click();await wait(180);assert(panel(),`第 ${openCount} 次未打开人物浮层；最近请求 ${requests.at(-1)?.type??'无'}`);};
 const close=async()=>{button('取消').click();await wait(100)};
 const input=async value=>{const el=panel().querySelector('input[type=search]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,value);el.dispatchEvent(new Event('input',{bubbles:true}));await wait(60);};
 const choose=async text=>{buttons().find(b=>b.classList.contains('speaker-picker-option')&&b.textContent.includes(text)).click();await wait(30)};
@@ -48,6 +50,16 @@ window.runRegression=async()=>{
  try {
  await wait(250);
  const rows=[...document.querySelectorAll('.transcript-row')],texts=rows.map(r=>r.querySelector('p').textContent);
+ peopleReady=false;render();await wait(80);await open();
+ check(document.activeElement===panel().querySelector('[aria-label="关闭人物选择"]'),'加载中未聚焦可用关闭入口');
+ document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));await wait(80);
+ check(!panel()&&!closed&&document.activeElement===chips()[0],'加载中 Escape 应仅关闭人物选择并恢复入口');
+ peopleError='读取人物失败';render();await wait(80);await open();
+ check(panel().contains(document.activeElement)&&panel().textContent.includes('读取人物失败'),'失败状态焦点未进入浮层');
+ peopleReady=true;peopleError=null;render();await wait(80);
+ check(document.activeElement===panel().querySelector('[aria-label="关闭人物选择"]')&&!panel().querySelector('input').disabled,'恢复后不抢焦点且搜索可用');
+ document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',shiftKey:true,bubbles:true,cancelable:true}));await wait(80);
+ check(!panel()&&!closed,'加载恢复后可通过键盘离开非模态浮层');
  await open(1);
  const rowTop=rows[2].getBoundingClientRect().top;
  check(getComputedStyle(panel()).position==='fixed','浮层仍占正文布局');
@@ -102,7 +114,7 @@ window.runRegression=async()=>{
  check(requests.at(-1).type==='assign_local_speaker'&&requests.at(-1).target_segment_id==='unloaded-sentence'&&requests.at(-1).target_revision===91&&!requests.at(-1).entire_local_speaker,'匿名单句归并未提交两端版本');
  await open();await choose('说话人 2');await confirm();check(requests.at(-1).entire_local_speaker&&requests.at(-1).expected_revision===groupRevision,'匿名整组归并范围错误');
  // A rejected mutation must remain visible even after the entire drawer is closed.
- await open();await choose('陈老师');failure='测试保存失败';delay=100;button('确认').click();await wait(20);document.querySelector('button[aria-label=关闭详情]').click();await wait(250);check(messages.includes('测试保存失败'),'关闭详情后保存失败丢失');delay=0;closed=false;render();await wait(150);
+ await open();await choose('陈老师');failure='测试保存失败';delay=100;button('确认').click();await wait(20);const drawerClose=document.querySelector('button[aria-label=关闭详情]');check(drawerClose.disabled,'保存期间详情未锁定关闭');drawerClose.click();await wait(250);check(messages.includes('测试保存失败')&&panel()?.querySelector('[role=alert]'),'失败反馈未保留在活动浮层');await close();document.querySelector('button[aria-label=关闭详情]').click();await wait(30);check(closed,'请求结束后仍无法关闭详情');delay=0;closed=false;render();await wait(150);
  // Empty people, long names, and a scrollable library share the same picker.
  people=[];assigned=null;render();await wait(120);await open();check(panel().textContent.includes('还没有人物'),'缺少空态');await close();
  people=Array.from({length:25},(_,i)=>({id:`p-${i}`,display_name:i===0?'一位名字特别长需要自然换行的人物名称':'讨论参与者 '+i,sample_count:0,created_ms:base,revision:1}));render();await wait(120);await open();

@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { type CloudProvider, userError } from "./api";
+import { Button } from "./Controls";
 import { cloudOperation, confirmCloud, saveCloud } from "./setup";
 
 const SAVED_MASK = "••••••••••••";
@@ -185,44 +186,44 @@ export function CloudKeyInput({
 								: "输入新密钥后，点击验证并保存")}
 			</span>
 			{uncertain && (
-				<button
+				<Button
 					type="button"
-					className="quiet-button"
+					tone="quiet"
 					disabled={saving}
 					onClick={() => void confirm()}
 				>
 					确认上次结果
-				</button>
+				</Button>
 			)}
 			{compact && error && !uncertain && draft && (
-				<button
+				<Button
 					type="button"
-					className="quiet-button"
+					tone="quiet"
 					disabled={saving}
 					onClick={() => void commit(true)}
 				>
 					重新验证
-				</button>
+				</Button>
 			)}
 			{!compact && (
 				<div className="modal-actions">
-					<button
+					<Button
 						type="button"
-						className="quiet-button"
+						tone="quiet"
 						disabled={saving || uncertain}
 						onClick={onCancel}
 					>
 						取消
-					</button>
+					</Button>
 					{!uncertain && (
-						<button
+						<Button
 							type="button"
-							className="primary-button"
+							tone="primary"
 							disabled={saving || !draft?.trim()}
 							onClick={() => void commit(true)}
 						>
 							{saving ? "正在验证…" : "验证并保存"}
-						</button>
+						</Button>
 					)}
 				</div>
 			)}

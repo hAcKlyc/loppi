@@ -2,20 +2,25 @@
 <div id="root"></div><aside style="position:fixed;bottom:8px;left:8px;background:white;padding:10px;z-index:100"><button id="run">运行设置回归</button><output id="result">隔离模拟数据，不操作真实录制或云服务</output></aside>
 <script type="module">
 import React,{useState} from 'react';import{createRoot}from'react-dom/client';import{mockIPC}from'@tauri-apps/api/mocks';import{SettingsView}from'/src/WorkspaceViews.tsx';import'/src/App.css';
-const h=React.createElement,wait=ms=>new Promise(r=>setTimeout(r,ms));window.isTauri=true;
+const h=React.createElement,wait=ms=>new Promise(r=>setTimeout(r,ms));if(!window.isTauri)window.isTauri=true;
 let state={revision:1,enabled_intent:false,paused_intent:false,microphone_enabled:true,system_enabled:true,microphone_phase:'idle',system_phase:'idle',audio_limit_bytes:10*1073741824,audio_used_bytes:1073741824,disk_free_bytes:10*1073741824,storage_paused:false,recording_schedule:{enabled:false,start_minute:480,stop_minute:1380,paused_by_schedule:false,next_at_ms:null,next_action:null,error:null}};
 let privacy={microphone:3,microphone_available:true,tap_required:true,tap_ready:false,screen_and_system_audio:0},queues=[{provider:'llm',configured:true},{provider:'asr',configured:false}],login=0,mode='ok',cloudMode='ok',calls=[],refresh,delay=0;
+let previewDelay=0;
 const receipts=new Map(),cloudReceipts=new Map();
 mockIPC(async(command,args)=>{
  if(command==='plugin:event|listen')return 1;if(command==='plugin:event|unlisten')return;
  if(command==='entry_snapshot')return{mode:'top'};
  if(command==='entry_mode')return;
+ if(command==='plugin:dialog|save')return '/tmp/hear-fixture-only.tar';
+ if(command==='cleanup_request'){await wait(220);throw Error('测试写入失败');}
  calls.push({command,args:structuredClone(args)});
  if(command==='register_login_item'){login=1;return;}if(command==='unregister_login_item'){login=0;return;}
  if(command==='request_system_audio_permission'){privacy={...privacy,tap_ready:true};return;}
  if(command==='open_privacy_settings')return;
  if(command!=='core_request')throw Error(command);
  const r=args.request;
+ if(['export_range'].includes(r.type)){await wait(220);throw Error('测试写入失败');}
+ if(r.type==='preview_cleanup'){await wait(previewDelay);return{type:'cleanup_preview',preview:{token:'test-only',mode:r.mode,from_ms:r.from_ms,to_ms:r.to_ms,sources:r.sources,audio_blocks:0,audio_bytes:0,coarse_segments:0,precise_segments:0,voice_samples:0,asr_tasks_awaiting_upload:0,voice_extractions_awaiting_audio:0,affected_event_count:0,affected_events:[],moment_count:0,screenshot_count:0,overlap_may_remove_whole_sentences:false,voice_features_retained:true}};}
  if(r.type==='cloud_configuration_receipt')return{type:'receipt',pending:false,response:cloudReceipts.get(r.request_id)??null};
  if(r.type==='configure_cloud'){
   await wait(delay);
@@ -56,7 +61,8 @@ window.runRegression=async()=>{let n=0;const out=document.getElementById('result
  check(llm()&&asr(),'两个云服务同时展示');await click(button('修改密钥',llm()));let key=dialog().querySelector('input');check(key.value==='••••••••••••','已配置密钥不读回');await input(key,'test-only-llm');key.blur();await wait(50);check(reqs('configure_cloud').length===0,'密钥失焦不提交');await click(button('取消',dialog()));check(!dialog()&&reqs('configure_cloud').length===0,'密钥取消不提交');
  await click(button('修改密钥',llm()));key=dialog().querySelector('input');await input(key,'test-only-llm');delay=200;button('验证并保存',dialog()).click();await wait(40);check(dialog().querySelector('input').disabled&&button('取消',dialog()).disabled,'验证时锁定弹窗');await wait(240);delay=0;check(!dialog()&&reqs('configure_cloud').length===1,'显式验证成功关闭');
  await click(button('配置',asr()));key=dialog().querySelector('input');await input(key,'test-only-asr');cloudMode='fail';await click(button('验证并保存',dialog()));check(dialog()&&dialog().querySelector('input').value==='test-only-asr'&&dialog().textContent.includes('测试验证失败'),'密钥失败保留草稿');check(reqs('configure_cloud').at(-1).args.request.provider==='asr','服务身份不串用');cloudMode='lost';await click(button('验证并保存',dialog()));check(button('确认上次结果',dialog())&&dialog().querySelector('input').disabled,'云未知结果查询入口');const cloudWrites=reqs('configure_cloud').length;await click(button('确认上次结果',dialog()));check(!dialog()&&reqs('configure_cloud').length===cloudWrites&&reqs('cloud_configuration_receipt').length===1,'云确认只查询，不重复验证');check(reqs('configure_cloud').every(c=>!c.args.request.api_key.includes('•')),'掩码绝不提交');
- await click(button('导出'));check(document.querySelectorAll('input[type=checkbox]').length===2,'导出多选仍保留复选框');await click(document.querySelector('.modal-layer [aria-label=关闭]'));
+ await click(button('导出'));check(document.querySelectorAll('input[type=checkbox]').length===2,'导出多选仍保留复选框');await click(button('选择…',dialog()));button('导出',dialog()).click();await wait(40);check(dialog().textContent.includes('正在处理')&&dialog().querySelector('[aria-label=关闭弹窗]').disabled,'导出提交反馈与关闭守卫');await wait(240);check(dialog().textContent.includes('测试写入失败')&&!dialog().querySelector('[aria-label=关闭弹窗]').disabled,'导出失败恢复');await click(document.querySelector('dialog[open] [aria-label=关闭弹窗]'));
+ await click(button('清理'));previewDelay=200;button('查看影响',dialog()).click();await wait(30);check(!dialog().querySelector('[aria-label=关闭弹窗]').disabled&&button('取消',dialog())&&!button('取消',dialog()).disabled,'只读预览不应锁住退出');await click(button('取消',dialog()));await click(button('清理'));await wait(220);check(!dialog().querySelector('.preview-scope'),'取消后的迟到预览污染重开的表单');previewDelay=0;await click(button('查看影响',dialog()));check(document.activeElement===button('返回',dialog()),'危险确认未聚焦安全返回');button('清除原始音频',dialog()).click();await wait(40);check(dialog().textContent.includes('正在处理')&&dialog().querySelector('[aria-label=关闭弹窗]').disabled,'清理提交反馈与关闭守卫');await wait(240);check(dialog().textContent.includes('测试写入失败')&&!dialog().querySelector('[aria-label=关闭弹窗]').disabled,'清理失败恢复');await click(dialog().querySelector('[aria-label=关闭弹窗]'));
  out.textContent=`PASS · ${n} 项设置交互检查`;return n;
 }catch(e){out.textContent='FAIL · '+e.message;throw e}};
 document.getElementById('run').onclick=()=>void window.runRegression();

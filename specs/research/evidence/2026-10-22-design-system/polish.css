@@ -1,0 +1,45 @@
+/* Design-review candidate only. Values are proposals, not accepted tokens.
+   Loaded after the current production CSS by preview.html; no product writes. */
+:root {
+  --color-canvas: #f3f5f1;
+  --color-sidebar: #e9eee5;
+  --color-text: #29382f;
+  --color-text-strong: #29382f;
+  --color-text-secondary: #56675b;
+  --color-text-muted: #607064;
+  --color-focus: #39745a;
+  --color-warning: #85552f;
+  --color-danger: #964f49;
+  --weight-medium: 500;
+  --tracking-heading: -0.015em;
+}
+.event-card {
+  padding: var(--space-7) var(--space-8);
+  border-radius: var(--radius-md);
+  transition: background var(--motion-fast) var(--ease-standard);
+}
+.event-card:hover { transform: none; }
+.event-card h3 { margin-block: var(--space-4) var(--space-2); }
+.event-card p { line-height: var(--leading-relaxed); }
+.event-card-meta .event-card-state { font-size: var(--type-caption); }
+.event-card p.event-card-placeholder { color: var(--color-text-muted); }
+.event-line { margin-bottom: var(--space-7); }
+.event-line > time { padding-top: var(--space-8); }
+.event-line:after { top: var(--space-9); }
+.nav-button { font-weight: var(--weight-medium); }
+.nav-button.active { font-weight: var(--weight-semibold); }
+.text-action, .inline-editor button, .note-composer button {
+  min-height: 28px;
+  font-size: var(--type-caption);
+}
+.transcript-content p { font-size: 15px; line-height: var(--leading-relaxed); }
+.speaker-picker-input::placeholder { color: var(--color-text-muted); }
+.detail-header-actions { flex-shrink: 0; }
+.detail-header h2 { font-weight: var(--weight-semibold); }
+.event-card.is-recording::before { animation: none; opacity: 0; }
+@media (max-width: 850px) {
+  .event-card { padding: var(--space-6) var(--space-7); }
+  .event-line { margin-bottom: var(--space-6); }
+  .event-line > time { padding-top: var(--space-7); }
+  .event-line:after { top: var(--space-8); }
+}

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ServiceState } from "./api";
-import { Modal, Switch } from "./Controls";
+import { Button, Modal, Switch } from "./Controls";
 import { LoadBoundary } from "./LoadingState";
 import {
 	nextScheduleAction,
@@ -103,9 +103,9 @@ export function RecordingScheduleSettings({
 									跟随电脑本地时间，从下一个时间点执行，不改变当前录制状态。
 								</p>
 							</div>
-							<button
+							<Button
 								type="button"
-								className="quiet-button"
+								tone="quiet"
 								disabled={locked}
 								onClick={() => {
 									mutation.setError("");
@@ -117,7 +117,7 @@ export function RecordingScheduleSettings({
 								}}
 							>
 								编辑时间
-							</button>
+							</Button>
 						</div>
 					</>
 				)}
@@ -128,14 +128,14 @@ export function RecordingScheduleSettings({
 				</p>
 			)}
 			{!draft && mutation.uncertain && (
-				<button
+				<Button
 					type="button"
-					className="quiet-button"
+					tone="quiet"
 					disabled={mutation.busy}
 					onClick={() => void mutation.confirm()}
 				>
 					确认上次结果
-				</button>
+				</Button>
 			)}
 			{draft && (
 				<Modal title="编辑录制时间" busy={locked} onClose={close}>
@@ -184,25 +184,21 @@ export function RecordingScheduleSettings({
 							</p>
 						)}
 						<div className="modal-actions">
-							<button
+							<Button
 								type="button"
-								className="quiet-button"
+								tone="quiet"
 								disabled={locked}
 								onClick={close}
 							>
 								取消
-							</button>
-							<button
-								type="submit"
-								className="primary-button"
-								disabled={mutation.busy}
-							>
+							</Button>
+							<Button type="submit" tone="primary" disabled={mutation.busy}>
 								{mutation.busy
 									? "正在应用…"
 									: mutation.uncertain
 										? "确认上次结果"
 										: "保存时间"}
-							</button>
+							</Button>
 						</div>
 					</form>
 				</Modal>

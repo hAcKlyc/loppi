@@ -17,6 +17,7 @@ import {
 	type TimelineItem,
 	time,
 } from "./api";
+import { Button } from "./Controls";
 import { DayMapCursor } from "./DayMapCursor";
 import { LoadBoundary } from "./LoadingState";
 import { RecordCalendar } from "./RecordCalendar";
@@ -358,6 +359,7 @@ export function TimelineView({
 													aria-label={title}
 													style={style}
 													onClick={(event) => {
+														event.currentTarget.focus();
 														const bounds =
 															event.currentTarget.parentElement?.getBoundingClientRect();
 														const point =
@@ -434,13 +436,14 @@ export function TimelineView({
 					>
 						{hideCoarse ? "显示粗转" : "隐藏粗转"}
 					</button>
-					<button
+					<Button
 						type="button"
-						className="quiet-button create-event"
+						tone="secondary"
+						className="create-event"
 						onClick={onCreate}
 					>
 						＋ 新建事件
-					</button>
+					</Button>
 				</div>
 			</div>
 			<div className="event-list">
@@ -504,7 +507,10 @@ export function TimelineView({
 									<button
 										type="button"
 										className={`event-card ${item.id || item.manual_range_id ? "named" : ""} ${live ? "is-recording" : ""}`}
-										onClick={() => onSelect(item)}
+										onClick={(event) => {
+											event.currentTarget.focus({ preventScroll: true });
+											onSelect(item);
+										}}
 									>
 										<div className="event-card-meta">
 											<span>

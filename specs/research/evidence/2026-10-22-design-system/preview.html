@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hear 设计审阅 · 当前实现与打磨方向</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #f8f9f6; color: #29382f; font: 13px/1.5 -apple-system, BlinkMacSystemFont, sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 14px 16px; }
+  h1 { margin: 0 auto 0 0; font-size: 16px; font-weight: 600; }
+  label { display: flex; gap: 5px; align-items: center; }
+  select { font: inherit; border: 1px solid #bcc9bb; padding: 5px 7px; border-radius: 6px; background: white; color: inherit; }
+  .frame { margin: 0 16px; overflow: hidden; border-radius: 10px; box-shadow: 0 4px 24px #24362918; }
+  iframe { display: block; border: 0; transform-origin: top left; }
+  footer { margin: 12px 16px; color: #56675b; }
+</style>
+<header>
+  <h1>Hear · 设计审阅</h1>
+  <label>页面<select id="screen"><option value="timeline">时间线</option><option value="detail">事件详情</option><option value="settings">设置</option><option value="people">人物库</option><option value="onboarding">首次设置</option></select></label>
+  <label>窗口<select id="size"><option value="1120">1120 × 760</option><option value="760">760 × 540</option><option value="1440">1440 × 900</option></select></label>
+  <label>样式<select id="style"><option value="current">当前实现</option><option value="polish">建议打磨方向</option></select></label>
+</header>
+<div class="frame"><iframe id="preview" title="真实组件与隔离示例数据"></iframe></div>
+<footer>真实组件 · 隔离示例数据。建议样式仅用于比较层级、间距与文字，不代表已完成组件及交互修复。预览按可用空间缩放；设置与人物的外围导航采用测试简化外壳。</footer>
+<details style="margin:12px 16px"><summary>布局检查</summary><output id="geometry"></output></details>
+<script>
+const params = new URLSearchParams(location.search);
+const screen = document.getElementById('screen');
+const size = document.getElementById('size');
+const style = document.getElementById('style');
+const frame = document.getElementById('preview');
+const screens = {
+  timeline: './timeline.html',
+  detail: '/scripts/test_moment_sidebar.html',
+  settings: '/scripts/test_settings_interactions.html',
+  people: '/scripts/test_people_settings.html',
+  onboarding: '/scripts/test_onboarding.html'
+};
+for (const [key, el] of [['screen', screen], ['size', size], ['style', style]]) {
+  if ([...el.options].some(o => o.value === params.get(key))) el.value = params.get(key);
+}
+function fit() {
+  const width = Number(size.value), height = width === 760 ? 540 : width === 1440 ? 900 : 760;
+  const scale = Math.min(1, frame.parentElement.clientWidth / width);
+  frame.width = width; frame.height = height;
+  frame.style.transform = `scale(${scale})`;
+  frame.parentElement.style.height = `${height * scale}px`;
+  measure();
+}
+function measure() {
+  const doc = frame.contentDocument;
+  if (!doc?.documentElement) return;
+  const app = doc.querySelector('.app-shell');
+  document.getElementById('geometry').textContent = `窗口 ${frame.width} × ${frame.height}；根页面 ${doc.documentElement.scrollWidth} × ${doc.documentElement.scrollHeight}；应用容器高度 ${app?.clientHeight ?? '独立组件'}。`;
+}
+function applyStyle() {
+  const doc = frame.contentDocument;
+  if (!doc?.head) return;
+  doc.getElementById('review-polish')?.remove();
+  if (style.value === 'polish') {
+    const link = doc.createElement('link'); link.id = 'review-polish'; link.rel = 'stylesheet';
+    link.href = '/specs/research/evidence/2026-10-22-design-system/polish.css'; doc.head.append(link);
+  }
+  if (!doc.getElementById('review-fixture-chrome')) {
+    const css = doc.createElement('style'); css.id = 'review-fixture-chrome';
+    css.textContent = 'body > aside { display:none !important; }'; doc.head.append(css);
+  }
+}
+function remember() {
+  history.replaceState(null, '', `?screen=${screen.value}&size=${size.value}&style=${style.value}`);
+}
+frame.addEventListener('load', applyStyle);
+frame.addEventListener('load', measure);
+document.querySelector('details').addEventListener('toggle', measure);
+screen.addEventListener('change', () => { frame.src = screens[screen.value]; remember(); });
+size.addEventListener('change', () => { fit(); remember(); });
+style.addEventListener('change', () => { applyStyle(); remember(); });
+new ResizeObserver(fit).observe(frame.parentElement);
+frame.src = screens[screen.value]; fit();
+</script>
+</html>

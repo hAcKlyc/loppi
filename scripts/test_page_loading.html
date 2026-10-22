@@ -1,6 +1,7 @@
 <!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>hear 全页面加载回归</title>
 <div id="root"></div><aside style="position:fixed;z-index:10000;bottom:8px;left:8px;background:white;padding:10px"><button id="run">运行页面加载回归</button><output id="result">模拟延迟数据，不连接真实后台</output></aside>
 <script type="module">
+import "/scripts/fixture-controls.ts";
 import React from 'react';import {createRoot} from 'react-dom/client';import {flushSync} from 'react-dom';import {mockIPC} from '@tauri-apps/api/mocks';import App from '/src/App.tsx';import {SpeakerPicker} from '/src/SpeakerPicker.tsx';import {RecordCalendar} from '/src/RecordCalendar.tsx';import {emit} from '@tauri-apps/api/event';
 let gates=new Map(), failures=new Set(), persons=[],items=[],key=0,calendarFixture=false;
 const state={revision:1,enabled_intent:true,paused_intent:true,storage_paused:false,microphone_enabled:true,system_enabled:true,capture_state:'paused',microphone_phase:'idle',system_phase:'idle',microphone_recording:false,system_recording:false,audio_limit_bytes:10737418240,audio_used_bytes:0};
@@ -8,8 +9,9 @@ let snapshot={sequence:1,state,error:null,mode:'floating',appearance:'sleeping',
 const names=['entry_snapshot','privacy_status','login_item_status','cloud_status','people','models','timeline','calendar_days','moments','cloud_tasks','review_items','voice_samples','usage_statistics'];
 function hold(name){let resolve;const promise=new Promise(r=>resolve=r);gates.set(name,{promise,resolve});}
 function release(name){const d=gates.get(name);gates.delete(name);d?.resolve();}
-window.isTauri=true;
+if(!window.isTauri)window.isTauri=true;
 mockIPC(async(command,args)=>{
+ if(command==='onboarding_status') return {completed:true};
  const r=args?.request,k=command==='core_request'?r.type:command;
  const gate=gates.get(k);if(gate)await gate.promise;if(failures.has(k))throw Error('模拟读取失败');
  if(k==='entry_snapshot')return snapshot;
@@ -33,7 +35,7 @@ function mount(){key++;flushSync(()=>root.render(React.createElement(App,{key}))
 names.forEach(hold);mount();
 const q=s=>document.querySelector(s),text=()=>q('main').textContent,assert=(v,m)=>{if(!v)throw Error(m)},frames=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
 async function until(check){for(let i=0;i<250;i++){if(check())return;await new Promise(r=>setTimeout(r,10));}throw Error('等待结果超时');}
-async function page(label){[...document.querySelectorAll('.sidebar nav button')].find(b=>b.textContent.trim()===label).click();await frames();}
+async function page(label){await until(()=>[...document.querySelectorAll('.sidebar nav button')].some(b=>b.textContent.trim()===label));[...document.querySelectorAll('.sidebar nav button')].find(b=>b.textContent.trim()===label).click();await frames();}
 async function clickText(label){const b=[...document.querySelectorAll('main button')].find(b=>b.textContent.trim()===label);assert(b,'缺少按钮 '+label);b.click();await frames();}
 const skeleton=label=>q(`[aria-label="正在加载${label}"]`);
 document.getElementById('run').onclick=async()=>{const out=q('#result');out.textContent='检查中…';try{
@@ -42,8 +44,8 @@ document.getElementById('run').onclick=async()=>{const out=q('#result');out.text
  await page('处理队列');assert(skeleton('任务')&&skeleton('待核对记录')&&skeleton('队列状态')&&!text().includes('暂无任务'),'队列初始加载不诚实');
  release('review_items');await until(()=>text().includes('没有待核对'));assert(skeleton('任务'),'待核对完成不应结束任务骨架');failures.add('cloud_tasks');release('cloud_tasks');await until(()=>text().includes('任务读取失败'));assert(!text().includes('暂无任务'),'失败误显示空任务');
  await page('设置');assert(!text().includes('未开启')&&!text().includes('需要系统授权')&&!text().includes('尚未就绪')&&!q('input[type=password]'),'设置猜测未加载状态');
- release('login_item_status');await until(()=>text().includes('已开启'));assert(skeleton('本地模型'),'登录完成不应结束模型骨架');
- release('entry_snapshot');release('privacy_status');release('models');release('cloud_status');await until(()=>q('input[type=password]'));assert(text().includes('语音识别已就绪')&&text().includes('已授权'),'配置成功未展示事实');assert([...document.querySelectorAll('input[type=radio]')].find(b=>b.value==='floating')?.checked,'入口加载前后选项错误');
+ release('login_item_status');await until(()=>text().includes('已开启'));assert(skeleton('本地组件'),'登录完成不应结束模型骨架');
+ release('entry_snapshot');release('privacy_status');release('models');release('cloud_status');await until(()=>text().includes('本地语音组件')&&text().includes('未配置'));assert(text().includes('已就绪')&&text().includes('已授权'),'配置成功未展示事实');assert([...document.querySelectorAll('input[type=radio]')].find(b=>b.value==='floating')?.checked,'入口加载前后选项错误');
  await page('处理队列');failures.delete('cloud_tasks');hold('cloud_tasks');await clickText('重试');assert(skeleton('任务'),'任务重试缺少骨架');release('cloud_tasks');await until(()=>text().includes('暂无任务'));
  hold('cloud_tasks');await clickText('刷新');assert(!skeleton('任务')&&text().includes('暂无任务'),'后台刷新替换已有结果');release('cloud_tasks');
  await clickText('统计数据');assert(skeleton('统计数据')&&!text().includes('尚未开始统计'),'统计初始状态错误');release('usage_statistics');await until(()=>q('.usage-charts'));hold('usage_statistics');await clickText('近 7 天');assert(skeleton('统计范围')&&q('.usage-charts').hidden,'新统计范围展示旧数据');release('usage_statistics');await until(()=>!skeleton('统计范围'));
@@ -54,9 +56,9 @@ document.getElementById('run').onclick=async()=>{const out=q('#result');out.text
  persons=[{id:'p',display_name:'模拟人物',sample_count:0,revision:1}];await new Promise(r=>setTimeout(r,260));window.dispatchEvent(new Event('focus'));await page('人物库');await until(()=>q('.people-list-row'));q('.people-list-row').click();await frames();assert(skeleton('声纹样例')&&!text().includes('暂无声纹样例'),'声纹加载闪空');failures.add('voice_samples');release('voice_samples');await until(()=>q('[role=alert]'));assert(!text().includes('暂无声纹样例'),'声纹失败误显示空');failures.delete('voice_samples');hold('voice_samples');await clickText('重试');assert(skeleton('声纹样例'),'声纹重试缺少骨架');release('voice_samples');await until(()=>text().includes('暂无声纹样例'));
  // A new app mount covers failed context reads without cached successful data.
  failures.add('people');failures.add('privacy_status');mount();await page('人物库');await until(()=>text().includes('人物库读取失败'));assert(!text().includes('还没有人物'),'人物失败误显示空');failures.delete('people');hold('people');await clickText('重试');assert(skeleton('人物库'),'人物重试缺少骨架');release('people');await until(()=>q('.people-list-row'));
- await page('设置');await until(()=>text().includes('麦克风读取失败'));assert(!text().includes('需要系统授权'),'权限失败伪装为未授权');failures.delete('privacy_status');await clickText('重试');await until(()=>text().includes('已授权'));
+ await page('设置');await until(()=>text().includes('声音来源读取失败'));assert(!text().includes('需要系统授权'),'权限失败伪装为未授权');failures.delete('privacy_status');await clickText('重试');await until(()=>text().includes('已授权'));
  // A fulfilled host snapshot can carry a core failure; an IPC rejection is not required.
- snapshot={...snapshot,sequence:2,state:null,error:'后台状态读取失败'};mount();await page('设置');await until(()=>text().includes('音频存储上限读取失败'));assert(!skeleton('音频存储上限')&&!skeleton('麦克风'),'错误快照导致永久骨架');
+ snapshot={...snapshot,sequence:2,state:null,error:'后台状态读取失败'};mount();await page('设置');await until(()=>text().includes('音频存储上限读取失败'));assert(!skeleton('音频存储上限')&&!skeleton('声音来源'),'错误快照导致永久骨架');
  snapshot={...snapshot,sequence:3,state,error:null};await clickText('重试');await until(()=>text().includes('已授权'));
  snapshot={...snapshot,sequence:4,state:null,error:'后台状态读取失败'};await emit('hear-entry-snapshot',snapshot);await frames();assert(text().includes('音频存储上限读取失败')&&!skeleton('音频存储上限'),'异步错误快照导致永久骨架');snapshot={...snapshot,sequence:5,state,error:null};await emit('hear-entry-snapshot',snapshot);await frames();
  // A background calendar failure must retain dates already loaded for the same month.

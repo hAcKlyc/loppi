@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ServiceState } from "./api";
-import { Modal } from "./Controls";
+import { Button, Modal } from "./Controls";
 import { LoadBoundary } from "./LoadingState";
 import { useSettingMutation } from "./useSettingMutation";
 
@@ -66,9 +66,9 @@ export function AudioStorageSettings({
 						</div>
 						<p>达到上限后暂停录音；释放空间或提高上限后，请手动继续录音。</p>
 					</div>
-					<button
+					<Button
 						type="button"
-						className="quiet-button"
+						tone="quiet"
 						disabled={!state}
 						onClick={() => {
 							mutation.setError("");
@@ -79,7 +79,7 @@ export function AudioStorageSettings({
 						}}
 					>
 						修改上限
-					</button>
+					</Button>
 				</div>
 			</LoadBoundary>
 			{!draft && mutation.error && (
@@ -125,25 +125,21 @@ export function AudioStorageSettings({
 							</p>
 						)}
 						<div className="modal-actions">
-							<button
+							<Button
 								type="button"
-								className="quiet-button"
+								tone="quiet"
 								disabled={locked}
 								onClick={close}
 							>
 								取消
-							</button>
-							<button
-								type="submit"
-								className="primary-button"
-								disabled={mutation.busy}
-							>
+							</Button>
+							<Button type="submit" tone="primary" disabled={mutation.busy}>
 								{mutation.busy
 									? "保存中…"
 									: mutation.uncertain
 										? "确认上次结果"
 										: "保存上限"}
-							</button>
+							</Button>
 						</div>
 					</form>
 				</Modal>
