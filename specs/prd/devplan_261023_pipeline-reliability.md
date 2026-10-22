@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: implemented
 created: 2026-10-23
 updated: 2026-10-23
 ---
@@ -42,7 +42,7 @@ updated: 2026-10-23
 - [x] 入库锁竞争修复、采集恢复核查与系统声实测（没有改动原生采集）。
 - [x] 历史失败恢复与逐条核实。
 - [x] 架构/算法文档与脱敏结果，同步验证。
-- [ ] 三路审查、修复、提交、PR。
+- [x] 三路审查、修复、提交、PR。
 
 ### Review 基线
 - Base: 0666e0262ce45ae051bd08c4d7fdf2beb26e3c32。
@@ -83,3 +83,9 @@ updated: 2026-10-23
 - 下一步仅最终 architecture 审查、commit/push/PR。发布安装与合并仍不在此次交付。
 
 - 最终 architecture：PASS。确认 Core 唯一写入、当前引用投影、输入不可变及人工边界优先；请求内覆盖契约、可选派生统计、纯校验辅助函数均为已授权的最小变化。三路审查全部完成且无剩余阻塞，进入 Git 提交与 PR。
+
+### 交付
+- 实现提交：`c8bc659`（fix: preserve event coverage and continuous transcription inputs）。
+- PR：[hAcKlyc/hear#14](https://github.com/hAcKlyc/hear/pull/14)，目标 main，分支 fix/evening-pipeline-reliability；未合并、未替换本机安装版。
+- 整体门禁：全部范围按契约核实，三路 PASS，最终组合态静态/测试/构建/烟测通过，必需真实模型、冻结库、系统声和浏览器证据已闭环；没有待用户决策或待完成的本机代码项。
+- 限制保留：1 个五秒历史片段的供应商无效输出仍显式失败；不自动重复付费，不伪造时间或丢弃坏句后报成功。任意真实录音的活动语义和长期多设备稳定性仍不由有限样本保证。
