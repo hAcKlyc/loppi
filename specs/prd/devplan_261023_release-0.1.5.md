@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: implemented
 updated: 2026-10-23
 ---
 # 0.1.5：PR #14 与设计系统联合发布
@@ -28,8 +28,8 @@ updated: 2026-10-23
 ### 单批次行动清单
 - [x] 获取PR、整合设计改动与0.1.5版本，消除冲突。
 - [x] 组合检查与三路review，修复/定向验证。
-- [ ] 合并PR #14、整合PR及CI；同步main。
-- [ ] 最终main release打包、公证、产物交付。
+- [x] 合并PR #14、整合PR及CI；同步main。
+- [x] 最终main release打包、公证、产物交付。
 
 ### 当前 Review 基线
 - Base：`0666e02`，目标为本工作树完整候选；PR/设计范围按上文，细化契约在 review 前保存。
@@ -43,3 +43,12 @@ updated: 2026-10-23
 - 2026-10-23：详情唯一冲突已整合：保留共享 Tabs/TabPanel 与新排版，完整带入PR的空结果状态及按来源回听；新增回听入口使用公共 Button，间距使用现有token。空结果夹具复用fixture-controls进入native dialog测试层。版本清单/锁文件/helper build统一0.1.5（build5），typecheck/lint通过；全量离线门禁与浏览器组合验收进行中。
 
 - 2026-10-23：完整离线14组、浏览器11组交互/18场景/9尺寸与部分空/全空回听通过。fresh requirements、adversarial 与最终 architecture 全部 PASS，无阻塞或证据缺口；生产候选固定。审查/验收记录保存于 `specs/research/evidence/2026-10-23-release/`。
+
+- 2026-10-23：组合提交 `f3c1b45`；PR #14 以 `7c53b72` 合并，整合 PR #15 以 `206a1d9` 合并。PR #15 offline CI 与合并后 main CI 全通过；main 树与受审组合完全一致，本地主分支已快进同步。
+- 2026-10-23：main `206a1d9` 的首轮正式构建通过。GUI/CLI/Core/worker 均为0.1.5、相同SHA/epoch且dirty=false；逐层Developer ID深签、DMG校验/只读挂载、Apple公证（Accepted）、装订与Gatekeeper全部通过。公证请求 `b5a7f748-315e-44a3-be45-dab8dca63f4c`。完成全部必做验收，无待决策或mandatory缺口。
+- 收尾仅记录状态与证据，不改变生产代码；交付DMG会从包含此台账的干净main重新构建并核验身份/签名/公证，最终SHA、校验和与实际包绑定，保存在随包的release-info.json。原始开发包与用户数据保持原样。
+
+### 交付与复验
+- 版本：0.1.5（macOS Apple Silicon；helper build 5）。安装包：`build/releases/0.1.5/hear_0.1.5_arm64.dmg`，随包 `SHA256SUMS` 与 `release-info.json` 记录最终实际产物。
+- 审查/功能证据见 `specs/research/evidence/2026-10-23-release/`。文档收尾不使业务验收证据失效，不重复真实模型/历史恢复/采集。
+- 可选观感检查：查看时间线与详情在窄窗下的阅读层级、跨日片段以及笔记区域；空结果条目应标明来源和时间并点击后回听。主观微调不构成当前发布缺口。
