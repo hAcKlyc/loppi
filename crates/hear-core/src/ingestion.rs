@@ -435,25 +435,25 @@ pub fn pending(
     directory: &Path,
     session_id: Uuid,
     include_prepared: bool,
-) -> Result<Vec<PathBuf>, String> {
+) -> std::io::Result<Vec<PathBuf>> {
     let root = directory.join("ingestion").join(session_id.to_string());
     let snapshot = match File::open(&root) {
         Ok(file) => file,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
-        Err(e) => return Err(e.to_string()),
+        Err(e) => return Err(e),
     };
     // Yield if a source is publishing; do not wait on its filesystem sync.
     // Only enumerate names under this guard, then release before file reads,
     // decoding, commits and acknowledgement. Each session has one publisher.
-    fs2::FileExt::try_lock_shared(&snapshot).map_err(|e| e.to_string())?;
+    fs2::FileExt::try_lock_shared(&snapshot)?;
     let entries = match fs::read_dir(&root) {
         Ok(entries) => entries,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
-        Err(e) => return Err(e.to_string()),
+        Err(e) => return Err(e),
     };
     let mut paths = Vec::new();
     for entry in entries {
-        let entry = entry.map_err(|e| e.to_string())?;
+        let entry = entry?;
         let path = entry.path();
         if path
             .extension()
@@ -925,6 +925,33 @@ mod tests {
         record::{BlockRecord, RecordEvent},
     };
     use std::sync::Mutex;
+
+    #[test]
+    fn pending_distinguishes_busy_publication_from_io_failure_and_retries() {
+        let dir = tempfile::tempdir().unwrap();
+        let session = Uuid::new_v4();
+        assert!(pending(dir.path(), session, false).unwrap().is_empty());
+        let root = dir.path().join("ingestion").join(session.to_string());
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("one.ready"), b"{}").unwrap();
+        let guard = File::open(&root).unwrap();
+        fs2::FileExt::lock_exclusive(&guard).unwrap();
+        assert_eq!(
+            pending(dir.path(), session, false).unwrap_err().kind(),
+            std::io::ErrorKind::WouldBlock
+        );
+        drop(guard);
+        assert_eq!(
+            pending(dir.path(), session, false).unwrap(),
+            vec![root.join("one.ready")]
+        );
+        fs::remove_dir_all(&root).unwrap();
+        fs::write(&root, b"not a directory").unwrap();
+        assert_eq!(
+            pending(dir.path(), session, false).unwrap_err().kind(),
+            std::io::ErrorKind::NotADirectory
+        );
+    }
 
     fn setup() -> (tempfile::TempDir, Mutex<Store>, Session) {
         let dir = tempfile::tempdir().unwrap();

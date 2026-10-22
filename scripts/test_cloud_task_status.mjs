@@ -11,6 +11,7 @@ test('ASR mapping and response errors are distinguished from transport failures'
   provider_invalid_utterance: '识别结果格式异常',
   invalid_fit_boundary: '整理结果时间范围异常',
   invalid_fit_boundary_overlap: '整理结果时间范围异常',
+  invalid_fit_boundary_uncovered_speech: '整理结果遗漏了语音片段',
   provider_status_45000092: '云端未找到识别任务，可重试',
   provider_http_429: '服务繁忙，请稍后重试',
   provider_transport: '云端服务异常',
@@ -72,4 +73,18 @@ test('queue renders paid reruns separately from request retries and disables bus
   assert.doesNotMatch(recoverable,/重新识别|产生新的识别用量/);
   assert.match(render('provider_unmapped_timing_word_in_separator',true),/disabled=""[^>]*>重新识别<\/button>/);
  } finally { await server.close(); }
+});
+
+test('completed partial results distinguish empty audio and cropped text, with legacy fallback', async () => {
+ const {createServer}=await import('vite');
+ const server=await createServer({server:{middlewareMode:true},appType:'custom'});
+ try {
+  const {processingLabel}=await server.ssrLoadModule('/src/api.ts');
+  assert.equal(processingLabel('partial_transcript'),'精转完成 · 部分文字不可用');
+  assert.equal(processingLabel('no_transcript'),'精转完成 · 无可识别文字');
+  assert.equal(processingLabel('no_transcript',{total:2,complete:2,empty:2,boundary_clipped:false}),'精转完成 · 2 段无文字');
+  assert.equal(processingLabel('partial_transcript',{empty:0,boundary_clipped:true}),'精转完成 · 边界处文字待核对');
+  assert.equal(processingLabel('partial_transcript',{empty:2,boundary_clipped:true}),'精转完成 · 2 段无文字 · 边界处文字待核对');
+  assert.equal(processingLabel('transcribing',{empty:2,boundary_clipped:false}),'精转中');
+ } finally {await server.close();}
 });

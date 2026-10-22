@@ -33,6 +33,8 @@ export function taskStatus(task: CloudTask): string {
 		return `${state} · 识别时间超出录音范围`;
 	if (reason === "provider_invalid_utterance")
 		return `${state} · 识别结果格式异常`;
+	if (reason === "invalid_fit_boundary_uncovered_speech")
+		return `${state} · 整理结果遗漏了语音片段`;
 	if (
 		reason === "invalid_fit_boundary" ||
 		reason.startsWith("invalid_fit_boundary_")

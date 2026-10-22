@@ -80,6 +80,9 @@ test('rendered live cards name the ongoing recording and use an open time range'
       assert.match(html,/正在记录/);
       assert.ok(html.includes(label));
     }
+    const completed=render(null,{...live,id:'named',title:'讨论',processing_state:'partial_transcript',transcription:{total:5,complete:5,empty:1,boundary_clipped:false}});
+    assert.match(completed,/精转完成 · 1 段无文字/);
+    assert.doesNotMatch(completed,/精转中|部分精转/);
     const blockedNamed=render(state,{...live,id:'named',title:'讨论',processing_state:'transcribed',fit_state:'fit_credentials_unavailable'});
     assert.match(blockedNamed,/正在记录/);
     assert.match(blockedNamed,/整理受阻 · 无法读取密钥/);

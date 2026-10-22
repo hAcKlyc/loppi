@@ -64,7 +64,19 @@ export function userError(error: unknown): string {
 	return (code && errorLabels[code]) || message.replace(/^Error:\s*/, "");
 }
 
-export function processingLabel(value: string): string {
+export function processingLabel(
+	value: string,
+	progress?: TimelineItem["transcription"],
+): string {
+	if (
+		(value === "partial_transcript" || value === "no_transcript") &&
+		progress
+	) {
+		const reasons = [];
+		if (progress.empty > 0) reasons.push(`${progress.empty} 段无文字`);
+		if (progress.boundary_clipped) reasons.push("边界处文字待核对");
+		if (reasons.length) return `精转完成 · ${reasons.join(" · ")}`;
+	}
 	switch (value) {
 		case "raw_audio":
 			return "原声已保留";
@@ -95,13 +107,13 @@ export function processingLabel(value: string): string {
 		case "transcribed":
 			return "精转完成";
 		case "partial_transcript":
-			return "部分精转";
+			return "精转完成 · 部分文字不可用";
 		case "partial_audio":
 			return "音频不完整";
 		case "audio_unavailable":
 			return "无可用原声";
 		case "no_transcript":
-			return "无可识别文字";
+			return "精转完成 · 无可识别文字";
 		default:
 			return "待处理";
 	}
@@ -205,6 +217,13 @@ export interface PreciseSegment extends CoarseSegment {
 }
 
 export interface TimelineItem {
+	transcription?: {
+		total: number;
+		complete: number;
+		empty: number;
+		boundary_clipped: boolean;
+		empty_ranges?: { source: Source; started_ms: number; ended_ms: number }[];
+	} | null;
 	summary?: string | null;
 	id: string | null;
 	manual_range_id: string | null;

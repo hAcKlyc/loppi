@@ -380,7 +380,21 @@ fn ingest_session_locked(
     session: uuid::Uuid,
     closed: bool,
 ) -> Result<(), String> {
-    let paths = ingestion::pending(directory, session, closed).map_err(|_| "ingestion_list")?;
+    let paths = match ingestion::pending(directory, session, closed) {
+        Ok(paths) => paths,
+        // The publisher owns the journal namespace until its fsync finishes.
+        // The existing ingestion poll will retry without treating contention
+        // as damaged media or losing the session's durable pending marker.
+        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => return Ok(()),
+        Err(error) => {
+            return Err(match error.kind() {
+                std::io::ErrorKind::PermissionDenied => "ingestion_list_permission",
+                std::io::ErrorKind::NotADirectory => "ingestion_list_not_directory",
+                _ => "ingestion_list_io",
+            }
+            .into());
+        }
+    };
     let mut entries = Vec::new();
     for path in paths {
         // Ready supersedes prepared during the atomic publication window.
