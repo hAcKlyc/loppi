@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: implemented
 updated: 2026-10-23
 ---
 # 设计系统落地与时间线 / 详情打磨
@@ -41,11 +41,11 @@ updated: 2026-10-23
   - [x] 同数据比较排版、对齐、空间、表面与动效；落实选定方案。
   - [x] 三尺寸与边界 / 长内容 / 错误检查，记录证据。
   - [x] 同步 DESIGN；三路 review、修复与 commit。
-- [ ] 最终组合门禁、跨批次 review 与交付台账。
+- [x] 最终组合门禁、跨批次 review 与交付台账。
 
 ### 当前批次 Review 基线
-- 批次：Batch 2
-- Batch base：28d3ae3
+- 批次：最终组合门禁（完成）
+- Batch base：0666e02；最终生产候选：854b7b9
 - 预期范围：src 相关 React / CSS，scripts 浏览器与公共组件验证，specs/DESIGN.md，本计划及本任务证据。
 - 前置已有改动：DESIGN.md 为本对话上一轮产出，可纳入本任务；设计研究报告 / 预览同属本对话，验证期间保留。其他未跟踪 playground、旧 PRD / 研究与素材 ZIP 不属于本次，禁止批量 stage。
 
@@ -66,3 +66,6 @@ updated: 2026-10-23
 - 2026-10-23 Batch 2：采纳卡片空间 / 时间轴对齐、阅读15/1.75、长姓名组与独立操作、轻表面与稳定动效。18组视觉+减少动态模拟、9尺寸、11组组合回归、51逻辑与静态构建通过；隔离原生760/1120复验。进入固定快照review。
 
 - 2026-10-23 Batch 2 门禁：requirements / adversarial / 最终 architecture 均 PASS；补齐修正入口 Tab → Enter → 编辑 → 取消的运行证据，关闭唯一 required gap。同步 DESIGN §6.2 旧扫光文字，无生产代码修复。静态 / build 与51项逻辑复验通过，进入独立提交。
+
+- 2026-10-23：Batch 2 已提交 `854b7b9`。最终 `0666e02..854b7b9` 的 fresh requirements / adversarial / architecture 全部 PASS，无 blocker、required evidence gap 或待决策。最终 HEAD lint、typecheck、build 再次通过，51 项逻辑通过；audit 与已审定 polish 证据完全一致。跨批复验另有32项公共组件及实际子层 Escape / 非模态反向 Tab 通过。
+- 2026-10-23：全部本轮必做范围完成，状态改为 implemented。原生 mandatory 已在隔离签名 macOS 窗口完成；全应用 VoiceOver、其它硬件 DPR 与发行安装认证保留既定边界。未修改用户录音、密钥、安装版或无关工作区资料；关闭独立验收 app，恢复浏览器临时视口。最终契约、结果及此台账纳入独立收尾提交。

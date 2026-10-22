@@ -36,9 +36,9 @@ requirements / adversarial 两路都复现了自定义 Tab 序列遗漏 summary�
 
 [布局边界结果](evidence/2026-10-22-design-system-implementation/foundation-layout.txt)：760、849、850、851、1099、1100、1101、1120、1440 宽度全部通过，关闭 / 笔记 / 新建与侧栏可达，无主区域横向溢出。IME 使用 CompositionEvent 与 isComposing 的隔离事件验证，不冒充真实中文输入法候选窗测试；原生键盘路径另验。
 
-### 待完成
+### Batch 1 审查结论
 
-Batch 1 requirements / adversarial 定向复核 PASS，最终 architecture PASS。原四项 blocker 与两项验收证据缺口均关闭。下一步：Batch 2 时间线 / 详情审美样板及组合验收。
+Batch 1 requirements / adversarial 定向复核 PASS，最终 architecture PASS。原四项 blocker 与两项验收证据缺口均关闭。基础批次提交为 `28d3ae3`；后续视觉样板和整体结果见下文。
 
 
 ## Batch 2 · 视觉样板
@@ -73,4 +73,19 @@ Batch 1 requirements / adversarial 定向复核 PASS，最终 architecture PASS�
 
 requirements 确认实现符合规则，指出 contract 第9条缺少独立“修正”键盘执行记录，裁决为 required evidence gap；adversarial PASS，无实现 blocker。2026-10-23 在 Chrome 的隔离 `test_design_scene.html?scene=detail`、760×540 视口补验：第一句人物按钮 Tab → 实际焦点为“修正” BUTTON；Enter 打开编辑器；Tab → “修正这句文字” TEXTAREA，原文完整；Tab → “取消” BUTTON；Enter 后编辑器移除、详情仍打开、第一句原文不变。没有点击保存或调用真实写入。此次仅补运行证据，生产代码未修改，不使已通过的视觉 / 原生 / 组合检查失效。
 
-Batch 2 requirements 定向 PASS、adversarial PASS、最终 architecture PASS；已同步 §6.2 旧扫光文字，消除规范与实现冲突。未引入业务状态、资源 owner 或第二套样式机制。跨批次最终门禁尚待完成；未改录音、播放、修订、请求ID、持久化或费用算法。
+Batch 2 requirements 定向 PASS、adversarial PASS、最终 architecture PASS；已同步 §6.2 旧扫光文字，消除规范与实现冲突。未引入业务状态、资源 owner 或第二套样式机制。视觉批次提交为 `854b7b9`；未改录音、播放、修订、请求ID、持久化或费用算法。
+
+
+## 最终组合交付 · 2026-10-23
+
+按[最终契约](evidence/2026-10-22-design-system-implementation/final-review-contract.md)，从首批基线 `0666e02` 到最终生产提交 `854b7b9` 做完整跨批审查，未将局部 PASS 直接相加。
+
+| 独立审查 | 结论与边界 |
+| --- | --- |
+| Requirements | PASS；F1–F8、人物非模态、两样板、业务边界和证据闭环，无 blocker / required gap。 |
+| Adversarial | PASS；Dialog / Tabs / SpeakerPicker / 清理预览迟到结果及详情组合无可达回归。另在 Chrome 实跑32项公共组件，实际键盘确认子弹窗 Escape 恢复入口、人物浮层反向 Tab 自然离开且保留外部焦点。 |
+| Architecture | PASS；完整 React / CSS diff 的 owner 与生命周期正确，复用原生 dialog 和现有业务抽象；没有全局弹层管理器、业务 store、重试、依赖或批次临时机制。 |
+
+主 Agent 无待修复项。最终 HEAD 的 lint / typecheck / build 再执行通过，51项逻辑测试通过；静态配对审计与已审定 `polish-audit.json` 完全一致。[最终检查输出](evidence/2026-10-22-design-system-implementation/final-gate.txt)记录执行结果。组合态已覆盖11组界面、18组视觉与减少动态模拟、9尺寸和隔离原生760/1120；自这些运行后生产代码未变，文档收尾不使证据失效。
+
+本轮必做范围及原生 mandatory 已完成。独立验收应用已关闭，临时浏览器视口已恢复；用户安装版及无关工作区资料保持原状。全应用 VoiceOver、其它 OS / 硬件 DPR、真实录音 / 云请求与完整发行认证不在本轮完成声明内。后续全页面审美推广继续沿用 DESIGN §8.3，不能把本轮两个样板扩大解释为所有场景均已精修。
