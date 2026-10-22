@@ -445,3 +445,79 @@ fn snapshot_rejected_asr_recovery_preserves_history() {
         "snapshot_asr_recovery recovered={recovered} replacements={replacements} existing_segments={segments} usage_records={usage}"
     );
 }
+
+#[test]
+#[ignore = "requires HEAR_TEST_DB/FROM/TO; offline replanning on a disposable snapshot copy"]
+fn snapshot_pipeline_planning() {
+    let (_directory, mut store) = fixture();
+    let from: i64 = std::env::var("HEAR_TEST_FROM").unwrap().parse().unwrap();
+    let to: i64 = std::env::var("HEAR_TEST_TO").unwrap().parse().unwrap();
+    let events: Vec<(String,i64,i64,i64)> = store.db.prepare(
+        "SELECT id,started_ms,ended_ms,source_mask FROM named_events WHERE deleted_ms IS NULL AND started_ms>=?1 AND started_ms<?2")
+        .unwrap().query_map(params![from,to],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?)))
+        .unwrap().collect::<Result<_,_>>().unwrap();
+    let mut old = 0;
+    let mut new = 0;
+    let mut duration = 0;
+    for (id, start, end, mask) in &events {
+        old += store.db.query_row::<i64,_,_>("SELECT count(*) FROM transcript_tasks WHERE target_kind='event' AND target_id=?1 AND state!='superseded'",[id],|r|r.get(0)).unwrap();
+        let target = uuid::Uuid::new_v4().to_string();
+        let tx = store.db.transaction().unwrap();
+        new += events::asr::schedule(
+            &tx,
+            "range",
+            &target,
+            "1",
+            *start,
+            *end,
+            *mask,
+            true,
+            to,
+            events::asr::VERSION,
+        )
+        .unwrap();
+        tx.commit().unwrap();
+        let inputs: Vec<String> = store.db.prepare("SELECT i.specification FROM asr_inputs i JOIN cloud_tasks t ON t.id=i.task_id WHERE t.target_id=?1")
+            .unwrap().query_map([&target],|r|r.get(0)).unwrap().collect::<Result<_,_>>().unwrap();
+        for input in inputs {
+            let input: events::asr::Input = serde_json::from_str(&input).unwrap();
+            duration += input.duration_ms;
+            for part in &input.parts {
+                assert_eq!(part.offset, part.start - input.parts[0].start);
+            }
+        }
+    }
+    let before: Vec<(String, String)> = store
+        .db
+        .prepare("SELECT id,input_hash FROM candidate_windows WHERE state='complete' AND started_ms>=?1 AND started_ms<?2")
+        .unwrap()
+         .query_map(params![from,to], |r| Ok((r.get(0)?, r.get(1)?)))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    println!(
+        "snapshot_plan events={} old_requests={old} new_requests={new} encoded_ms={duration}",
+        events.len()
+    );
+    store
+        .db
+        .execute("UPDATE candidate_scan_state SET from_ms=0", [])
+        .unwrap();
+    events::refresh_candidates(&mut store.db, to + 3_600_000, true).unwrap();
+    for (id, hash) in &before {
+        let actual: (String, String) = store
+            .db
+            .query_row(
+                "SELECT input_hash,state FROM candidate_windows WHERE id=?1",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(actual, (hash.clone(), "complete".into()));
+    }
+    println!(
+        "snapshot_pipeline events={} old_requests={old} new_requests={new} encoded_ms={duration} preserved_candidates={}",
+        events.len(),
+        before.len()
+    );
+}

@@ -461,14 +461,16 @@ export function DetailDrawer({
 			Math.max(detail.started_ms, Math.min(at, detail.ended_ms)),
 		);
 	}, [detail.started_ms, detail.ended_ms]);
-	const playFrom = (at: number) => {
+	const playFrom = (at: number, playbackSource = sourceRef.current) => {
+		setPlaySource(playbackSource);
+		sourceRef.current = playbackSource;
 		initialScroll.current = undefined;
 		at = Math.max(detail.started_ms, Math.min(at, detail.ended_ms - 1));
 		stopAudio();
 		setPlayhead(at);
 		setAnchor(at);
 		setPlaying(true);
-		player.current?.start(at, detail.ended_ms, sourceRef.current);
+		player.current?.start(at, detail.ended_ms, playbackSource);
 	};
 
 	const sendNote = async () => {
@@ -943,7 +945,12 @@ export function DetailDrawer({
 								<div className="detail-empty">
 									<strong>还没有转录文字</strong>
 									{(detail.id || detail.manual_range_id) && (
-										<span>{processingLabel(detail.processing_state)}</span>
+										<span>
+											{processingLabel(
+												detail.processing_state,
+												detail.transcription,
+											)}
+										</span>
 									)}
 									{!detail.id &&
 										!detail.manual_range_id &&
@@ -1161,8 +1168,47 @@ export function DetailDrawer({
 							</div>
 							<div>
 								<span>处理状态</span>
-								<strong>{processingLabel(detail.processing_state)}</strong>
+								<strong>
+									{processingLabel(
+										detail.processing_state,
+										detail.transcription,
+									)}
+								</strong>
 							</div>
+							{(detail.transcription?.empty_ranges?.length ?? 0) > 0 && (
+								<div className="empty-transcription-ranges">
+									<span>
+										这些片段已完成精转，但未识别出文字，可回听原声核对。
+									</span>
+									{detail.transcription?.empty_ranges
+										?.filter(
+											(range) =>
+												range.started_ms < detail.ended_ms &&
+												range.ended_ms > detail.started_ms,
+										)
+										.map((range) => (
+											<Button
+												type="button"
+												tone="quiet"
+												key={`${range.source}:${range.started_ms}:${range.ended_ms}`}
+												onClick={() => playFrom(range.started_ms, range.source)}
+											>
+												回听 {range.source === "system" ? "电脑声音" : "麦克风"}{" "}
+												{wallClock(
+													Math.max(range.started_ms, detail.started_ms),
+													true,
+													crossesDay,
+												)}
+												—
+												{wallClock(
+													Math.min(range.ended_ms, detail.ended_ms),
+													true,
+													crossesDay,
+												)}
+											</Button>
+										))}
+								</div>
+							)}
 							{manualStatus && (
 								<div>
 									<span>手动精转</span>

@@ -411,9 +411,11 @@ fn confirmed_silence(db: &Connection, source: &str, start: i64, end: i64) -> Res
     if forbidden {
         return Ok(false);
     }
-    // Preserve the existing sub-frame clock tolerance, not unknown pauses.
+    // Millisecond timestamps are rounded independently, but source samples
+    // identify an actual continuous boundary. Never bridge another session or
+    // a missing sample just because its wall-clock gap looks small.
     if end - start <= 10 {
-        return Ok(true);
+        return contiguous_clock_edge(db, source, start, end);
     }
     let mut stmt = db
         .prepare(
@@ -432,7 +434,7 @@ fn confirmed_silence(db: &Connection, source: &str, start: i64, end: i64) -> Res
     let mut covered = start;
     for span in spans {
         let (a, b) = span.map_err(|e| e.to_string())?;
-        if a > covered {
+        if a > covered && !contiguous_clock_edge(db, source, covered, a)? {
             return Ok(false);
         }
         covered = covered.max(b);
@@ -440,7 +442,26 @@ fn confirmed_silence(db: &Connection, source: &str, start: i64, end: i64) -> Res
             return Ok(true);
         }
     }
-    Ok(false)
+    contiguous_clock_edge(db, source, covered, end)
+}
+
+fn contiguous_clock_edge(
+    db: &Connection,
+    source: &str,
+    start: i64,
+    end: i64,
+) -> Result<bool, String> {
+    if end <= start || end - start > 10 {
+        return Ok(false);
+    }
+    db.query_row(
+        "SELECT EXISTS(SELECT 1 FROM audio_blocks a JOIN audio_blocks b
+         ON b.session_id=a.session_id AND b.sample_start=a.sample_start+a.frames
+         WHERE a.source=?1 AND b.source=?1 AND a.ended_ms=?2 AND b.started_ms=?3)",
+        params![source, start, end],
+        |r| r.get(0),
+    )
+    .map_err(|e| e.to_string())
 }
 
 fn save(

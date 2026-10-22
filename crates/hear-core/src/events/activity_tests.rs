@@ -26,7 +26,8 @@ fn publish_one(db: &mut Connection, task: &CloudTask, merge: Option<&str>, now: 
     let input = llm_input(db, task).unwrap();
     publish_fit_with_input(db, task, &input, json!({"events":[{
         "start_ms":task.start,"end_ms":task.end,"title":"产品评审会","summary":"讨论产品方案和排期。",
-        "sources":"microphone","merge_with_event_id":merge}]}), now).unwrap();
+        "sources":"microphone","merge_with_event_id":merge}], "unorganized":
+        serde_json::from_str::<Value>(&input).unwrap()["observations"].as_array().unwrap().iter().enumerate().filter(|(_, v)| v["source"] == "system").map(|(i,_)| i).collect::<Vec<_>>() }), now).unwrap();
     db.query_row(
         "SELECT event_id FROM event_candidate_links WHERE candidate_id=?1 AND slot=0",
         [&task.target_id],
@@ -209,12 +210,27 @@ fn local_waiting_predecessor_blocks_adjacent_fit_without_blocking_distant_work()
 }
 
 #[test]
-fn parallel_activities_keep_both_ids_across_hours_and_respect_locked_predecessor() {
+fn parallel_activities_keep_both_ids_across_windows_and_respect_locked_predecessor() {
     for lock in [false, true] {
         let mut db = db();
-        synthetic_activity(&db, "independent_parallel_two_hours");
-        assert_eq!(refresh_candidates(&mut db, 4 * HOUR, true).unwrap(), 2);
-        let first = take_task(&mut db, CloudProvider::Llm, 4 * HOUR)
+        for minute in (0..30).step_by(2) {
+            speech(
+                &db,
+                minute * MINUTE,
+                minute * MINUTE + 25_000,
+                "microphone",
+                "家庭聊天",
+            );
+            speech(
+                &db,
+                minute * MINUTE,
+                minute * MINUTE + 25_000,
+                "system",
+                "天文课程",
+            );
+        }
+        assert_eq!(refresh_candidates(&mut db, 2 * HOUR, true).unwrap(), 2);
+        let first = take_task(&mut db, CloudProvider::Llm, 2 * HOUR)
             .unwrap()
             .unwrap();
         let response = |task: &CloudTask, mic: Option<&str>, sys: Option<&str>| {
@@ -229,7 +245,7 @@ fn parallel_activities_keep_both_ids_across_hours_and_respect_locked_predecessor
             &first,
             &input,
             response(&first, None, None),
-            4 * HOUR,
+            2 * HOUR,
         )
         .unwrap();
         let id_for = |mask| {
@@ -249,7 +265,7 @@ fn parallel_activities_keep_both_ids_across_hours_and_respect_locked_predecessor
             )
             .unwrap();
         }
-        let next = take_task(&mut db, CloudProvider::Llm, 4 * HOUR)
+        let next = take_task(&mut db, CloudProvider::Llm, 2 * HOUR)
             .unwrap()
             .unwrap();
         let input = llm_input(&db, &next).unwrap();
@@ -263,7 +279,7 @@ fn parallel_activities_keep_both_ids_across_hours_and_respect_locked_predecessor
         );
         let duplicate = response(&next, Some(&sys), Some(&sys));
         assert_eq!(
-            publish_fit_with_input(&mut db, &next, &input, duplicate, 4 * HOUR).unwrap_err(),
+            publish_fit_with_input(&mut db, &next, &input, duplicate, 2 * HOUR).unwrap_err(),
             "invalid_fit_boundary_duplicate_continuation"
         );
         // The publisher also refuses a locked target even if a model ignores the prompt.
@@ -272,7 +288,7 @@ fn parallel_activities_keep_both_ids_across_hours_and_respect_locked_predecessor
             &next,
             &input,
             response(&next, Some(&mic), Some(&sys)),
-            4 * HOUR,
+            2 * HOUR,
         )
         .unwrap();
         let end_for = |id: &str| {
@@ -291,7 +307,7 @@ fn parallel_activities_keep_both_ids_across_hours_and_respect_locked_predecessor
         if !lock {
             // The microphone activity stops; the computer course continues
             // through a third window without absorbing or extending it.
-            for minute in (120..180).step_by(2) {
+            for minute in (32..47).step_by(2) {
                 speech(
                     &db,
                     minute * MINUTE,
@@ -300,15 +316,15 @@ fn parallel_activities_keep_both_ids_across_hours_and_respect_locked_predecessor
                     "天文课程继续介绍恒星演化",
                 );
             }
-            assert_eq!(refresh_candidates(&mut db, 6 * HOUR, true).unwrap(), 1);
-            let third = take_task(&mut db, CloudProvider::Llm, 6 * HOUR)
+            assert_eq!(refresh_candidates(&mut db, 2 * HOUR, true).unwrap(), 1);
+            let third = take_task(&mut db, CloudProvider::Llm, 2 * HOUR)
                 .unwrap()
                 .unwrap();
             let input = llm_input(&db, &third).unwrap();
             publish_fit_with_input(&mut db,&third,&input,json!({"events":[{
                 "start_ms":third.start,"end_ms":third.end,"title":"天文课程","summary":"继续介绍恒星演化。",
                 "sources":"system","merge_with_event_id":sys
-            }]}),6*HOUR).unwrap();
+            }]}),2*HOUR).unwrap();
             assert_eq!(
                 db.query_row::<i64, _, _>(
                     "SELECT ended_ms FROM named_events WHERE id=?1",
@@ -332,30 +348,30 @@ fn parallel_activities_keep_both_ids_across_hours_and_respect_locked_predecessor
 }
 
 #[test]
-fn hour_window_does_not_close_at_thirty_minutes() {
-    let mut db = db();
-    for minute in (0..60).step_by(2) {
-        speech(
-            &db,
-            1_000 + minute * MINUTE,
-            30_000 + minute * MINUTE,
-            "microphone",
-            "继续讨论方案",
-        );
+fn new_window_closes_after_fifteen_minutes_or_five_minutes_quiet() {
+    for continuous in [false, true] {
+        let mut db = db();
+        for minute in (0..if continuous { 15 } else { 3 }).step_by(2) {
+            speech(
+                &db,
+                1_000 + minute * MINUTE,
+                30_000 + minute * MINUTE,
+                "microphone",
+                "继续讨论方案",
+            );
+        }
+        let deadline = if continuous {
+            1_000 + 15 * MINUTE
+        } else {
+            30_000 + 7 * MINUTE
+        };
+        assert_eq!(refresh_candidates(&mut db, deadline - 1, false).unwrap(), 0);
+        assert_eq!(refresh_candidates(&mut db, deadline, false).unwrap(), 1);
     }
-    assert_eq!(
-        refresh_candidates(&mut db, 1_000 + 30 * MINUTE, false).unwrap(),
-        0
-    );
-    assert_eq!(refresh_candidates(&mut db, 1_000 + HOUR, false).unwrap(), 1);
-    let task = take_task(&mut db, CloudProvider::Llm, 2 * HOUR)
-        .unwrap()
-        .unwrap();
-    assert!(task.end - task.start > 58 * MINUTE);
 }
 
 #[test]
-fn stored_half_hour_windows_are_not_absorbed_or_requeued_by_hour_policy() {
+fn stored_half_hour_windows_are_not_split_or_requeued_by_shorter_policy() {
     let mut db = db();
     for minute in (0..60).step_by(2) {
         speech(
@@ -368,7 +384,7 @@ fn stored_half_hour_windows_are_not_absorbed_or_requeued_by_hour_policy() {
     }
     let all = evidence(&db, 0, HOUR).unwrap();
     let cut = all.partition_point(|item| item.start < 30 * MINUTE);
-    let old = build_candidates_with_cuts(&all, &[], &[cut]);
+    let old = build_candidates_with_cuts(&all, &[], &[(0, 30 * MINUTE), (cut, HOUR)]);
     assert_eq!(old.len(), 2);
     for candidate in &old {
         db.execute(
@@ -448,11 +464,11 @@ fn legacy_cross_source_cut_at_the_same_start_keeps_exact_evidence_membership() {
 fn replaced_vad_evidence_keeps_the_persisted_candidate_time_cut() {
     let db = db();
     speech(&db, 0, MINUTE, "microphone", "早先发言");
-    speech(&db, 15 * MINUTE, 16 * MINUTE, "microphone", "中间持续发言");
+    speech(&db, 5 * MINUTE, 6 * MINUTE, "microphone", "中间持续发言");
     speech(
         &db,
-        30 * MINUTE,
-        31 * MINUTE,
+        10 * MINUTE,
+        11 * MINUTE,
         "microphone",
         "替代原 VAD 标记的粗转",
     );
@@ -461,10 +477,10 @@ fn replaced_vad_evidence_keeps_the_persisted_candidate_time_cut() {
     for old_id in ["removed-vad-block".to_owned(), all[0].id.clone()] {
         // Missing original ID, or an ID reused after a boundary correction:
         // neither may pull the new window back to unrelated earlier speech.
-        let cuts = candidate_cut_positions(&all, &[(old_id, 30 * MINUTE)]);
+        let cuts = candidate_cut_positions(&all, &[(old_id, 10 * MINUTE, 11 * MINUTE)]);
         let windows = build_candidates_with_cuts(&all, &[], &cuts);
         assert_eq!(windows.len(), 2);
-        assert_eq!(windows[1].start, 30 * MINUTE);
+        assert_eq!(windows[1].start, 10 * MINUTE);
     }
 }
 
@@ -485,7 +501,7 @@ fn late_shorter_same_start_speech_does_not_split_the_first_candidate() {
     assert_eq!(revised.target_id, first.target_id);
     assert_ne!(revised.target_version, first.target_version);
     let all = evidence(&db, 0, HOUR).unwrap();
-    let cuts = candidate_cut_positions(&all, &[(first.target_id, 0)]);
+    let cuts = candidate_cut_positions(&all, &[(first.target_id, 0, first.end)]);
     assert_eq!(build_candidates_with_cuts(&all, &[], &cuts).len(), 1);
 }
 
@@ -508,7 +524,7 @@ fn fitting_keeps_predecessors_first_including_backoff_but_allows_distant_work() 
         "microphone",
         "另一场独立活动",
     );
-    assert_eq!(refresh_candidates(&mut db, 6 * HOUR, true).unwrap(), 4);
+    assert_eq!(refresh_candidates(&mut db, 6 * HOUR, true).unwrap(), 13);
     let first = take_task_fair(&mut db, CloudProvider::Llm, 6 * HOUR, 1)
         .unwrap()
         .unwrap();
@@ -531,7 +547,7 @@ fn fitting_keeps_predecessors_first_including_backoff_but_allows_distant_work() 
     let second = take_task_fair(&mut db, CloudProvider::Llm, 6 * HOUR + 1_003, 1)
         .unwrap()
         .unwrap();
-    assert_eq!(second.start, HOUR);
+    assert_eq!(second.start, 16 * MINUTE);
     let input: Value = serde_json::from_str(&llm_input(&db, &second).unwrap()).unwrap();
     assert_eq!(input["context"]["previous_events"][0]["id"], id);
 }
@@ -609,7 +625,7 @@ fn boundary_excerpt_is_bounded_source_scoped_and_not_published_outside_candidate
 #[test]
 fn a_new_activity_after_a_continuation_stays_separate() {
     let mut db = db();
-    for minute in (0..120).step_by(2) {
+    for minute in (0..30).step_by(2) {
         speech(
             &db,
             minute * MINUTE,
@@ -627,8 +643,8 @@ fn a_new_activity_after_a_continuation_stays_separate() {
         .unwrap()
         .unwrap();
     publish_fit(&mut db, &second, json!({"events":[
-        {"start_ms":second.start,"end_ms":90*MINUTE,"title":"产品评审会","summary":null,"sources":"microphone","merge_with_event_id":id},
-        {"start_ms":92*MINUTE,"end_ms":second.end,"title":"单独电话","summary":null,"sources":"microphone","merge_with_event_id":null}
+        {"start_ms":second.start,"end_ms":22*MINUTE+30_000,"title":"产品评审会","summary":null,"sources":"microphone","merge_with_event_id":id},
+        {"start_ms":24*MINUTE,"end_ms":second.end,"title":"单独电话","summary":null,"sources":"microphone","merge_with_event_id":null}
     ]}), 3 * HOUR).unwrap();
     let count: i64 = db
         .query_row(
@@ -645,7 +661,164 @@ fn a_new_activity_after_a_continuation_stays_separate() {
             |r| r.get(0),
         )
         .unwrap();
-    assert_eq!(end, 90 * MINUTE);
+    assert_eq!(end, 22 * MINUTE + 30_000);
+}
+
+#[test]
+fn fit_requires_complete_source_scoped_coverage_or_explicit_unorganized() {
+    for (ranges, ignored, expected) in [
+        (
+            vec![(1000, 2000), (3000, 5000)],
+            vec![],
+            Some("invalid_fit_boundary_uncovered_speech"),
+        ),
+        (vec![(1000, 2500), (2500, 5000)], vec![1], None),
+        (
+            vec![(1000, 5000)],
+            vec![0, 1],
+            Some("invalid_fit_boundary_unorganized"),
+        ),
+        (
+            vec![(1000, 5000)],
+            vec![1, 1],
+            Some("invalid_fit_boundary_unorganized"),
+        ),
+        (
+            vec![(1000, 5000)],
+            vec![2],
+            Some("invalid_fit_boundary_unorganized"),
+        ),
+        (
+            vec![(1000, 5000)],
+            vec![],
+            Some("invalid_fit_boundary_uncovered_speech"),
+        ),
+    ] {
+        let mut db = db();
+        speech(&db, 1000, 5000, "microphone", "一个不能截去开头的完整问题");
+        speech(&db, 1001, 4999, "system", "嗯");
+        refresh_candidates(&mut db, HOUR, true).unwrap();
+        let task = take_task(&mut db, CloudProvider::Llm, HOUR)
+            .unwrap()
+            .unwrap();
+        let output = json!({"events":ranges.into_iter().map(|(a,b)|json!({
+            "start_ms":a,"end_ms":b,"title":"讨论","summary":null,"sources":"microphone"
+        })).collect::<Vec<_>>(),"unorganized":ignored});
+        let result = publish_fit(&mut db, &task, output, HOUR);
+        if let Some(error) = expected {
+            assert_eq!(result.unwrap_err(), error);
+            assert_eq!(
+                db.query_row::<i64, _, _>("SELECT count(*) FROM named_events", [], |r| r.get(0))
+                    .unwrap(),
+                0
+            );
+        } else {
+            assert_eq!(result.unwrap(), 2);
+        }
+    }
+}
+
+fn overlapping_meeting(db: &Connection) {
+    for start in (0..=840_000).step_by(60_000) {
+        speech(
+            db,
+            start,
+            start + 5_000,
+            "microphone",
+            "线上产品评审继续，请远端同事确认搜索入口布局。",
+        );
+    }
+    speech(
+        db,
+        889_000,
+        895_000,
+        "microphone",
+        "远端听得到吗，接着刚才的评审，请确认这个入口方案。",
+    );
+    speech(
+        db,
+        890_000,
+        910_000,
+        "system",
+        "听得到，回应刚才的问题，我们赞同这个搜索入口方案，继续讨论预算和排期。",
+    );
+    for start in (920_000..=1_460_000).step_by(60_000) {
+        speech(
+            db,
+            start,
+            start + 5_000,
+            "microphone",
+            "收到远端的建议，我们继续这场评审，讨论同一方案的预算和排期。",
+        );
+    }
+}
+
+#[test]
+fn overlapping_compute_windows_continue_and_never_complete_a_discarded_proposal() {
+    for extended_prior in [false, true] {
+        let mut db = db();
+        overlapping_meeting(&db);
+        assert_eq!(refresh_candidates(&mut db, HOUR, true).unwrap(), 2);
+        let first = take_task(&mut db, CloudProvider::Llm, HOUR)
+            .unwrap()
+            .unwrap();
+        assert_eq!((first.start, first.end), (0, 895_000));
+        let output = |t: &CloudTask, merge: Option<&str>| {
+            json!({"events":[{
+            "start_ms":t.start,"end_ms":t.end,"title":"线上评审","summary":"讨论入口、预算与排期。",
+            "sources":"both","merge_with_event_id":merge}],"unorganized":[]})
+        };
+        publish_fit(&mut db, &first, output(&first, None), HOUR).unwrap();
+        let id: String = db
+            .query_row("SELECT id FROM named_events", [], |r| r.get(0))
+            .unwrap();
+        let second = take_task(&mut db, CloudProvider::Llm, HOUR)
+            .unwrap()
+            .unwrap();
+        assert_eq!((second.start, second.end), (890_000, 1_465_000));
+        if extended_prior {
+            // A later fit may already have extended the shared automatic event.
+            db.execute(
+                "UPDATE named_events SET ended_ms=?1,revision=revision+1",
+                [second.end + 1000],
+            )
+            .unwrap();
+        }
+        let input = llm_input(&db, &second).unwrap();
+        let sent: Value = serde_json::from_str(&input).unwrap();
+        assert_eq!(sent["context"]["previous_events"][0]["id"], id);
+        assert_eq!(
+            publish_fit_with_input(&mut db, &second, &input, output(&second, None), HOUR)
+                .unwrap_err(),
+            "invalid_fit_boundary_existing_overlap"
+        );
+        assert_eq!(
+            db.query_row::<String, _, _>(
+                "SELECT state FROM cloud_tasks WHERE id=?1",
+                [second.id.to_string()],
+                |r| r.get(0)
+            )
+            .unwrap(),
+            "processing"
+        );
+        publish_fit_with_input(&mut db, &second, &input, output(&second, Some(&id)), HOUR).unwrap();
+        assert_eq!(
+            db.query_row::<i64, _, _>("SELECT count(*) FROM named_events", [], |r| r.get(0))
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            db.query_row::<i64, _, _>("SELECT ended_ms FROM named_events", [], |r| r.get(0))
+                .unwrap(),
+            second.end + if extended_prior { 1000 } else { 0 }
+        );
+        assert_eq!(
+            db.query_row::<i64, _, _>("SELECT count(*) FROM event_candidate_links", [], |r| r
+                .get(0))
+                .unwrap(),
+            2
+        );
+    }
 }
 
 fn synthetic_activity(db: &Connection, case: &str) -> usize {
@@ -678,7 +851,14 @@ fn synthetic_activity(db: &Connection, case: &str) -> usize {
         "嗯，奶瓶洗好了放这边，明天要用的东西也顺手收在一起。",
     ];
     match case {
-        "two_hour_meeting" | "meeting_with_short_break" | "continuous_daily_chat" => {
+        "overlapping_compute_windows" => {
+            overlapping_meeting(db);
+            1
+        }
+        "two_hour_meeting"
+        | "meeting_with_short_break"
+        | "meeting_with_wrapup_phrases"
+        | "continuous_daily_chat" => {
             let topics = if case == "continuous_daily_chat" {
                 &family
             } else {
@@ -688,7 +868,9 @@ fn synthetic_activity(db: &Connection, case: &str) -> usize {
                 if case == "meeting_with_short_break" && (27..31).contains(&i) {
                     continue;
                 }
-                let text = if case == "meeting_with_short_break" && i == 26 {
+                let text = if case == "meeting_with_wrapup_phrases" && i % 8 == 7 {
+                    "我没别的了。还有一个事，刚才说流量没有带来增长，这指的是啥？我们再看一下。"
+                } else if case == "meeting_with_short_break" && i == 26 {
                     "大家休息几分钟，一会儿回来继续看后面的排期，会议还没结束。"
                 } else if case == "meeting_with_short_break" && i == 31 {
                     "大家回来了，我们接着刚才那场评审，继续看测试和发布安排。"
@@ -916,8 +1098,10 @@ fn live_activity_granularity() {
     let mut failures = Vec::new();
     for run in 0..repeats {
         for case in [
+            "overlapping_compute_windows",
             "two_hour_meeting",
             "meeting_with_short_break",
+            "meeting_with_wrapup_phrases",
             "continuous_daily_chat",
             "meeting_then_same_project_call",
             "back_to_back_meetings",
@@ -969,9 +1153,15 @@ fn live_activity_granularity() {
                 .unwrap();
             let mut valid = events.len() == expected;
             if expected == 1 {
-                valid &= events
-                    .first()
-                    .is_some_and(|e| e.1 <= MINUTE && e.2 >= 118 * MINUTE);
+                valid &= events.first().is_some_and(|e| {
+                    e.1 <= MINUTE
+                        && e.2
+                            >= if case == "overlapping_compute_windows" {
+                                1_465_000
+                            } else {
+                                118 * MINUTE
+                            }
+                });
                 if valid {
                     let links: i64 = db
                         .query_row(
