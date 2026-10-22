@@ -109,6 +109,59 @@ fn short_pauses_preserve_one_linear_clock_and_long_pauses_start_a_new_request() 
 }
 
 #[test]
+fn silence_clock_rounding_uses_sample_continuity_at_every_edge() {
+    for broken in ["none", "session", "samples", "capture", "clear"] {
+        let mut db = database();
+        // All four blocks contain consecutive samples. Their independently
+        // rounded wall clocks have a millisecond seam at each silence edge.
+        for (index, retained) in [true, false, false, true].into_iter().enumerate() {
+            let a = 1000 + index as i64 * 5001;
+            block(&db, &index.to_string(), a, a + 5000, retained);
+            db.execute(
+                "UPDATE audio_blocks SET sample_start=?2 WHERE id=?1",
+                params![index.to_string(), index as i64 * 240000],
+            )
+            .unwrap();
+        }
+        match broken {
+            "session" => {
+                db.execute(
+                    "UPDATE audio_blocks SET session_id='another' WHERE id='2'",
+                    [],
+                )
+                .unwrap();
+            }
+            "samples" => {
+                db.execute(
+                    "UPDATE audio_blocks SET sample_start=sample_start+48 WHERE id='2'",
+                    [],
+                )
+                .unwrap();
+            }
+            "capture" => {
+                db.execute("INSERT INTO media_gaps(id,source,started_ms,ended_ms,reason) VALUES('g','microphone',11001,11002,'callback_gap')", []).unwrap();
+            }
+            "clear" => {
+                db.execute("INSERT INTO clear_ranges(from_ms,to_ms,source_mask,mode,committed_ms) VALUES(11001,11002,1,'raw_audio',30000)", []).unwrap();
+            }
+            _ => {}
+        }
+        event(&mut db, 1000, 21003);
+        assert_eq!(count(&db), if broken == "none" { 1 } else { 2 }, "{broken}");
+        if broken == "none" {
+            let t = task(&mut db);
+            let i = input(&db, t.id).unwrap().unwrap();
+            assert_eq!(i.duration_ms, 20003);
+            assert_eq!(i.parts[1].offset, 15003);
+            assert_eq!(
+                map(&i, &[utterance(15003, 16003, "第二句话")]).unwrap()[0].start_ms,
+                16003
+            );
+        }
+    }
+}
+
+#[test]
 fn silence_requires_complete_matching_source_evidence_and_no_clear_or_capture_gap() {
     for reason in [
         "known",
@@ -388,6 +441,10 @@ fn cropped_sentence_is_partial_and_boundary_restore_reuses_original_id() {
     let detail = event_detail(&db, id, 0, 10).unwrap();
     assert_eq!(detail.processing_state, "partial_transcript");
     assert!(detail.precise_segments.is_empty());
+    let progress = detail.transcription.unwrap();
+    assert!(progress.boundary_clipped);
+    assert_eq!(progress.empty, 0);
+    assert!(progress.empty_ranges.is_empty());
     assert!(
         take_task(&mut db, CloudProvider::Asr, 5000003)
             .unwrap()

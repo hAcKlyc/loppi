@@ -586,6 +586,8 @@ pub struct TimelineItem {
     pub revision: Option<i64>,
     pub fit_state: Option<String>,
     pub processing_state: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcription: Option<TranscriptionProgress>,
     pub manual_asr_state: Option<String>,
     pub manual_asr_started_ms: Option<i64>,
     pub manual_asr_ended_ms: Option<i64>,
@@ -599,6 +601,24 @@ pub struct TimelineItem {
     pub recording_sources: Vec<AudioSource>,
     pub coarse_segments: Vec<CoarseSegment>,
     pub precise_segments: Vec<PreciseSegment>,
+}
+
+/// Derived from current task references; no separate persisted status.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct TranscriptionProgress {
+    pub total: u32,
+    pub complete: u32,
+    pub empty: u32,
+    pub boundary_clipped: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub empty_ranges: Vec<UnrecognizedAudio>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UnrecognizedAudio {
+    pub source: AudioSource,
+    pub started_ms: i64,
+    pub ended_ms: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

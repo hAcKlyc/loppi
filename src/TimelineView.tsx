@@ -534,7 +534,7 @@ export function TimelineView({
 														: undefined
 												}
 											>
-												{processingLabel(processingState)}
+												{processingLabel(processingState, item.transcription)}
 											</span>
 										</div>
 										<h3>

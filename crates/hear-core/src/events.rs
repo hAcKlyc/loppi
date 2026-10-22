@@ -2,7 +2,8 @@
 //! coarse text. Candidate windows are scheduling inputs, never user events.
 use hear_protocol::{
     AudioSource, CloudProvider, CloudQueueState, CloudTaskView, CoarseSegment, EventSources,
-    PreciseSegment, TimeGap, TimelineItem, TimelinePreview,
+    PreciseSegment, TimeGap, TimelineItem, TimelinePreview, TranscriptionProgress,
+    UnrecognizedAudio,
 };
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use sha2::{Digest, Sha256};
@@ -20,8 +21,8 @@ struct CandidatePolicy {
     version: &'static str,
 }
 const CANDIDATE_POLICY: CandidatePolicy = CandidatePolicy {
-    quiet_cut_ms: 15 * 60 * 1000,
-    max_window_ms: 60 * 60 * 1000,
+    quiet_cut_ms: 5 * 60 * 1000,
+    max_window_ms: 15 * 60 * 1000,
     // Keep the evidence hash format stable: a prompt/window-size change alone
     // must not re-enqueue completed historical inputs.
     version: "candidate-v1",
@@ -452,9 +453,10 @@ pub struct Candidate {
 fn build_candidates_with_cuts(
     evidence: &[Evidence],
     cuts: &[(i64, i64, i64, i64)],
-    existing_cut_positions: &[usize],
+    existing_cut_positions: &[(usize, i64)],
 ) -> Vec<Candidate> {
     let mut groups: Vec<Vec<&Evidence>> = Vec::new();
+    let mut persisted_end = i64::MIN;
     for (position, item) in evidence.iter().enumerate() {
         if item.end <= item.start {
             continue;
@@ -464,15 +466,18 @@ fn build_candidates_with_cuts(
             let mask = group.iter().fold(source_bit(&item.source), |mask, e| {
                 mask | source_bit(&e.source)
             });
-            item.start - prior_end > CANDIDATE_POLICY.quiet_cut_ms
-                || item.end - g_start(group) > CANDIDATE_POLICY.max_window_ms
+            // Existing paid windows retain their membership when policy gets
+            // shorter as well as longer. Only new evidence uses the new size.
+            ((item.start - prior_end > CANDIDATE_POLICY.quiet_cut_ms
+                || item.end - g_start(group) > CANDIDATE_POLICY.max_window_ms)
+                && item.start >= persisted_end)
                 // Published compute boundaries remain stable when the window
                 // policy grows. In particular, do not absorb an old 30-minute
                 // candidate into its predecessor and orphan its event links.
                 // Late same-start evidence can precede the old first row;
                 // it belongs in that window, not a second identical-start one.
                 || (item.start > g_start(group)
-                    && existing_cut_positions.binary_search(&position).is_ok())
+                    && existing_cut_positions.binary_search_by_key(&position, |v| v.0).is_ok())
                 || cuts.iter().any(|(a, b, cut_mask, committed)| {
                     *a <= item.start
                         && *b >= prior_end
@@ -482,6 +487,12 @@ fn build_candidates_with_cuts(
                 })
         });
         if new_group {
+            persisted_end = existing_cut_positions
+                .iter()
+                .filter(|(index, _)| evidence.get(*index).is_some_and(|e| e.start == item.start))
+                .map(|(_, end)| *end)
+                .max()
+                .unwrap_or(i64::MIN);
             groups.push(Vec::new());
         }
         groups.last_mut().unwrap().push(item);
@@ -516,25 +527,29 @@ fn build_candidates_with_cuts(
         .collect()
 }
 
-fn candidate_cut_positions(evidence: &[Evidence], persisted: &[(String, i64)]) -> Vec<usize> {
+fn candidate_cut_positions(
+    evidence: &[Evidence],
+    persisted: &[(String, i64, i64)],
+) -> Vec<(usize, i64)> {
     let positions: std::collections::HashMap<&str, usize> = evidence
         .iter()
         .enumerate()
         .map(|(index, item)| (item.id.as_str(), index))
         .collect();
-    let mut cuts: Vec<usize> = persisted
+    let mut cuts: Vec<(usize, i64)> = persisted
         .iter()
-        .map(|(id, start)| {
+        .map(|(id, start, end)| {
             // A candidate originally uses its first evidence ID. Two sources
             // can have equal starts and different ends, and the old size
             // limit can split between those rows. Time alone loses that cut.
             // Late coarse text can replace the original VAD/block evidence,
             // or move a reused candidate's start; then use the persisted time.
-            positions
+            let position = positions
                 .get(id.as_str())
                 .copied()
                 .filter(|index| evidence[*index].start == *start)
-                .unwrap_or_else(|| evidence.partition_point(|item| item.start < *start))
+                .unwrap_or_else(|| evidence.partition_point(|item| item.start < *start));
+            (position, *end)
         })
         .collect();
     cuts.sort_unstable();
@@ -626,10 +641,14 @@ pub fn refresh_candidates_in(tx: &Transaction<'_>, now: i64, force: bool) -> Res
     };
     let persisted = {
         let mut stmt = tx
-            .prepare("SELECT id,started_ms FROM candidate_windows WHERE started_ms>=?1 AND started_ms<?2 ORDER BY started_ms")
+            .prepare("SELECT id,started_ms,ended_ms FROM candidate_windows WHERE started_ms>=?1 AND started_ms<?2 ORDER BY started_ms")
             .map_err(|e| e.to_string())?;
         stmt.query_map(params![from, now + 1], |r| {
-            Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, i64>(1)?,
+                r.get::<_, i64>(2)?,
+            ))
         })
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
@@ -852,6 +871,34 @@ fn ensure_nonoverlap(
         Err("event overlaps another named event".to_owned())
     } else {
         Ok(())
+    }
+}
+
+// Human boundaries may intentionally suppress a proposal. An automatic
+// collision is a fitting error, not successful publication with missing speech.
+fn fit_nonoverlap(
+    tx: &Transaction<'_>,
+    start: i64,
+    end: i64,
+    mask: i64,
+    excluding: Option<&str>,
+) -> Result<bool, String> {
+    let (conflicts, human): (i64, bool) = tx
+        .query_row(
+            "SELECT count(*),coalesce(max(origin!='automatic' OR boundary_locked),0)
+         FROM named_events WHERE deleted_ms IS NULL
+          AND started_ms<?2 AND ended_ms>?1 AND source_mask&?3!=0
+          AND id!=coalesce(?4,'')",
+            params![start, end, mask, excluding],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .map_err(|e| e.to_string())?;
+    if human {
+        Ok(false)
+    } else if conflicts > 0 {
+        Err("invalid_fit_boundary_existing_overlap".into())
+    } else {
+        Ok(true)
     }
 }
 
@@ -1641,6 +1688,8 @@ pub fn timeline(db: &Connection, start: i64, end: i64) -> Result<Vec<TimelineIte
                 .ok_or("manual range missing")?;
             item.manual_range_id = Some(Uuid::parse_str(&id).map_err(|e| e.to_string())?);
             item.processing_state = manual_range_state(db, &id, revision)?;
+            item.transcription =
+                transcription_progress(db, "range", &id, &revision.to_string(), false)?;
             item.manual_asr_state = None;
             item.manual_asr_started_ms = None;
             item.manual_asr_ended_ms = None;
@@ -1662,6 +1711,13 @@ pub fn timeline(db: &Connection, start: i64, end: i64) -> Result<Vec<TimelineIte
             revision: Some(revision),
             fit_state: Some(event_fit_state(db, &id)?),
             processing_state: event_state(db, &id, &asr_version(mask, a, b))?,
+            transcription: transcription_progress(
+                db,
+                "event",
+                &id,
+                &asr_version(mask, a, b),
+                false,
+            )?,
             manual_asr_state: None,
             manual_asr_started_ms: None,
             manual_asr_ended_ms: None,
@@ -1923,6 +1979,7 @@ fn unorganized(db: &Connection, start: i64, end: i64, mask: i64) -> Result<Timel
         sources: sources_for(mask),
         revision: None,
         fit_state: None,
+        transcription: None,
         processing_state: if !has_sound {
             if has_audio {
                 "raw_audio"
@@ -2048,6 +2105,7 @@ pub fn event_detail(
         revision: Some(revision),
         fit_state: Some(event_fit_state(db, &id.to_string())?),
         processing_state: event_state(db, &id.to_string(), &version)?,
+        transcription: transcription_progress(db, "event", &id.to_string(), &version, true)?,
         manual_asr_state: None,
         manual_asr_started_ms: None,
         manual_asr_ended_ms: None,
@@ -2090,6 +2148,7 @@ pub fn range_detail(
     if let Some((id, revision)) = &manual_range {
         item.manual_range_id = Some(Uuid::parse_str(id).map_err(|e| e.to_string())?);
         item.processing_state = manual_range_state(db, id, *revision)?;
+        item.transcription = transcription_progress(db, "range", id, &revision.to_string(), true)?;
         item.manual_asr_state = None;
         item.manual_asr_started_ms = None;
         item.manual_asr_ended_ms = None;
@@ -2146,6 +2205,65 @@ fn coarse_for(
     .map_err(|e| e.to_string())?
     .collect::<Result<Vec<_>, _>>()
     .map_err(|e| e.to_string())
+}
+
+fn transcription_progress(
+    db: &Connection,
+    kind: &str,
+    id: &str,
+    version: &str,
+    detail: bool,
+) -> Result<Option<TranscriptionProgress>, String> {
+    let mut stmt = db
+        .prepare(
+            "SELECT t.state,t.source,t.started_ms,t.ended_ms,
+        EXISTS(SELECT 1 FROM precise_segments p WHERE p.task_id=t.id
+          AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms),
+        EXISTS(SELECT 1 FROM precise_segments p WHERE p.task_id=t.id
+          AND p.started_ms<t.ended_ms AND p.ended_ms>t.started_ms
+          AND (p.started_ms<t.started_ms OR p.ended_ms>t.ended_ms))
+        FROM transcript_tasks t WHERE t.provider='asr' AND t.target_kind=?1
+          AND t.target_id=?2 AND t.target_version=?3 AND t.state!='superseded'
+        ORDER BY t.started_ms,t.ended_ms,t.source",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(params![kind, id, version], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, i64>(2)?,
+                r.get::<_, i64>(3)?,
+                r.get::<_, bool>(4)?,
+                r.get::<_, bool>(5)?,
+            ))
+        })
+        .map_err(|e| e.to_string())?;
+    let mut progress = TranscriptionProgress::default();
+    for row in rows {
+        let (state, source, start, end, has_text, crossing) = row.map_err(|e| e.to_string())?;
+        progress.total += 1;
+        if state != "complete" {
+            continue;
+        }
+        progress.complete += 1;
+        progress.boundary_clipped |= crossing;
+        if !has_text && !crossing {
+            progress.empty += 1;
+            if detail {
+                progress.empty_ranges.push(UnrecognizedAudio {
+                    source: if source == "system" {
+                        AudioSource::System
+                    } else {
+                        AudioSource::Microphone
+                    },
+                    started_ms: start,
+                    ended_ms: end,
+                });
+            }
+        }
+    }
+    Ok((progress.total > 0).then_some(progress))
 }
 
 fn event_state(db: &Connection, id: &str, version: &str) -> Result<String, String> {
@@ -2208,32 +2326,17 @@ fn event_state(db: &Connection, id: &str, version: &str) -> Result<String, Strin
         return Ok("asr_failed".to_owned());
     }
     if states.iter().all(|(s, _)| s == "complete") {
-        let crossing:bool=db.query_row("SELECT EXISTS(SELECT 1 FROM transcript_tasks t JOIN precise_segments p ON p.task_id=t.id
-          WHERE t.target_kind='event' AND t.target_id=?1 AND t.state='complete' AND p.started_ms<t.ended_ms AND p.ended_ms>t.started_ms
-          AND (p.started_ms<t.started_ms OR p.ended_ms>t.ended_ms))",[id],|r|r.get(0)).map_err(|e|e.to_string())?;
-        if crossing {
+        let progress = transcription_progress(db, "event", id, version, false)?.unwrap();
+        if progress.boundary_clipped {
             return Ok("partial_transcript".into());
         }
-
-        let (count,empty_windows):(i64,i64) = db
-            .query_row(
-                "SELECT (SELECT count(*) FROM precise_segments p JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms
-                    WHERE t.target_kind='event' AND t.target_id=?1 AND t.target_version=?2
-                      AND t.state='complete'),
-                    (SELECT count(*) FROM transcript_tasks t WHERE t.target_kind='event'
-                      AND t.target_id=?1 AND t.target_version=?2 AND t.state='complete'
-                      AND NOT EXISTS(SELECT 1 FROM precise_segments p WHERE p.task_id=t.id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms))",
-                params![id, version],
-                |r| Ok((r.get(0)?,r.get(1)?)),
-            )
-            .map_err(|e| e.to_string())?;
         if incomplete_audio {
             return Ok("partial_audio".to_owned());
         }
-        if count > 0 && empty_windows > 0 {
+        if progress.empty > 0 && progress.empty < progress.total {
             return Ok("partial_transcript".to_owned());
         }
-        return Ok(if count > 0 {
+        return Ok(if progress.empty < progress.total {
             "transcribed"
         } else {
             "no_transcript"
@@ -2270,26 +2373,18 @@ fn manual_range_state(db: &Connection, id: &str, revision: i64) -> Result<String
         return Ok("asr_failed".to_owned());
     }
     if states.iter().all(|state| state == "complete") {
-        let (count, empty): (i64, i64) = db
-            .query_row(
-                "SELECT (SELECT count(*) FROM precise_segments p JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms
-                 WHERE t.target_kind='range' AND t.target_id=?1 AND t.target_version=?2
-                   AND t.state='complete'),
-                 (SELECT count(*) FROM cloud_tasks t WHERE t.target_kind='range'
-                   AND t.target_id=?1 AND t.target_version=?2 AND t.state='complete'
-                   AND NOT EXISTS(SELECT 1 FROM precise_segments p WHERE p.task_id=t.id))",
-                params![id, revision.to_string()],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .map_err(|e| e.to_string())?;
-        return Ok(if count > 0 && empty > 0 {
+        let progress =
+            transcription_progress(db, "range", id, &revision.to_string(), false)?.unwrap();
+        return Ok(if progress.boundary_clipped
+            || (progress.empty > 0 && progress.empty < progress.total)
+        {
             "partial_transcript"
-        } else if count > 0 {
+        } else if progress.empty < progress.total {
             "transcribed"
         } else {
             "no_transcript"
         }
-        .to_owned());
+        .into());
     }
     if states
         .iter()
@@ -2855,22 +2950,12 @@ pub fn llm_input(db: &Connection, task: &CloudTask) -> Result<String, String> {
         // A coarse utterance can straddle the computational window. The
         // model owns only its intersection, not the full physical interval.
         // Keep original evidence untouched for adjacent windows and playback.
-        if let Some(text) = item.text.as_ref().filter(|s| !s.trim().is_empty()) {
-            lines.push(format!(
-                "{}-{} {}: {}",
-                item.start.max(task.start),
-                item.end.min(task.end),
-                item.source,
-                text
-            ));
-        } else {
-            lines.push(format!(
-                "{}-{} {}: [speech detected, no usable local text]",
-                item.start.max(task.start),
-                item.end.min(task.end),
-                item.source
-            ));
-        }
+        lines.push(FitObservation {
+            start_ms: item.start.max(task.start),
+            end_ms: item.end.min(task.end),
+            source: item.source,
+            text: item.text.filter(|s| !s.trim().is_empty()),
+        });
     }
     let context = fit_context(db, task)?;
     serde_json::to_string(&serde_json::json!({
@@ -2897,12 +2982,17 @@ fn fit_context(db: &Connection, task: &CloudTask) -> Result<serde_json::Value, S
         "SELECT id,started_ms,ended_ms,title,summary,revision,source_mask,boundary_locked
          FROM (SELECT *,row_number() OVER (PARTITION BY source_mask ORDER BY ended_ms DESC,id) AS position
            FROM named_events WHERE deleted_ms IS NULL AND origin='automatic'
-             AND ended_ms<=?1 AND ended_ms>=?2)
+             AND started_ms<?1 AND ended_ms>=?2
+             AND id NOT IN (SELECT event_id FROM event_candidate_links WHERE candidate_id=?3))
          WHERE position=1 ORDER BY ended_ms DESC,id LIMIT 3"
     ).map_err(|e| e.to_string())?;
     let mut previous = previous_stmt
         .query_map(
-            params![task.start, task.start - FIT_CONTINUATION_GAP_MS],
+            params![
+                task.start,
+                task.start - FIT_CONTINUATION_GAP_MS,
+                task.target_id
+            ],
             project,
         )
         .map_err(|e| e.to_string())?
@@ -3010,20 +3100,25 @@ pub const FIT_SYSTEM: &str = r#"你负责把个人连续录音整理为「真实
 2. 同一连续活动尽量保持大块，不按小话题拆。
 - 一场两小时会议就是一个事件：议题从需求切到预算、人员、排期，换人发言、短暂休息，都不应拆开。
 - 日常连续聊天同样适用：照顾孩子、收拾东西时顺带聊工作、旅行、室温等，通常是一段家庭交流，不要每句话、每个家务动作或话题各建一个事件。
+- 当前计算窗即使只有一句“那今天电话就先这样，谢谢，再见”等收尾话，只要前序活动上下文支持它属于同一通电话或会议，也应归入并续接该活动，不能作为独立低信息短句丢到 unorganized。开场、简短问题与回应同理。
 - 只有明确的活动边界证据才拆分，例如散会后另打一通电话、另一场会议开始、场景和目的明确转为另一项独立活动。同一人继续说话、话题相似、时间接近，都不足以把两场独立活动合并。
+- “我没别的了”“还有一个事”“我们再看一下”等发言收尾或转议题措辞不等于散会；同一会议接着讨论模型、指标、联网、分发仍保留一个活动，把议题放入 summary。没有明确换活动的证据时，延续已有活动。
 - 换话题、重复之前的话、短暂停顿、语气词、粗转识别不清，以及达到计算窗口上限，都不是新活动的证据。重复段落不能据此推测另一场会议或把整场截短。
 - 不设最短事件时长或固定数量；明确独立的短活动可以单列。仅零散、低密度、低信息量的几句话留在未整理；持续有意义的交流才命名并触发精转。值得精转但词意不可恢复的持续讲话可叫「普通会话」。
 
 3. 计算窗口不是活动边界；检查跨窗口续接。
-- candidate 只是本次可写入的计算范围，大约一小时，不是事件总时长上限。
+- candidate 只是本次可写入的计算范围，最长约十五分钟，不是事件总时长上限。
 - context.previous_events 是少量相关前序自动事件；每项的 tail 是其末尾的有限对话摘录（可能截断），用来判断是延续还是已经结束。摘录不代表完整前文，不可据此输出 candidate 之外的新范围。
-- 分别检查每路活动是否延续 previous_events 中的对应事件。若延续且该项 boundary_locked=false，填写它的准确 id 到 merge_with_event_id，保留整场活动层级的标题。并行独立活动分别续接各自的 id，不要合成 both；一个旧 id 在本次输出中最多使用一次。应用会保留原起点并延长同一事件。不要因为新议题或满一小时而新建事件。
+- 分别检查每路活动是否延续 previous_events 中的对应事件。若延续且该项 boundary_locked=false，填写它的准确 id 到 merge_with_event_id，保留整场活动层级的标题。并行独立活动分别续接各自的 id，不要合成 both；一个旧 id 在本次输出中最多使用一次。应用会保留原起点并延长同一事件。不要因为新议题或计算窗到时而新建事件。
 - 若前一活动已经结束、现在是独立活动，merge_with_event_id=null。若当前窗口先延续旧活动、随后开始新活动，分别输出，只有前面的延续部分使用旧 id。
 - context.linked_events 是本候选以前整理出的事件。修订时与相同输出 slot 的 linked entry 对应；若该事件跨出 candidate，只替换本窗口信息，保留窗口外有依据的上下文。
 
 4. 时间范围必须覆盖整段有依据的活动。
+- observations 是按时间排列的对象数组，含 start_ms、end_ms、source、text；text=null 表示检测到人声但无可用粗文字。
+- 每条 observation 的完整时间必须由同来源事件覆盖，或者把它的下标放进 unorganized；不能把一句话切掉开头/结尾或默默落在两张事件之间。unorganized 只能放独立的无信息量零碎声音，短问题、短回答、活动的开场与收尾都要归入其活动。已经归入事件的观察不能同时放入 unorganized。
 - 读取全部 observations，检查最后一条相关观察；每个事件应覆盖本窗口内该活动第一条至最后一条相关语音，包含内部停顿。不要只选代表性片段，也不要摘要写够了就提前结束事件。
 - start_ms/end_ms 必须是 candidate 范围内的绝对整数毫秒，保留输入精度，end_ms > start_ms。observations 的时间已裁到 candidate；文字可能来自跨边界句子，不得根据文字把输出时间扩到候选外。
+- 两路语音可能让相邻计算窗口短暂交叠；previous_events 中起点更早但结束晚于当前起点的活动也可以续接。交叠本身不是新活动边界，不能把交叠观察留空或丢弃后面的活动。
 - 合并也只返回本窗口的延续时间。例如旧事件 1000-9000、新候选 10000-20000，延续应返回 10000-20000 和旧 id，不能返回 1000-20000。
 - 同音源的事件时间不可重叠；仅互不相交的音源可以输出重叠事件。按时间顺序输出。
 
@@ -3033,7 +3128,7 @@ pub const FIT_SYSTEM: &str = r#"你负责把个人连续录音整理为「真实
 - 延续事件时，结合已有摘要和本次证据更新整场摘要。若更早内容在 candidate 外且没有摘要，返回 null，不把本窗口摘要冒充整场摘要。无法恢复可靠含义时也返回 null。
 
 输出要求：
-只返回一个 JSON 对象，唯一顶层字段 events 为数组。没有值得命名的活动时返回 {"events":[]}。最多 12 项是安全上限，不是目标数量。
+只返回一个 JSON 对象，字段 events 为活动数组、unorganized 为明确不属于任何活动的 observations 下标数组（从 0 开始）。最多 12 个活动是安全上限，不是目标数量。
 每个事件必须包含：
 - start_ms、end_ms：candidate 内的绝对整数毫秒，保持精度，end_ms > start_ms。
 - title：非空简洁字符串。
@@ -3045,27 +3140,81 @@ pub const FIT_SYSTEM: &str = r#"你负责把个人连续录音整理为「真实
 下列 JSON 仅演示结构，标题、摘要、时间和 ID 都是假设值，实际输出只能取自当前输入。
 
 例：10000-20000 内同一段麦克风讨论，期间比较多种布局，没有上一事件，输出一个完整事件：
-{"events":[{"start_ms":10000,"end_ms":20000,"title":"页面布局讨论","summary":"比较了两种页面布局，倾向保留色块来区分记录。","sources":"microphone","merge_with_event_id":null}]}
+{"events":[{"start_ms":10000,"end_ms":20000,"title":"页面布局讨论","summary":"比较了两种页面布局，倾向保留色块来区分记录。","sources":"microphone","merge_with_event_id":null}],"unorganized":[]}
 
 例：上述讨论延续已有事件 11111111-1111-4111-8111-111111111111（1000-9000，摘要为「比较了两种页面布局。」），本窗口转为色块方案；仍续接同一活动：
-{"events":[{"start_ms":10000,"end_ms":20000,"title":"页面布局讨论","summary":"比较了两种页面布局，倾向保留色块来区分记录。","sources":"microphone","merge_with_event_id":"11111111-1111-4111-8111-111111111111"}]}
+{"events":[{"start_ms":10000,"end_ms":20000,"title":"页面布局讨论","summary":"比较了两种页面布局，倾向保留色块来区分记录。","sources":"microphone","merge_with_event_id":"11111111-1111-4111-8111-111111111111"}],"unorganized":[]}
 
 例：10000-20000 内麦克风持续家庭闲聊，电脑同时播放独立的天文科普。必须分别归属，不能输出一个 both 事件：
-{"events":[{"start_ms":10000,"end_ms":20000,"title":"家庭闲聊","summary":"照顾孩子、收拾东西时聊起工作和旅行安排。","sources":"microphone","merge_with_event_id":null},{"start_ms":10000,"end_ms":20000,"title":"收听天文科普","summary":"节目介绍了恒星形成和演化的过程。","sources":"system","merge_with_event_id":null}]}
+{"events":[{"start_ms":10000,"end_ms":20000,"title":"家庭闲聊","summary":"照顾孩子、收拾东西时聊起工作和旅行安排。","sources":"microphone","merge_with_event_id":null},{"start_ms":10000,"end_ms":20000,"title":"收听天文科普","summary":"节目介绍了恒星形成和演化的过程。","sources":"system","merge_with_event_id":null}],"unorganized":[]}
 
 例：10000-20000 内麦克风提问、电脑声音回答，双方共同参加同一场线上评审，用一个 both 事件：
-{"events":[{"start_ms":10000,"end_ms":20000,"title":"线上产品评审","summary":"本地与远端参会者讨论页面布局和测试安排。","sources":"both","merge_with_event_id":null}]}
+{"events":[{"start_ms":10000,"end_ms":20000,"title":"线上产品评审","summary":"本地与远端参会者讨论页面布局和测试安排。","sources":"both","merge_with_event_id":null}],"unorganized":[]}
 
 例：持续麦克风讲话值得精转，但含义无法可靠恢复：
-{"events":[{"start_ms":10000,"end_ms":20000,"title":"普通会话","summary":null,"sources":"microphone","merge_with_event_id":null}]}
+{"events":[{"start_ms":10000,"end_ms":20000,"title":"普通会话","summary":null,"sources":"microphone","merge_with_event_id":null}],"unorganized":[]}
 
 例：只有零散低信息量短句，不构成持续活动：
-{"events":[]}
+{"events":[],"unorganized":[0,1]}
 "#;
 
 #[derive(serde::Deserialize)]
 struct FitOutput {
     events: Vec<FitEvent>,
+    #[serde(default)]
+    unorganized: Vec<usize>,
+}
+
+/// Request-local indices identify observations without asking the model to
+/// reproduce UUIDs or invent timestamps for deliberately unorganized speech.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct FitObservation {
+    start_ms: i64,
+    end_ms: i64,
+    source: String,
+    text: Option<String>,
+}
+
+fn validate_fit_coverage(input: &serde_json::Value, fit: &FitOutput) -> Result<(), String> {
+    let observations: Vec<FitObservation> =
+        serde_json::from_value(input["observations"].clone()).map_err(|_| "invalid_fit_input")?;
+    let mut ignored = std::collections::HashSet::new();
+    for &index in &fit.unorganized {
+        if index >= observations.len() || !ignored.insert(index) {
+            return Err("invalid_fit_boundary_unorganized".into());
+        }
+    }
+    for (index, observation) in observations.iter().enumerate() {
+        let mask = source_bit(&observation.source);
+        let mut ranges: Vec<_> = fit
+            .events
+            .iter()
+            .filter(|event| {
+                source_mask(event.sources) & mask != 0
+                    && event.start_ms < observation.end_ms
+                    && event.end_ms > observation.start_ms
+            })
+            .map(|event| (event.start_ms, event.end_ms))
+            .collect();
+        if ignored.contains(&index) {
+            if !ranges.is_empty() {
+                return Err("invalid_fit_boundary_unorganized".into());
+            }
+            continue;
+        }
+        ranges.sort_unstable();
+        let mut covered = observation.start_ms;
+        for (start, end) in ranges {
+            if start > covered {
+                break;
+            }
+            covered = covered.max(end);
+        }
+        if covered < observation.end_ms {
+            return Err("invalid_fit_boundary_uncovered_speech".into());
+        }
+    }
+    Ok(())
 }
 
 #[derive(serde::Deserialize)]
@@ -3112,6 +3261,7 @@ pub fn publish_fit_with_input(
         return Ok(0);
     }
     let sent: serde_json::Value = serde_json::from_str(input).map_err(|_| "invalid_fit_input")?;
+    validate_fit_coverage(&sent, &fit)?;
     let context_current = sent["context"] == fit_context(&tx, task)?;
     let mut applied = 0;
     // Array order is not time order. Validate same-source overlap without
@@ -3230,7 +3380,7 @@ pub fn publish_fit_with_input(
                 {
                     continue;
                 }
-                if ensure_nonoverlap(&tx, new_start, new_end, new_mask, Some(&linked_id)).is_ok() {
+                if fit_nonoverlap(&tx, new_start, new_end, new_mask, Some(&linked_id))? {
                     tx.execute(
                         "UPDATE named_events SET started_ms=?2,ended_ms=?3,title=?4,
                         source_mask=?5,summary=?6,revision=revision+1 WHERE id=?1",
@@ -3280,19 +3430,12 @@ pub fn publish_fit_with_input(
                                 .find(|entry| entry["id"].as_str() == Some(prior_id.as_str()))
                         });
                 if prior_context.is_some()
-                    && prior_end <= event.start_ms
+                    && prior_start < task.start
                     && event.start_ms - prior_end <= FIT_CONTINUATION_GAP_MS
                 {
                     let merged_mask = prior_mask | mask;
-                    if ensure_nonoverlap(
-                        &tx,
-                        prior_start,
-                        event.end_ms,
-                        merged_mask,
-                        Some(prior_id),
-                    )
-                    .is_err()
-                    {
+                    let merged_end = prior_end.max(event.end_ms);
+                    if !fit_nonoverlap(&tx, prior_start, merged_end, merged_mask, Some(prior_id))? {
                         continue;
                     }
                     let summary = if prior_summary.is_some()
@@ -3304,7 +3447,7 @@ pub fn publish_fit_with_input(
                         None
                     };
                     let summary =
-                        summary_for_scope(&tx, prior_start, event.end_ms, merged_mask, summary)?;
+                        summary_for_scope(&tx, prior_start, merged_end, merged_mask, summary)?;
                     // The prior ID is checked in the query and retained as the
                     // same event when an activity spans compute windows.
                     tx.execute(
@@ -3313,7 +3456,7 @@ pub fn publish_fit_with_input(
                         WHERE id=?1",
                         params![
                             prior_id,
-                            event.end_ms,
+                            merged_end,
                             event.title,
                             title_locked,
                             merged_mask,
@@ -3325,9 +3468,9 @@ pub fn publish_fit_with_input(
                         &tx,
                         "event",
                         prior_id,
-                        &asr_version(merged_mask, prior_start, event.end_ms),
+                        &asr_version(merged_mask, prior_start, merged_end),
                         prior_start,
-                        event.end_ms,
+                        merged_end,
                         merged_mask,
                         false,
                         now,
@@ -3342,7 +3485,7 @@ pub fn publish_fit_with_input(
                 }
             }
         }
-        if ensure_nonoverlap(&tx, event.start_ms, event.end_ms, mask, None).is_err() {
+        if !fit_nonoverlap(&tx, event.start_ms, event.end_ms, mask, None)? {
             continue;
         }
         let summary = summary_for_scope(&tx, event.start_ms, event.end_ms, mask, summary)?;
@@ -5296,7 +5439,8 @@ mod tests {
             ),
         ] {
             let mut db = db();
-            coarse(&db, "speech", 1_000, 30_000, "持续讨论");
+            coarse(&db, "speech-a", 1_000, 10_000, "第一个活动");
+            coarse(&db, "speech-b", 20_000, 30_000, "第二个活动");
             media(&db, "saved", 1_000, 30_000);
             set_configured(&db, CloudProvider::Llm, "deepseek-flash").unwrap();
             refresh_candidates(&mut db, 100_000, true).unwrap();
@@ -5366,6 +5510,9 @@ mod tests {
             "provider_invalid_json_content",
             "provider_invalid_json_content_syntax",
             "invalid_fit_boundary_outside_window",
+            "invalid_fit_boundary_uncovered_speech",
+            "invalid_fit_boundary_unorganized",
+            "invalid_fit_boundary_existing_overlap",
             "invalid_fit_schema",
             "provider_incomplete_output",
         ] {
@@ -5428,11 +5575,9 @@ mod tests {
             serde_json::from_str(&llm_input(&db, &task).unwrap()).unwrap();
         let lines = sent["observations"].as_array().unwrap();
         assert_eq!(lines.len(), 2);
-        assert!(
-            lines
-                .iter()
-                .all(|line| line.as_str().unwrap().starts_with("2000-3000 microphone:"))
-        );
+        assert!(lines.iter().all(|line| line["start_ms"] == 2000
+            && line["end_ms"] == 3000
+            && line["source"] == "microphone"));
         assert_eq!(
             db.query_row(
                 "SELECT started_ms,ended_ms FROM coarse_segments WHERE text='跨越前后窗口的原始句子'",
@@ -5465,9 +5610,9 @@ mod tests {
             );
         }
         set_configured(&db, CloudProvider::Llm, "deepseek-flash").unwrap();
-        assert_eq!(refresh_candidates(&mut db, now, true).unwrap(), 2);
+        assert_eq!(refresh_candidates(&mut db, now, true).unwrap(), 8);
         let mut event_id: Option<Uuid> = None;
-        for index in 0..2 {
+        for index in 0..8 {
             let task = take_task_fair(&mut db, CloudProvider::Llm, now, index)
                 .unwrap()
                 .unwrap();
@@ -5505,7 +5650,7 @@ mod tests {
                 .unwrap()
                 .summary
                 .as_deref(),
-            Some("会议摘要1")
+            Some("会议摘要7")
         );
         let (_start, end): (i64, i64) = db
             .query_row("SELECT started_ms,ended_ms FROM named_events", [], |r| {
@@ -6104,6 +6249,31 @@ mod tests {
             event_detail(&db, id, 0, 100).unwrap().processing_state,
             "partial_transcript"
         );
+        let progress = event_detail(&db, id, 0, 1).unwrap().transcription.unwrap();
+        assert_eq!(
+            (progress.total, progress.complete, progress.empty),
+            (2, 2, 1)
+        );
+        assert!(!progress.boundary_clipped);
+        assert_eq!(progress.empty_ranges.len(), 1);
+        assert_eq!(
+            (
+                progress.empty_ranges[0].started_ms,
+                progress.empty_ranges[0].ended_ms
+            ),
+            (931_000, 936_000)
+        );
+        assert_eq!(progress.empty_ranges[0].source, AudioSource::Microphone);
+        let list = timeline(&db, 0, 1_000_000).unwrap();
+        let progress = list
+            .iter()
+            .find(|i| i.id == Some(id))
+            .unwrap()
+            .transcription
+            .as_ref()
+            .unwrap();
+        assert_eq!(progress.empty, 1);
+        assert!(progress.empty_ranges.is_empty());
         db.execute(
             "INSERT INTO media_gaps(id,source,started_ms,ended_ms,reason) VALUES ('gap','microphone',6000,931000,'source_failure')",
             [],

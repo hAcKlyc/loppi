@@ -1488,6 +1488,12 @@ p {
 .information-panel > .secondary-button {
 	margin-top: 25px;
 }
+.information-panel > .empty-transcription-ranges {
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 10px;
+}
+
 .information-panel > .asr-range-form {
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
