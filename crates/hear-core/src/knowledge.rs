@@ -2559,7 +2559,7 @@ pub fn correct_text(
     }
     let (source, start, end) = visible_segment(tx, segment_id)?
         .ok_or_else(|| "precise segment is no longer current".to_owned())?;
-    crate::events::invalidate_summaries(
+    crate::events::invalidate_event_understanding(
         tx,
         start,
         end,
@@ -3920,11 +3920,20 @@ mod tests {
         let tx = db.transaction().unwrap();
         expect_revision(&tx, "segment", segment, seen).unwrap();
         tx.execute(
-            "UPDATE named_events SET summary='旧摘要' WHERE id=?1",
+            "UPDATE named_events SET summary='旧摘要',understanding_json='{}' WHERE id=?1",
             [event.to_string()],
         )
         .unwrap();
         correct_text(&tx, segment, "先改", 8003).unwrap();
+        assert!(
+            tx.query_row::<Option<String>, _, _>(
+                "SELECT understanding_json FROM named_events WHERE id=?1",
+                [event.to_string()],
+                |r| r.get(0)
+            )
+            .unwrap()
+            .is_none()
+        );
         assert!(
             events::event_detail(&tx, event, 0, 10)
                 .unwrap()

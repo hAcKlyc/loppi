@@ -896,13 +896,13 @@ pub fn apply(
         )
         .map_err(|error| error.to_string())?;
     } else {
-        crate::events::invalidate_summaries(tx, scope.start, scope.end, scope.mask)?;
+        crate::events::invalidate_event_understanding(tx, scope.start, scope.end, scope.mask)?;
         // Text cleanup removes whole overlapping sentences, which can extend
         // beyond the requested interval and be evidence for a neighboring event.
         for table in ["coarse_segments", "precise_segments"] {
             tx.execute(
                 &format!(
-                    "UPDATE named_events SET summary=NULL WHERE summary IS NOT NULL
+                    "UPDATE named_events SET summary=NULL,understanding_json=NULL WHERE (summary IS NOT NULL OR understanding_json IS NOT NULL)
                 AND EXISTS(SELECT 1 FROM {table} s WHERE s.started_ms<?2 AND s.ended_ms>?1
                 AND s.started_ms<named_events.ended_ms AND s.ended_ms>named_events.started_ms
                 AND ((s.source='microphone' AND ?3&1!=0 AND named_events.source_mask&1!=0)
@@ -1187,7 +1187,10 @@ mod tests {
         .unwrap();
         store
             .db
-            .execute("UPDATE named_events SET summary='原摘要'", [])
+            .execute(
+                "UPDATE named_events SET summary='原摘要',understanding_json='{}'",
+                [],
+            )
             .unwrap();
         let preview = preview(
             &store.db,
@@ -1214,6 +1217,17 @@ mod tests {
                 .summary
                 .is_none()
         );
+        for (id, retained) in [(mic, false), (other, true)] {
+            let value: Option<String> = store
+                .db
+                .query_row(
+                    "SELECT understanding_json FROM named_events WHERE id=?1",
+                    [id.to_string()],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(value.is_some(), retained);
+        }
         assert_eq!(
             crate::events::event_detail(&store.db, other, 0, 10)
                 .unwrap()
@@ -1493,7 +1507,7 @@ mod tests {
         store
             .db
             .execute(
-                "UPDATE named_events SET summary='两路内容摘要' WHERE id=?1",
+                "UPDATE named_events SET summary='两路内容摘要',understanding_json='{}' WHERE id=?1",
                 [event.to_string()],
             )
             .unwrap();
@@ -1520,6 +1534,17 @@ mod tests {
                 .db
                 .query_row::<Option<String>, _, _>(
                     "SELECT summary FROM named_events WHERE id=?1",
+                    [event.to_string()],
+                    |r| r.get(0)
+                )
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            store
+                .db
+                .query_row::<Option<String>, _, _>(
+                    "SELECT understanding_json FROM named_events WHERE id=?1",
                     [event.to_string()],
                     |r| r.get(0)
                 )
@@ -1596,7 +1621,7 @@ mod tests {
         store
             .db
             .execute(
-                "UPDATE named_events SET summary='保留摘要' WHERE id=?1",
+                "UPDATE named_events SET summary='保留摘要',understanding_json='{}' WHERE id=?1",
                 [event.to_string()],
             )
             .unwrap();
@@ -1631,6 +1656,18 @@ mod tests {
                 .unwrap()
                 .as_deref(),
             Some("保留摘要")
+        );
+        assert_eq!(
+            store
+                .db
+                .query_row::<Option<String>, _, _>(
+                    "SELECT understanding_json FROM named_events WHERE id=?1",
+                    [event.to_string()],
+                    |r| r.get(0)
+                )
+                .unwrap()
+                .as_deref(),
+            Some("{}")
         );
         let retained: i64 = store
             .db
