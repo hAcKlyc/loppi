@@ -874,8 +874,8 @@ fn ensure_nonoverlap(
     }
 }
 
-// Human boundaries may intentionally suppress a proposal. An automatic
-// collision is a fitting error, not successful publication with missing speech.
+// A conflicting proposal cannot replace existing content, but it must not
+// roll back independent proposals from the same response.
 fn fit_nonoverlap(
     tx: &Transaction<'_>,
     start: i64,
@@ -883,23 +883,17 @@ fn fit_nonoverlap(
     mask: i64,
     excluding: Option<&str>,
 ) -> Result<bool, String> {
-    let (conflicts, human): (i64, bool) = tx
+    let conflict: bool = tx
         .query_row(
-            "SELECT count(*),coalesce(max(origin!='automatic' OR boundary_locked),0)
+            "SELECT EXISTS(SELECT 1
          FROM named_events WHERE deleted_ms IS NULL
           AND started_ms<?2 AND ended_ms>?1 AND source_mask&?3!=0
-          AND id!=coalesce(?4,'')",
+          AND id!=coalesce(?4,''))",
             params![start, end, mask, excluding],
-            |r| Ok((r.get(0)?, r.get(1)?)),
+            |r| r.get(0),
         )
         .map_err(|e| e.to_string())?;
-    if human {
-        Ok(false)
-    } else if conflicts > 0 {
-        Err("invalid_fit_boundary_existing_overlap".into())
-    } else {
-        Ok(true)
-    }
+    Ok(!conflict)
 }
 
 #[cfg(test)]
@@ -2852,15 +2846,7 @@ pub fn task_failed_with_retry(
         && (error == "provider_incomplete_output"
             || error == "provider_invalid_json_content"
             || error.starts_with("provider_invalid_json_content_")
-            || matches!(
-                error,
-                "invalid_fit_schema"
-                    | "invalid_fit_count"
-                    | "invalid_fit_source"
-                    | "invalid_fit_summary"
-                    | "invalid_fit_boundary"
-            )
-            || error.starts_with("invalid_fit_boundary_"));
+            || error == "invalid_fit_schema");
     let retry = if invalid_fit_output {
         attempts < 3
     } else {
@@ -3046,13 +3032,13 @@ fn fit_context(db: &Connection, task: &CloudTask) -> Result<serde_json::Value, S
     Ok(serde_json::json!({"previous_events":previous,"linked_events":linked}))
 }
 
-fn fit_summary(value: Option<&str>) -> Result<Option<String>, String> {
-    let Some(value) = value else { return Ok(None) };
+fn fit_summary(value: Option<&str>) -> Option<String> {
+    let value = value?;
     if value.chars().count() > 240 || value.contains('\0') {
-        return Err("invalid_fit_summary".to_owned());
+        return None;
     }
     let text = value.split_whitespace().collect::<Vec<_>>().join(" ");
-    Ok((!text.is_empty()).then_some(text))
+    (!text.is_empty()).then_some(text)
 }
 
 // A coarse-only summary cannot override a user's precise-text correction.
@@ -3100,7 +3086,7 @@ pub const FIT_SYSTEM: &str = r#"你负责把个人连续录音整理为「真实
 2. 同一连续活动尽量保持大块，不按小话题拆。
 - 一场两小时会议就是一个事件：议题从需求切到预算、人员、排期，换人发言、短暂休息，都不应拆开。
 - 日常连续聊天同样适用：照顾孩子、收拾东西时顺带聊工作、旅行、室温等，通常是一段家庭交流，不要每句话、每个家务动作或话题各建一个事件。
-- 当前计算窗即使只有一句“那今天电话就先这样，谢谢，再见”等收尾话，只要前序活动上下文支持它属于同一通电话或会议，也应归入并续接该活动，不能作为独立低信息短句丢到 unorganized。开场、简短问题与回应同理。
+- 当前计算窗即使只有一句“那今天电话就先这样，谢谢，再见”等收尾话，只要前序活动上下文支持它属于同一通电话或会议，也应归入并续接该活动，不能作为独立低信息短句留在未整理。开场、简短问题与回应同理。
 - 只有明确的活动边界证据才拆分，例如散会后另打一通电话、另一场会议开始、场景和目的明确转为另一项独立活动。同一人继续说话、话题相似、时间接近，都不足以把两场独立活动合并。
 - “我没别的了”“还有一个事”“我们再看一下”等发言收尾或转议题措辞不等于散会；同一会议接着讨论模型、指标、联网、分发仍保留一个活动，把议题放入 summary。没有明确换活动的证据时，延续已有活动。
 - 换话题、重复之前的话、短暂停顿、语气词、粗转识别不清，以及达到计算窗口上限，都不是新活动的证据。重复段落不能据此推测另一场会议或把整场截短。
@@ -3115,7 +3101,7 @@ pub const FIT_SYSTEM: &str = r#"你负责把个人连续录音整理为「真实
 
 4. 时间范围必须覆盖整段有依据的活动。
 - observations 是按时间排列的对象数组，含 start_ms、end_ms、source、text；text=null 表示检测到人声但无可用粗文字。
-- 每条 observation 的完整时间必须由同来源事件覆盖，或者把它的下标放进 unorganized；不能把一句话切掉开头/结尾或默默落在两张事件之间。unorganized 只能放独立的无信息量零碎声音，短问题、短回答、活动的开场与收尾都要归入其活动。已经归入事件的观察不能同时放入 unorganized。
+- 尽量完整覆盖属于活动的同来源 observation，不要截去一句话的开头/结尾。短问题、短回答、开场与收尾都归入其活动；独立的无信息量零碎声音可以不生成事件，应用会自动保留为未整理素材，无需输出下标或额外归属列表。
 - 读取全部 observations，检查最后一条相关观察；每个事件应覆盖本窗口内该活动第一条至最后一条相关语音，包含内部停顿。不要只选代表性片段，也不要摘要写够了就提前结束事件。
 - start_ms/end_ms 必须是 candidate 范围内的绝对整数毫秒，保留输入精度，end_ms > start_ms。observations 的时间已裁到 candidate；文字可能来自跨边界句子，不得根据文字把输出时间扩到候选外。
 - 两路语音可能让相邻计算窗口短暂交叠；previous_events 中起点更早但结束晚于当前起点的活动也可以续接。交叠本身不是新活动边界，不能把交叠观察留空或丢弃后面的活动。
@@ -3128,7 +3114,7 @@ pub const FIT_SYSTEM: &str = r#"你负责把个人连续录音整理为「真实
 - 延续事件时，结合已有摘要和本次证据更新整场摘要。若更早内容在 candidate 外且没有摘要，返回 null，不把本窗口摘要冒充整场摘要。无法恢复可靠含义时也返回 null。
 
 输出要求：
-只返回一个 JSON 对象，字段 events 为活动数组、unorganized 为明确不属于任何活动的 observations 下标数组（从 0 开始）。最多 12 个活动是安全上限，不是目标数量。
+只返回一个 JSON 对象，字段 events 为活动数组。按实际活动生成，不设目标数量。
 每个事件必须包含：
 - start_ms、end_ms：candidate 内的绝对整数毫秒，保持精度，end_ms > start_ms。
 - title：非空简洁字符串。
@@ -3140,91 +3126,30 @@ pub const FIT_SYSTEM: &str = r#"你负责把个人连续录音整理为「真实
 下列 JSON 仅演示结构，标题、摘要、时间和 ID 都是假设值，实际输出只能取自当前输入。
 
 例：10000-20000 内同一段麦克风讨论，期间比较多种布局，没有上一事件，输出一个完整事件：
-{"events":[{"start_ms":10000,"end_ms":20000,"title":"页面布局讨论","summary":"比较了两种页面布局，倾向保留色块来区分记录。","sources":"microphone","merge_with_event_id":null}],"unorganized":[]}
+{"events":[{"start_ms":10000,"end_ms":20000,"title":"页面布局讨论","summary":"比较了两种页面布局，倾向保留色块来区分记录。","sources":"microphone","merge_with_event_id":null}]}
 
 例：上述讨论延续已有事件 11111111-1111-4111-8111-111111111111（1000-9000，摘要为「比较了两种页面布局。」），本窗口转为色块方案；仍续接同一活动：
-{"events":[{"start_ms":10000,"end_ms":20000,"title":"页面布局讨论","summary":"比较了两种页面布局，倾向保留色块来区分记录。","sources":"microphone","merge_with_event_id":"11111111-1111-4111-8111-111111111111"}],"unorganized":[]}
+{"events":[{"start_ms":10000,"end_ms":20000,"title":"页面布局讨论","summary":"比较了两种页面布局，倾向保留色块来区分记录。","sources":"microphone","merge_with_event_id":"11111111-1111-4111-8111-111111111111"}]}
 
 例：10000-20000 内麦克风持续家庭闲聊，电脑同时播放独立的天文科普。必须分别归属，不能输出一个 both 事件：
-{"events":[{"start_ms":10000,"end_ms":20000,"title":"家庭闲聊","summary":"照顾孩子、收拾东西时聊起工作和旅行安排。","sources":"microphone","merge_with_event_id":null},{"start_ms":10000,"end_ms":20000,"title":"收听天文科普","summary":"节目介绍了恒星形成和演化的过程。","sources":"system","merge_with_event_id":null}],"unorganized":[]}
+{"events":[{"start_ms":10000,"end_ms":20000,"title":"家庭闲聊","summary":"照顾孩子、收拾东西时聊起工作和旅行安排。","sources":"microphone","merge_with_event_id":null},{"start_ms":10000,"end_ms":20000,"title":"收听天文科普","summary":"节目介绍了恒星形成和演化的过程。","sources":"system","merge_with_event_id":null}]}
 
 例：10000-20000 内麦克风提问、电脑声音回答，双方共同参加同一场线上评审，用一个 both 事件：
-{"events":[{"start_ms":10000,"end_ms":20000,"title":"线上产品评审","summary":"本地与远端参会者讨论页面布局和测试安排。","sources":"both","merge_with_event_id":null}],"unorganized":[]}
+{"events":[{"start_ms":10000,"end_ms":20000,"title":"线上产品评审","summary":"本地与远端参会者讨论页面布局和测试安排。","sources":"both","merge_with_event_id":null}]}
 
 例：持续麦克风讲话值得精转，但含义无法可靠恢复：
-{"events":[{"start_ms":10000,"end_ms":20000,"title":"普通会话","summary":null,"sources":"microphone","merge_with_event_id":null}],"unorganized":[]}
+{"events":[{"start_ms":10000,"end_ms":20000,"title":"普通会话","summary":null,"sources":"microphone","merge_with_event_id":null}]}
 
 例：只有零散低信息量短句，不构成持续活动：
-{"events":[],"unorganized":[0,1]}
+{"events":[]}
 "#;
 
-#[derive(serde::Deserialize)]
-struct FitOutput {
-    events: Vec<FitEvent>,
-    #[serde(default)]
-    unorganized: Vec<usize>,
-}
-
-/// Request-local indices identify observations without asking the model to
-/// reproduce UUIDs or invent timestamps for deliberately unorganized speech.
 #[derive(serde::Serialize, serde::Deserialize)]
 struct FitObservation {
     start_ms: i64,
     end_ms: i64,
     source: String,
     text: Option<String>,
-}
-
-fn validate_fit_coverage(input: &serde_json::Value, fit: &FitOutput) -> Result<(), String> {
-    let observations: Vec<FitObservation> =
-        serde_json::from_value(input["observations"].clone()).map_err(|_| "invalid_fit_input")?;
-    let mut ignored = std::collections::HashSet::new();
-    for &index in &fit.unorganized {
-        if index >= observations.len() || !ignored.insert(index) {
-            return Err("invalid_fit_boundary_unorganized".into());
-        }
-    }
-    for (index, observation) in observations.iter().enumerate() {
-        let mask = source_bit(&observation.source);
-        let mut ranges: Vec<_> = fit
-            .events
-            .iter()
-            .filter(|event| {
-                source_mask(event.sources) & mask != 0
-                    && event.start_ms < observation.end_ms
-                    && event.end_ms > observation.start_ms
-            })
-            .map(|event| (event.start_ms, event.end_ms))
-            .collect();
-        if ignored.contains(&index) {
-            if !ranges.is_empty() {
-                return Err("invalid_fit_boundary_unorganized".into());
-            }
-            continue;
-        }
-        ranges.sort_unstable();
-        let mut covered = observation.start_ms;
-        for (start, end) in ranges {
-            if start > covered {
-                break;
-            }
-            covered = covered.max(end);
-        }
-        if covered < observation.end_ms {
-            return Err("invalid_fit_boundary_uncovered_speech".into());
-        }
-    }
-    Ok(())
-}
-
-#[derive(serde::Deserialize)]
-struct FitEvent {
-    start_ms: i64,
-    end_ms: i64,
-    title: String,
-    summary: Option<String>,
-    sources: EventSources,
-    merge_with_event_id: Option<String>,
 }
 
 #[cfg(test)]
@@ -3245,11 +3170,7 @@ pub fn publish_fit_with_input(
     result: serde_json::Value,
     now: i64,
 ) -> Result<usize, String> {
-    let fit: FitOutput =
-        serde_json::from_value(result).map_err(|_| "invalid_fit_schema".to_owned())?;
-    if fit.events.len() > 12 {
-        return Err("invalid_fit_count".to_owned());
-    }
+    let events = result["events"].as_array().ok_or("invalid_fit_schema")?;
     let tx = db.transaction().map_err(|e| e.to_string())?;
     if !task_current(&tx, task)? {
         tx.execute(
@@ -3261,45 +3182,34 @@ pub fn publish_fit_with_input(
         return Ok(0);
     }
     let sent: serde_json::Value = serde_json::from_str(input).map_err(|_| "invalid_fit_input")?;
-    validate_fit_coverage(&sent, &fit)?;
     let context_current = sent["context"] == fit_context(&tx, task)?;
     let mut applied = 0;
-    // Array order is not time order. Validate same-source overlap without
-    // reordering persisted candidate slots (which identify prior fit results).
-    let mut intervals: Vec<(i64, i64, i64)> = Vec::new();
-    let mut continuation_ids = std::collections::HashSet::new();
-    for event in &fit.events {
-        if let Some(id) = &event.merge_with_event_id {
-            if !continuation_ids.insert(id) {
-                return Err("invalid_fit_boundary_duplicate_continuation".into());
-            }
+    // Decode independently, preserving original slots even when an entry is
+    // unusable. Optional metadata never decides whether a time range survives.
+    for (slot, event) in events.iter().enumerate() {
+        let (Some(start), Some(end), Ok(sources)) = (
+            event["start_ms"].as_i64(),
+            event["end_ms"].as_i64(),
+            serde_json::from_value::<EventSources>(event["sources"].clone()),
+        ) else {
+            continue;
+        };
+        if end <= start || start < task.start || end > task.end {
+            continue;
         }
-    }
-    let output_count = fit.events.len() as i64;
-    for (slot, event) in fit.events.into_iter().enumerate() {
-        validate_title(&event.title)?;
-        let summary = fit_summary(event.summary.as_deref())?;
+        let title = event["title"]
+            .as_str()
+            .filter(|title| validate_title(title).is_ok());
+        let summary = fit_summary(event["summary"].as_str());
         let summary = if context_current { summary } else { None };
-        let mask = source_mask(event.sources);
-        if event.end_ms <= event.start_ms {
-            return Err("invalid_fit_boundary_order".into());
-        }
-        if event.start_ms < task.start || event.end_ms > task.end {
-            return Err("invalid_fit_boundary_outside_window".into());
-        }
-        if intervals.iter().any(|&(start, end, source_mask)| {
-            mask & source_mask != 0 && event.start_ms < end && event.end_ms > start
-        }) {
-            return Err("invalid_fit_boundary_overlap".into());
-        }
-        let seen = evidence(&tx, event.start_ms, event.end_ms)?;
+        let mask = source_mask(sources);
+        let seen = evidence(&tx, start, end)?;
         if (mask & 1 != 0 && !seen.iter().any(|item| item.source == "microphone"))
             || (mask & 2 != 0 && !seen.iter().any(|item| item.source == "system"))
         {
-            return Err("invalid_fit_source".to_owned());
+            continue;
         }
-        intervals.push((event.start_ms, event.end_ms, mask));
-        if suppressed(&tx, event.start_ms, event.end_ms, mask)? {
+        if suppressed(&tx, start, end, mask)? {
             continue;
         }
         let linked: Option<String> = tx
@@ -3338,9 +3248,9 @@ pub fn publish_fit_with_input(
                 let (new_start, new_end) = if boundary_locked {
                     (old_start, old_end)
                 } else if links > 1 {
-                    (old_start.min(event.start_ms), old_end.max(event.end_ms))
+                    (old_start.min(start), old_end.max(end))
                 } else {
-                    (event.start_ms, event.end_ms)
+                    (start, end)
                 };
                 let new_mask = if boundary_locked {
                     old_mask
@@ -3352,7 +3262,7 @@ pub fn publish_fit_with_input(
                 let new_title = if title_locked {
                     old_title.as_str()
                 } else {
-                    event.title.as_str()
+                    title.unwrap_or(old_title.as_str())
                 };
                 let linked_context =
                     sent["context"]["linked_events"]
@@ -3405,7 +3315,7 @@ pub fn publish_fit_with_input(
             }
             continue;
         }
-        if let Some(prior_id) = event.merge_with_event_id.as_ref() {
+        if let Some(prior_id) = event["merge_with_event_id"].as_str() {
             let prior:Option<(i64,i64,i64,bool,bool,i64,Option<String>)>=tx.query_row(
                 "SELECT started_ms,ended_ms,revision,boundary_locked,title_locked,source_mask,summary FROM named_events
                  WHERE id=?1 AND origin='automatic' AND deleted_ms IS NULL",
@@ -3427,17 +3337,21 @@ pub fn publish_fit_with_input(
                         .and_then(|items| {
                             items
                                 .iter()
-                                .find(|entry| entry["id"].as_str() == Some(prior_id.as_str()))
+                                .find(|entry| entry["id"].as_str() == Some(prior_id))
                         });
                 if prior_context.is_some()
                     && prior_start < task.start
-                    && event.start_ms - prior_end <= FIT_CONTINUATION_GAP_MS
+                    && start.saturating_sub(prior_end) <= FIT_CONTINUATION_GAP_MS
+                    && fit_nonoverlap(
+                        &tx,
+                        prior_start,
+                        prior_end.max(end),
+                        prior_mask | mask,
+                        Some(prior_id),
+                    )?
                 {
                     let merged_mask = prior_mask | mask;
-                    let merged_end = prior_end.max(event.end_ms);
-                    if !fit_nonoverlap(&tx, prior_start, merged_end, merged_mask, Some(prior_id))? {
-                        continue;
-                    }
+                    let merged_end = prior_end.max(end);
                     let summary = if prior_summary.is_some()
                         && prior_context.and_then(|entry| entry["revision"].as_i64())
                             == Some(prior_revision)
@@ -3457,8 +3371,8 @@ pub fn publish_fit_with_input(
                         params![
                             prior_id,
                             merged_end,
-                            event.title,
-                            title_locked,
+                            title.unwrap_or("普通会话"),
+                            title_locked || title.is_none(),
                             merged_mask,
                             summary
                         ],
@@ -3485,15 +3399,14 @@ pub fn publish_fit_with_input(
                 }
             }
         }
-        if !fit_nonoverlap(&tx, event.start_ms, event.end_ms, mask, None)? {
+        if !fit_nonoverlap(&tx, start, end, mask, None)? {
             continue;
         }
-        let summary = summary_for_scope(&tx, event.start_ms, event.end_ms, mask, summary)?;
+        let summary = summary_for_scope(&tx, start, end, mask, summary)?;
         let id = Uuid::new_v4().to_string();
         tx.execute(
             "INSERT INTO named_events (id,started_ms,ended_ms,title,source_mask,revision,origin,boundary_locked,title_locked,asr_required,deleted_ms,created_ms,summary) VALUES (?1,?2,?3,?4,?5,1,'automatic',0,0,1,NULL,?6,?7)",
-            params![id, event.start_ms, event.end_ms, event.title, mask, now,
-                if event.merge_with_event_id.is_none() { summary } else { None }],
+            params![id, start, end, title.unwrap_or("普通会话"), mask, now, summary],
         )
         .map_err(|e| e.to_string())?;
         tx.execute(
@@ -3505,61 +3418,19 @@ pub fn publish_fit_with_input(
             &tx,
             "event",
             &id,
-            &asr_version(mask, event.start_ms, event.end_ms),
-            event.start_ms,
-            event.end_ms,
+            &asr_version(mask, start, end),
+            start,
+            end,
             mask,
             false,
             now,
         )?;
         applied += 1;
     }
-    let mut stale_stmt = tx
-        .prepare("SELECT event_id FROM event_candidate_links WHERE candidate_id=?1 AND slot>=?2")
-        .map_err(|e| e.to_string())?;
-    let stale = stale_stmt
-        .query_map(params![task.target_id, output_count], |row| {
-            row.get::<_, String>(0)
-        })
-        .map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
-    drop(stale_stmt);
-    for id in stale {
-        tx.execute(
-            "DELETE FROM event_candidate_links WHERE candidate_id=?1 AND event_id=?2",
-            params![task.target_id, id],
-        )
-        .map_err(|e| e.to_string())?;
-        let remaining: i64 = tx
-            .query_row(
-                "SELECT count(*) FROM event_candidate_links WHERE event_id=?1",
-                params![id],
-                |row| row.get(0),
-            )
-            .map_err(|e| e.to_string())?;
-        tx.execute(
-            "UPDATE named_events SET summary=NULL WHERE id=?1",
-            params![id],
-        )
-        .map_err(|e| e.to_string())?;
-        if remaining == 0 {
-            tx.execute(
-                "UPDATE named_events SET deleted_ms=?2 WHERE id=?1 AND origin='automatic'
-                AND boundary_locked=0 AND title_locked=0",
-                params![id, now],
-            )
-            .map_err(|e| e.to_string())?;
-            tx.execute(
-                "UPDATE cloud_tasks SET state='superseded',updated_ms=?2 WHERE target_kind='event'
-                AND target_id=?1 AND state IN ('pending','processing','submitted','failed')",
-                params![id, now],
-            )
-            .map_err(|e| e.to_string())?;
-        }
-    }
+    // Omitted or invalid entries are not deletion instructions. Keep previously
+    // published slots; explicit user edits/cleanup still own removal.
     tx.execute(
-        "UPDATE cloud_tasks SET state='complete',updated_ms=?2 WHERE id=?1",
+        "UPDATE cloud_tasks SET state='complete',error_code=NULL,updated_ms=?2 WHERE id=?1",
         params![task.id.to_string(), now],
     )
     .map_err(|e| e.to_string())?;
@@ -4146,33 +4017,30 @@ mod tests {
 
     #[test]
     fn prompt_output_examples_follow_event_contract() {
-        let examples: Vec<FitOutput> = FIT_SYSTEM
+        let examples: Vec<serde_json::Value> = FIT_SYSTEM
             .lines()
             .filter(|line| line.starts_with("{\"events\":"))
-            .map(|line| {
-                serde_json::from_str(line).expect("prompt example must be valid event JSON")
-            })
+            .map(|line| serde_json::from_str(line).unwrap())
             .collect();
         assert_eq!(examples.len(), 6);
-        assert!(examples.iter().any(|output| output.events.is_empty()));
         assert!(
             examples
                 .iter()
-                .flat_map(|output| &output.events)
-                .any(|event| event.summary.is_none())
+                .any(|output| output["events"].as_array().unwrap().is_empty())
         );
         for output in examples {
-            assert!(output.events.len() <= 12);
-            for event in output.events {
-                validate_title(&event.title).unwrap();
-                fit_summary(event.summary.as_deref()).unwrap();
-                assert!(
-                    event.start_ms >= 10000
-                        && event.end_ms <= 20000
-                        && event.end_ms > event.start_ms
+            assert!(output.get("unorganized").is_none());
+            for event in output["events"].as_array().unwrap() {
+                validate_title(event["title"].as_str().unwrap()).unwrap();
+                assert_eq!(
+                    fit_summary(event["summary"].as_str()).as_deref(),
+                    event["summary"].as_str()
                 );
-                if let Some(id) = event.merge_with_event_id {
-                    Uuid::parse_str(&id).unwrap();
+                let start = event["start_ms"].as_i64().unwrap();
+                let end = event["end_ms"].as_i64().unwrap();
+                assert!(start >= 10000 && end <= 20000 && end > start);
+                if let Some(id) = event["merge_with_event_id"].as_str() {
+                    Uuid::parse_str(id).unwrap();
                 }
             }
         }
@@ -4313,26 +4181,20 @@ mod tests {
     }
 
     #[test]
-    fn summary_empty_legacy_and_invalid_outputs_are_handled_atomically() {
-        for summary in [serde_json::Value::Null, serde_json::json!(" \n ")] {
-            let (mut db, task) = summary_fixture();
-            publish_fit(&mut db, &task, summary_result(&task, summary), 100_001).unwrap();
-            assert!(timeline(&db, 0, 100_000).unwrap()[0].summary.is_none());
-        }
+    fn invalid_summary_does_not_discard_the_event() {
         for summary in [
+            serde_json::Value::Null,
+            serde_json::json!(" "),
             serde_json::json!("文".repeat(241)),
             serde_json::json!("bad\0text"),
+            serde_json::json!({"unexpected":"object"}),
+            serde_json::json!(42),
         ] {
             let (mut db, task) = summary_fixture();
-            assert_eq!(
-                publish_fit(&mut db, &task, summary_result(&task, summary), 100_001).unwrap_err(),
-                "invalid_fit_summary"
-            );
-            assert_eq!(
-                db.query_row::<i64, _, _>("SELECT count(*) FROM named_events", [], |r| r.get(0))
-                    .unwrap(),
-                0
-            );
+            publish_fit(&mut db, &task, summary_result(&task, summary), 100_001).unwrap();
+            let detail = timeline(&db, 0, 100_000).unwrap();
+            assert_eq!(detail.iter().filter(|item| item.id.is_some()).count(), 1);
+            assert!(detail[0].summary.is_none());
         }
     }
 
@@ -5421,22 +5283,13 @@ mod tests {
     }
 
     #[test]
-    fn fit_accepts_unordered_disjoint_events_but_rejects_overlap_and_outside_bounds() {
-        for (ranges, failure) in [
-            (vec![(20_000, 30_000), (1_000, 10_000)], None),
-            (vec![(10_000, 30_000), (1_000, 10_000)], None),
-            (
-                vec![(20_000, 30_000), (1_000, 25_000)],
-                Some("invalid_fit_boundary_overlap"),
-            ),
-            (
-                vec![(20_000, 30_001), (1_000, 10_000)],
-                Some("invalid_fit_boundary_outside_window"),
-            ),
-            (
-                vec![(20_000, 30_000), (0, 10_000)],
-                Some("invalid_fit_boundary_outside_window"),
-            ),
+    fn fit_keeps_valid_siblings_and_original_slots_when_one_range_is_unusable() {
+        for (ranges, expected_slots) in [
+            (vec![(20_000, 30_000), (1_000, 10_000)], vec![0, 1]),
+            (vec![(10_000, 30_000), (1_000, 10_000)], vec![0, 1]),
+            (vec![(20_000, 30_000), (1_000, 25_000)], vec![0]),
+            (vec![(20_000, 30_001), (1_000, 10_000)], vec![1]),
+            (vec![(20_000, 30_000), (0, 10_000)], vec![0]),
         ] {
             let mut db = db();
             coarse(&db, "speech-a", 1_000, 10_000, "第一个活动");
@@ -5451,38 +5304,39 @@ mod tests {
                 .iter()
                 .map(|(start, end)| {
                     serde_json::json!({
-                        "start_ms":start,"end_ms":end,"title":"讨论","sources":"microphone",
-                        "merge_with_event_id":null
+                        "start_ms":start,"end_ms":end,"title":"讨论","sources":"microphone"
                     })
                 })
                 .collect();
-            let result = publish_fit(
-                &mut db,
-                &task,
-                serde_json::json!({"events":events}),
-                100_001,
+            assert_eq!(
+                publish_fit(
+                    &mut db,
+                    &task,
+                    serde_json::json!({"events":events}),
+                    100_001
+                )
+                .unwrap(),
+                expected_slots.len()
             );
-            if failure.is_none() {
-                assert_eq!(result.unwrap(), 2);
-                // Preserve response slot identities for candidate revisions; do not sort persistence links.
-                let first: i64 = db
-                    .query_row(
-                        "SELECT e.started_ms FROM event_candidate_links l
-                    JOIN named_events e ON e.id=l.event_id WHERE l.slot=0",
-                        [],
-                        |r| r.get(0),
-                    )
-                    .unwrap();
-                assert_eq!(first, ranges[0].0);
-            } else {
-                assert_eq!(result.unwrap_err(), failure.unwrap());
-                assert_eq!(
-                    db.query_row::<i64, _, _>("SELECT count(*) FROM named_events", [], |r| r
-                        .get(0))
-                        .unwrap(),
-                    0
-                );
-            }
+            let slots: Vec<i64> = db
+                .prepare("SELECT slot FROM event_candidate_links ORDER BY slot")
+                .unwrap()
+                .query_map([], |r| r.get(0))
+                .unwrap()
+                .collect::<Result<_, _>>()
+                .unwrap();
+            assert_eq!(slots, expected_slots);
+            assert_eq!(
+                db.query_row::<String, _, _>("SELECT state FROM candidate_windows", [], |r| r
+                    .get(0))
+                    .unwrap(),
+                "complete"
+            );
+            assert_eq!(
+                db.query_row::<i64, _, _>("SELECT count(*) FROM coarse_segments", [], |r| r.get(0))
+                    .unwrap(),
+                2
+            );
         }
     }
 
@@ -5509,10 +5363,6 @@ mod tests {
         for code in [
             "provider_invalid_json_content",
             "provider_invalid_json_content_syntax",
-            "invalid_fit_boundary_outside_window",
-            "invalid_fit_boundary_uncovered_speech",
-            "invalid_fit_boundary_unorganized",
-            "invalid_fit_boundary_existing_overlap",
             "invalid_fit_schema",
             "provider_incomplete_output",
         ] {
@@ -5588,10 +5438,7 @@ mod tests {
             (1000, 4000)
         );
         let invalid = serde_json::json!({"events":[{"start_ms":1000,"end_ms":4000,"title":"越界","summary":null,"sources":"microphone","merge_with_event_id":null}]});
-        assert_eq!(
-            publish_fit(&mut db, &task, invalid, 100_001).unwrap_err(),
-            "invalid_fit_boundary_outside_window"
-        );
+        assert_eq!(publish_fit(&mut db, &task, invalid, 100_001).unwrap(), 0);
     }
 
     #[test]
@@ -6068,10 +5915,7 @@ mod tests {
             .unwrap();
         let fit = serde_json::json!({"events":[{"start_ms":1_000,"end_ms":6_000,
             "title":"讨论","sources":"both","transcribe":true,"merge_with_event_id":null}]});
-        assert_eq!(
-            publish_fit(&mut db, &task, fit, 100_001).unwrap_err(),
-            "invalid_fit_source"
-        );
+        assert_eq!(publish_fit(&mut db, &task, fit, 100_001).unwrap(), 0);
         assert_eq!(
             db.query_row::<i64, _, _>("SELECT count(*) FROM named_events", [], |r| r.get(0))
                 .unwrap(),

@@ -277,11 +277,6 @@ fn parallel_activities_keep_both_ids_across_windows_and_respect_locked_predecess
                 .len(),
             2
         );
-        let duplicate = response(&next, Some(&sys), Some(&sys));
-        assert_eq!(
-            publish_fit_with_input(&mut db, &next, &input, duplicate, 2 * HOUR).unwrap_err(),
-            "invalid_fit_boundary_duplicate_continuation"
-        );
         // The publisher also refuses a locked target even if a model ignores the prompt.
         publish_fit_with_input(
             &mut db,
@@ -605,8 +600,8 @@ fn boundary_excerpt_is_bounded_source_scoped_and_not_published_outside_candidate
     let bad = json!({"events":[{"start_ms":first.start,"end_ms":second.end,
         "title":"会议","sources":"microphone","summary":null,"merge_with_event_id":id}]});
     assert_eq!(
-        publish_fit_with_input(&mut db, &second, &input.to_string(), bad, HOUR).unwrap_err(),
-        "invalid_fit_boundary_outside_window"
+        publish_fit_with_input(&mut db, &second, &input.to_string(), bad, HOUR).unwrap(),
+        0
     );
     db.execute(
         "UPDATE named_events SET boundary_locked=1 WHERE id=?1",
@@ -665,57 +660,179 @@ fn a_new_activity_after_a_continuation_stays_separate() {
 }
 
 #[test]
-fn fit_requires_complete_source_scoped_coverage_or_explicit_unorganized() {
-    for (ranges, ignored, expected) in [
-        (
-            vec![(1000, 2000), (3000, 5000)],
-            vec![],
-            Some("invalid_fit_boundary_uncovered_speech"),
-        ),
-        (vec![(1000, 2500), (2500, 5000)], vec![1], None),
-        (
-            vec![(1000, 5000)],
-            vec![0, 1],
-            Some("invalid_fit_boundary_unorganized"),
-        ),
-        (
-            vec![(1000, 5000)],
-            vec![1, 1],
-            Some("invalid_fit_boundary_unorganized"),
-        ),
-        (
-            vec![(1000, 5000)],
-            vec![2],
-            Some("invalid_fit_boundary_unorganized"),
-        ),
-        (
-            vec![(1000, 5000)],
-            vec![],
-            Some("invalid_fit_boundary_uncovered_speech"),
-        ),
+fn omitted_speech_and_any_unorganized_metadata_do_not_reject_useful_events() {
+    for ignored in [
+        json!([0, 1]),
+        json!([1, 1]),
+        json!([999]),
+        json!([-1]),
+        json!("bad"),
+        json!({}),
+        Value::Null,
     ] {
         let mut db = db();
-        speech(&db, 1000, 5000, "microphone", "一个不能截去开头的完整问题");
-        speech(&db, 1001, 4999, "system", "嗯");
+        speech(&db, 1000, 5000, "microphone", "一个完整问题");
+        speech(&db, 1001, 4999, "system", "另一来源的声音");
         refresh_candidates(&mut db, HOUR, true).unwrap();
         let task = take_task(&mut db, CloudProvider::Llm, HOUR)
             .unwrap()
             .unwrap();
-        let output = json!({"events":ranges.into_iter().map(|(a,b)|json!({
-            "start_ms":a,"end_ms":b,"title":"讨论","summary":null,"sources":"microphone"
-        })).collect::<Vec<_>>(),"unorganized":ignored});
-        let result = publish_fit(&mut db, &task, output, HOUR);
-        if let Some(error) = expected {
-            assert_eq!(result.unwrap_err(), error);
-            assert_eq!(
-                db.query_row::<i64, _, _>("SELECT count(*) FROM named_events", [], |r| r.get(0))
-                    .unwrap(),
-                0
-            );
-        } else {
-            assert_eq!(result.unwrap(), 2);
-        }
+        let output = json!({"events":[{"start_ms":1000,"end_ms":2000,"title":"讨论","sources":"microphone"}],"unorganized":ignored});
+        assert_eq!(publish_fit(&mut db, &task, output, HOUR).unwrap(), 1);
+        let items = timeline(&db, 0, 6000).unwrap();
+        assert!(items.iter().any(|i| i.id.is_some()));
+        assert!(items.iter().any(|i| i.id.is_none() && i.ended_ms == 5000));
+        assert_eq!(
+            db.query_row::<i64, _, _>("SELECT count(*) FROM coarse_segments", [], |r| r.get(0))
+                .unwrap(),
+            2
+        );
     }
+}
+
+#[test]
+fn malformed_entries_and_metadata_preserve_independent_fields_and_slots() {
+    let mut db = db();
+    speech(&db, 1000, 9000, "microphone", "持续讨论");
+    refresh_candidates(&mut db, HOUR, true).unwrap();
+    let task = take_task(&mut db, CloudProvider::Llm, HOUR)
+        .unwrap()
+        .unwrap();
+    let output = json!({"events":[
+        null,
+        {"start_ms":1000,"end_ms":3000,"sources":"microphone","title":17,"summary":{"bad":true},"merge_with_event_id":[]},
+        {"start_ms":3000,"end_ms":4000,"sources":"unknown","title":"坏来源"},
+        {"start_ms":4000,"end_ms":6000,"sources":"microphone","title":"有效标题","summary":"有效摘要","merge_with_event_id":"不存在"},
+        {"start_ms":"7000","end_ms":8000,"sources":"microphone"},
+        {"start_ms":7000,"end_ms":9000,"sources":"microphone","summary":"只有标题缺失"}
+    ],"unorganized":"无效旧字段"});
+    assert_eq!(publish_fit(&mut db, &task, output, HOUR).unwrap(), 3);
+    let rows: Vec<(i64,String,Option<String>)> = db.prepare(
+        "SELECT l.slot,e.title,e.summary FROM event_candidate_links l JOIN named_events e ON e.id=l.event_id ORDER BY l.slot"
+    ).unwrap().query_map([], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap().collect::<Result<_,_>>().unwrap();
+    assert_eq!(
+        rows,
+        vec![
+            (1, "普通会话".into(), None),
+            (3, "有效标题".into(), Some("有效摘要".into())),
+            (5, "普通会话".into(), Some("只有标题缺失".into()))
+        ]
+    );
+    assert_eq!(
+        db.query_row::<String, _, _>("SELECT state FROM cloud_tasks", [], |r| r.get(0))
+            .unwrap(),
+        "complete"
+    );
+
+    // Keep slot identity and previous content when metadata, entire entries,
+    // or later slots are omitted from a subsequent response.
+    let prior_ids: Vec<String> = db
+        .prepare("SELECT event_id FROM event_candidate_links ORDER BY slot")
+        .unwrap()
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    publish_fit(
+        &mut db,
+        &task,
+        json!({"events":[null,null,null,
+            {"start_ms":4000,"end_ms":6000,"sources":"microphone","title":{},"summary":"新摘要"}
+        ]}),
+        HOUR + 1,
+    )
+    .unwrap();
+    publish_fit(&mut db, &task, json!({"events":[]}), HOUR + 2).unwrap();
+    let current_ids: Vec<String> = db
+        .prepare("SELECT id FROM named_events WHERE deleted_ms IS NULL ORDER BY started_ms")
+        .unwrap()
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert_eq!(prior_ids, current_ids);
+    assert_eq!(
+        db.query_row::<(String, String), _, _>(
+            "SELECT title,summary FROM named_events WHERE started_ms=4000",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?))
+        )
+        .unwrap(),
+        ("有效标题".into(), "新摘要".into())
+    );
+}
+
+#[test]
+fn event_count_and_duplicate_continuations_do_not_reject_other_content() {
+    let mut db = db();
+    for index in 0..13 {
+        speech(
+            &db,
+            index * 2000,
+            index * 2000 + 1000,
+            "microphone",
+            "独立活动",
+        );
+    }
+    refresh_candidates(&mut db, HOUR, true).unwrap();
+    let task = take_task(&mut db, CloudProvider::Llm, HOUR)
+        .unwrap()
+        .unwrap();
+    let events: Vec<_> = (0..13)
+        .map(|index| {
+            json!({"start_ms":index*2000,"end_ms":index*2000+1000,
+        "sources":"microphone","title":"活动","merge_with_event_id":"同一个无效标记"})
+        })
+        .collect();
+    assert_eq!(
+        publish_fit(&mut db, &task, json!({"events":events}), HOUR).unwrap(),
+        13
+    );
+    assert_eq!(
+        db.query_row::<i64, _, _>("SELECT count(*) FROM named_events", [], |r| r.get(0))
+            .unwrap(),
+        13
+    );
+}
+
+#[test]
+fn invalid_top_level_and_storage_errors_remain_real_failures() {
+    let mut db = db();
+    speech(&db, 1000, 9000, "microphone", "讨论");
+    refresh_candidates(&mut db, HOUR, true).unwrap();
+    let task = take_task(&mut db, CloudProvider::Llm, HOUR)
+        .unwrap()
+        .unwrap();
+    for output in [
+        json!(null),
+        json!({"events":{}}),
+        json!({"summary":"没有活动数组"}),
+    ] {
+        assert_eq!(
+            publish_fit(&mut db, &task, output, HOUR).unwrap_err(),
+            "invalid_fit_schema"
+        );
+    }
+    db.execute_batch("CREATE TRIGGER fail_second BEFORE INSERT ON named_events WHEN NEW.title='存储失败' BEGIN SELECT RAISE(ABORT,'simulated_storage_failure'); END;").unwrap();
+    let output = json!({"events":[
+        {"start_ms":1000,"end_ms":3000,"sources":"microphone","title":"正常"},
+        {"start_ms":4000,"end_ms":6000,"sources":"microphone","title":"存储失败"}
+    ]});
+    assert!(
+        publish_fit(&mut db, &task, output, HOUR)
+            .unwrap_err()
+            .contains("simulated_storage_failure")
+    );
+    assert_eq!(
+        db.query_row::<i64, _, _>("SELECT count(*) FROM named_events", [], |r| r.get(0))
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        db.query_row::<String, _, _>("SELECT state FROM candidate_windows", [], |r| r.get(0))
+            .unwrap(),
+        "processing"
+    );
 }
 
 fn overlapping_meeting(db: &Connection) {
@@ -754,7 +871,7 @@ fn overlapping_meeting(db: &Connection) {
 }
 
 #[test]
-fn overlapping_compute_windows_continue_and_never_complete_a_discarded_proposal() {
+fn overlapping_compute_windows_keep_existing_event_and_allow_later_valid_continuation() {
     for extended_prior in [false, true] {
         let mut db = db();
         overlapping_meeting(&db);
@@ -788,9 +905,8 @@ fn overlapping_compute_windows_continue_and_never_complete_a_discarded_proposal(
         let sent: Value = serde_json::from_str(&input).unwrap();
         assert_eq!(sent["context"]["previous_events"][0]["id"], id);
         assert_eq!(
-            publish_fit_with_input(&mut db, &second, &input, output(&second, None), HOUR)
-                .unwrap_err(),
-            "invalid_fit_boundary_existing_overlap"
+            publish_fit_with_input(&mut db, &second, &input, output(&second, None), HOUR).unwrap(),
+            0
         );
         assert_eq!(
             db.query_row::<String, _, _>(
@@ -799,7 +915,7 @@ fn overlapping_compute_windows_continue_and_never_complete_a_discarded_proposal(
                 |r| r.get(0)
             )
             .unwrap(),
-            "processing"
+            "complete"
         );
         publish_fit_with_input(&mut db, &second, &input, output(&second, Some(&id)), HOUR).unwrap();
         assert_eq!(

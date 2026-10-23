@@ -97,6 +97,12 @@ python3 scripts/verify_ingestion_quality.py \
 
 沿用运行中 build bundle 禁止覆盖的保护。验证只使用隔离数据目录；日常录制运行 `/Applications/hear.app`。发布仍须整包停止/替换/重新启动并确认运行身份；本 PR 不安装、不重启现有客户端。
 
-LLM 返回 evidence IDs 后让 Core 导出时间看似更简单，但 coarse observation 可覆盖同一段内多个主题，只选择整段 ID 会丢失片段内部毫秒切分；要保留精度仍需额外边界协议。本轮继续当前毫秒契约与严格校验、有限重试，不在可观测性改动中切换整理语义。
+LLM 返回 evidence IDs 后让 Core 导出时间看似更简单，但 coarse observation 可覆盖同一段内多个主题，只选择整段 ID 会丢失片段内部毫秒切分；要保留精度仍需额外边界协议。当前继续使用毫秒边界，但发布按字段/事件独立接纳；覆盖和未整理下标不再作为整批准入条件，有限重试只针对整份输出无法解析等任务级失败。
 
 2026-10-22 的 0.1.4 打包检查将上述手动模型入口重命名为 `scripts/smoke_model_preparation.py`，避免普通 unittest discovery 导入需要显式模型目录的脚本。它仍是单独运行的模型烟测，不加入默认离线门禁。
+
+## 2026-10-23 整理结果局部接纳
+
+`invalid_fit_boundary_unorganized/uncovered_speech` 是旧版覆盖协议错误，当前不再产生。旧失败不会自动重跑，但不再阻塞有效事件的自动精转。`malformed_entries_and_metadata_preserve_independent_fields_and_slots`、`omitted_speech_and_any_unorganized_metadata_do_not_reject_useful_events` 验证字段隔离与底层素材保留；`invalid_top_level_and_storage_errors_remain_real_failures` 区分模型字段异常与真正存储失败。
+
+显式 ignored 测试 `snapshot_partial_fit_publication_oct23` 在 `HEAR_TEST_DB` 的临时副本调用生产发布与规划函数，验证当天两个失败窗口、原声/粗转/精转原文数量和已有付费请求身份。不调用云服务、不写活跃数据库。原供应商响应没有保存，使用合成异常响应，不能声称重放了原模型输出。

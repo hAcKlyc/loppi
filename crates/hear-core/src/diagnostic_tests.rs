@@ -95,6 +95,87 @@ fn fixture() -> (tempfile::TempDir, Store) {
 }
 
 #[test]
+#[ignore = "requires the Oct 23 frozen HEAR_TEST_DB; synthetic responses, temporary copy, no cloud calls"]
+fn snapshot_partial_fit_publication_oct23() {
+    use hear_protocol::CloudProvider;
+    use uuid::Uuid;
+    let (_directory, mut store) = fixture();
+    let db = &mut store.db;
+    let count = |db: &Connection, sql| db.query_row(sql, [], |r| r.get::<_, i64>(0)).unwrap();
+    let originals = (
+        count(db, "SELECT count(*) FROM audio_blocks"),
+        count(db, "SELECT count(*) FROM coarse_segments"),
+        count(db, "SELECT count(*) FROM precise_segments"),
+    );
+    let paid: Vec<(String,Option<String>,i64)> = db.prepare("SELECT id,remote_id,submit_attempts FROM cloud_tasks WHERE provider='asr' AND submit_attempts>0 ORDER BY id").unwrap()
+        .query_map([],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap().collect::<Result<_,_>>().unwrap();
+    let failed: Vec<String> = db.prepare("SELECT id FROM cloud_tasks WHERE provider='llm' AND state='failed' AND started_ms>=1792684800000 AND ended_ms<1792771200000 ORDER BY started_ms").unwrap()
+        .query_map([],|r|r.get(0)).unwrap().collect::<Result<_,_>>().unwrap();
+    assert_eq!(failed.len(), 2);
+    let now = 1792753200000;
+    // The first meeting can progress even before its failed neighbour is retried.
+    let first: (String,i64,i64,i64) = db.query_row("SELECT id,started_ms,ended_ms,source_mask FROM named_events WHERE started_ms=1792728949940 AND deleted_ms IS NULL",[],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).unwrap();
+    assert_eq!(
+        events::asr::settling_state(db, &first.0, first.1, first.2, first.3).unwrap(),
+        None
+    );
+    events::asr::refresh(db, now).unwrap();
+    let refs_before = count(db, "SELECT count(*) FROM event_asr_refs");
+    for id in &failed {
+        events::retry_task(db, Uuid::parse_str(id).unwrap(), now).unwrap();
+        let task = events::take_task(db, CloudProvider::Llm, now)
+            .unwrap()
+            .unwrap();
+        assert_eq!(&task.id.to_string(), id);
+        let input = events::llm_input(db, &task).unwrap();
+        let sent: serde_json::Value = serde_json::from_str(&input).unwrap();
+        let prior = sent["context"]["previous_events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["source_mask"] == 1)
+            .unwrap();
+        // Deliberately corrupt optional fields and the redundant old list.
+        // This is not a replay of the unavailable original provider response.
+        let result = serde_json::json!({"events":[null,{"start_ms":task.start,"end_ms":task.end,
+            "sources":"microphone","title":{},"summary":42,"merge_with_event_id":prior["id"]}],"unorganized":[0,0,999999]});
+        assert_eq!(
+            events::publish_fit_with_input(db, &task, &input, result, now).unwrap(),
+            1
+        );
+        assert_eq!(
+            db.query_row::<String, _, _>("SELECT state FROM cloud_tasks WHERE id=?1", [id], |r| r
+                .get(0))
+                .unwrap(),
+            "complete"
+        );
+    }
+    events::asr::refresh(db, now).unwrap();
+    let refs_after = count(db, "SELECT count(*) FROM event_asr_refs");
+    assert!(refs_after >= refs_before);
+    assert_eq!(
+        originals,
+        (
+            count(db, "SELECT count(*) FROM audio_blocks"),
+            count(db, "SELECT count(*) FROM coarse_segments"),
+            count(db, "SELECT count(*) FROM precise_segments")
+        )
+    );
+    let still_paid: Vec<(String,Option<String>,i64)> = db.prepare("SELECT id,remote_id,submit_attempts FROM cloud_tasks WHERE provider='asr' AND submit_attempts>0 ORDER BY id").unwrap()
+        .query_map([],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap().collect::<Result<_,_>>().unwrap();
+    assert_eq!(paid, still_paid);
+    eprintln!(
+        "partial_fit_snapshot windows=2 preserved_audio={} preserved_coarse={} preserved_precise={} preserved_paid_requests={} refs_before={} refs_after={}",
+        originals.0,
+        originals.1,
+        originals.2,
+        paid.len(),
+        refs_before,
+        refs_after
+    );
+}
+
+#[test]
 #[ignore = "requires HEAR_TEST_DB; operates on a temporary copy, never the live database"]
 fn snapshot_retention_and_event_projection() {
     let (_directory, mut store) = fixture();

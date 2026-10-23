@@ -86,6 +86,10 @@ test('rendered live cards name the ongoing recording and use an open time range'
     const blockedNamed=render(state,{...live,id:'named',title:'讨论',processing_state:'transcribed',fit_state:'fit_credentials_unavailable'});
     assert.match(blockedNamed,/正在记录/);
     assert.match(blockedNamed,/整理受阻 · 无法读取密钥/);
+    assert.match(blockedNamed,/精转完成/);
+    const partlyFitted=render(null,{...live,id:'named',title:'讨论',processing_state:'transcribed',fit_state:'fit_failed'});
+    assert.match(partlyFitted,/部分整理失败/);
+    assert.match(partlyFitted,/精转完成/);
     assert.match(render(null), /<h3>未整理素材<\/h3>/);
     assert.doesNotMatch(render(null), /至今/);
     assert.match(render(state,{...live,id:'named',title:'项目讨论'}), /<h3>项目讨论<\/h3>/);
@@ -94,6 +98,25 @@ test('rendered live cards name the ongoing recording and use an open time range'
     assert.match(summarized,/讨论了页面布局，倾向保留色块。/);
     assert.doesNotMatch(summarized,/原始摘录/);
     assert.match(render(null,{...live,id:'legacy',title:'历史事件'}),/暂无内容摘要，打开查看转录/);
+  } finally { await server.close(); }
+});
+
+test('hiding coarse keeps failed material visible with its own status and time', async () => {
+  const { createServer } = await import('vite');
+  const { createElement } = await import('react');
+  const { renderToStaticMarkup } = await import('react-dom/server');
+  const server = await createServer({server:{middlewareMode:true},appType:'custom'});
+  try {
+    const { TimelineView } = await server.ssrLoadModule('/src/TimelineView.tsx');
+    const date=new Date(2026,9,23), start=date.getTime()+16*3600000;
+    for(const processing_state of ['fit_failed','fit_retrying','fit_credentials_unavailable']) {
+      const failed={...item,id:null,manual_range_id:null,title:null,sources:'microphone',started_ms:start,ended_ms:start+900000,processing_state,recording_sources:[]};
+      const html=renderToStaticMarkup(createElement(TimelineView,{date,items:[failed],gaps:[],moments:[],recordingState:null,loading:false,hideCoarse:true}));
+      assert.match(html,/未整理素材/);
+      assert.match(html,/16:00/);
+      assert.doesNotMatch(html,/粗转内容已隐藏/);
+      assert.doesNotMatch(html,/原始摘录/);
+    }
   } finally { await server.close(); }
 });
 
