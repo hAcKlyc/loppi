@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: implemented
 created: 2026-10-24
 updated: 2026-10-24
 scope: 窗口内生成并续接事件摘要及结构化理解，完成内部存储、引用与失效链路
@@ -120,7 +120,7 @@ hear 自动记录全天音频。事件摘要首先帮助用户认出“说的是
   - [x] 摘要 prompt、无长度硬限制、统一失效。
   - [x] 合成回归、静态/构建/运行验证与文档同步。
   - [x] requirements / adversarial 审查、修复、最终 architecture 审查。
-  - [ ] 提交与 PRD 整体验收。
+  - [x] 提交与 PRD 整体验收。
 
 ### 当前批次 Review 基线
 
@@ -158,3 +158,5 @@ hear 自动记录全天音频。事件摘要首先帮助用户认出“说的是
 | 三视角 | requirements / adversarial 定向复核 PASS；最终 architecture PASS | PASS |
 
 12 项 ignored 为既有显式模型/私有/规模测试，不属于本 PRD 门槛；没有外发真实转录或修改活跃数据。提交前校验其它 9 个 tracked 改动的内容哈希与开发前完全一致，未纳入本次暂存。
+
+- 2026-10-24：功能提交 `c30752c`（分支 `codex/event-understanding`）。对提交后的同一实现再次通过 workspace check、TypeScript、lint；既有最终 Core/时间线回归、build/smoke 与独立审查覆盖该代码，未再修改实现。逐项完成整份 PRD 原子验收，状态 implemented。运行中的已安装应用未升级。
