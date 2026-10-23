@@ -538,31 +538,32 @@ fn stability_waits_for_local_backlog_and_does_not_starve_later_events() {
 
 #[test]
 fn projection_and_scheduler_share_next_event_horizon_and_source_scope() {
-    for failed_at in [9_000, 10_000, 20_000] {
-        let mut db = database();
-        block(&db, "a", 1000, 6000, true);
-        let first = auto(&mut db, 1000, 6000);
-        auto(&mut db, 10_000, 15_000);
-        db.execute(
-            "INSERT INTO candidate_windows VALUES('later',?1,30000,'hash','failed',NULL)",
-            [failed_at],
-        )
-        .unwrap();
-        let expected = if failed_at < 10_000 {
-            Some("fit_failed")
-        } else {
-            None
-        };
-        assert_eq!(
-            settling_state(&db, &first.to_string(), 1000, 6000, 1).unwrap(),
-            expected
-        );
-        assert_eq!(
-            event_detail(&db, first, 0, 10).unwrap().processing_state,
-            expected.unwrap_or("settling_asr")
-        );
-        refresh(&mut db, 1_000_000).unwrap();
-        assert_eq!(count(&db), if failed_at < 10_000 { 0 } else { 1 });
+    for state in ["failed", "pending", "processing"] {
+        for failed_at in [9_000, 10_000, 20_000] {
+            let mut db = database();
+            block(&db, "a", 1000, 6000, true);
+            let first = auto(&mut db, 1000, 6000);
+            auto(&mut db, 10_000, 15_000);
+            db.execute(
+                "INSERT INTO candidate_windows VALUES('later',?1,30000,'hash',?2,NULL)",
+                params![failed_at, state],
+            )
+            .unwrap();
+            db.execute("INSERT INTO coarse_segments VALUES('tail','tail','session','microphone',?1,?1+100,'尾部证据','test')",[failed_at]).unwrap();
+            let expected = if state != "failed" && failed_at < 10_000 {
+                Some("settling_asr")
+            } else {
+                None
+            };
+            assert_eq!(
+                settling_state(&db, &first.to_string(), 1000, 6000, 1).unwrap(),
+                expected
+            );
+            refresh(&mut db, 1_000_000).unwrap();
+            assert_eq!(count(&db), if expected.is_some() { 0 } else { 1 });
+            refresh(&mut db, 1_000_001).unwrap();
+            assert_eq!(count(&db), if expected.is_some() { 0 } else { 1 });
+        }
     }
     let mut db = database();
     block(&db, "a", 1000, 6000, true);

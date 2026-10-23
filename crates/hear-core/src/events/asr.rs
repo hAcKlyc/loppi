@@ -198,22 +198,16 @@ pub fn settling_state(
           AND ((b.source='microphone' AND ?4&1!=0) OR (b.source='system' AND ?4&2!=0))
           AND (b.analysis_state IN('pending','processing','sealing','failed') OR b.retention_decision='pending_vad_v2'))
           OR EXISTS(SELECT 1 FROM coarse_jobs WHERE started_ms<?3 AND ended_ms>?2 AND state IN('pending','processing','failed') AND ((source='microphone' AND ?4&1!=0) OR(source='system' AND ?4&2!=0)))
-          OR EXISTS(SELECT 1 FROM candidate_windows WHERE started_ms<?3 AND ended_ms>?2 AND state IN('pending','processing','failed'))
+          OR EXISTS(SELECT 1 FROM candidate_windows WHERE started_ms<?3 AND ended_ms>?2 AND state IN('pending','processing'))
           OR EXISTS(SELECT 1 FROM coarse_segments c WHERE c.started_ms<?3 AND c.ended_ms>?5
              AND ((c.source='microphone' AND ?4&1!=0) OR (c.source='system' AND ?4&2!=0))
-             AND NOT EXISTS(SELECT 1 FROM candidate_windows w WHERE w.state='complete' AND w.started_ms<=c.started_ms AND w.ended_ms>=c.ended_ms)
+             AND NOT EXISTS(SELECT 1 FROM candidate_windows w WHERE w.state IN('complete','failed') AND w.started_ms<=c.started_ms AND w.ended_ms>=c.ended_ms)
              AND NOT EXISTS(SELECT 1 FROM named_events n WHERE n.deleted_ms IS NULL AND n.id!=?1
                 AND n.started_ms<=c.started_ms AND n.ended_ms>=c.ended_ms
                 AND ((c.source='microphone' AND n.source_mask&1!=0) OR (c.source='system' AND n.source_mask&2!=0))))",
           params![id,start,horizon,mask,end],|r|r.get(0)).map_err(|e|e.to_string())?;
     if !busy {
         return Ok(None);
-    }
-    let fit_failed: bool = db.query_row(
-        "SELECT EXISTS(SELECT 1 FROM candidate_windows WHERE started_ms<?2 AND ended_ms>?1 AND state='failed')",
-        params![start,horizon], |r| r.get(0)).map_err(|e|e.to_string())?;
-    if fit_failed {
-        return Ok(Some("fit_failed"));
     }
     let analysis_failed: bool = db
         .query_row(
