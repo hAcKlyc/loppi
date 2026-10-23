@@ -195,7 +195,11 @@ fn understanding_cannot_borrow_inherited_refs_from_other_parallel_event() {
         .unwrap();
     let output = response(&next, structure(json!([foreign])), Some(&mic));
     publish_fit_with_input(&mut db, &next, &input.to_string(), output, NOW + 1).unwrap();
-    assert_eq!(stored(&db).3["key_points"], json!([]));
+    assert_eq!(
+        stored(&db).3["key_points"][0]["evidence_refs"][0]["segment_id"],
+        "mic"
+    );
+    assert_eq!(stored(&db).3["key_points"].as_array().unwrap().len(), 1);
     // Direct normalization isolates ownership even when times/source masks permit it.
     let prior = input["context"]["previous_events"]
         .as_array()
@@ -214,7 +218,7 @@ fn understanding_cannot_borrow_inherited_refs_from_other_parallel_event() {
     .unwrap();
     assert_eq!(
         serde_json::from_str::<Value>(&normalized).unwrap()["key_points"],
-        json!([])
+        stored(&db).3["key_points"]
     );
 }
 
@@ -385,4 +389,172 @@ fn understanding_survives_reopening_without_new_jobs() {
             .unwrap(),
         jobs
     );
+}
+
+fn delta(points: Value, objects: Value) -> Value {
+    json!({"topics":[],"key_points":points,"mentioned_objects":objects})
+}
+
+#[test]
+fn understanding_omission_preserves_early_facts_and_explicit_correction_replaces_them() {
+    let mut db = db();
+    speech(&db, "early", 1000, 901000, "microphone");
+    let first = task(&mut db);
+    let initial = json!({"topics":["发布"],"key_points":[
+        {"text":"发布日期定在周五。","evidence_indices":[0]},
+        {"text":"预算十万元。","evidence_indices":[0]}],
+        "mentioned_objects":[{"name":"导出","type":"feature","context":"本周上线。","evidence_indices":[0]}]});
+    publish(&mut db, &first, response(&first, initial, None));
+    let id = stored(&db).0;
+    speech(&db, "middle", 961000, 1861000, "microphone");
+    let second = task(&mut db);
+    publish(
+        &mut db,
+        &second,
+        response(
+            &second,
+            delta(
+                json!([
+        {"text":"验收还需要覆盖大文件。","evidence_indices":[0]}]),
+                json!([]),
+            ),
+            Some(&id),
+        ),
+    );
+    let middle = stored(&db).3;
+    assert_eq!(middle["key_points"].as_array().unwrap().len(), 3);
+    assert_eq!(
+        middle["key_points"][0]["evidence_refs"][0]["segment_id"],
+        "early"
+    );
+    assert_eq!(middle["mentioned_objects"][0]["context"], "本周上线。");
+    speech(&db, "correction", 1921000, 2821000, "microphone");
+    let third = task(&mut db);
+    let input = llm_input(&db, &third).unwrap();
+    let changes = delta(
+        json!([
+        {"text":"发布从周五改到下周一，预算仍为十万元。","evidence_indices":[0],"replaces":[0,1]}]),
+        json!([{"name":"导出","type":"feature","context":"本周上线计划已撤回，改为下周一。","evidence_indices":[0],"replaces":[0]}]),
+    );
+    let mut result = response(&third, changes, Some(&id));
+    result["events"][0]["summary"] =
+        json!("讨论导出发布与十万元预算，验收需覆盖大文件；原定周五的发布已改为下周一。");
+    publish_fit_with_input(&mut db, &third, &input, result.clone(), NOW + 1).unwrap();
+    let snapshot = stored(&db);
+    assert_eq!(snapshot.0, id);
+    assert_eq!(snapshot.3["key_points"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        snapshot.3["key_points"][0]["text"],
+        "验收还需要覆盖大文件。"
+    );
+    assert_eq!(
+        snapshot.3["key_points"][1]["evidence_refs"][0]["segment_id"],
+        "correction"
+    );
+    assert!(!snapshot.3.to_string().contains("发布日期定在周五。"));
+    assert_eq!(snapshot.3["mentioned_objects"].as_array().unwrap().len(), 1);
+    assert!(!snapshot.3.to_string().contains("replaces"));
+    assert!(!snapshot.3.to_string().contains("evidence_indices"));
+    // Same in-flight response cannot apply local old indices a second time.
+    publish_fit_with_input(&mut db, &third, &input, result, NOW + 2).unwrap();
+    assert_eq!(stored(&db), snapshot);
+}
+
+#[test]
+fn understanding_invalid_or_conflicting_updates_do_not_erase_old_claims() {
+    for replaces in [
+        json!([-1]),
+        json!([1]),
+        json!([0, 42]),
+        json!(["0"]),
+        json!([0.5]),
+        Value::Null,
+    ] {
+        let mut db = db();
+        speech(&db, "old", 1000, 901000, "microphone");
+        let first = task(&mut db);
+        publish(
+            &mut db,
+            &first,
+            response(&first, structure(json!([0])), None),
+        );
+        let before = stored(&db);
+        speech(&db, "new", 961000, 1861000, "microphone");
+        let next = task(&mut db);
+        let update = delta(
+            json!([{"text":"修改后的日期。","evidence_indices":[0],"replaces":replaces}]),
+            json!([]),
+        );
+        publish(&mut db, &next, response(&next, update, Some(&before.0)));
+        assert_eq!(stored(&db).3, before.3, "{replaces}");
+    }
+    let mut db = db();
+    speech(&db, "old", 1000, 901000, "microphone");
+    let first = task(&mut db);
+    publish(
+        &mut db,
+        &first,
+        response(&first, structure(json!([0])), None),
+    );
+    let before = stored(&db);
+    speech(&db, "new", 961000, 1861000, "microphone");
+    let next = task(&mut db);
+    let input: Value = serde_json::from_str(&llm_input(&db, &next).unwrap()).unwrap();
+    let old_index = input["context"]["previous_events"][0]["understanding"]["key_points"][0]["evidence_indices"][0].clone();
+    // An old anchor alone and an invalid anchor cannot authorize a replacement.
+    for indices in [json!([old_index]), json!([0, 9999])] {
+        let update = delta(
+            json!([{"text":"无新证据的更正。","evidence_indices":indices,"replaces":[0]}]),
+            json!([]),
+        );
+        let normalized = understanding::normalize(
+            &update,
+            &input,
+            Some(&input["context"]["previous_events"][0]),
+            1000,
+            1861000,
+            1,
+        )
+        .unwrap();
+        assert_eq!(
+            serde_json::from_str::<Value>(&normalized).unwrap(),
+            before.3
+        );
+    }
+    let update = delta(
+        json!([
+        {"text":"周一发布。","evidence_indices":[0],"replaces":[0]},
+        {"text":"周二发布。","evidence_indices":[0],"replaces":[0]}]),
+        json!([]),
+    );
+    publish(&mut db, &next, response(&next, update, Some(&before.0)));
+    let points = stored(&db).3["key_points"].clone();
+    assert_eq!(points.as_array().unwrap().len(), 1);
+    assert_eq!(points[0]["text"], "周一发布。");
+}
+
+#[test]
+fn understanding_missing_patch_and_linked_correction_preserve_unmodified_content() {
+    let mut db = db();
+    speech(&db, "one", 1000, 10000, "microphone");
+    let task = task(&mut db);
+    publish(&mut db, &task, response(&task, structure(json!([0])), None));
+    let before = stored(&db);
+    for bad in [
+        Value::Null,
+        json!({}),
+        json!({"topics":[],"key_points":42,"mentioned_objects":[]}),
+    ] {
+        publish(&mut db, &task, response(&task, bad, None));
+        assert_eq!(stored(&db), before);
+    }
+    let update = delta(
+        json!([{"text":"已取消本轮发布。","evidence_indices":[0],"replaces":[0]}]),
+        json!([]),
+    );
+    publish(&mut db, &task, response(&task, update, None));
+    let after = stored(&db);
+    assert_eq!(after.3["key_points"][0]["text"], "已取消本轮发布。");
+    assert_eq!(after.3["mentioned_objects"], before.3["mentioned_objects"]);
+    assert_eq!(after.3["topics"], before.3["topics"]);
 }

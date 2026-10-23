@@ -106,7 +106,9 @@ pub(super) fn prepare_context(
             let mut value = serde_json::to_value(stored).map_err(|e| e.to_string())?;
             value.as_object_mut().unwrap().remove("schema_version");
             for key in ["key_points", "mentioned_objects"] {
-                for item in value[key].as_array_mut().unwrap() {
+                for (item_index, item) in value[key].as_array_mut().unwrap().iter_mut().enumerate()
+                {
+                    item["item_index"] = json!(item_index);
                     let refs: Vec<EvidenceRef> = serde_json::from_value(
                         item.as_object_mut()
                             .unwrap()
@@ -141,11 +143,25 @@ pub(super) fn normalize(
     end: i64,
     mask: i64,
 ) -> Option<String> {
-    let topics = output.get("topics")?.as_array()?;
-    let points = output.get("key_points")?.as_array()?;
-    let objects = output.get("mentioned_objects")?.as_array()?;
+    let prior_value = prior.map(|p| &p["understanding"]);
+    let valid = |v: &Value| {
+        ["topics", "key_points", "mentioned_objects"]
+            .iter()
+            .all(|key| v[*key].is_array())
+    };
+    let prior_value = prior_value.filter(|v| valid(v));
+    let empty = json!({"topics":[],"key_points":[],"mentioned_objects":[]});
+    // A missing/invalid patch is not a deletion of an existing valid snapshot.
+    let output = if valid(output) {
+        output
+    } else if prior_value.is_some() {
+        &empty
+    } else {
+        return None;
+    };
+    let old = prior_value.unwrap_or(&empty);
     let catalog: Vec<EvidenceRef> = serde_json::from_value(input["evidence"].clone()).ok()?;
-    let mut allowed: HashSet<usize> = input["observations"]
+    let current: HashSet<usize> = input["observations"]
         .as_array()?
         .iter()
         .filter_map(|v| {
@@ -154,6 +170,7 @@ pub(super) fn normalize(
                 .and_then(|n| usize::try_from(n).ok())
         })
         .collect();
+    let mut allowed = current.clone();
     if let Some(prior) = prior {
         for key in ["key_points", "mentioned_objects"] {
             if let Some(items) = prior["understanding"][key].as_array() {
@@ -193,51 +210,127 @@ pub(super) fn normalize(
         refs.sort_by(|a, b| a.segment_id.cmp(&b.segment_id));
         Some(refs)
     };
+    let point = |value: &Value| {
+        Some(Point {
+            text: text(&value["text"])?,
+            evidence_refs: references(value)?,
+        })
+    };
+    let object = |value: &Value| {
+        Some(Object {
+            name: text(&value["name"])?,
+            r#type: text(&value["type"])?,
+            context: text(&value["context"])?,
+            entity_id: None,
+            evidence_refs: references(value)?,
+        })
+    };
     let mut result = Understanding {
         schema_version: 1,
         topics: Vec::new(),
         key_points: Vec::new(),
         mentioned_objects: Vec::new(),
     };
-    for topic in topics {
-        let topic = text(topic)?;
-        if !result.topics.contains(&topic) {
-            result.topics.push(topic);
+    for topic in old["topics"]
+        .as_array()?
+        .iter()
+        .chain(output["topics"].as_array()?)
+    {
+        if let Some(topic) = text(topic) {
+            if !result.topics.contains(&topic) {
+                result.topics.push(topic);
+            }
         }
     }
-    let mut seen = HashSet::new();
-    for point in points {
-        let (Some(text), Some(evidence_refs)) = (text(&point["text"]), references(point)) else {
-            continue;
-        };
-        let point = Point {
-            text,
-            evidence_refs,
-        };
-        if seen.insert(serde_json::to_string(&point).ok()?) {
+    for point in update_items(
+        old["key_points"].as_array()?,
+        output["key_points"].as_array()?,
+        &current,
+        point,
+    ) {
+        if let Some(existing) = result.key_points.iter_mut().find(|p| p.text == point.text) {
+            merge_references(&mut existing.evidence_refs, point.evidence_refs);
+        } else {
             result.key_points.push(point);
         }
     }
-    seen.clear();
-    for object in objects {
-        let (Some(name), Some(r#type), Some(context), Some(evidence_refs)) = (
-            text(&object["name"]),
-            text(&object["type"]),
-            text(&object["context"]),
-            references(object),
-        ) else {
-            continue;
-        };
-        let object = Object {
-            name,
-            r#type,
-            context,
-            entity_id: None,
-            evidence_refs,
-        };
-        if seen.insert(serde_json::to_string(&object).ok()?) {
+    for object in update_items(
+        old["mentioned_objects"].as_array()?,
+        output["mentioned_objects"].as_array()?,
+        &current,
+        object,
+    ) {
+        if let Some(existing) = result.mentioned_objects.iter_mut().find(|o| {
+            o.name == object.name && o.r#type == object.r#type && o.context == object.context
+        }) {
+            merge_references(&mut existing.evidence_refs, object.evidence_refs);
+        } else {
             result.mentioned_objects.push(object);
         }
     }
     serde_json::to_string(&result).ok()
+}
+
+/// Indices address the sent target snapshot, never an array being mutated.
+/// Revisions/actual inputs are checked by the publication transaction first.
+fn update_items<T>(
+    old: &[Value],
+    updates: &[Value],
+    current: &HashSet<usize>,
+    decode: impl Fn(&Value) -> Option<T>,
+) -> Vec<T> {
+    let mut retained: Vec<Option<T>> = old.iter().map(&decode).collect();
+    let mut added = Vec::new();
+    for update in updates {
+        let Some(item) = decode(update) else {
+            continue;
+        };
+        let replaces = match update.get("replaces") {
+            None => Some(Vec::new()),
+            Some(v) => v.as_array().and_then(|items| {
+                items
+                    .iter()
+                    .map(|i| i.as_u64().and_then(|n| usize::try_from(n).ok()))
+                    .collect::<Option<Vec<_>>>()
+            }),
+        };
+        let Some(replaces) = replaces else {
+            continue;
+        };
+        if !replaces.is_empty() {
+            // Changed/retracted claims need evidence in this window. Old anchors
+            // alone cannot authorize deleting earlier facts. Decode also checks
+            // every anchor's target scope, source and ownership.
+            let fresh = update["evidence_indices"]
+                .as_array()
+                .is_some_and(|indices| {
+                    indices.iter().any(|i| {
+                        i.as_u64()
+                            .and_then(|n| usize::try_from(n).ok())
+                            .is_some_and(|n| current.contains(&n))
+                    })
+                });
+            if !fresh
+                || replaces
+                    .iter()
+                    .any(|&i| retained.get(i).is_none_or(Option::is_none))
+            {
+                continue;
+            }
+            for i in replaces {
+                retained[i] = None;
+            }
+        }
+        added.push(item);
+    }
+    retained.into_iter().flatten().chain(added).collect()
+}
+
+fn merge_references(existing: &mut Vec<EvidenceRef>, additional: Vec<EvidenceRef>) {
+    for reference in additional {
+        if !existing.contains(&reference) {
+            existing.push(reference);
+        }
+    }
+    existing.sort_by(|a, b| a.segment_id.cmp(&b.segment_id));
 }

@@ -209,6 +209,7 @@ pub fn chat(
         json!(user),
         deadline,
         meter,
+        true,
         DEEPSEEK_URL,
     )
 }
@@ -227,6 +228,7 @@ pub fn describe_image(
         image_content(png_base64),
         deadline,
         meter,
+        false,
         DEEPSEEK_URL,
     )
 }
@@ -245,17 +247,23 @@ fn chat_content(
     user: Value,
     deadline: Instant,
     meter: &dyn Meter,
+    thinking: bool,
     endpoint: &str,
 ) -> Result<Value, Failure> {
-    let body = json!({
+    let mut body = json!({
         "model": model,
-        "thinking": {"type":"disabled"},
+        "thinking": {"type": if thinking { "enabled" } else { "disabled" }},
         "response_format": {"type":"json_object"},
         "messages": [
             {"role":"system","content":system},
             {"role":"user","content":user}
         ]
     });
+    // Window fitting must reconcile old facts with corrections in one call.
+    // Low effort enables that reasoning without changing screenshot requests.
+    if thinking {
+        body["reasoning_effort"] = json!("low");
+    }
     let timeout = remaining(deadline)?;
     let usage_id = meter.begin(model, None, None)?;
     let response = metered_result(
@@ -720,6 +728,8 @@ mod tests {
                     .starts_with("data:image/png;base64,")
             );
             assert_eq!(request["response_format"]["type"], "json_object");
+            assert_eq!(request["thinking"]["type"], "disabled");
+            assert!(request.get("reasoning_effort").is_none());
             let response=json!({"choices":[{"finish_reason":"stop","message":{"content":json!({"summary":"测试图摘要","transcript":"# Hello\n\n完整转录"}).to_string()}}],"usage":{"prompt_tokens":20,"completion_tokens":10}}).to_string();
             write!(stream,"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",response.len(),response).unwrap();
         });
@@ -800,6 +810,7 @@ mod tests {
             image_content(&png),
             Instant::now() + Duration::from_secs(5),
             &meter,
+            false,
             &endpoint,
         )
         .unwrap();

@@ -16,6 +16,8 @@ mod activity_tests;
 pub(crate) mod asr;
 mod understanding;
 #[cfg(test)]
+mod understanding_replay_tests;
+#[cfg(test)]
 mod understanding_tests;
 
 struct CandidatePolicy {
@@ -3127,42 +3129,39 @@ pub const FIT_SYSTEM: &str = r#"你负责把个人连续录音整理为「真实
 - 合并也只返回本窗口的延续时间。例如旧事件 1000-9000、新候选 10000-20000，延续应返回 10000-20000 和旧 id，不能返回 1000-20000。
 - 同音源的事件时间不可重叠；仅互不相交的音源可以输出重叠事件。按时间顺序输出。
 
-5. 标题和摘要描述整场活动。
-- 标题简洁、具体到活动，例如「产品评审会」「晚间家庭聊天」，不要用最后一个小话题替换整场标题。
-- summary 用中文一段话、总分结构，先用两三句交代这是哪件事、围绕什么具体问题讨论，再适度展开有辨识度的细节。建议约 500 字以内，不为凑长度复述或抽象拔高。保留材料里确实出现的对象、方案、例子、数字、分歧及推进情况，让用户能快速认出这段讨论。不要只写“讨论了产品价值与发展方向”等空泛归纳。
-- 粗转有噪声，不能把含糊片段编造成决定、身份、数字或承诺；设想、个人观点、讨论倾向、确定结果要区分。重复「松手」或零散 Yeah 不支持主题摘要。
-- 延续事件时，结合已有摘要和本次证据更新整场摘要。若更早内容在 candidate 外且没有摘要，返回 null，不把本窗口摘要冒充整场摘要。无法恢复可靠含义时也返回 null。
+5. 更新累计记忆，然后写整场摘要。这是本任务的关键要求。
+你每次只看到一个计算窗的原文，但 context 中给出了目标事件完整的累计记忆。一次调用同时完成以下工作，不可把本窗口当整场：
+A. 选择实际续接目标 previous_events，或本窗口已关联的 linked_events。旧理解每条的 item_index 是该目标数组中的编号。
+B. 输出 understanding 增量。旧条目默认保留，不能靠“不再提到”删除。新增条目 replaces=[]；只有明确更正、撤回同一事实，或合并内容等价的重复条目，replaces 才填被替换旧条目的 item_index。一个旧条目本轮最多替换一次。修订要点与相关对象都要同步检查。
+C. 在脑中按本轮增量更新旧记忆，基于更新后的全部内容写 summary：早期重要事项、中段主线与最新进展都要覆盖。不要只概括 observations，不要只沿用上一轮 summary（它可能漏了早期内容）。旧 key_points 前面的具体事实仍然重要。
 
-6. 同一次请求提取 understanding，作为整场活动的最新结构化快照。
-- topics：简洁的开放主题字符串数组，辅助定位，不穷举每句。
-- key_points：值得独立引用的事实、观点或结论数组，每项 {"text":"带必要具体细节和限定条件的独立陈述","evidence_indices":[0]}。summary 讲清整段讨论如何展开，key_points 留存可单独取用的内容，不把摘要机械拆句复制。
-- mentioned_objects：有辨识意义的对象数组，每项 {"name":"原材料中的对象名","type":"开放类型，如 feature/concept/metric/project","context":"它在这次讨论中的具体作用","entity_id":null,"evidence_indices":[0]}。不推断全局人物身份，entity_id 必须为 null。
-- evidence 是本次请求的引用目录，evidence_indices 只引用其从零开始的下标；observations 的 evidence_index 给出对应下标，text=null 不能支持文字结论。不要把 observations 数组位置当作引用下标。目录时间是完整粗转句段的真实时间，不能用它扩大本窗口活动范围。
-- previous_events/linked_events 的 understanding 已重新映射为本次引用下标。延续时保留仍成立的重要内容及其引用，合并重复主题/对象/要点，结合新证据更新；后文推翻前述设想时标明最新状态，不能只追加或只保存最后一个议题。
-- 只能引用当前活动所用 observations 或实际续接目标原有的引用，不能借用另一独立事件的要点/引用。每个要点和对象至少一个引用，不猜造下标。
-- 更早活动内容在 candidate 外且原 understanding 为 null 时，本次 understanding 返回 null，不用局部材料伪装全场；原 summary 与 understanding 分别判断。当前窗口覆盖全事件时可以从零生成。无法恢复含义也返回 null。
-- 没有可提取条目时相应数组用 []，不要为填满结构编造内容。三个数组都要包含。
+understanding 的输出格式（每条 replaces 必填，不能省略）：
+{"topics":["新增主题"],"key_points":[{"replaces":[],"text":"新事实或更新后的完整事实","evidence_indices":[0]}],"mentioned_objects":[{"replaces":[],"name":"原文中的对象名","type":"feature/concept/metric 等开放字符串","context":"更新后的语境","entity_id":null,"evidence_indices":[0]}]}
+- 新事件全部使用 replaces=[]。续接时不重复输出未改变的旧条目，三个数组没有新增/修改时用 []。
+- replaces 引用的是目标旧条目的 item_index，不是 evidence_index。如旧 key_points[2] 为“预算五千”，后文明确改为三千，应输出 {"replaces":[2],"text":"预算从五千下调为三千。","evidence_indices":[本轮证据编号]}，而不是另加一条三千让旧的五千仍然有效。
+- 撤回也通过替换写成最新状态，如“此前上线搜索的计划已撤回，本轮只上线导出”；不是删除历史，不新增互相冲突的现行结论。不同人的不同观点不等于纠正。合并重复内容可用 replaces=[0,2]。
+- 新增理由、新例子、回答问题、提出质疑或不同人的观点都是新增，不能因为涉及同一对象就 replaces 旧要点。例如旧记录有看板的组成，新发言补充为何需要它：新增动因，不替换组成。回复反对意见也不能把原反对意见删掉。合并重复条目时必须保留各项仍成立的细节和旧引用，不能以泛化概括替换具体事实。
+- 修订必须引用本窗口支持变化的证据；其它引用只允许当前活动 observations 或实际目标的旧引用。每项至少一个合法 evidence_indices。它是本次 evidence 目录的零基下标，不是 observations 的数组位置。text=null 不支持文字结论；不借另一并行事件引用，不猜造编号。
+- topics 只补充新主题；key_points 每项只表达一件可独立引用和修改的事实/观点，保留具体条件、数字、例子及未定状态；不要把范围、日期、预算等不同事实塞进同一项；mentioned_objects 记录有辨识意义的对象与语境，不推断真实身份，entity_id=null。
+- 更早历史在 candidate 外而目标 understanding=null 时，本次仍返回 null，不能用局部材料伪装完整理解。字段完整性分别判断。
 
-输出要求：
-只返回一个 JSON 对象，字段 events 为活动数组。按实际活动生成，不设目标数量。
-每个事件必须包含：
-- start_ms、end_ms：candidate 内的绝对整数毫秒，保持精度，end_ms > start_ms。
-- title：非空简洁字符串。
-- summary：具体、可辨认的中文段落，或 null。
-- understanding：包含 topics、key_points、mentioned_objects 的对象，或 null。
-- sources：严格为 "microphone"、"system"、"both" 之一，遵守同场活动和真实来源证据规则。
-- merge_with_event_id：延续时为 context.previous_events 中对应项的 id 原字符串，否则 null。
-不要输出 Markdown 代码围栏、注释、类型占位符或说明文字。
+summary 的输出要求：
+- 是整场最新摘要，中文一段话，约 500 字。先一两句定位整场在做什么，再约三至五句写关键具体内容，兼顾最早阶段与后续变化。不是过程流水账，不必复述每个发言者。
+- 最早阶段的重要具体事项必须写入，不能因末窗口话题多就挤掉。把篇幅分给全场；从累计 key_points 选择，不只看旧 summary。禁止“这是同一场的延续”“本段讨论”“中段主讲人”等局部小结开头。
+- 更正后的日期/范围/预算按最新状态叙述，可以简要交代变化；不把被撤回的旧方案写回现行结论。
+- 保留具体对象、例子、分歧和推进状态，不泛化为“讨论产品方向”。粗转噪声不能编成身份、数字、决定。无法可靠恢复意义时 null。历史在 candidate 外且目标 summary=null 时返回 null，不能冒充全场。
+- title 描述整场活动，续接时优先保持原活动级标题，不能随着末窗小话题变成另一件事。
 
+只返回 JSON {"events":[...]}，无代码围栏。每个事件字段：start_ms、end_ms、sources、merge_with_event_id、title、understanding、summary。建议按这个顺序输出，先生成增量，再生成整场摘要。start_ms/end_ms 严格在 candidate 内且 end>start；sources 为 microphone/system/both；merge_with_event_id 是实际 previous_events id 或 null。
 下列 JSON 仅演示结构，标题、摘要、时间和 ID 都是假设值，实际输出只能取自当前输入。
 
 例：evidence[0] 对应 10000-20000 内麦克风讨论，明确比较留白和色块，并说最终样式还需试做；没有上一事件：
-{"events":[{"start_ms":10000,"end_ms":20000,"title":"页面布局讨论","summary":"讨论记录页该怎样区分不同记录，比较了留白和色块两种布局，当前倾向保留色块；最终样式还需试做后确定。","sources":"microphone","merge_with_event_id":null,"understanding":{"topics":["记录页布局"],"key_points":[{"text":"讨论倾向用色块区分记录，但最终样式还需试做。","evidence_indices":[0]}],"mentioned_objects":[{"name":"色块","type":"concept","context":"用于区分记录的布局方案。","entity_id":null,"evidence_indices":[0]}]}}]}
+{"events":[{"start_ms":10000,"end_ms":20000,"title":"页面布局讨论","summary":"讨论记录页该怎样区分不同记录，比较了留白和色块两种布局，当前倾向保留色块；最终样式还需试做后确定。","sources":"microphone","merge_with_event_id":null,"understanding":{"topics":["记录页布局"],"key_points":[{"replaces":[],"text":"讨论倾向用色块区分记录，但最终样式还需试做。","evidence_indices":[0]}],"mentioned_objects":[{"replaces":[],"name":"色块","type":"concept","context":"用于区分记录的布局方案。","entity_id":null,"evidence_indices":[0]}]}}]}
 
-以下例子只演示活动归属与摘要，实际有完整材料时还须按上述要求填写 understanding。
+例：已有事件 11111111-1111-4111-8111-111111111111 的旧要点 item_index=0 为“布局倾向留白”，item_index=1 为“预算五千”；旧对象 item_index=0 为“留白：原拟方案”。当前 evidence[0] 说“留白方案取消，改用色块，预算不变，最终样式仍待试做”。只修订受影响条目，摘要仍覆盖旧预算：
+{"events":[{"start_ms":10000,"end_ms":20000,"sources":"microphone","merge_with_event_id":"11111111-1111-4111-8111-111111111111","title":"页面布局讨论","understanding":{"topics":[],"key_points":[{"replaces":[0],"text":"原拟留白方案已取消，现倾向用色块区分记录，最终样式仍待试做。","evidence_indices":[0]}],"mentioned_objects":[{"replaces":[0],"name":"留白与色块","type":"concept","context":"布局由留白调整为色块，仍待试做。","entity_id":null,"evidence_indices":[0]}]},"summary":"讨论记录页布局与五千元预算，比较了留白和色块两种方案。原拟留白方案已取消，现倾向色块，预算不变，最终样式还需试做。"}]}
 
-例：上述讨论延续已有事件 11111111-1111-4111-8111-111111111111（1000-9000，摘要为「比较了两种页面布局。」），本窗口转为色块方案；仍续接同一活动：
-{"events":[{"start_ms":10000,"end_ms":20000,"title":"页面布局讨论","summary":"比较了两种页面布局，倾向保留色块来区分记录。","sources":"microphone","merge_with_event_id":"11111111-1111-4111-8111-111111111111"}]}
+以下例子仅展示活动边界，实际有材料时还须填写 understanding：
 
 例：10000-20000 内麦克风持续家庭闲聊，电脑同时播放独立的天文科普。必须分别归属，不能输出一个 both 事件：
 {"events":[{"start_ms":10000,"end_ms":20000,"title":"家庭闲聊","summary":"照顾孩子、收拾东西时聊起工作和旅行安排。","sources":"microphone","merge_with_event_id":null},{"start_ms":10000,"end_ms":20000,"title":"收听天文科普","summary":"节目介绍了恒星形成和演化的过程。","sources":"system","merge_with_event_id":null}]}
