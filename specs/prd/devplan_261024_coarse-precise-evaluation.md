@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: implemented
 created: 2026-10-24
 updated: 2026-10-24
 ---
@@ -29,4 +29,4 @@ updated: 2026-10-24
 
 2026-10-24：前置requirements/adversarial完成，c03条件gold澄清、缺失统计分母修复且独立故障注入通过；最终工具architecture PASS。329 tests/check/build通过。72次正式回放已启动，不重试、不修改输入或prompt。
 
-2026-10-24：72/72完整回放、126/126窗口调用返回；64/72严格结构通过，评分与输出全部保留。最终 requirements/adversarial 定向审查及独立统计重算 PASS，最终工具 architecture PASS。REPORT/metrics/私有逐例输出已完成，9个无关文件基线hash未变；Python编译与拥有diff检查通过。研究验收完成，当前候选prompt未稳定通过，不切换生产输入/模型。待本批提交后记录hash并关闭台账。
+2026-10-24：72/72完整回放、126/126窗口调用返回；64/72严格结构通过，评分与输出全部保留。最终 requirements/adversarial 定向审查及独立统计重算 PASS，最终工具 architecture PASS。REPORT/metrics/私有逐例输出已完成，9个无关文件基线hash未变；Python编译与拥有diff检查通过。研究验收完成，当前候选prompt未稳定通过，不切换生产输入/模型。本批提交 6e66c7e。最终HEAD重验Python编译、72次结构审计、冻结prompt/schema/gold哈希与整份契约后关闭台账；所有要求已完成。发布硬门槛真机项：无（本次为隔离研究工具与实验报告，不发布产品行为）。
