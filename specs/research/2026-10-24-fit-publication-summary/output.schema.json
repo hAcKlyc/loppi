@@ -1,0 +1,167 @@
+{
+  "type": "object",
+  "required": [
+    "events"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "events": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/event"
+      }
+    }
+  },
+  "$defs": {
+    "indices": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "uniqueItems": true
+    },
+    "point": {
+      "type": "object",
+      "required": [
+        "replaces",
+        "text",
+        "evidence_indices"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "replaces": {
+          "$ref": "#/$defs/indices"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_indices": {
+          "$ref": "#/$defs/indices",
+          "minItems": 1
+        }
+      }
+    },
+    "object": {
+      "type": "object",
+      "required": [
+        "replaces",
+        "name",
+        "type",
+        "context",
+        "entity_id",
+        "evidence_indices"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "replaces": {
+          "$ref": "#/$defs/indices"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "context": {
+          "type": "string",
+          "minLength": 1
+        },
+        "entity_id": {
+          "type": "null"
+        },
+        "evidence_indices": {
+          "$ref": "#/$defs/indices",
+          "minItems": 1
+        }
+      }
+    },
+    "understanding": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "topics",
+        "key_points",
+        "mentioned_objects"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "topics": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "key_points": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/point"
+          }
+        },
+        "mentioned_objects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/object"
+          }
+        }
+      }
+    },
+    "event": {
+      "type": "object",
+      "required": [
+        "start_ms",
+        "end_ms",
+        "sources",
+        "merge_with_event_id",
+        "title",
+        "understanding",
+        "summary"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "start_ms": {
+          "type": "integer"
+        },
+        "end_ms": {
+          "type": "integer"
+        },
+        "sources": {
+          "enum": [
+            "microphone",
+            "system",
+            "both"
+          ]
+        },
+        "merge_with_event_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "understanding": {
+          "$ref": "#/$defs/understanding"
+        },
+        "summary": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/$defs/point"
+          }
+        }
+      }
+    }
+  }
+}

@@ -9,6 +9,7 @@ import concurrent.futures
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import sqlite3
@@ -31,6 +32,16 @@ def signature(item):
 
 def refset(refs):
     return {json.dumps(r, sort_keys=True) for r in refs}
+
+
+def expected_summary_without_edits(summary, ctx, candidate):
+    old_text = (ctx or {}).get('summary')
+    normalized = (' '.join(summary.split()) or None) if isinstance(summary, str) and '\0' not in summary else None
+    # Old replay inputs predate sentence edits and used full-text replacement.
+    if not ctx or 'summary_sentences' not in ctx:
+        return normalized
+    history_outside = ctx['start_ms'] < candidate['start_ms'] or ctx['end_ms'] > candidate['end_ms']
+    return old_text if history_outside else normalized or old_text
 
 
 def verify_source(source, case_path):
@@ -187,11 +198,44 @@ def audit_case(path, schema):
             expected_mask = mask | (prior[merge]['source_mask'] if merge else 0)
             assert saved_event['source_mask'] == expected_mask, 'Persisted event source union differs'
             assert saved_event['title'] == event['title'], 'Model title rejected or changed by publication'
-            assert saved_event['summary'] == (' '.join(event['summary'].split()) if event['summary'] else None)
             old_u = (ctx or {}).get('understanding')
             allowed = set(current)
             if old_u:
                 allowed.update(j for k in ('key_points', 'mentioned_objects') for v in old_u[k] for j in v['evidence_indices'])
+            summary = event['summary']
+            if isinstance(summary, list):
+                old_text = (ctx or {}).get('summary')
+                old_sentences = [s.strip() for s in re.split(r'(?<=[。！？])', old_text or '') if s.strip()]
+                if ctx:
+                    assert ctx['summary_sentences'] == [dict(item_index=i,text=s) for i,s in enumerate(old_sentences)]
+                used = set(); revised = {}; added = []
+                for update in summary:
+                    indices = update['replaces']; refs = update['evidence_indices']
+                    assert len(set(indices)) == len(indices) and not used.intersection(indices)
+                    assert all(0 <= i < len(old_sentences) for i in indices)
+                    assert refs and all(i in allowed and i < len(catalog) for i in refs)
+                    assert all(expected_mask & {'microphone':1,'system':2}[catalog[i]['source']] for i in refs)
+                    assert all(catalog[i]['start_ms'] < saved_event['end_ms'] and catalog[i]['end_ms'] > saved_event['start_ms'] for i in refs)
+                    text = ' '.join(update['text'].split()); assert text
+                    if indices:
+                        assert current.intersection(refs)
+                        revised[min(indices)] = text; used.update(indices)
+                    else:
+                        added.append(text)
+                pieces = []
+                for i, text in enumerate(old_sentences):
+                    if i in revised:
+                        pieces.extend(s.strip() for s in re.split(r'(?<=[。！？])', revised[i]) if s.strip())
+                    elif i not in used:
+                        pieces.append(text)
+                for text in added:
+                    for sentence in re.split(r'(?<=[。！？])', text):
+                        sentence = sentence.strip()
+                        if sentence and sentence not in pieces: pieces.append(sentence)
+                expected_summary = (' '.join(pieces) or None) if used or added else old_text
+                assert saved_event['summary'] == expected_summary, 'Summary sentence merge differs from saved text'
+            else:
+                assert saved_event['summary'] == expected_summary_without_edits(summary, ctx, inp['candidate'])
             patch = event['understanding']; stored = saved_event['understanding']
             if patch is None:
                 assert not old_u, 'Unexpected missing patch despite valid history'

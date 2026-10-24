@@ -234,15 +234,65 @@ fn real_understanding_replay() {
             &json!({"window":n+1,"elapsed_seconds":requested.elapsed().as_secs_f64(),
                 "success":response.is_ok(),"error":response.as_ref().err().map(|e|format!("{e:?}"))}),
         );
-        let response = response.expect("LLM call failed; do not silently rerun paid calls");
+        let response = response.unwrap_or_else(|error| {
+            save("retained-saved.json", &snapshots(&db));
+            save("usage.json", &json!(*meter.0.borrow()));
+            panic!("LLM call failed; no paid rerun: {error:?}");
+        });
         save(&format!("window-{:02}-model.json", n + 1), &response);
-        let applied = publish_fit_with_input(&mut db, &task, &input, response, now).unwrap();
+        let publication = publish_fit_with_input(&mut db, &task, &input, response, now);
+        save(
+            &format!("window-{:02}-publication.json", n + 1),
+            &json!({"success":publication.is_ok(),"error":publication.as_ref().err()}),
+        );
+        let applied = publication.unwrap_or_else(|error| {
+            save("retained-saved.json", &snapshots(&db));
+            save("usage.json", &json!(*meter.0.borrow()));
+            panic!("Publication rejected; no paid rerun: {error}");
+        });
         save(&format!("window-{:02}-saved.json", n + 1), &snapshots(&db));
         eprintln!("replay_saved window={} applied={applied}", n + 1);
     }
     save("final-saved.json", &snapshots(&db));
     save("usage.json", &json!(*meter.0.borrow()));
     eprintln!("replay_complete windows={windows}");
+}
+
+#[test]
+#[ignore = "explicit local response manifest; offline, no credentials or live database"]
+fn recorded_fit_response_validation() {
+    let path = std::env::var("HEAR_RECORDED_FIT_MANIFEST").expect("private response manifest");
+    let cases: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    let mut rejected = 0;
+    for case in cases.as_array().unwrap() {
+        let raw: Value = serde_json::from_slice(
+            &std::fs::read(case["response_path"].as_str().unwrap()).unwrap(),
+        )
+        .unwrap();
+        let result = crate::cloud::parse_chat_content(&raw)
+            .map_err(|e| e.code)
+            .and_then(|v| {
+                let events = v["events"]
+                    .as_array()
+                    .ok_or("invalid_fit_schema".to_owned())?;
+                validate_fit_ranges(
+                    events,
+                    case["start_ms"].as_i64().unwrap(),
+                    case["end_ms"].as_i64().unwrap(),
+                )
+            });
+        assert_eq!(
+            result.as_ref().err().map(String::as_str),
+            case["expected_error"].as_str(),
+            "{}",
+            case["id"]
+        );
+        rejected += usize::from(result.is_err());
+    }
+    eprintln!(
+        "recorded_validation total={} rejected={rejected}",
+        cases.as_array().unwrap().len()
+    );
 }
 
 #[test]

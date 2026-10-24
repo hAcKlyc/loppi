@@ -110,12 +110,14 @@ def run(args):
     assert digest(root / 'output.schema.json') == cfg['schema_sha256']
     assert digest(private / 'gold.json') == cfg['gold_sha256']
     suite = read(private / 'suite.json')
+    arms = list(dict.fromkeys(case['arm'] for case in suite))
+    assert arms and set(arms) <= {'coarse', 'precise'}
     target = private / 'runs'
     target.mkdir(exist_ok=False)
     for case in suite:
         verify_source(private / 'fixtures' / f'{case["arm"]}.sqlite', private / 'cases' / case['arm'] / case['case_id'])
     for repeat in range(1, 4):
-        for arm in ('coarse', 'precise'):
+        for arm in arms:
             path = target / f'{arm}-r{repeat}'
             path.mkdir()
             shutil.copyfile(root / 'prompt.txt', path / 'prompt.txt')
@@ -129,9 +131,9 @@ def run(args):
         ids = [c['case_id'] for c in suite if c['arm']=='coarse']
         rng.shuffle(ids)
         for cid in ids:
-            arms = ['coarse', 'precise']
-            rng.shuffle(arms)
-            schedule.extend(dict(case_id=cid, arm=arm, repeat=repeat) for arm in arms)
+            shuffled_arms = arms.copy()
+            rng.shuffle(shuffled_arms)
+            schedule.extend(dict(case_id=cid, arm=arm, repeat=repeat) for arm in shuffled_arms)
     write(private / 'execution-order.json', schedule)
 
     def one(job):

@@ -265,7 +265,9 @@ fn understanding_invalidates_on_scope_change_and_late_input_changes() {
         let mut db = db();
         speech(&db, "mic", 1000, 10000, "microphone");
         let task = task(&mut db);
-        let output = response(&task, structure(json!([0])), None);
+        let mut output = response(&task, structure(json!([0])), None);
+        output["events"][0]["summary"] =
+            json!([{"replaces":[],"text":"讨论导出验证与周五排期。","evidence_indices":[0]}]);
         publish(&mut db, &task, output.clone());
         let (id, rev, _, _) = stored(&db);
         let input = llm_input(&db, &task).unwrap();
@@ -557,4 +559,139 @@ fn understanding_missing_patch_and_linked_correction_preserve_unmodified_content
     assert_eq!(after.3["key_points"][0]["text"], "已取消本轮发布。");
     assert_eq!(after.3["mentioned_objects"], before.3["mentioned_objects"]);
     assert_eq!(after.3["topics"], before.3["topics"]);
+}
+
+#[test]
+fn summary_edits_keep_early_details_and_apply_later_correction_in_place() {
+    let mut db = db();
+    let mut id = None;
+    for (n, start) in [1000, 961000, 1921000].into_iter().enumerate() {
+        speech(
+            &db,
+            &format!("summary-{n}"),
+            start,
+            start + 900000,
+            "microphone",
+        );
+        let task = task(&mut db);
+        let input = llm_input(&db, &task).unwrap();
+        let parsed: Value = serde_json::from_str(&input).unwrap();
+        if n > 0 {
+            assert_eq!(
+                parsed["context"]["previous_events"][0]["summary_sentences"][0]["text"],
+                "讨论导出验证与发布安排。"
+            );
+            assert_eq!(
+                parsed["context"]["previous_events"][0]["summary_sentences"][1]["item_index"],
+                1
+            );
+        }
+        let updates = match n {
+            0 => {
+                json!([{"replaces":[],"text":"讨论导出验证与发布安排。 原计划周五发布，预算五万元。","evidence_indices":[0]}])
+            }
+            1 => json!([{"replaces":[],"text":"先灰度5%，由小林验收。","evidence_indices":[0]}]),
+            _ => {
+                json!([{"replaces":[1],"text":"发布改为周一，预算仍为五万元。","evidence_indices":[0]}])
+            }
+        };
+        let mut output = response(&task, structure(json!([0])), id.as_deref());
+        output["events"][0]["summary"] = updates;
+        publish_fit_with_input(&mut db, &task, &input, output, NOW + 1).unwrap();
+        id = Some(stored(&db).0);
+    }
+    assert_eq!(
+        stored(&db).2.as_deref(),
+        Some("讨论导出验证与发布安排。 发布改为周一，预算仍为五万元。 先灰度5%，由小林验收。")
+    );
+}
+
+#[test]
+fn summary_invalid_edits_and_legacy_partial_text_cannot_remove_history() {
+    let input = json!({"candidate":{"start_ms":100,"end_ms":200},
+        "observations":[{"evidence_index":0},{"evidence_index":1},{"evidence_index":2}],
+        "evidence":[{"source":"microphone","start_ms":100,"end_ms":200},
+            {"source":"system","start_ms":100,"end_ms":200},
+            {"source":"microphone","start_ms":300,"end_ms":400},
+            {"source":"microphone","start_ms":1,"end_ms":99}]});
+    let old = json!({"start_ms":1,"end_ms":99,"summary":"预算五万元。 周五发布。"});
+    for patch in [
+        json!([{"text":"预算取消。","replaces":[9],"evidence_indices":[0]}]),
+        json!([{"text":"预算取消。","replaces":[0,0],"evidence_indices":[0]}]),
+        json!([{"text":"预算取消。","replaces":[0],"evidence_indices":[3]}]),
+        json!([{"text":"预算取消。","replaces":[0],"evidence_indices":[1]}]),
+        json!([{"text":"预算取消。","replaces":[0],"evidence_indices":[2]}]),
+        json!([{"text":"预算取消。","replaces":[0],"evidence_indices":[999]}]),
+        json!([{"text":"","replaces":[0],"evidence_indices":[0]}]),
+        json!("只讨论当前窗口。"),
+        Value::Null,
+    ] {
+        assert_eq!(
+            summary::apply(&patch, Some(&old), &input, 1, 200, 1).as_deref(),
+            old["summary"].as_str()
+        );
+    }
+    let patches = json!([
+        {"text":"预算八万元。","replaces":[0],"evidence_indices":[0]},
+        {"text":"预算取消。","replaces":[0],"evidence_indices":[0]},
+        {"text":"先测试。","replaces":[],"evidence_indices":[0]}]);
+    assert_eq!(
+        summary::apply(&patches, Some(&old), &input, 1, 200, 1).as_deref(),
+        Some("预算八万元。 周五发布。 先测试。")
+    );
+    let missing = json!({"start_ms":1,"end_ms":99,"summary":null});
+    assert_eq!(
+        summary::apply(&patches, Some(&missing), &input, 1, 200, 1),
+        None
+    );
+}
+
+#[test]
+fn illegal_time_keeps_published_event_and_processing_task_unchanged() {
+    for bad_first in [true, false] {
+        let mut db = db();
+        speech(&db, "range-history", 1000, 10000, "microphone");
+        let task = task(&mut db);
+        let valid = response(&task, structure(json!([0])), None);
+        publish(&mut db, &task, valid.clone());
+        let before = stored(&db);
+        db.execute(
+            "UPDATE cloud_tasks SET state='processing' WHERE id=?1",
+            [task.id.to_string()],
+        )
+        .unwrap();
+        db.execute(
+            "UPDATE candidate_windows SET state='processing' WHERE id=?1",
+            [&task.target_id],
+        )
+        .unwrap();
+        for (start, end) in [
+            (json!(null), json!(9000)),
+            (json!("1000"), json!(9000)),
+            (json!(1000), json!(1000)),
+            (json!(0), json!(10000)),
+            (json!(1000), json!(10001)),
+        ] {
+            let bad = json!({"start_ms":start,"end_ms":end,"sources":"microphone"});
+            let good = valid["events"][0].clone();
+            let output = json!({"events":if bad_first {vec![bad,good]} else {vec![good,bad]}});
+            assert!(
+                publish_fit(&mut db, &task, output, NOW + 2)
+                    .unwrap_err()
+                    .starts_with("invalid_fit_boundary_")
+            );
+            assert_eq!(stored(&db), before);
+            assert_eq!(
+                db.query_row::<String, _, _>(
+                    "SELECT state FROM cloud_tasks WHERE id=?1",
+                    [task.id.to_string()],
+                    |r| r.get(0)
+                )
+                .unwrap(),
+                "processing"
+            );
+        }
+        task_failed(&db, &task, "invalid_fit_boundary_range", NOW + 3).unwrap();
+        assert_eq!(stored(&db), before);
+    }
 }

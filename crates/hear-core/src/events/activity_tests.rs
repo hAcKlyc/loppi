@@ -600,8 +600,8 @@ fn boundary_excerpt_is_bounded_source_scoped_and_not_published_outside_candidate
     let bad = json!({"events":[{"start_ms":first.start,"end_ms":second.end,
         "title":"会议","sources":"microphone","summary":null,"merge_with_event_id":id}]});
     assert_eq!(
-        publish_fit_with_input(&mut db, &second, &input.to_string(), bad, HOUR).unwrap(),
-        0
+        publish_fit_with_input(&mut db, &second, &input.to_string(), bad, HOUR).unwrap_err(),
+        "invalid_fit_boundary_range"
     );
     db.execute(
         "UPDATE named_events SET boundary_locked=1 WHERE id=?1",
@@ -699,11 +699,11 @@ fn malformed_entries_and_metadata_preserve_independent_fields_and_slots() {
         .unwrap()
         .unwrap();
     let output = json!({"events":[
-        null,
+        {"start_ms":1000,"end_ms":2000,"sources":"unknown"},
         {"start_ms":1000,"end_ms":3000,"sources":"microphone","title":17,"summary":{"bad":true},"merge_with_event_id":[]},
         {"start_ms":3000,"end_ms":4000,"sources":"unknown","title":"坏来源"},
         {"start_ms":4000,"end_ms":6000,"sources":"microphone","title":"有效标题","summary":"有效摘要","merge_with_event_id":"不存在"},
-        {"start_ms":"7000","end_ms":8000,"sources":"microphone"},
+        {"start_ms":6000,"end_ms":7000,"sources":"unknown"},
         {"start_ms":7000,"end_ms":9000,"sources":"microphone","summary":"只有标题缺失"}
     ],"unorganized":"无效旧字段"});
     assert_eq!(publish_fit(&mut db, &task, output, HOUR).unwrap(), 3);
@@ -736,7 +736,10 @@ fn malformed_entries_and_metadata_preserve_independent_fields_and_slots() {
     publish_fit(
         &mut db,
         &task,
-        json!({"events":[null,null,null,
+        json!({"events":[
+            {"start_ms":1000,"end_ms":2000,"sources":"unknown"},
+            {"start_ms":2000,"end_ms":3000,"sources":"unknown"},
+            {"start_ms":3000,"end_ms":4000,"sources":"unknown"},
             {"start_ms":4000,"end_ms":6000,"sources":"microphone","title":{},"summary":"新摘要"}
         ]}),
         HOUR + 1,

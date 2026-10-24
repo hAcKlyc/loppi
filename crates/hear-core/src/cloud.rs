@@ -307,7 +307,7 @@ fn parse_metered_chat_content(
     parse_chat_content(response)
 }
 
-fn parse_chat_content(response: &Value) -> Result<Value, Failure> {
+pub(crate) fn parse_chat_content(response: &Value) -> Result<Value, Failure> {
     let choice = response
         .get("choices")
         .and_then(Value::as_array)
@@ -335,26 +335,88 @@ fn parse_chat_content(response: &Value) -> Result<Value, Failure> {
         .pointer("/message/content")
         .and_then(Value::as_str)
         .ok_or_else(|| "provider_missing_content".to_owned())?;
-    serde_json::from_str(content).map_err(|error| {
-        // Parser categories carry no response text, paths or credentials.
-        let code = match error.classify() {
-            serde_json::error::Category::Eof => "provider_invalid_json_content_eof",
-            serde_json::error::Category::Syntax => "provider_invalid_json_content_syntax",
-            serde_json::error::Category::Data => "provider_invalid_json_content_data",
-            serde_json::error::Category::Io => "provider_invalid_json_content_io",
-        };
-        Failure {
-            code: code.into(),
-            retry_after_ms: None,
-            context: hear_protocol::LogContext {
-                finish_reason: Some(hear_protocol::OutputFinishReason::Stop),
-                json_line: Some(error.line()),
-                json_column: Some(error.column()),
-                output_bytes: Some(content.len()),
-                ..Default::default()
-            },
+    serde_json::from_str::<UniqueJson>(content)
+        .map(|value| value.0)
+        .map_err(|error| {
+            // Parser categories carry no response text, paths or credentials.
+            let code = match error.classify() {
+                serde_json::error::Category::Eof => "provider_invalid_json_content_eof",
+                serde_json::error::Category::Syntax => "provider_invalid_json_content_syntax",
+                serde_json::error::Category::Data => "provider_invalid_json_content_data",
+                serde_json::error::Category::Io => "provider_invalid_json_content_io",
+            };
+            Failure {
+                code: code.into(),
+                retry_after_ms: None,
+                context: hear_protocol::LogContext {
+                    finish_reason: Some(hear_protocol::OutputFinishReason::Stop),
+                    json_line: Some(error.line()),
+                    json_column: Some(error.column()),
+                    output_bytes: Some(content.len()),
+                    ..Default::default()
+                },
+            }
+        })
+}
+
+// Inspect object members before Value's map can overwrite a duplicate. This
+// applies recursively, including same-value duplicates and escaped key names.
+struct UniqueJson(Value);
+
+impl<'de> Deserialize<'de> for UniqueJson {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct Visitor;
+        impl<'de> serde::de::Visitor<'de> for Visitor {
+            type Value = UniqueJson;
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("JSON with unique object keys")
+            }
+            fn visit_bool<E: serde::de::Error>(self, v: bool) -> Result<Self::Value, E> {
+                Ok(UniqueJson(v.into()))
+            }
+            fn visit_i64<E: serde::de::Error>(self, v: i64) -> Result<Self::Value, E> {
+                Ok(UniqueJson(v.into()))
+            }
+            fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<Self::Value, E> {
+                Ok(UniqueJson(v.into()))
+            }
+            fn visit_f64<E: serde::de::Error>(self, v: f64) -> Result<Self::Value, E> {
+                serde_json::Number::from_f64(v)
+                    .map(|n| UniqueJson(Value::Number(n)))
+                    .ok_or_else(|| E::custom("invalid number"))
+            }
+            fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<Self::Value, E> {
+                Ok(UniqueJson(v.into()))
+            }
+            fn visit_unit<E: serde::de::Error>(self) -> Result<Self::Value, E> {
+                Ok(UniqueJson(Value::Null))
+            }
+            fn visit_seq<A: serde::de::SeqAccess<'de>>(
+                self,
+                mut seq: A,
+            ) -> Result<Self::Value, A::Error> {
+                let mut values = Vec::new();
+                while let Some(value) = seq.next_element::<UniqueJson>()? {
+                    values.push(value.0);
+                }
+                Ok(UniqueJson(Value::Array(values)))
+            }
+            fn visit_map<A: serde::de::MapAccess<'de>>(
+                self,
+                mut map: A,
+            ) -> Result<Self::Value, A::Error> {
+                let mut values = serde_json::Map::new();
+                while let Some(key) = map.next_key::<String>()? {
+                    if values.contains_key(&key) {
+                        return Err(serde::de::Error::custom("duplicate object key"));
+                    }
+                    values.insert(key, map.next_value::<UniqueJson>()?.0);
+                }
+                Ok(UniqueJson(Value::Object(values)))
+            }
         }
-    })
+        deserializer.deserialize_any(Visitor)
+    }
 }
 
 fn volc_request(
@@ -655,6 +717,26 @@ pub fn verify_asr(key: &str, meter: &dyn Meter) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn duplicate_keys_are_rejected_before_value_overwrite() {
+        for content in [
+            r#"{"events":[],"events":[]}"#,
+            r#"{"events":[{"summary":"keep","summary":null}]}"#,
+            r#"{"x":[{"deep":{"secret":1,"\u0073ecret":2}}]}"#,
+        ] {
+            let response =
+                json!({"choices":[{"finish_reason":"stop","message":{"content":content}}]});
+            let error = parse_chat_content(&response).unwrap_err();
+            assert_eq!(error.code, "provider_invalid_json_content_data");
+            assert!(!format!("{error:?}").contains("secret"));
+        }
+        let content = r#"{"a":[true,false,null,-3,18446744073709551615,1.5,"中文"],"b":{"a":0}}"#;
+        let response = json!({"choices":[{"finish_reason":"stop","message":{"content":content}}]});
+        assert_eq!(
+            parse_chat_content(&response).unwrap(),
+            serde_json::from_str::<Value>(content).unwrap()
+        );
+    }
     #[test]
     fn malformed_output_preserves_only_numeric_parser_context() {
         let response = serde_json::json!({"choices":[{"finish_reason":"stop","message":{"content":"{\n  \"private words\": "}}]});
