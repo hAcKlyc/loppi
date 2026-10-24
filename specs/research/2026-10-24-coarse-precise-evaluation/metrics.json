@@ -1,0 +1,3315 @@
+{
+  "summary": {
+    "coarse": {
+      "expected": 36,
+      "completed": 36,
+      "structural_pass": 33,
+      "available_outputs": 36,
+      "missing_outputs": 0,
+      "empty_summary_runs": 0,
+      "case_mean_fact_coverage": 95.14,
+      "total_fact_correct": 129,
+      "total_fact_opportunities": 138,
+      "pooled_fact_coverage": 93.48,
+      "supported_recall": 93.48,
+      "supported_correct": 129,
+      "supported_total": 138,
+      "common_supported_recall": 93.33,
+      "common_correct": 126,
+      "common_total": 135,
+      "error_runs": 9,
+      "error_rate_fixed_denominator": 25.0,
+      "error_rate_available_outputs": 25.0,
+      "field_error_runs": {
+        "summary": 7,
+        "key_points": 7,
+        "objects": 4,
+        "title_topics": 0
+      },
+      "summary_case_mean_coverage": 87.15,
+      "summary_chars_median": 210.5,
+      "summary_chars_max": 760,
+      "incomplete_long_runs": 0,
+      "early_correct": 20,
+      "early_retained": 19,
+      "early_summary_correct": 18,
+      "early_summary_retained": 14,
+      "stable_cases": 6,
+      "fact_repeat_frequency": {
+        "0": 0,
+        "1": 1,
+        "2": 7,
+        "3": 38
+      },
+      "planned_windows": 63,
+      "attempted_windows": 63,
+      "successful_windows": 63,
+      "latency_p50": 42.864,
+      "latency_p95": 92.906,
+      "over_60s": 20,
+      "call_seconds": 2818.06,
+      "usage_records": 63,
+      "usage_unavailable_calls": 0,
+      "prompt_tokens": 620540,
+      "completion_tokens": 468594,
+      "reasoning_tokens": 413404
+    },
+    "precise": {
+      "expected": 36,
+      "completed": 36,
+      "structural_pass": 31,
+      "available_outputs": 36,
+      "missing_outputs": 0,
+      "empty_summary_runs": 3,
+      "case_mean_fact_coverage": 94.91,
+      "total_fact_correct": 131,
+      "total_fact_opportunities": 138,
+      "pooled_fact_coverage": 94.93,
+      "supported_recall": 97.04,
+      "supported_correct": 131,
+      "supported_total": 135,
+      "common_supported_recall": 97.04,
+      "common_correct": 131,
+      "common_total": 135,
+      "error_runs": 8,
+      "error_rate_fixed_denominator": 22.22,
+      "error_rate_available_outputs": 22.22,
+      "field_error_runs": {
+        "summary": 4,
+        "key_points": 5,
+        "objects": 2,
+        "title_topics": 0
+      },
+      "summary_case_mean_coverage": 73.03,
+      "summary_chars_median": 260.5,
+      "summary_chars_max": 1003,
+      "incomplete_long_runs": 0,
+      "early_correct": 19,
+      "early_retained": 19,
+      "early_summary_correct": 16,
+      "early_summary_retained": 7,
+      "stable_cases": 3,
+      "fact_repeat_frequency": {
+        "0": 1,
+        "1": 1,
+        "2": 2,
+        "3": 42
+      },
+      "planned_windows": 63,
+      "attempted_windows": 63,
+      "successful_windows": 63,
+      "latency_p50": 47.554,
+      "latency_p95": 99.648,
+      "over_60s": 24,
+      "call_seconds": 3017.58,
+      "usage_records": 63,
+      "usage_unavailable_calls": 0,
+      "prompt_tokens": 891315,
+      "completion_tokens": 515938,
+      "reasoning_tokens": 451923
+    }
+  },
+  "cases": [
+    {
+      "case_id": "c01",
+      "label": "短句：会员与续订",
+      "minutes": 0.52,
+      "coarse": {
+        "coverage": [
+          100.0,
+          100.0,
+          100.0
+        ],
+        "mean_coverage": 100.0,
+        "summary_coverage": [
+          100.0,
+          100.0,
+          100.0
+        ],
+        "error_runs": 0,
+        "structural_pass": 3,
+        "summary_chars": [
+          54,
+          67,
+          66
+        ]
+      },
+      "precise": {
+        "coverage": [
+          100.0,
+          100.0,
+          100.0
+        ],
+        "mean_coverage": 100.0,
+        "summary_coverage": [
+          100.0,
+          100.0,
+          100.0
+        ],
+        "error_runs": 0,
+        "structural_pass": 3,
+        "summary_chars": [
+          80,
+          91,
+          86
+        ]
+      },
+      "precise_minus_coarse": 0.0
+    },
+    {
+      "case_id": "c02",
+      "label": "口述：IM 环境上下文",
+      "minutes": 1.0,
+      "coarse": {
+        "coverage": [
+          100.0,
+          100.0,
+          100.0
+        ],
+        "mean_coverage": 100.0,
+        "summary_coverage": [
+          100.0,
+          100.0,
+          100.0
+        ],
+        "error_runs": 0,
+        "structural_pass": 3,
+        "summary_chars": [
+          103,
+          91,
+          120
+        ]
+      },
+      "precise": {
+        "coverage": [
+          100.0,
+          100.0,
+          100.0
+        ],
+        "mean_coverage": 100.0,
+        "summary_coverage": [
+          100.0,
+          100.0,
+          100.0
+        ],
+        "error_runs": 0,
+        "structural_pass": 2,
+        "summary_chars": [
+          126,
+          136,
+          123
+        ]
+      },
+      "precise_minus_coarse": 0.0
+    },
+    {
+      "case_id": "c03",
+      "label": "口述：模型配置方案",
+      "minutes": 1.93,
+      "coarse": {
+        "coverage": [
+          100.0,
+          100.0,
+          100.0
+        ],
+        "mean_coverage": 100.0,
+        "summary_coverage": [
+          100.0,
+          100.0,
+          100.0
+        ],
+        "error_runs": 0,
+        "structural_pass": 3,
+        "summary_chars": [
+          179,
+          230,
+          203
+        ]
+      },
+      "precise": {
+        "coverage": [
+          100.0,
+          100.0,
+          100.0
+        ],
+        "mean_coverage": 100.0,
+        "summary_coverage": [
+          0.0,
+          100.0,
+          100.0
+        ],
+        "error_runs": 0,
+        "structural_pass": 2,
+        "summary_chars": [
+          0,
+          225,
+          227
+        ]
+      },
+      "precise_minus_coarse": 0.0
+    },
+    {
+      "case_id": "c04",
+      "label": "对谈：实习生评价",
+      "minutes": 3.41,
+      "coarse": {
+        "coverage": [
+          100.0,
+          100.0,
+          100.0
+        ],
+        "mean_coverage": 100.0,
+        "summary_coverage": [
+          100.0,
+          100.0,
+          100.0
+        ],
+        "error_runs": 0,
+        "structural_pass": 3,
+        "summary_chars": [
+          104,
+          121,
+          124
+        ]
+      },
+      "precise": {
+        "coverage": [
+          100.0,
+          66.67,
+          100.0
+        ],
+        "mean_coverage": 88.89,
+        "summary_coverage": [
+          100.0,
+          0.0,
+          100.0
+        ],
+        "error_runs": 0,
+        "structural_pass": 2,
+        "summary_chars": [
+          149,
+          0,
+          196
+        ]
+      },
+      "precise_minus_coarse": -11.11
+    },
+    {
+      "case_id": "c05",
+      "label": "上门：停车调价征询",
+      "minutes": 4.3,
+      "coarse": {
+        "coverage": [
+          100.0,
+          100.0,
+          100.0
+        ],
+        "mean_coverage": 100.0,
+        "summary_coverage": [
+          100.0,
+          100.0,
+          100.0
+        ],
+        "error_runs": 1,
+        "structural_pass": 3,
+        "summary_chars": [
+          206,
+          207,
+          153
+        ]
+      },
+      "precise": {
+        "coverage": [
+          100.0,
+          100.0,
+          75.0
+        ],
+        "mean_coverage": 91.67,
+        "summary_coverage": [
+          50.0,
+          75.0,
+          75.0
+        ],
+        "error_runs": 1,
+        "structural_pass": 3,
+        "summary_chars": [
+          221,
+          153,
+          265
+        ]
+      },
+      "precise_minus_coarse": -8.33
+    },
+    {
+      "case_id": "c06",
+      "label": "混合：消息结构口述与出门",
+      "minutes": 7.4,
+      "coarse": {
+        "coverage": [
+          100.0,
+          100.0,
+          25.0
+        ],
+        "mean_coverage": 75.0,
+        "summary_coverage": [
+          75.0,
+          75.0,
+          25.0
+        ],
+        "error_runs": 0,
+        "structural_pass": 2,
+        "summary_chars": [
+          215,
+          287,
+          155
+        ]
+      },
+      "precise": {
+        "coverage": [
+          100.0,
+          100.0,
+          100.0
+        ],
+        "mean_coverage": 100.0,
+        "summary_coverage": [
+          100.0,
+          100.0,
+          100.0
+        ],
+        "error_runs": 1,
+        "structural_pass": 2,
+        "summary_chars": [
+          675,
+          290,
+          371
+        ]
+      },
+      "precise_minus_coarse": 25.0
+    },
+    {
+      "case_id": "c07",
+      "label": "项目：创作者影响力方案",
+      "minutes": 8.34,
+      "coarse": {
+        "coverage": [
+          100.0,
+          100.0,
+          100.0
+        ],
+        "mean_coverage": 100.0,
+        "summary_coverage": [
+          75.0,
+          100.0,
+          75.0
+        ],
+        "error_runs": 0,
+        "structural_pass": 3,
+        "summary_chars": [
+          214,
+          352,
+          276
+        ]
+      },
+      "precise": {
+        "coverage": [
+          100.0,
+          100.0,
+          100.0
+        ],
+        "mean_coverage": 100.0,
+        "summary_coverage": [
+          75.0,
+          75.0,
+          75.0
+        ],
+        "error_runs": 0,
+        "structural_pass": 3,
+        "summary_chars": [
+          286,
+          268,
+          262
+        ]
+      },
+      "precise_minus_coarse": 0.0
+    },
+    {
+      "case_id": "c08",
+      "label": "对谈：短剧与平台经济",
+      "minutes": 12.88,
+      "coarse": {
+        "coverage": [
+          100.0,
+          100.0,
+          100.0
+        ],
+        "mean_coverage": 100.0,
+        "summary_coverage": [
+          100.0,
+          100.0,
+          100.0
+        ],
+        "error_runs": 1,
+        "structural_pass": 3,
+        "summary_chars": [
+          296,
+          401,
+          303
+        ]
+      },
+      "precise": {
+        "coverage": [
+          100.0,
+          100.0,
+          100.0
+        ],
+        "mean_coverage": 100.0,
+        "summary_coverage": [
+          100.0,
+          100.0,
+          100.0
+        ],
+        "error_runs": 1,
+        "structural_pass": 3,
+        "summary_chars": [
+          449,
+          412,
+          259
+        ]
+      },
+      "precise_minus_coarse": 0.0
+    },
+    {
+      "case_id": "c09",
+      "label": "长对谈：量身高与智能眼镜",
+      "minutes": 34.42,
+      "coarse": {
+        "coverage": [
+          100.0,
+          100.0,
+          75.0
+        ],
+        "mean_coverage": 91.67,
+        "summary_coverage": [
+          75.0,
+          100.0,
+          75.0
+        ],
+        "error_runs": 2,
+        "structural_pass": 3,
+        "summary_chars": [
+          393,
+          460,
+          375
+        ]
+      },
+      "precise": {
+        "coverage": [
+          75.0,
+          75.0,
+          100.0
+        ],
+        "mean_coverage": 83.33,
+        "summary_coverage": [
+          25.0,
+          50.0,
+          100.0
+        ],
+        "error_runs": 1,
+        "structural_pass": 3,
+        "summary_chars": [
+          361,
+          458,
+          847
+        ]
+      },
+      "precise_minus_coarse": -8.34
+    },
+    {
+      "case_id": "c10",
+      "label": "长混合：节目与家常",
+      "minutes": 40.25,
+      "coarse": {
+        "coverage": [
+          100.0,
+          75.0,
+          100.0
+        ],
+        "mean_coverage": 91.67,
+        "summary_coverage": [
+          100.0,
+          50.0,
+          100.0
+        ],
+        "error_runs": 2,
+        "structural_pass": 3,
+        "summary_chars": [
+          722,
+          485,
+          760
+        ]
+      },
+      "precise": {
+        "coverage": [
+          75.0,
+          75.0,
+          75.0
+        ],
+        "mean_coverage": 75.0,
+        "summary_coverage": [
+          75.0,
+          75.0,
+          50.0
+        ],
+        "error_runs": 0,
+        "structural_pass": 3,
+        "summary_chars": [
+          392,
+          516,
+          401
+        ]
+      },
+      "precise_minus_coarse": -16.67
+    },
+    {
+      "case_id": "c11",
+      "label": "长分享：产品与 Agent 记忆",
+      "minutes": 81.26,
+      "coarse": {
+        "coverage": [
+          62.5,
+          100.0,
+          87.5
+        ],
+        "mean_coverage": 83.33,
+        "summary_coverage": [
+          12.5,
+          37.5,
+          62.5
+        ],
+        "error_runs": 3,
+        "structural_pass": 1,
+        "summary_chars": [
+          571,
+          576,
+          577
+        ]
+      },
+      "precise": {
+        "coverage": [
+          100.0,
+          100.0,
+          100.0
+        ],
+        "mean_coverage": 100.0,
+        "summary_coverage": [
+          12.5,
+          25.0,
+          25.0
+        ],
+        "error_runs": 3,
+        "structural_pass": 3,
+        "summary_chars": [
+          635,
+          1003,
+          693
+        ]
+      },
+      "precise_minus_coarse": 16.67
+    },
+    {
+      "case_id": "c12",
+      "label": "上门：机器人清洁维护",
+      "minutes": 10.66,
+      "coarse": {
+        "coverage": [
+          100.0,
+          100.0,
+          100.0
+        ],
+        "mean_coverage": 100.0,
+        "summary_coverage": [
+          100.0,
+          100.0,
+          100.0
+        ],
+        "error_runs": 0,
+        "structural_pass": 3,
+        "summary_chars": [
+          160,
+          99,
+          115
+        ]
+      },
+      "precise": {
+        "coverage": [
+          100.0,
+          100.0,
+          100.0
+        ],
+        "mean_coverage": 100.0,
+        "summary_coverage": [
+          100.0,
+          0.0,
+          66.67
+        ],
+        "error_runs": 1,
+        "structural_pass": 2,
+        "summary_chars": [
+          164,
+          0,
+          115
+        ]
+      },
+      "precise_minus_coarse": 0.0
+    }
+  ],
+  "rows": [
+    {
+      "case_id": "c04",
+      "arm": "coarse",
+      "repeat": 1,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        1
+      ],
+      "correct": 3,
+      "fact_count": 3,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 3,
+      "supported_total": 3,
+      "common_correct": 3,
+      "common_total": 3,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 104,
+      "early_facts": []
+    },
+    {
+      "case_id": "c04",
+      "arm": "precise",
+      "repeat": 1,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        1
+      ],
+      "correct": 3,
+      "fact_count": 3,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 3,
+      "supported_total": 3,
+      "common_correct": 3,
+      "common_total": 3,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 149,
+      "early_facts": []
+    },
+    {
+      "case_id": "c11",
+      "arm": "precise",
+      "repeat": 1,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "correct": 8,
+      "fact_count": 8,
+      "coverage": 100.0,
+      "summary_coverage": 12.5,
+      "supported_correct": 8,
+      "supported_total": 8,
+      "common_correct": 8,
+      "common_total": 8,
+      "has_output": true,
+      "has_error": true,
+      "error_fields": [
+        "key_points"
+      ],
+      "summary_chars": 635,
+      "early_facts": [
+        {
+          "id": "F1",
+          "first_correct_window": 1,
+          "final_retained": true,
+          "first_summary_window": null,
+          "summary_retained": false
+        },
+        {
+          "id": "F2",
+          "first_correct_window": 1,
+          "final_retained": true,
+          "first_summary_window": 5,
+          "summary_retained": true
+        },
+        {
+          "id": "F3",
+          "first_correct_window": 1,
+          "final_retained": true,
+          "first_summary_window": 1,
+          "summary_retained": false
+        }
+      ]
+    },
+    {
+      "case_id": "c11",
+      "arm": "coarse",
+      "repeat": 1,
+      "completed": true,
+      "structural_pass": false,
+      "facts": [
+        0,
+        1,
+        1,
+        1,
+        1,
+        0,
+        1,
+        0
+      ],
+      "summary_facts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0
+      ],
+      "correct": 5,
+      "fact_count": 8,
+      "coverage": 62.5,
+      "summary_coverage": 12.5,
+      "supported_correct": 5,
+      "supported_total": 8,
+      "common_correct": 5,
+      "common_total": 8,
+      "has_output": true,
+      "has_error": true,
+      "error_fields": [
+        "key_points",
+        "objects",
+        "summary"
+      ],
+      "summary_chars": 571,
+      "early_facts": [
+        {
+          "id": "F1",
+          "first_correct_window": 1,
+          "final_retained": false,
+          "first_summary_window": 1,
+          "summary_retained": false
+        },
+        {
+          "id": "F2",
+          "first_correct_window": 1,
+          "final_retained": true,
+          "first_summary_window": 1,
+          "summary_retained": false
+        },
+        {
+          "id": "F3",
+          "first_correct_window": 1,
+          "final_retained": true,
+          "first_summary_window": 1,
+          "summary_retained": false
+        }
+      ]
+    },
+    {
+      "case_id": "c07",
+      "arm": "precise",
+      "repeat": 1,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        0,
+        1
+      ],
+      "correct": 4,
+      "fact_count": 4,
+      "coverage": 100.0,
+      "summary_coverage": 75.0,
+      "supported_correct": 4,
+      "supported_total": 4,
+      "common_correct": 4,
+      "common_total": 4,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 286,
+      "early_facts": []
+    },
+    {
+      "case_id": "c07",
+      "arm": "coarse",
+      "repeat": 1,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        0,
+        1
+      ],
+      "correct": 4,
+      "fact_count": 4,
+      "coverage": 100.0,
+      "summary_coverage": 75.0,
+      "supported_correct": 4,
+      "supported_total": 4,
+      "common_correct": 4,
+      "common_total": 4,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 214,
+      "early_facts": []
+    },
+    {
+      "case_id": "c06",
+      "arm": "coarse",
+      "repeat": 1,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        1,
+        0
+      ],
+      "correct": 4,
+      "fact_count": 4,
+      "coverage": 100.0,
+      "summary_coverage": 75.0,
+      "supported_correct": 4,
+      "supported_total": 4,
+      "common_correct": 4,
+      "common_total": 4,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 215,
+      "early_facts": []
+    },
+    {
+      "case_id": "c06",
+      "arm": "precise",
+      "repeat": 1,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "correct": 4,
+      "fact_count": 4,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 4,
+      "supported_total": 4,
+      "common_correct": 4,
+      "common_total": 4,
+      "has_output": true,
+      "has_error": true,
+      "error_fields": [
+        "objects"
+      ],
+      "summary_chars": 675,
+      "early_facts": []
+    },
+    {
+      "case_id": "c08",
+      "arm": "coarse",
+      "repeat": 1,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "correct": 4,
+      "fact_count": 4,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 4,
+      "supported_total": 4,
+      "common_correct": 4,
+      "common_total": 4,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 296,
+      "early_facts": []
+    },
+    {
+      "case_id": "c08",
+      "arm": "precise",
+      "repeat": 1,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "correct": 4,
+      "fact_count": 4,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 4,
+      "supported_total": 4,
+      "common_correct": 4,
+      "common_total": 4,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 449,
+      "early_facts": []
+    },
+    {
+      "case_id": "c09",
+      "arm": "coarse",
+      "repeat": 1,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        0,
+        1
+      ],
+      "correct": 4,
+      "fact_count": 4,
+      "coverage": 100.0,
+      "summary_coverage": 75.0,
+      "supported_correct": 4,
+      "supported_total": 4,
+      "common_correct": 4,
+      "common_total": 4,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 393,
+      "early_facts": [
+        {
+          "id": "F1",
+          "first_correct_window": 1,
+          "final_retained": true,
+          "first_summary_window": 1,
+          "summary_retained": true
+        },
+        {
+          "id": "F2",
+          "first_correct_window": 1,
+          "final_retained": true,
+          "first_summary_window": 1,
+          "summary_retained": true
+        },
+        {
+          "id": "F3",
+          "first_correct_window": 1,
+          "final_retained": true,
+          "first_summary_window": null,
+          "summary_retained": false
+        }
+      ]
+    },
+    {
+      "case_id": "c09",
+      "arm": "precise",
+      "repeat": 1,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        0,
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "correct": 3,
+      "fact_count": 4,
+      "coverage": 75.0,
+      "summary_coverage": 25.0,
+      "supported_correct": 3,
+      "supported_total": 4,
+      "common_correct": 3,
+      "common_total": 4,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 361,
+      "early_facts": [
+        {
+          "id": "F1",
+          "first_correct_window": null,
+          "final_retained": false,
+          "first_summary_window": null,
+          "summary_retained": false
+        },
+        {
+          "id": "F2",
+          "first_correct_window": 1,
+          "final_retained": true,
+          "first_summary_window": 1,
+          "summary_retained": false
+        },
+        {
+          "id": "F3",
+          "first_correct_window": 1,
+          "final_retained": true,
+          "first_summary_window": 1,
+          "summary_retained": false
+        }
+      ]
+    },
+    {
+      "case_id": "c12",
+      "arm": "coarse",
+      "repeat": 1,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        1
+      ],
+      "correct": 3,
+      "fact_count": 3,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 3,
+      "supported_total": 3,
+      "common_correct": 3,
+      "common_total": 3,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 160,
+      "early_facts": []
+    },
+    {
+      "case_id": "c12",
+      "arm": "precise",
+      "repeat": 1,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        1
+      ],
+      "correct": 3,
+      "fact_count": 3,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 3,
+      "supported_total": 3,
+      "common_correct": 3,
+      "common_total": 3,
+      "has_output": true,
+      "has_error": true,
+      "error_fields": [
+        "key_points",
+        "summary"
+      ],
+      "summary_chars": 164,
+      "early_facts": []
+    },
+    {
+      "case_id": "c01",
+      "arm": "coarse",
+      "repeat": 1,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1
+      ],
+      "correct": 2,
+      "fact_count": 2,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 2,
+      "supported_total": 2,
+      "common_correct": 2,
+      "common_total": 2,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 54,
+      "early_facts": []
+    },
+    {
+      "case_id": "c01",
+      "arm": "precise",
+      "repeat": 1,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1
+      ],
+      "correct": 2,
+      "fact_count": 2,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 2,
+      "supported_total": 2,
+      "common_correct": 2,
+      "common_total": 2,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 80,
+      "early_facts": []
+    },
+    {
+      "case_id": "c05",
+      "arm": "coarse",
+      "repeat": 1,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "correct": 4,
+      "fact_count": 4,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 4,
+      "supported_total": 4,
+      "common_correct": 4,
+      "common_total": 4,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 206,
+      "early_facts": []
+    },
+    {
+      "case_id": "c05",
+      "arm": "precise",
+      "repeat": 1,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        0,
+        0
+      ],
+      "correct": 4,
+      "fact_count": 4,
+      "coverage": 100.0,
+      "summary_coverage": 50.0,
+      "supported_correct": 4,
+      "supported_total": 4,
+      "common_correct": 4,
+      "common_total": 4,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 221,
+      "early_facts": []
+    },
+    {
+      "case_id": "c02",
+      "arm": "coarse",
+      "repeat": 1,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1
+      ],
+      "correct": 2,
+      "fact_count": 2,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 2,
+      "supported_total": 2,
+      "common_correct": 2,
+      "common_total": 2,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 103,
+      "early_facts": []
+    },
+    {
+      "case_id": "c02",
+      "arm": "precise",
+      "repeat": 1,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1
+      ],
+      "correct": 2,
+      "fact_count": 2,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 2,
+      "supported_total": 2,
+      "common_correct": 2,
+      "common_total": 2,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 126,
+      "early_facts": []
+    },
+    {
+      "case_id": "c03",
+      "arm": "coarse",
+      "repeat": 1,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "correct": 4,
+      "fact_count": 4,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 4,
+      "supported_total": 4,
+      "common_correct": 4,
+      "common_total": 4,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 179,
+      "early_facts": []
+    },
+    {
+      "case_id": "c03",
+      "arm": "precise",
+      "repeat": 1,
+      "completed": true,
+      "structural_pass": false,
+      "facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "correct": 4,
+      "fact_count": 4,
+      "coverage": 100.0,
+      "summary_coverage": 0.0,
+      "supported_correct": 4,
+      "supported_total": 4,
+      "common_correct": 4,
+      "common_total": 4,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 0,
+      "early_facts": []
+    },
+    {
+      "case_id": "c10",
+      "arm": "precise",
+      "repeat": 1,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        0,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        0,
+        1,
+        1
+      ],
+      "correct": 3,
+      "fact_count": 4,
+      "coverage": 75.0,
+      "summary_coverage": 75.0,
+      "supported_correct": 3,
+      "supported_total": 3,
+      "common_correct": 3,
+      "common_total": 3,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 392,
+      "early_facts": [
+        {
+          "id": "F1",
+          "first_correct_window": 1,
+          "final_retained": true,
+          "first_summary_window": 1,
+          "summary_retained": true
+        }
+      ]
+    },
+    {
+      "case_id": "c10",
+      "arm": "coarse",
+      "repeat": 1,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "correct": 4,
+      "fact_count": 4,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 4,
+      "supported_total": 4,
+      "common_correct": 3,
+      "common_total": 3,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 722,
+      "early_facts": [
+        {
+          "id": "F1",
+          "first_correct_window": 1,
+          "final_retained": true,
+          "first_summary_window": 1,
+          "summary_retained": true
+        }
+      ]
+    },
+    {
+      "case_id": "c09",
+      "arm": "coarse",
+      "repeat": 2,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "correct": 4,
+      "fact_count": 4,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 4,
+      "supported_total": 4,
+      "common_correct": 4,
+      "common_total": 4,
+      "has_output": true,
+      "has_error": true,
+      "error_fields": [
+        "key_points",
+        "objects",
+        "summary"
+      ],
+      "summary_chars": 460,
+      "early_facts": [
+        {
+          "id": "F1",
+          "first_correct_window": 1,
+          "final_retained": true,
+          "first_summary_window": 1,
+          "summary_retained": true
+        },
+        {
+          "id": "F2",
+          "first_correct_window": 1,
+          "final_retained": true,
+          "first_summary_window": 1,
+          "summary_retained": true
+        },
+        {
+          "id": "F3",
+          "first_correct_window": 1,
+          "final_retained": true,
+          "first_summary_window": 1,
+          "summary_retained": true
+        }
+      ]
+    },
+    {
+      "case_id": "c09",
+      "arm": "precise",
+      "repeat": 2,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        0,
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        0,
+        1,
+        0,
+        1
+      ],
+      "correct": 3,
+      "fact_count": 4,
+      "coverage": 75.0,
+      "summary_coverage": 50.0,
+      "supported_correct": 3,
+      "supported_total": 4,
+      "common_correct": 3,
+      "common_total": 4,
+      "has_output": true,
+      "has_error": true,
+      "error_fields": [
+        "key_points",
+        "summary"
+      ],
+      "summary_chars": 458,
+      "early_facts": [
+        {
+          "id": "F1",
+          "first_correct_window": null,
+          "final_retained": false,
+          "first_summary_window": null,
+          "summary_retained": false
+        },
+        {
+          "id": "F2",
+          "first_correct_window": 1,
+          "final_retained": true,
+          "first_summary_window": 1,
+          "summary_retained": true
+        },
+        {
+          "id": "F3",
+          "first_correct_window": 1,
+          "final_retained": true,
+          "first_summary_window": null,
+          "summary_retained": false
+        }
+      ]
+    },
+    {
+      "case_id": "c10",
+      "arm": "precise",
+      "repeat": 2,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        0,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        0,
+        1,
+        1
+      ],
+      "correct": 3,
+      "fact_count": 4,
+      "coverage": 75.0,
+      "summary_coverage": 75.0,
+      "supported_correct": 3,
+      "supported_total": 3,
+      "common_correct": 3,
+      "common_total": 3,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 516,
+      "early_facts": [
+        {
+          "id": "F1",
+          "first_correct_window": 1,
+          "final_retained": true,
+          "first_summary_window": 1,
+          "summary_retained": true
+        }
+      ]
+    },
+    {
+      "case_id": "c10",
+      "arm": "coarse",
+      "repeat": 2,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        0,
+        1
+      ],
+      "summary_facts": [
+        0,
+        1,
+        0,
+        1
+      ],
+      "correct": 3,
+      "fact_count": 4,
+      "coverage": 75.0,
+      "summary_coverage": 50.0,
+      "supported_correct": 3,
+      "supported_total": 4,
+      "common_correct": 2,
+      "common_total": 3,
+      "has_output": true,
+      "has_error": true,
+      "error_fields": [
+        "summary"
+      ],
+      "summary_chars": 485,
+      "early_facts": [
+        {
+          "id": "F1",
+          "first_correct_window": 1,
+          "final_retained": true,
+          "first_summary_window": 1,
+          "summary_retained": false
+        }
+      ]
+    },
+    {
+      "case_id": "c04",
+      "arm": "precise",
+      "repeat": 2,
+      "completed": true,
+      "structural_pass": false,
+      "facts": [
+        1,
+        1,
+        0
+      ],
+      "summary_facts": [
+        0,
+        0,
+        0
+      ],
+      "correct": 2,
+      "fact_count": 3,
+      "coverage": 66.67,
+      "summary_coverage": 0.0,
+      "supported_correct": 2,
+      "supported_total": 3,
+      "common_correct": 2,
+      "common_total": 3,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 0,
+      "early_facts": []
+    },
+    {
+      "case_id": "c04",
+      "arm": "coarse",
+      "repeat": 2,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        1
+      ],
+      "correct": 3,
+      "fact_count": 3,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 3,
+      "supported_total": 3,
+      "common_correct": 3,
+      "common_total": 3,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 121,
+      "early_facts": []
+    },
+    {
+      "case_id": "c11",
+      "arm": "coarse",
+      "repeat": 2,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0
+      ],
+      "correct": 8,
+      "fact_count": 8,
+      "coverage": 100.0,
+      "summary_coverage": 37.5,
+      "supported_correct": 8,
+      "supported_total": 8,
+      "common_correct": 8,
+      "common_total": 8,
+      "has_output": true,
+      "has_error": true,
+      "error_fields": [
+        "key_points",
+        "objects"
+      ],
+      "summary_chars": 576,
+      "early_facts": [
+        {
+          "id": "F1",
+          "first_correct_window": 1,
+          "final_retained": true,
+          "first_summary_window": 1,
+          "summary_retained": true
+        },
+        {
+          "id": "F2",
+          "first_correct_window": 1,
+          "final_retained": true,
+          "first_summary_window": null,
+          "summary_retained": false
+        },
+        {
+          "id": "F3",
+          "first_correct_window": 1,
+          "final_retained": true,
+          "first_summary_window": 1,
+          "summary_retained": true
+        }
+      ]
+    },
+    {
+      "case_id": "c11",
+      "arm": "precise",
+      "repeat": 2,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        1,
+        0
+      ],
+      "correct": 8,
+      "fact_count": 8,
+      "coverage": 100.0,
+      "summary_coverage": 25.0,
+      "supported_correct": 8,
+      "supported_total": 8,
+      "common_correct": 8,
+      "common_total": 8,
+      "has_output": true,
+      "has_error": true,
+      "error_fields": [
+        "objects"
+      ],
+      "summary_chars": 1003,
+      "early_facts": [
+        {
+          "id": "F1",
+          "first_correct_window": 1,
+          "final_retained": true,
+          "first_summary_window": 1,
+          "summary_retained": false
+        },
+        {
+          "id": "F2",
+          "first_correct_window": 1,
+          "final_retained": true,
+          "first_summary_window": 1,
+          "summary_retained": false
+        },
+        {
+          "id": "F3",
+          "first_correct_window": 1,
+          "final_retained": true,
+          "first_summary_window": 1,
+          "summary_retained": false
+        }
+      ]
+    },
+    {
+      "case_id": "c02",
+      "arm": "coarse",
+      "repeat": 2,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1
+      ],
+      "correct": 2,
+      "fact_count": 2,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 2,
+      "supported_total": 2,
+      "common_correct": 2,
+      "common_total": 2,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 91,
+      "early_facts": []
+    },
+    {
+      "case_id": "c02",
+      "arm": "precise",
+      "repeat": 2,
+      "completed": true,
+      "structural_pass": false,
+      "facts": [
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1
+      ],
+      "correct": 2,
+      "fact_count": 2,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 2,
+      "supported_total": 2,
+      "common_correct": 2,
+      "common_total": 2,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 136,
+      "early_facts": []
+    },
+    {
+      "case_id": "c08",
+      "arm": "coarse",
+      "repeat": 2,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "correct": 4,
+      "fact_count": 4,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 4,
+      "supported_total": 4,
+      "common_correct": 4,
+      "common_total": 4,
+      "has_output": true,
+      "has_error": true,
+      "error_fields": [
+        "key_points",
+        "summary"
+      ],
+      "summary_chars": 401,
+      "early_facts": []
+    },
+    {
+      "case_id": "c08",
+      "arm": "precise",
+      "repeat": 2,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "correct": 4,
+      "fact_count": 4,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 4,
+      "supported_total": 4,
+      "common_correct": 4,
+      "common_total": 4,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 412,
+      "early_facts": []
+    },
+    {
+      "case_id": "c06",
+      "arm": "precise",
+      "repeat": 2,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "correct": 4,
+      "fact_count": 4,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 4,
+      "supported_total": 4,
+      "common_correct": 4,
+      "common_total": 4,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 290,
+      "early_facts": []
+    },
+    {
+      "case_id": "c06",
+      "arm": "coarse",
+      "repeat": 2,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        1,
+        0
+      ],
+      "correct": 4,
+      "fact_count": 4,
+      "coverage": 100.0,
+      "summary_coverage": 75.0,
+      "supported_correct": 4,
+      "supported_total": 4,
+      "common_correct": 4,
+      "common_total": 4,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 287,
+      "early_facts": []
+    },
+    {
+      "case_id": "c05",
+      "arm": "precise",
+      "repeat": 2,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        1,
+        0
+      ],
+      "correct": 4,
+      "fact_count": 4,
+      "coverage": 100.0,
+      "summary_coverage": 75.0,
+      "supported_correct": 4,
+      "supported_total": 4,
+      "common_correct": 4,
+      "common_total": 4,
+      "has_output": true,
+      "has_error": true,
+      "error_fields": [
+        "key_points",
+        "summary"
+      ],
+      "summary_chars": 153,
+      "early_facts": []
+    },
+    {
+      "case_id": "c05",
+      "arm": "coarse",
+      "repeat": 2,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "correct": 4,
+      "fact_count": 4,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 4,
+      "supported_total": 4,
+      "common_correct": 4,
+      "common_total": 4,
+      "has_output": true,
+      "has_error": true,
+      "error_fields": [
+        "key_points",
+        "summary"
+      ],
+      "summary_chars": 207,
+      "early_facts": []
+    },
+    {
+      "case_id": "c03",
+      "arm": "coarse",
+      "repeat": 2,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "correct": 4,
+      "fact_count": 4,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 4,
+      "supported_total": 4,
+      "common_correct": 4,
+      "common_total": 4,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 230,
+      "early_facts": []
+    },
+    {
+      "case_id": "c03",
+      "arm": "precise",
+      "repeat": 2,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "correct": 4,
+      "fact_count": 4,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 4,
+      "supported_total": 4,
+      "common_correct": 4,
+      "common_total": 4,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 225,
+      "early_facts": []
+    },
+    {
+      "case_id": "c12",
+      "arm": "precise",
+      "repeat": 2,
+      "completed": true,
+      "structural_pass": false,
+      "facts": [
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        0,
+        0,
+        0
+      ],
+      "correct": 3,
+      "fact_count": 3,
+      "coverage": 100.0,
+      "summary_coverage": 0.0,
+      "supported_correct": 3,
+      "supported_total": 3,
+      "common_correct": 3,
+      "common_total": 3,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 0,
+      "early_facts": []
+    },
+    {
+      "case_id": "c12",
+      "arm": "coarse",
+      "repeat": 2,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        1
+      ],
+      "correct": 3,
+      "fact_count": 3,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 3,
+      "supported_total": 3,
+      "common_correct": 3,
+      "common_total": 3,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 99,
+      "early_facts": []
+    },
+    {
+      "case_id": "c07",
+      "arm": "precise",
+      "repeat": 2,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        0,
+        1
+      ],
+      "correct": 4,
+      "fact_count": 4,
+      "coverage": 100.0,
+      "summary_coverage": 75.0,
+      "supported_correct": 4,
+      "supported_total": 4,
+      "common_correct": 4,
+      "common_total": 4,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 268,
+      "early_facts": []
+    },
+    {
+      "case_id": "c07",
+      "arm": "coarse",
+      "repeat": 2,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "correct": 4,
+      "fact_count": 4,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 4,
+      "supported_total": 4,
+      "common_correct": 4,
+      "common_total": 4,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 352,
+      "early_facts": []
+    },
+    {
+      "case_id": "c01",
+      "arm": "coarse",
+      "repeat": 2,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1
+      ],
+      "correct": 2,
+      "fact_count": 2,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 2,
+      "supported_total": 2,
+      "common_correct": 2,
+      "common_total": 2,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 67,
+      "early_facts": []
+    },
+    {
+      "case_id": "c01",
+      "arm": "precise",
+      "repeat": 2,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1
+      ],
+      "correct": 2,
+      "fact_count": 2,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 2,
+      "supported_total": 2,
+      "common_correct": 2,
+      "common_total": 2,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 91,
+      "early_facts": []
+    },
+    {
+      "case_id": "c05",
+      "arm": "precise",
+      "repeat": 3,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        0,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        0,
+        1
+      ],
+      "correct": 3,
+      "fact_count": 4,
+      "coverage": 75.0,
+      "summary_coverage": 75.0,
+      "supported_correct": 3,
+      "supported_total": 4,
+      "common_correct": 3,
+      "common_total": 4,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 265,
+      "early_facts": []
+    },
+    {
+      "case_id": "c05",
+      "arm": "coarse",
+      "repeat": 3,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "correct": 4,
+      "fact_count": 4,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 4,
+      "supported_total": 4,
+      "common_correct": 4,
+      "common_total": 4,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 153,
+      "early_facts": []
+    },
+    {
+      "case_id": "c12",
+      "arm": "precise",
+      "repeat": 3,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        0
+      ],
+      "correct": 3,
+      "fact_count": 3,
+      "coverage": 100.0,
+      "summary_coverage": 66.67,
+      "supported_correct": 3,
+      "supported_total": 3,
+      "common_correct": 3,
+      "common_total": 3,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 115,
+      "early_facts": []
+    },
+    {
+      "case_id": "c12",
+      "arm": "coarse",
+      "repeat": 3,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        1
+      ],
+      "correct": 3,
+      "fact_count": 3,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 3,
+      "supported_total": 3,
+      "common_correct": 3,
+      "common_total": 3,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 115,
+      "early_facts": []
+    },
+    {
+      "case_id": "c07",
+      "arm": "precise",
+      "repeat": 3,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        0,
+        1
+      ],
+      "correct": 4,
+      "fact_count": 4,
+      "coverage": 100.0,
+      "summary_coverage": 75.0,
+      "supported_correct": 4,
+      "supported_total": 4,
+      "common_correct": 4,
+      "common_total": 4,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 262,
+      "early_facts": []
+    },
+    {
+      "case_id": "c07",
+      "arm": "coarse",
+      "repeat": 3,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        0,
+        1
+      ],
+      "correct": 4,
+      "fact_count": 4,
+      "coverage": 100.0,
+      "summary_coverage": 75.0,
+      "supported_correct": 4,
+      "supported_total": 4,
+      "common_correct": 4,
+      "common_total": 4,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 276,
+      "early_facts": []
+    },
+    {
+      "case_id": "c03",
+      "arm": "coarse",
+      "repeat": 3,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "correct": 4,
+      "fact_count": 4,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 4,
+      "supported_total": 4,
+      "common_correct": 4,
+      "common_total": 4,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 203,
+      "early_facts": []
+    },
+    {
+      "case_id": "c03",
+      "arm": "precise",
+      "repeat": 3,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "correct": 4,
+      "fact_count": 4,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 4,
+      "supported_total": 4,
+      "common_correct": 4,
+      "common_total": 4,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 227,
+      "early_facts": []
+    },
+    {
+      "case_id": "c10",
+      "arm": "precise",
+      "repeat": 3,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        0,
+        1,
+        1
+      ],
+      "summary_facts": [
+        0,
+        0,
+        1,
+        1
+      ],
+      "correct": 3,
+      "fact_count": 4,
+      "coverage": 75.0,
+      "summary_coverage": 50.0,
+      "supported_correct": 3,
+      "supported_total": 3,
+      "common_correct": 3,
+      "common_total": 3,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 401,
+      "early_facts": [
+        {
+          "id": "F1",
+          "first_correct_window": 1,
+          "final_retained": true,
+          "first_summary_window": 1,
+          "summary_retained": false
+        }
+      ]
+    },
+    {
+      "case_id": "c10",
+      "arm": "coarse",
+      "repeat": 3,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "correct": 4,
+      "fact_count": 4,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 4,
+      "supported_total": 4,
+      "common_correct": 3,
+      "common_total": 3,
+      "has_output": true,
+      "has_error": true,
+      "error_fields": [
+        "summary"
+      ],
+      "summary_chars": 760,
+      "early_facts": [
+        {
+          "id": "F1",
+          "first_correct_window": 1,
+          "final_retained": true,
+          "first_summary_window": 1,
+          "summary_retained": true
+        }
+      ]
+    },
+    {
+      "case_id": "c04",
+      "arm": "coarse",
+      "repeat": 3,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        1
+      ],
+      "correct": 3,
+      "fact_count": 3,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 3,
+      "supported_total": 3,
+      "common_correct": 3,
+      "common_total": 3,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 124,
+      "early_facts": []
+    },
+    {
+      "case_id": "c04",
+      "arm": "precise",
+      "repeat": 3,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        1
+      ],
+      "correct": 3,
+      "fact_count": 3,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 3,
+      "supported_total": 3,
+      "common_correct": 3,
+      "common_total": 3,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 196,
+      "early_facts": []
+    },
+    {
+      "case_id": "c06",
+      "arm": "precise",
+      "repeat": 3,
+      "completed": true,
+      "structural_pass": false,
+      "facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "correct": 4,
+      "fact_count": 4,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 4,
+      "supported_total": 4,
+      "common_correct": 4,
+      "common_total": 4,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 371,
+      "early_facts": []
+    },
+    {
+      "case_id": "c06",
+      "arm": "coarse",
+      "repeat": 3,
+      "completed": true,
+      "structural_pass": false,
+      "facts": [
+        1,
+        0,
+        0,
+        0
+      ],
+      "summary_facts": [
+        1,
+        0,
+        0,
+        0
+      ],
+      "correct": 1,
+      "fact_count": 4,
+      "coverage": 25.0,
+      "summary_coverage": 25.0,
+      "supported_correct": 1,
+      "supported_total": 4,
+      "common_correct": 1,
+      "common_total": 4,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 155,
+      "early_facts": []
+    },
+    {
+      "case_id": "c01",
+      "arm": "precise",
+      "repeat": 3,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1
+      ],
+      "correct": 2,
+      "fact_count": 2,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 2,
+      "supported_total": 2,
+      "common_correct": 2,
+      "common_total": 2,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 86,
+      "early_facts": []
+    },
+    {
+      "case_id": "c01",
+      "arm": "coarse",
+      "repeat": 3,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1
+      ],
+      "correct": 2,
+      "fact_count": 2,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 2,
+      "supported_total": 2,
+      "common_correct": 2,
+      "common_total": 2,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 66,
+      "early_facts": []
+    },
+    {
+      "case_id": "c02",
+      "arm": "precise",
+      "repeat": 3,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1
+      ],
+      "correct": 2,
+      "fact_count": 2,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 2,
+      "supported_total": 2,
+      "common_correct": 2,
+      "common_total": 2,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 123,
+      "early_facts": []
+    },
+    {
+      "case_id": "c02",
+      "arm": "coarse",
+      "repeat": 3,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1
+      ],
+      "correct": 2,
+      "fact_count": 2,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 2,
+      "supported_total": 2,
+      "common_correct": 2,
+      "common_total": 2,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 120,
+      "early_facts": []
+    },
+    {
+      "case_id": "c09",
+      "arm": "coarse",
+      "repeat": 3,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        0,
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        0,
+        1,
+        1,
+        1
+      ],
+      "correct": 3,
+      "fact_count": 4,
+      "coverage": 75.0,
+      "summary_coverage": 75.0,
+      "supported_correct": 3,
+      "supported_total": 4,
+      "common_correct": 3,
+      "common_total": 4,
+      "has_output": true,
+      "has_error": true,
+      "error_fields": [
+        "key_points",
+        "summary"
+      ],
+      "summary_chars": 375,
+      "early_facts": [
+        {
+          "id": "F1",
+          "first_correct_window": null,
+          "final_retained": false,
+          "first_summary_window": null,
+          "summary_retained": false
+        },
+        {
+          "id": "F2",
+          "first_correct_window": 1,
+          "final_retained": true,
+          "first_summary_window": 1,
+          "summary_retained": true
+        },
+        {
+          "id": "F3",
+          "first_correct_window": 1,
+          "final_retained": true,
+          "first_summary_window": 1,
+          "summary_retained": true
+        }
+      ]
+    },
+    {
+      "case_id": "c09",
+      "arm": "precise",
+      "repeat": 3,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "correct": 4,
+      "fact_count": 4,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 4,
+      "supported_total": 4,
+      "common_correct": 4,
+      "common_total": 4,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 847,
+      "early_facts": [
+        {
+          "id": "F1",
+          "first_correct_window": 1,
+          "final_retained": true,
+          "first_summary_window": 1,
+          "summary_retained": true
+        },
+        {
+          "id": "F2",
+          "first_correct_window": 1,
+          "final_retained": true,
+          "first_summary_window": 1,
+          "summary_retained": true
+        },
+        {
+          "id": "F3",
+          "first_correct_window": 1,
+          "final_retained": true,
+          "first_summary_window": 1,
+          "summary_retained": true
+        }
+      ]
+    },
+    {
+      "case_id": "c11",
+      "arm": "precise",
+      "repeat": 3,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        1
+      ],
+      "correct": 8,
+      "fact_count": 8,
+      "coverage": 100.0,
+      "summary_coverage": 25.0,
+      "supported_correct": 8,
+      "supported_total": 8,
+      "common_correct": 8,
+      "common_total": 8,
+      "has_output": true,
+      "has_error": true,
+      "error_fields": [
+        "key_points"
+      ],
+      "summary_chars": 693,
+      "early_facts": [
+        {
+          "id": "F1",
+          "first_correct_window": 1,
+          "final_retained": true,
+          "first_summary_window": null,
+          "summary_retained": false
+        },
+        {
+          "id": "F2",
+          "first_correct_window": 1,
+          "final_retained": true,
+          "first_summary_window": 1,
+          "summary_retained": false
+        },
+        {
+          "id": "F3",
+          "first_correct_window": 1,
+          "final_retained": true,
+          "first_summary_window": 1,
+          "summary_retained": false
+        }
+      ]
+    },
+    {
+      "case_id": "c11",
+      "arm": "coarse",
+      "repeat": 3,
+      "completed": true,
+      "structural_pass": false,
+      "facts": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        0,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        1,
+        0,
+        0,
+        0,
+        1,
+        1
+      ],
+      "correct": 7,
+      "fact_count": 8,
+      "coverage": 87.5,
+      "summary_coverage": 62.5,
+      "supported_correct": 7,
+      "supported_total": 8,
+      "common_correct": 7,
+      "common_total": 8,
+      "has_output": true,
+      "has_error": true,
+      "error_fields": [
+        "key_points",
+        "objects"
+      ],
+      "summary_chars": 577,
+      "early_facts": [
+        {
+          "id": "F1",
+          "first_correct_window": 1,
+          "final_retained": true,
+          "first_summary_window": 1,
+          "summary_retained": true
+        },
+        {
+          "id": "F2",
+          "first_correct_window": 1,
+          "final_retained": true,
+          "first_summary_window": 1,
+          "summary_retained": true
+        },
+        {
+          "id": "F3",
+          "first_correct_window": 1,
+          "final_retained": true,
+          "first_summary_window": 1,
+          "summary_retained": true
+        }
+      ]
+    },
+    {
+      "case_id": "c08",
+      "arm": "coarse",
+      "repeat": 3,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "correct": 4,
+      "fact_count": 4,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 4,
+      "supported_total": 4,
+      "common_correct": 4,
+      "common_total": 4,
+      "has_output": true,
+      "has_error": false,
+      "error_fields": [],
+      "summary_chars": 303,
+      "early_facts": []
+    },
+    {
+      "case_id": "c08",
+      "arm": "precise",
+      "repeat": 3,
+      "completed": true,
+      "structural_pass": true,
+      "facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "summary_facts": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "correct": 4,
+      "fact_count": 4,
+      "coverage": 100.0,
+      "summary_coverage": 100.0,
+      "supported_correct": 4,
+      "supported_total": 4,
+      "common_correct": 4,
+      "common_total": 4,
+      "has_output": true,
+      "has_error": true,
+      "error_fields": [
+        "summary"
+      ],
+      "summary_chars": 259,
+      "early_facts": []
+    }
+  ],
+  "paired_direction": {
+    "better": 2,
+    "tied": 6,
+    "worse": 4
+  },
+  "notes": [
+    "p50/p95 linear interpolation; semantic reviewer Agent plus main adjudication, not audio truth",
+    "fixed 36 per arm; missing outputs scored zero coverage and separately listed from error-free outputs"
+  ]
+}

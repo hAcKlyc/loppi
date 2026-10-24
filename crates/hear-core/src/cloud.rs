@@ -263,6 +263,15 @@ fn chat_content(
     // Low effort enables that reasoning without changing screenshot requests.
     if thinking {
         body["reasoning_effort"] = json!("low");
+        // Explicit paid replay may compare reasoning effort without changing
+        // production requests or reading a credential outside Core.
+        #[cfg(test)]
+        if std::env::var("HEAR_REAL_UNDERSTANDING_ALLOW").as_deref() == Ok("1") {
+            if let Ok(effort) = std::env::var("HEAR_REAL_UNDERSTANDING_EFFORT") {
+                assert!(matches!(effort.as_str(), "low" | "high"));
+                body["reasoning_effort"] = json!(effort);
+            }
+        }
     }
     let timeout = remaining(deadline)?;
     let usage_id = meter.begin(model, None, None)?;

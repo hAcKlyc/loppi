@@ -18,8 +18,24 @@ fn real_understanding_replay() {
         Ok("1")
     );
     let out = PathBuf::from(std::env::var("HEAR_REAL_UNDERSTANDING_OUTPUT").unwrap());
+    let prompt = std::env::var_os("HEAR_REAL_UNDERSTANDING_PROMPT")
+        .map(|path| fs::read_to_string(path).unwrap())
+        .unwrap_or_else(|| FIT_SYSTEM.to_owned());
+    assert!(!prompt.trim().is_empty());
+    // A longer opt-in evaluation budget can inspect model quality separately
+    // from production's 60-second deadline; it never changes production calls.
+    let deadline_seconds: u64 = std::env::var("HEAR_REAL_UNDERSTANDING_DEADLINE_SECS")
+        .map(|value| value.parse().unwrap())
+        .unwrap_or(60);
+    assert!(matches!(deadline_seconds, 60 | 120));
+    let effort =
+        std::env::var("HEAR_REAL_UNDERSTANDING_EFFORT").unwrap_or_else(|_| "low".to_owned());
+    assert!(matches!(effort.as_str(), "low" | "high"));
     let save = |name: &str, value: &Value| {
-        if out.join(name).exists() && (name == "window-plan.json" || name.ends_with("-input.json"))
+        if out.join(name).exists()
+            && (name == "window-plan.json"
+                || name == "request-settings.json"
+                || name.ends_with("-input.json"))
         {
             let previous: Value =
                 serde_json::from_slice(&fs::read(out.join(name)).unwrap()).unwrap();
@@ -45,6 +61,11 @@ fn real_understanding_replay() {
     )
     .unwrap();
     let model = manifest["model"].as_str().unwrap();
+    save(
+        "request-settings.json",
+        &json!({"model":model,"system_prompt":prompt,"deadline_seconds":deadline_seconds,
+            "thinking":"enabled","reasoning_effort":effort}),
+    );
     let target = out.join("replay.sqlite");
     let resume = std::env::var("HEAR_REAL_UNDERSTANDING_RESUME").as_deref() == Ok("1");
     assert_eq!(
@@ -92,6 +113,40 @@ fn real_understanding_replay() {
     let now = to + 600_000;
     if resume {
         recover_tasks(&mut db, now).unwrap();
+    } else if let Some(windows) = manifest["frozen_windows"].as_array() {
+        // Paired transcript experiments keep the coarse planner's boundaries.
+        // Only this ignored fixture entry bypasses replanning different ASR rows.
+        assert!((1..=12).contains(&windows.len()));
+        let tx = db.transaction().unwrap();
+        let mut previous_start = -1;
+        for window in windows {
+            let start = window["start_ms"].as_i64().unwrap();
+            let end = window["end_ms"].as_i64().unwrap();
+            assert!(start >= previous_start && start < end);
+            previous_start = start;
+            let id = window["id"].as_str().unwrap();
+            let hash = manifest["source_sha256"].as_str().unwrap();
+            tx.execute(
+                "INSERT INTO candidate_windows VALUES(?1,?2,?3,?4,'pending',NULL)",
+                params![id, start, end, hash],
+            )
+            .unwrap();
+            insert_task(
+                &tx,
+                "llm",
+                "candidate",
+                id,
+                hash,
+                start,
+                end,
+                None,
+                true,
+                now,
+                FIT_POLICY_VERSION,
+            )
+            .unwrap();
+        }
+        tx.commit().unwrap();
     } else {
         refresh_candidates(&mut db, now, true).unwrap();
     }
@@ -99,7 +154,7 @@ fn real_understanding_replay() {
     let windows = plan.len();
     save("window-plan.json", &json!(plan));
     eprintln!("replay_planned windows={windows}");
-    assert!((2..=12).contains(&windows));
+    assert!((1..=12).contains(&windows));
     let reference = credential_reference(&source, CloudProvider::Llm)
         .unwrap()
         .unwrap();
@@ -165,15 +220,21 @@ fn real_understanding_replay() {
             task.start,
             task.end
         );
+        let requested = Instant::now();
         let response = crate::cloud::chat(
             &key,
             model,
-            FIT_SYSTEM,
+            &prompt,
             &input,
-            Instant::now() + Duration::from_secs(90),
+            Instant::now() + Duration::from_secs(deadline_seconds),
             &meter,
-        )
-        .expect("LLM call failed; do not silently rerun paid calls");
+        );
+        save(
+            &format!("attempt-{}.json", Uuid::new_v4()),
+            &json!({"window":n+1,"elapsed_seconds":requested.elapsed().as_secs_f64(),
+                "success":response.is_ok(),"error":response.as_ref().err().map(|e|format!("{e:?}"))}),
+        );
+        let response = response.expect("LLM call failed; do not silently rerun paid calls");
         save(&format!("window-{:02}-model.json", n + 1), &response);
         let applied = publish_fit_with_input(&mut db, &task, &input, response, now).unwrap();
         save(&format!("window-{:02}-saved.json", n + 1), &snapshots(&db));
@@ -182,4 +243,103 @@ fn real_understanding_replay() {
     save("final-saved.json", &snapshots(&db));
     save("usage.json", &json!(*meter.0.borrow()));
     eprintln!("replay_complete windows={windows}");
+}
+
+#[test]
+#[ignore = "explicit private fixture repair; one paid ASR submission, never live DB writes"]
+fn real_precise_fixture_repair() {
+    use std::{
+        cell::Cell,
+        fs,
+        path::PathBuf,
+        time::{Duration, Instant},
+    };
+    assert_eq!(
+        std::env::var("HEAR_REAL_UNDERSTANDING_ALLOW").as_deref(),
+        Ok("1")
+    );
+    let out = PathBuf::from(std::env::var("HEAR_REAL_ASR_FIXTURE_OUTPUT").unwrap());
+    assert!(
+        !out.join("request-id.txt").exists(),
+        "No implicit paid rerun"
+    );
+    let source = Connection::open_with_flags(
+        out.join("source.sqlite"),
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )
+    .unwrap();
+    let input: asr::Input =
+        serde_json::from_slice(&fs::read(out.join("asr-input.json")).unwrap()).unwrap();
+    let audio = asr::assemble(&out, &input).unwrap();
+    fs::write(out.join("submitted.ogg"), &audio).unwrap();
+    let reference = credential_reference(&source, CloudProvider::Asr)
+        .unwrap()
+        .unwrap();
+    let key = crate::cloud::credential(CloudProvider::Asr, &reference)
+        .unwrap()
+        .unwrap();
+    struct Meter(PathBuf, Cell<usize>);
+    impl crate::usage::Meter for Meter {
+        fn begin(&self, _: &str, _: Option<Uuid>, _: Option<i64>) -> Result<String, String> {
+            Ok(Uuid::new_v4().to_string())
+        }
+        fn llm_response(&self, _: &str, _: &Value) -> Result<(), String> {
+            panic!("ASR fixture only")
+        }
+        fn asr_response(&self, _: Uuid, status: &str, body: &Value) -> Result<(), String> {
+            let n = self.1.get();
+            self.1.set(n + 1);
+            fs::write(
+                self.0.join(format!("response-{n:03}.json")),
+                serde_json::to_vec_pretty(&json!({"status":status,"body":body})).unwrap(),
+            )
+            .map_err(|e| e.to_string())
+        }
+        fn rejected(&self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+        fn observation_failed(&self) {
+            panic!("Could not record ASR response")
+        }
+    }
+    let meter = Meter(out.clone(), Cell::new(0));
+    let id = Uuid::new_v4();
+    fs::write(out.join("request-id.txt"), id.to_string()).unwrap();
+    crate::cloud::submit_audio(
+        &key,
+        id,
+        &audio,
+        crate::cloud::AsrAudioFormat::Ogg,
+        input.duration_ms,
+        Instant::now() + Duration::from_secs(60),
+        &meter,
+    )
+    .unwrap();
+    let until = Instant::now() + Duration::from_secs(240);
+    loop {
+        assert!(
+            Instant::now() < until,
+            "ASR not complete; preserve request ID"
+        );
+        match crate::cloud::query_audio(&key, id, Instant::now() + Duration::from_secs(30), &meter)
+            .unwrap()
+        {
+            crate::cloud::AsrQuery::Processing => std::thread::sleep(Duration::from_secs(2)),
+            crate::cloud::AsrQuery::Missing => panic!("Submitted ASR request missing"),
+            crate::cloud::AsrQuery::Complete(items) => {
+                fs::write(
+                    out.join("provider-utterances.json"),
+                    serde_json::to_vec_pretty(&items).unwrap(),
+                )
+                .unwrap();
+                let mapped = asr::map(&input, &items).unwrap();
+                fs::write(
+                    out.join("mapped-utterances.json"),
+                    serde_json::to_vec_pretty(&mapped).unwrap(),
+                )
+                .unwrap();
+                break;
+            }
+        }
+    }
 }
