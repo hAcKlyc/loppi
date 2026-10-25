@@ -42,3 +42,9 @@
 - 主Agent裁决：两路无修复项；既有提示词失败、网络零缓存残轮和安装边界已如实记录，不提高保证或重跑未受影响ASR。功能代码、原始运行与证据清单保持冻结。
 - Final architecture：fresh-context `xasr_architecture`，PASS，无范围内架构阻塞。确认模型准备、资源准入、worker计算和结果持久化沿用既有owner，固定资产身份集中于model_pack；未新增协议、选择器或恢复层。独立复核63项证据与三份生产源码身份，版本及文档义务齐备。
 - 三路审查均通过，无需修复候选；进入自有提交与最终组合态门禁收尾，原评测报告保持冻结。
+
+## 完成交付
+
+客户端实现提交`17549c4`；提交后的`build/xasr-switch/verification-final-static.json`中typecheck、lint与Rust check全部通过。只读最终核验回执`build/xasr-switch/final-verification.json`确认63份本机证据、343份冻结benchmark文件、三份生产源码、16份外部文件保全与74个本地链接全部匹配；没有改写原始manifest或重跑未受影响的ASR。已完成整份台账的结束条件核对，本次状态为implemented。
+
+平级benchmark的README与当前产品状态同步于提交`a2df014`，记载用户已采用本次固定X-ASR；历史报告仍为原快照。隔离工作树已归档，所需忽略证据和验收程序副本已保存在原工作区。客户端源码切换完成；既有安装版未重装，后续完整打包安装并通过原模型准备入口准备新包后生效。既有提示词测试失败按上文保留，本轮不宣称组合默认全套全绿。
