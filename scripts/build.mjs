@@ -1,0 +1,194 @@
+#!/usr/bin/env node
+// Build-time downloads only. The installed application never downloads models.
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, cpSync, lstatSync, readdirSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { spawnSync, execFileSync } from 'node:child_process';
+import { parseEnv } from 'node:util';
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+process.chdir(root);
+const settings = JSON.parse(readFileSync('config/build-targets.json'));
+const lockBytes = readFileSync('config/models.lock.json');
+const models = JSON.parse(lockBytes);
+const sha = bytes => createHash('sha256').update(bytes).digest('hex');
+const output = (cmd, args) => execFileSync(cmd, args, { encoding: 'utf8' }).trim();
+function run(cmd, args, env = process.env) {
+  const result = spawnSync(cmd, args, { env, stdio: 'inherit' });
+  if (result.error) throw result.error;
+  if (result.status !== 0) throw new Error(`${cmd} failed (${result.status})`);
+}
+function checked(path, spec) {
+  if (!existsSync(path)) return false;
+  const stat = lstatSync(path);
+  return stat.isFile() && !stat.isSymbolicLink() && stat.size === spec.bytes && sha(readFileSync(path)) === spec.sha256;
+}
+function fetchAsset(path, spec) {
+  if (checked(path, spec)) return;
+  mkdirSync(dirname(path), { recursive: true });
+  // Download to a temporary sibling. Never accept a partial or stale cache hit.
+  const temporary = `${path}.download-${process.pid}`;
+  run('curl', ['--fail', '--location', '--retry', '3', '--silent', '--show-error', spec.url, '--output', temporary]);
+  if (!checked(temporary, spec)) throw new Error(`Asset checksum mismatch: ${spec.url}`);
+  run('/bin/mv', ['-f', temporary, path]);
+}
+function architectures(path, expected) {
+  const actual = output('lipo', ['-archs', path]).split(/\s+/).sort();
+  if (actual.join() !== [...expected].sort().join()) throw new Error(`Wrong architectures in ${path}: ${actual}`);
+}
+function minimumOS(path) {
+  const loads = output('otool', ['-l', path]);
+  const versions = [...loads.matchAll(/cmd LC_BUILD_VERSION\s+cmdsize \d+\s+platform \S+\s+minos (\d+)\.(\d+)/g), ...loads.matchAll(/cmd LC_VERSION_MIN_MACOSX\s+cmdsize \d+\s+version (\d+)\.(\d+)/g)];
+  const [major, minor] = settings.minimum_system_version.split('.').map(Number);
+  if (!versions.length || versions.some(m => Number(m[1]) > major || (Number(m[1]) === major && Number(m[2]) > minor))) throw new Error(`Unsupported minimum macOS version: ${path}`);
+}
+function versionCheck() {
+  const version = JSON.parse(readFileSync('package.json')).version;
+  const npmLock = JSON.parse(readFileSync('package-lock.json'));
+  const tauri = JSON.parse(readFileSync('src-tauri/tauri.conf.json'));
+  const cargo = readFileSync('Cargo.toml', 'utf8').match(/\[workspace.package\]\s+version = "([^"]+)"/)[1];
+  const plist = output('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleShortVersionString', 'src-tauri/native/HearCore-Info.plist']);
+  if ([npmLock.version, npmLock.packages[''].version, tauri.version, cargo, plist].some(v => v !== version)) throw new Error('Project versions disagree');
+  if (tauri.bundle.macOS.minimumSystemVersion !== settings.minimum_system_version) throw new Error('Minimum macOS versions disagree');
+  const cargoLock = readFileSync('Cargo.lock', 'utf8');
+  for (const crate of ['sherpa-onnx', 'sherpa-onnx-sys']) {
+    if (!cargoLock.includes(`name = "${crate}"\nversion = "${settings.native.version}"`)) throw new Error('Native engine/Cargo versions disagree');
+  }
+  return version;
+}
+function prepareAssets() {
+  const cache = resolve('build/cache/models', sha(lockBytes));
+  const seen = new Set();
+  if (models.schema !== 1 || !models.files.length) throw new Error('Invalid model lock');
+  for (const asset of models.files) {
+    if (!asset.path || asset.path.split('/').some(p => !p || p === '.' || p === '..') || asset.path.includes('\\') || seen.has(asset.path)) throw new Error('Invalid model asset path');
+    seen.add(asset.path);
+    fetchAsset(join(cache, asset.path), asset);
+  }
+  writeFileSync(join(cache, 'models.lock.json'), lockBytes);
+  const native = settings.native;
+  const nativeCache = resolve('build/cache/native', native.sha256);
+  const archive = join(nativeCache, native.archive);
+  fetchAsset(archive, native);
+  // Re-extract the verified archive; extracted files are never trusted as cache.
+  const extracted = join(stage, 'native');
+  mkdirSync(extracted, { recursive: true });
+  run('tar', ['-xjf', archive, '-C', extracted]);
+  const lib = join(extracted, native.directory, 'lib');
+  for (const file of readdirSync(lib).filter(f => f.endsWith('.a'))) architectures(join(lib, file), ['arm64', 'x86_64']);
+  return { cache, lib };
+}
+
+const [command = 'release', ...args] = process.argv.slice(2);
+if (!['build', 'release'].includes(command) || (args.length && (args.length !== 2 || args[0] !== '--target'))) {
+  console.error('Usage: node scripts/build.mjs [build|release] [--target aarch64-apple-darwin|x86_64-apple-darwin|universal-apple-darwin]');
+  process.exit(2);
+}
+const target = args[1] ?? settings.default_release_target;
+const platform = settings.targets[target];
+if (!platform) throw new Error(`Unsupported target: ${target}`);
+if (process.platform !== 'darwin') throw new Error('This build entry supports macOS only');
+const release = command === 'release';
+if (release && output('git', ['status', '--porcelain'])) throw new Error('Release needs a clean checkout; commit your intended source changes first');
+const version = versionCheck();
+const source = output('git', ['rev-parse', 'HEAD']);
+const epoch = Math.floor(Date.now() / 1000).toString();
+const stage = resolve('build/macos', `${target}-${epoch}-${process.pid}`);
+const app = resolve('target', target, 'release/bundle/macos/hear.app');
+if (output('/bin/ps', ['-axo', 'comm=']).split('\n').some(p => p.trim().startsWith(`${app}/`))) {
+  throw new Error('Quit the application running from this build output before rebuilding');
+}
+mkdirSync(stage, { recursive: true });
+const env = { ...process.env, MACOSX_DEPLOYMENT_TARGET: settings.minimum_system_version, HEAR_BUILD_EPOCH: epoch, CARGO_TARGET_DIR: resolve('target') };
+const local = existsSync('.env') ? parseEnv(readFileSync('.env', 'utf8')) : {};
+for (const key of ['APPLE_SIGNING_IDENTITY', 'APPLE_NOTARY_PROFILE', 'APPLE_API_KEY', 'APPLE_API_ISSUER', 'APPLE_API_KEY_PATH']) {
+  if (env[key] === undefined && local[key] !== undefined) env[key] = local[key];
+}
+if (env.APPLE_API_KEY_PATH) env.APPLE_API_KEY_PATH = env.APPLE_API_KEY_PATH.replace(/^~(?=\/)/, homedir());
+if (release) {
+  env.APPLE_SIGNING_IDENTITY ||= output('security', ['find-identity', '-v', '-p', 'codesigning']).match(/"(Developer ID Application:[^"]+)"/)?.[1];
+  if (!env.APPLE_SIGNING_IDENTITY) throw new Error('Developer ID Application identity is required');
+  if (!env.APPLE_NOTARY_PROFILE && !(env.APPLE_API_KEY && env.APPLE_API_KEY_PATH)) throw new Error('Notarization credentials are required');
+}
+const installed = output('rustup', ['target', 'list', '--installed']).split('\n');
+if (platform.rust_targets.some(t => !installed.includes(t))) throw new Error(`Install Rust targets: ${platform.rust_targets.join(' ')}`);
+if (/target-cpu[= ]native/.test(env.RUSTFLAGS ?? '')) throw new Error('Do not use target-cpu=native for distributable binaries');
+const assets = prepareAssets();
+env.SHERPA_ONNX_LIB_DIR = assets.lib;
+for (const rustTarget of platform.rust_targets) {
+  run('cargo', ['build', '--locked', '--release', '--target', rustTarget, '-p', 'hear-core', '-p', 'hear-cli', '-p', 'hear-worker'], env);
+}
+const helper = join(stage, 'HearCore.app');
+mkdirSync(join(helper, 'Contents/MacOS'), { recursive: true });
+cpSync('src-tauri/native/HearCore-Info.plist', join(helper, 'Contents/Info.plist'));
+for (const name of ['hear-core', 'hear-worker', 'hear']) {
+  const destination = name === 'hear' ? join(stage, name) : join(helper, 'Contents/MacOS', name);
+  const inputs = platform.rust_targets.map(t => resolve('target', t, 'release', name));
+  if (inputs.length === 1) cpSync(inputs[0], destination);
+  else run('lipo', ['-create', ...inputs, '-output', destination]);
+  architectures(destination, platform.architectures);
+}
+const bundledModels = join(helper, 'Contents/Resources/models');
+mkdirSync(bundledModels, { recursive: true });
+for (const spec of models.files) {
+  const destination = join(bundledModels, spec.path);
+  mkdirSync(dirname(destination), { recursive: true });
+  cpSync(join(assets.cache, spec.path), destination);
+}
+writeFileSync(join(bundledModels, 'models.lock.json'), lockBytes);
+cpSync('THIRD_PARTY_NOTICES.md', join(helper, 'Contents/Resources/THIRD_PARTY_NOTICES.md'));
+cpSync('licenses', join(helper, 'Contents/Resources/licenses'), { recursive: true });
+const override = join(stage, 'tauri.json');
+writeFileSync(override, JSON.stringify({ bundle: { macOS: { files: { 'Library/LoginItems/HearCore.app': helper, 'MacOS/hear': join(stage, 'hear') } } } }));
+// Signing/notarizing is deliberately deferred until the entire bundle is final.
+const unsignedEnv = { ...env };
+for (const key of Object.keys(unsignedEnv).filter(k => k.startsWith('APPLE_'))) delete unsignedEnv[key];
+run('npm', ['run', 'tauri', 'build', '--', '--target', target, '--bundles', 'app', '--config', override], unsignedEnv);
+const paths = ['Contents/MacOS/hear-desktop', 'Contents/MacOS/hear', 'Contents/Library/LoginItems/HearCore.app/Contents/MacOS/hear-core', 'Contents/Library/LoginItems/HearCore.app/Contents/MacOS/hear-worker'];
+for (const path of paths) {
+  architectures(join(app, path), platform.architectures);
+  minimumOS(join(app, path));
+}
+const modelRoot = join(app, 'Contents/Library/LoginItems/HearCore.app/Contents/Resources/models');
+for (const spec of models.files) if (!checked(join(modelRoot, spec.path), spec)) throw new Error(`Bundled asset mismatch: ${spec.path}`);
+if (!readFileSync(join(modelRoot, 'models.lock.json')).equals(lockBytes)) throw new Error('Bundled lock mismatch');
+const nativeArch = process.arch === 'arm64' ? 'arm64' : 'x86_64';
+if (platform.architectures.includes(nativeArch)) {
+  run('python3', ['scripts/verify_build_identity.py', '--bundle', app, '--output', join(app, 'Contents/Resources/build-info.json')]);
+  run('python3', ['scripts/smoke_model_preparation.py', '--bundle', app]);
+}
+const runtime = platform.architectures.includes(nativeArch)
+  ? JSON.parse(output(join(app, paths[3]), ['--runtime-info'])) : null;
+if (runtime && runtime.sherpa_onnx.replace(/^v/, '') !== settings.native.version) throw new Error('Linked engine version disagrees with lock');
+const report = {
+  version, source, target, architectures: platform.architectures, built_at_epoch: Number(epoch),
+  models_lock_sha256: sha(lockBytes), models_bytes: models.files.reduce((n, f) => n + f.bytes, 0),
+  native: { version: settings.native.version, sha256: settings.native.sha256 },
+  toolchain: { node: process.version, rust: output('rustc', ['--version']), xcode: output('xcodebuild', ['-version']), sdk: output('xcrun', ['--show-sdk-version']) },
+  runtime, runtime_checked_architecture: platform.architectures.includes(nativeArch) ? nativeArch : null,
+  intel_native_test: 'not run; cross-compiled and slices verified', minimum_os_runtime_test: 'not run',
+};
+if (release) {
+  const bundledHelper = join(app, 'Contents/Library/LoginItems/HearCore.app');
+  const sign = (path, entitlements = false) => run('codesign', ['--force', '--options', 'runtime', '--timestamp', ...(entitlements ? ['--entitlements', 'src-tauri/native/HearCore.entitlements'] : []), '--sign', env.APPLE_SIGNING_IDENTITY, path]);
+  sign(join(bundledHelper, 'Contents/MacOS/hear-worker'));
+  sign(bundledHelper, true);
+  sign(join(app, 'Contents/MacOS/hear'));
+  sign(app, true);
+  run('codesign', ['--verify', '--deep', '--strict', app]);
+  const destination = resolve('build/releases', version, platform.name);
+  mkdirSync(destination, { recursive: true });
+  const dmg = join(destination, `hear_${version}_${platform.name}.dmg`);
+  run('/bin/zsh', ['scripts/package_macos.sh', app, dmg], env);
+  report.dmg = dmg.split('/').pop();
+  report.dmg_bytes = lstatSync(dmg).size;
+  report.dmg_sha256 = sha(readFileSync(dmg));
+  writeFileSync(join(destination, 'release-info.json'), JSON.stringify(report, null, 2) + '\n');
+  writeFileSync(join(destination, 'SHA256SUMS'), `${report.dmg_sha256}  ${dmg.split('/').pop()}\n`);
+  console.log(`Release ready: ${dmg}`);
+} else {
+  writeFileSync(join(stage, 'build-info.json'), JSON.stringify(report, null, 2) + '\n');
+  console.log(`Unsigned candidate: ${app}`);
+}

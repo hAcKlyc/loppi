@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "default_release_target": "universal-apple-darwin",
+  "minimum_system_version": "13.0",
+  "targets": {
+    "aarch64-apple-darwin": {
+      "rust_targets": [
+        "aarch64-apple-darwin"
+      ],
+      "architectures": [
+        "arm64"
+      ],
+      "name": "macos-arm64"
+    },
+    "x86_64-apple-darwin": {
+      "rust_targets": [
+        "x86_64-apple-darwin"
+      ],
+      "architectures": [
+        "x86_64"
+      ],
+      "name": "macos-x86_64"
+    },
+    "universal-apple-darwin": {
+      "rust_targets": [
+        "aarch64-apple-darwin",
+        "x86_64-apple-darwin"
+      ],
+      "architectures": [
+        "arm64",
+        "x86_64"
+      ],
+      "name": "macos-universal2"
+    }
+  },
+  "native": {
+    "version": "2.0.0",
+    "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/v2.0.0/sherpa-onnx-v2.0.0-osx-universal2-static-lib.tar.bz2",
+    "archive": "sherpa-onnx-v2.0.0-osx-universal2-static-lib.tar.bz2",
+    "directory": "sherpa-onnx-v2.0.0-osx-universal2-static-lib",
+    "bytes": 41041332,
+    "sha256": "8ed41bf3b27ce55d6527bbc0f7754598c5afbb18e814ff0bddbc9ecd50fb09c5"
+  }
+}

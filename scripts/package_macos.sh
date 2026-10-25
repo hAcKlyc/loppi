@@ -10,12 +10,15 @@ if [[ -z "$hear_identity" ]]; then
   exit 1
 fi
 
-hear_app="$hear_root/target/release/bundle/macos/hear.app"
+if [[ $# -ne 2 ]]; then
+  print -u2 'Usage: package_macos.sh /absolute/hear.app /absolute/output.dmg'
+  exit 2
+fi
+hear_app="$1"
+hear_dmg="$2"
 codesign --verify --deep --strict "$hear_app"
 
 hear_version=$(node -p "require('./package.json').version")
-hear_arch=$(uname -m)
-hear_dmg="$hear_root/target/release/bundle/dmg/hear_${hear_version}_${hear_arch}.dmg"
 hear_work=$(mktemp -d "${TMPDIR:-/tmp/}hear-dmg.XXXXXX")
 hear_mount="$hear_work/mounted"
 trap 'hdiutil detach "$hear_mount" >/dev/null 2>&1 || true; rm -rf "$hear_work"' EXIT
@@ -55,4 +58,10 @@ xcrun notarytool submit "$hear_dmg" "${hear_notary_args[@]}" --wait
 xcrun stapler staple "$hear_dmg"
 xcrun stapler validate "$hear_dmg"
 spctl -a -vv -t open --context context:primary-signature "$hear_dmg"
+hdiutil attach -quiet -nobrowse -readonly -mountpoint "$hear_mount" "$hear_dmg"
+codesign --verify --deep --strict "$hear_mount/hear.app"
+# Check the bytes in the actual final image, including the single model copy.
+diff -qr "$hear_app" "$hear_mount/hear.app"
+python3 scripts/smoke_model_preparation.py --bundle "$hear_mount/hear.app"
+hdiutil detach -quiet "$hear_mount"
 print "$hear_dmg"

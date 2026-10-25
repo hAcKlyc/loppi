@@ -182,22 +182,13 @@ fn run() -> Result<(), String> {
     }
     let run_id = uuid::Uuid::new_v4();
     let logs = LogWorker::start(directory.clone());
-    let models_present = model_pack::installed_path(&directory).is_dir();
-    let speaker_present = model_pack::speaker_model_path(&directory).is_file();
+    let model_assets = model_pack::Assets::discover()?;
     let models = Arc::new(Mutex::new(ModelState {
-        phase: if models_present {
-            ModelPhase::Checking
-        } else {
-            ModelPhase::Missing
-        },
+        phase: ModelPhase::Checking,
         progress_percent: 0,
         error: None,
         speaker_error: None,
-        speaker_phase: if speaker_present {
-            ModelPhase::Checking
-        } else {
-            ModelPhase::Missing
-        },
+        speaker_phase: ModelPhase::Checking,
     }));
     logs.emit(
         ClientKind::Core,
@@ -215,6 +206,7 @@ fn run() -> Result<(), String> {
         launch_mode,
         run_id,
         directory: directory.clone(),
+        model_assets,
         models,
         microphone_busy: AtomicBool::new(false),
         system_busy: AtomicBool::new(false),
@@ -223,27 +215,7 @@ fn run() -> Result<(), String> {
         normal_run: AtomicBool::new(handoff.map(|v| v.1).unwrap_or(capture_after_launch)),
         resources: resources::Governor::new(),
     });
-    if models_present || speaker_present {
-        let startup = Arc::clone(&shared);
-        thread::spawn(move || {
-            if models_present {
-                let result = if model_pack::ready(&startup.directory) {
-                    check_speech_load(&startup.models, &startup.resources, &startup.directory)
-                } else {
-                    Err("model_checksum".into())
-                };
-                finish_model(&startup.models, false, result);
-            }
-            if speaker_present {
-                let result = if model_pack::speaker_ready(&startup.directory) {
-                    Ok(())
-                } else {
-                    Err("model_checksum".into())
-                };
-                finish_model(&startup.models, true, result);
-            }
-        });
-    }
+    check_models(&shared, true, true, uuid::Uuid::new_v4());
     let stop = Arc::new(AtomicBool::new(false));
     {
         let shared = Arc::clone(&shared);
@@ -654,7 +626,7 @@ fn coarse_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
     let Ok(exe) = std::env::current_exe() else {
         return;
     };
-    let model = model_pack::installed_path(&shared.directory);
+    let model = shared.model_assets.speech_directory();
     let mut worker: Option<analysis::AnalysisClient> = None;
     let mut turn = 0usize;
     while !stop.load(Ordering::Acquire) {
@@ -816,6 +788,57 @@ fn coarse_log_event(job: &coarse::Job, published: &Result<bool, String>, stage: 
     event
 }
 
+fn begin_model_check(state: &mut ModelState) -> (bool, bool) {
+    let recheck_all = matches!(state.phase, ModelPhase::Ready)
+        && matches!(state.speaker_phase, ModelPhase::Ready);
+    let check = |phase| recheck_all || matches!(phase, ModelPhase::Missing | ModelPhase::Failed);
+    let speech = check(state.phase);
+    let speaker = check(state.speaker_phase);
+    if speech {
+        state.phase = ModelPhase::Checking;
+        state.progress_percent = 0;
+        state.error = None;
+    }
+    if speaker {
+        state.speaker_phase = ModelPhase::Checking;
+        state.speaker_error = None;
+    }
+    (speech, speaker)
+}
+
+fn check_models(shared: &Arc<CoreState>, speech: bool, speaker: bool, correlation_id: uuid::Uuid) {
+    let shared = Arc::clone(shared);
+    thread::spawn(move || {
+        let mut success = true;
+        if speech {
+            let result = shared.model_assets.verify(false).and_then(|_| {
+                check_speech_load(&shared.models, &shared.resources, &shared.model_assets)
+            });
+            success &= result.is_ok();
+            finish_model(&shared.models, false, result);
+        }
+        if speaker {
+            let result = shared.model_assets.verify(true);
+            success &= result.is_ok();
+            finish_model(&shared.models, true, result);
+        }
+        let mut event = LogEvent::simple(
+            "models",
+            if success {
+                LogLevel::Info
+            } else {
+                LogLevel::Error
+            },
+            if success { "checked" } else { "check_failed" },
+        );
+        event.correlation_id = Some(correlation_id);
+        if !success {
+            event.error_code = Some("model_setup_failed".into());
+        }
+        shared.logs.emit(ClientKind::Core, correlation_id, event);
+    });
+}
+
 fn finish_model(models: &Mutex<ModelState>, speaker: bool, result: Result<(), String>) {
     if let Ok(mut state) = models.lock() {
         let phase = if result.is_ok() {
@@ -843,7 +866,7 @@ fn finish_model(models: &Mutex<ModelState>, speaker: bool, result: Result<(), St
 fn check_speech_load(
     models: &Mutex<ModelState>,
     resources: &Arc<resources::Governor>,
-    data_dir: &std::path::Path,
+    assets: &model_pack::Assets,
 ) -> Result<(), String> {
     if let Ok(mut state) = models.lock() {
         state.phase = ModelPhase::Loading;
@@ -859,7 +882,7 @@ fn check_speech_load(
     let worker = std::env::current_exe()
         .map_err(|_| "model_worker_missing")?
         .with_file_name("hear-worker");
-    let directory = model_pack::installed_path(data_dir);
+    let directory = assets.speech_directory();
     let samples = vec![0.0f32; 16_000];
     let cancelled = || resources.cancel(resources::Work::Coarse);
     {
@@ -905,7 +928,7 @@ fn analysis_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
         Some(path) => path,
         None => return,
     };
-    let model_dir = model_pack::installed_path(&shared.directory);
+    let model_dir = shared.model_assets.speech_directory();
     let mut worker: Option<analysis::AnalysisClient> = None;
     while !stop.load(Ordering::Acquire) {
         if worker
@@ -1324,7 +1347,7 @@ fn voice_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
                                 analysis::AnalysisClient::start(
                                     &exe.with_file_name("hear-worker"),
                                     "embed",
-                                    &model_pack::speaker_model_path(&shared.directory),
+                                    &shared.model_assets.speaker_file(),
                                 )?
                                 .managed(&shared.resources, resources::Work::Voice),
                             );
@@ -1975,6 +1998,7 @@ struct CoreState {
     run_id: uuid::Uuid,
     directory: std::path::PathBuf,
     models: Arc<Mutex<ModelState>>,
+    model_assets: model_pack::Assets,
     microphone_busy: AtomicBool,
     system_busy: AtomicBool,
     capture: Mutex<CaptureRuntime>,
@@ -2397,7 +2421,7 @@ fn current_login_session() -> Result<i64, String> {
     Ok(i64::from(info.session))
 }
 
-fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String> {
+fn serve_one(stream: &mut UnixStream, shared: &Arc<CoreState>) -> Result<bool, String> {
     stream
         .set_write_timeout(Some(Duration::from_secs(3)))
         .map_err(|error| error.to_string())?;
@@ -3715,7 +3739,8 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                 Response::Error {
                     id: envelope.id,
                     code: "model_not_ready".to_owned(),
-                    message: "install and verify local speech models before recording".to_owned(),
+                    message: "wait for the bundled speech components to pass their load check"
+                        .to_owned(),
                 }
             }
             Request::Models => Response::Models {
@@ -3727,81 +3752,16 @@ fn serve_one(stream: &mut UnixStream, shared: &CoreState) -> Result<bool, String
                     .clone(),
             },
             Request::PrepareModels => {
-                let mut state = shared.models.lock().map_err(|error| error.to_string())?;
-                let speech_needed = matches!(state.phase, ModelPhase::Missing | ModelPhase::Failed);
-                let speaker_needed = matches!(
-                    state.speaker_phase,
-                    ModelPhase::Missing | ModelPhase::Failed
-                );
-                if speech_needed || speaker_needed {
-                    if speech_needed {
-                        state.phase = ModelPhase::Checking;
-                        state.progress_percent = 0;
-                        state.error = None;
-                    }
-                    if speaker_needed {
-                        state.speaker_phase = ModelPhase::Checking;
-                        state.speaker_error = None;
-                    }
-                    let resources = Arc::clone(&shared.resources);
-                    let models = Arc::clone(&shared.models);
-                    let directory = shared.directory.clone();
-                    let logs = shared.logs.clone();
-                    let correlation_id = envelope.id;
-                    thread::spawn(move || {
-                        let speech_success = if speech_needed {
-                            let result = model_pack::install(&directory, |phase, progress| {
-                                if let Ok(mut state) = models.lock() {
-                                    state.phase = phase;
-                                    state.progress_percent = progress;
-                                }
-                            })
-                            .map_err(|e| model_pack::error_code(&e))
-                            .and_then(|_| check_speech_load(&models, &resources, &directory));
-                            let success = result.is_ok();
-                            finish_model(&models, false, result);
-                            success
-                        } else {
-                            true
-                        };
-                        let speaker_success = if speaker_needed {
-                            let result = model_pack::install_speaker(&directory, |phase, _| {
-                                if let Ok(mut state) = models.lock() {
-                                    state.speaker_phase = phase;
-                                }
-                            })
-                            .map(|_| ())
-                            .map_err(|e| model_pack::error_code(&e));
-                            let success = result.is_ok();
-                            finish_model(&models, true, result);
-                            success
-                        } else {
-                            true
-                        };
-                        let success = speech_success && speaker_success;
-                        let mut event = LogEvent::simple(
-                            "models",
-                            if success {
-                                LogLevel::Info
-                            } else {
-                                LogLevel::Error
-                            },
-                            if success {
-                                "installed"
-                            } else {
-                                "install_failed"
-                            },
-                        );
-                        event.correlation_id = Some(correlation_id);
-                        if !success {
-                            event.error_code = Some("model_setup_failed".to_owned());
-                        }
-                        logs.emit(ClientKind::Worker, correlation_id, event);
-                    });
+                let (speech, speaker) = {
+                    let mut state = shared.models.lock().map_err(|e| e.to_string())?;
+                    begin_model_check(&mut state)
+                };
+                if speech || speaker {
+                    check_models(shared, speech, speaker, envelope.id);
                 }
                 Response::Models {
                     id: envelope.id,
-                    state: state.clone(),
+                    state: shared.models.lock().map_err(|e| e.to_string())?.clone(),
                 }
             }
             Request::Probe { source, seconds } => match probe(source, seconds, false) {
@@ -5148,6 +5108,28 @@ fn map_sample(db: &Connection, session_id: &str, sample_16k: u64) -> Result<i64,
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bundled_model_recheck_is_single_flight_and_can_retry_failure() {
+        let mut state = ModelState {
+            phase: ModelPhase::Ready,
+            speaker_phase: ModelPhase::Failed,
+            progress_percent: 100,
+            error: None,
+            speaker_error: Some("model_resources_busy".into()),
+        };
+        assert_eq!(begin_model_check(&mut state), (false, true));
+        assert_eq!(begin_model_check(&mut state), (false, false));
+        assert_eq!(state.progress_percent, 100);
+        assert!(state.speaker_error.is_none());
+        let models = Mutex::new(state);
+        finish_model(&models, false, Err("model_resources_busy".into()));
+        finish_model(&models, true, Ok(()));
+        let mut state = models.lock().unwrap();
+        assert_eq!(state.error.as_deref(), Some("model_resources_busy"));
+        assert_eq!(begin_model_check(&mut state), (true, false));
+        assert!(state.error.is_none());
+    }
 
     #[test]
     fn delayed_vad_failure_keeps_claimed_audio_range_in_diagnostic_logs() {

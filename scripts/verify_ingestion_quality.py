@@ -31,7 +31,7 @@ for start in range(0,len(raw),240000*4):
 reports={};baseline=None
 for case in ['uninterrupted','delayed_close','delayed_crash']:
  with tempfile.TemporaryDirectory(prefix='myagents-verify-hear-delayed-') as tmp:
-  data=Path(tmp);env=os.environ|{'HEAR_DATA_DIR':tmp,'HEAR_CORE_BIN':str(core)};locks=[];p=None;err=(data/'stderr').open('w')
+  data=Path(tmp);env=os.environ|{'HEAR_DATA_DIR':tmp,'HEAR_CORE_BIN':str(core),'HEAR_MODEL_ROOT':str(models)};locks=[];p=None;err=(data/'stderr').open('w')
   def command(*args):return json.loads(subprocess.check_output([str(cli),*args],env=env,text=True,timeout=15))
   def boot():
    p=subprocess.Popen([str(core),'serve','--on-demand'],env=env,stdout=subprocess.DEVNULL,stderr=err,start_new_session=True)
@@ -42,7 +42,6 @@ for case in ['uninterrupted','delayed_close','delayed_crash']:
    raise RuntimeError('core socket timeout')
   try:
    p=boot();command('status');command('quit');p.wait(timeout=15)
-   (data/'models').symlink_to(models,target_is_directory=True)
    anchor=int(time.time()*1000)-60000;db=sqlite3.connect(data/'hear.sqlite')
    for source in ['microphone','system']:
     sid=str(uuid.uuid4());run=str(uuid.uuid4());state='open' if case=='delayed_crash' else 'closed';delayed=case!='uninterrupted'

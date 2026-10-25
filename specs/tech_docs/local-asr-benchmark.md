@@ -63,12 +63,12 @@ X-ASR也有回退：c08为48.27%（SenseVoice37.13%）、w10为53.29%（51.56%�
 | joiner-epoch-99-avg-1.int8.onnx | 2581422 | `82e88dad29301e29144565cd3b7347fa163f07ddb30ea60346b7c4c536adf4ba` |
 | tokens.txt | 59240 | `ad0df596d9cc60c90795409549ccf7d1c4f901bdc060dd6b2b067d9ef2fddfaf` |
 
-机器可读身份：[model-identity.json](../research/2026-10-25-local-asr-selection/model-identity.json)。安装器核验各推理文件和LICENSE，新发布`coarse_segments.model_version`写入 `x-asr-zipformer-transducer-zh-en-int8-2026-06-03`；历史行原标签不改、不强制重转。
+机器可读身份：[model-identity.json](../research/2026-10-25-local-asr-selection/model-identity.json)。构建及 Core 核验各推理文件和 LICENSE，新发布`coarse_segments.model_version`写入 `x-asr-zipformer-transducer-zh-en-int8-2026-06-03`；历史行原标签不改、不强制重转。
 
 ## 客户端准备与升级边界
 
-模型包新路径为数据目录下 `models/speech-xasr-v1/xasr/`，同包Silero VAD保持原文件/哈希；CampPlus仍为`speaker-v1`。旧`speech-v1`保留，不能当作新包ready。升级后的模型未准备时，使用既有设置中的语音模型准备/下载入口；可复用旧哈希有效VAD、完整单文件暂存（不支持字节续传）。没有自动开麦、云调用、双模型选择器或失败退回SenseVoice。
+从 **0.1.8** 起，模型随 `HearCore.app/Contents/Resources/models/` 交付。X-ASR 的四份推理资产及原 Silero/CampPlus 字节不变，具体来源和哈希以仓库 [`config/models.lock.json`](../../config/models.lock.json) 为准。Core 启动自动校验资源并实际加载 VAD/ASR；设置中的重试只重新检查，不下载。旧数据目录模型不再参与就绪判定，也不会自动删除；历史识别结果标签不改、不强制重转、不退回 SenseVoice。
 
-Core继续拥有模型准备与Governor准入，worker只做推理；recognize有界帧、VAD/重采样、资源阈值、数据库schema和IPC版本不变。本次更新源码和离线验证，不安装含其它未提交功能的客户端。安装版须在后续完整打包后确认新模型ready，不能由本页推断当前运行版已经生效。
+Core 继续拥有模型状态和 Governor 准入，worker 只计算。IPC、数据库、推理参数和选型结论不变。默认 Universal2 包内权重仅保留一份，详见[打包说明](offline-macos-packaging.md)。本次按用户要求简化交付，只进行必要编译、启动和实际包检查，不新增完整质量或能耗评测结论；原 20 组评测仍是选型依据。Intel 原生与最低系统实机验收未执行，不把 ARM 结果当作 Intel 指标。安装包与当前正在运行的安装版仍需区分。
 
 本次验证、审查与采用状态见[执行台账](../prd/devplan_261025_xasr-model-selection.md)。以后升级先核验冻结输入/参考，再建立新模型ID、独立run/report，完整保留失败；新答案/分段/归一化须升版本。当前结论、具体权重与新评测证据一起更新，保留旧报告原文和身份。

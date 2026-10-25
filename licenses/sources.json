@@ -1,0 +1,68 @@
+[
+  {
+    "name": "sherpa-onnx",
+    "source": "https://raw.githubusercontent.com/k2-fsa/sherpa-onnx/8abb7c8f87eae85b2e75f9a4115236c978980add/LICENSE",
+    "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "bytes": 11358
+  },
+  {
+    "name": "onnxruntime",
+    "source": "https://raw.githubusercontent.com/microsoft/onnxruntime/33ca9628233dc8f002435e868d4c2e9f82766ca1/LICENSE",
+    "sha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c",
+    "bytes": 1073
+  },
+  {
+    "name": "onnxruntime-third-party",
+    "source": "https://raw.githubusercontent.com/microsoft/onnxruntime/33ca9628233dc8f002435e868d4c2e9f82766ca1/ThirdPartyNotices.txt",
+    "sha256": "0e07b95f3a8d6230037707c5c4a2b554d12c4cb67369669ac255635528ffcee2",
+    "bytes": 325054
+  },
+  {
+    "name": "kaldi-decoder",
+    "source": "https://raw.githubusercontent.com/k2-fsa/kaldi-decoder/8cd2c8cfbed48f8fe94f7ddd57f1c36080681db3/LICENSE",
+    "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "bytes": 11358
+  },
+  {
+    "name": "kaldifst",
+    "source": "https://raw.githubusercontent.com/k2-fsa/kaldifst/3b415724d5aeb383bf8ae322e88b6a9c7e0a6614/LICENSE",
+    "sha256": "a682d6efd1ee5dee08a8e405c233c2c198ea70ae0718129daa83ab58cfe31c5d",
+    "bytes": 11728
+  },
+  {
+    "name": "kissfft",
+    "source": "https://raw.githubusercontent.com/mborgerding/kissfft/5399a98411c57b3da734d0050744e14103f898ab/COPYING",
+    "sha256": "a2840585f8411be8e6826a31ef15ae65c950bd74a2437a73b013398a934ad0c6",
+    "bytes": 246
+  },
+  {
+    "name": "portaudio",
+    "source": "https://raw.githubusercontent.com/PortAudio/portaudio/1ca0eeedb678c3cca80f3306c474d69a7a4b5278/LICENSE.txt",
+    "sha256": "ec52a1952d701f94e5135719a47376da4ee0b4a0201f1cafb49f61db6480ac3d",
+    "bytes": 3524
+  },
+  {
+    "name": "sentencepiece",
+    "source": "https://raw.githubusercontent.com/google/sentencepiece/bcd4d8c92fa667df2e560fc84291331ce355bf0e/LICENSE",
+    "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "bytes": 11358
+  },
+  {
+    "name": "utf8proc",
+    "source": "https://raw.githubusercontent.com/JuliaStrings/utf8proc/f72a4023617e2d879f2ca93086fd02bc7e3149fe/LICENSE.md",
+    "sha256": "3b510150d34f248a221bb88e1d811238d6c6c18b51231822c42974c39bb07256",
+    "bytes": 5125
+  },
+  {
+    "name": "kaldi-native-fbank",
+    "source": "https://raw.githubusercontent.com/csukuangfj/kaldi-native-fbank/95032e2223c73addc965bb84d2d1b11498eda4e9/LICENSE",
+    "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "bytes": 11358
+  },
+  {
+    "name": "kissfft-bsd",
+    "source": "https://raw.githubusercontent.com/mborgerding/kissfft/5399a98411c57b3da734d0050744e14103f898ab/LICENSES/BSD-3-Clause",
+    "sha256": "4d6bcab46f27d6d0c878e8305d4bdcfe040d52bf6656b9771f04c9fb9902c0ed",
+    "bytes": 1830
+  }
+]

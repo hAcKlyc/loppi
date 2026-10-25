@@ -1,10 +1,12 @@
 ---
-status: proposal
+status: accepted
 date: 2026-10-25
 scope: macOS arm64 and x86_64
 ---
 
 # 必需离线模型与Mac构建发行设计
+
+> 用户已确认方案并进入 0.1.8 实施，随后要求简化、跳过额外流程。最新交付以[打包说明](../tech_docs/offline-macos-packaging.md)和[执行记录](../prd/devplan_261025_offline-universal.md)为准。下文 CI、全量跨架构评测及多轮评审是原建议，本轮不执行；Intel 原生与 macOS 13 实机未验证。
 
 这是架构建议稿，尚未修改生产实现或生成含模型的新release。用户已明确本次完成Mac设计，Windows客户端适配单独做。讨论来源与未确认决策见[讨论台账](../prd/_drafts/offline-models-cross-platform-packaging.md)。
 
@@ -153,6 +155,6 @@ PR检查跑两个真实target的构建/静态与组件检查，资源使用同�
 
 Windows是用户明确排除的独立适配任务。本设计只让模型lock与构建编排不绑定某个CPU；将来Windows复用相同模型身份和“App提供资源、Core负责就绪、worker只读计算”的职责，再增加其安装布局/平台工具。不提前新增Windows脚本、平台接口框架或空实现。
 
-两项核心建议仍待用户确认：**直接读取Core随包只读资源；Mac默认单一Universal2发行**。它们已形成具体设计，未当作已批准生产变更。后续实施PRD还须将Intel实测、最低系统验收和模型回归准入条件写成明确门槛，不能据本建议稿直接宣告可发布。
+两项核心建议已由用户确认：**直接读取 Core 随包只读资源；Mac 默认单一 Universal2 发行**。本轮按用户后续指示采用必要验证，未执行的原生平台与最低系统实测如实保留在打包说明中。
 
 模型及原生组件的许可来源应跟随资产lock固定并随包保存；已核实[X-ASR Apache-2.0](https://github.com/Gilgamesh-J/X-ASR/blob/838297cd47fed858e6cf72eaf5a52f948a3edd73/LICENSE)、[Silero MIT](https://github.com/snakers4/silero-vad/blob/master/LICENSE)、[CampPlus官方模型卡](https://www.modelscope.cn/models/damo/speech_campplus_sv_zh-cn_16k-common)与[3D-Speaker Apache-2.0](https://github.com/modelscope/3D-Speaker/blob/main/LICENSE)。固定许可文件、native第三方声明的完整落盘和校验仍属于构建实现义务。

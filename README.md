@@ -35,7 +35,20 @@ npm ci # 首次构建或依赖更新后执行
 ./build_release.sh
 ```
 
-根目录脚本依次调用 `scripts/build_macos.sh` 和 `scripts/package_macos.sh`，构建并逐层签名 GUI、登录项、worker 与 CLI，再制作含 `hear.app` 和「Applications」入口的磁盘映像，并验证签名与内容。安装包位于 `target/release/bundle/dmg/hear_<版本>_<架构>.dmg`，App 位于 `target/release/bundle/macos/hear.app`。构建架构与当前终端架构一致，`arm64` 包供 Apple Silicon Mac 使用，`x86_64` 包供 Intel Mac 使用。可通过 `APPLE_SIGNING_IDENTITY` 指定签名证书；未指定时自动选择本机 Developer ID Application 证书。
+默认生成 **Universal2**：GUI、CLI、Core 和 worker 都同时包含 ARM 与 Intel 代码；X-ASR、VAD 和声纹模型只在 Core 的资源目录保留一份，约 **204.64 MB（195.16 MiB）**。安装后自动检查和加载本地组件，无需额外下载。模型在构建时按固定清单获取并校验，运行时只读，不复制到用户数据目录。
+
+安装两个 Rust target：`rustup target add aarch64-apple-darwin x86_64-apple-darwin`。发行须从干净且已提交的源码构建，依次完成编译、资源与启动检查、签名、DMG、公证和装订。产物在 `build/releases/<版本>/macos-universal2/`，包含 DMG、`release-info.json` 和 `SHA256SUMS`。通过 `APPLE_SIGNING_IDENTITY` 指定证书，未指定时选择本机 Developer ID Application 证书。
+
+仅构建内部候选或指定架构：
+
+```sh
+node scripts/build.mjs build --target universal-apple-darwin
+node scripts/build.mjs build --target aarch64-apple-darwin
+node scripts/build.mjs build --target x86_64-apple-darwin
+./build_release.sh --target universal-apple-darwin
+```
+
+App 位于 `target/<target>/release/bundle/macos/hear.app`。单架构候选在异架构宿主上只做编译和结构检查，不声称通过原生启动验证。脚本不会更新 `/Applications/hear.app`。完整布局、升级与验证边界见[离线资源与 Mac 打包说明](specs/tech_docs/offline-macos-packaging.md)。
 
 对外分发前需要完成 Apple 公证。`build_release.sh` 自动读取根目录 `.env` 中的以下配置（已有环境变量优先），不会把 `.env` 或私钥文件放进安装包：
 
@@ -54,7 +67,7 @@ APPLE_API_KEY_PATH=/absolute/path/to/AuthKey_YOUR_KEY_ID.p8
 APPLE_NOTARY_PROFILE=hear-notary ./build_release.sh
 ```
 
-`APPLE_NOTARY_PROFILE` 是钥匙串中的配置名，可替换为已有配置名，也可写入 `.env`；设置后优先使用钥匙串认证。缺少公证配置时，脚本仍生成签名 `.dmg`，但以非零状态退出并明确标记公证未完成，不能作为已公证安装包分发。已有最新 App 时，也可单独运行 `APPLE_NOTARY_PROFILE=hear-notary zsh scripts/package_macos.sh`，无需重新编译；直接调用子脚本时需自行传入环境变量。仅需构建 App 时运行 `zsh scripts/build_macos.sh`。
+`APPLE_NOTARY_PROFILE` 是钥匙串中的配置名，也可写入 `.env`；设置后优先使用钥匙串认证。缺少签名或公证配置时，发行入口在编译前退出。仅构建 App 可运行 `zsh scripts/build_macos.sh`；单独重新打包须显式传入 App 和输出 DMG 路径：`zsh scripts/package_macos.sh /absolute/hear.app /absolute/output.dmg`，并自行传入签名、公证环境变量。
 
 长时资源观测可运行 `zsh scripts/measure_macos.sh 600 /tmp/hear-process-usage.csv /Applications/hear.app new /tmp/hear-resource-report.html`。脚本每分钟记录安装版核心、worker 与界面的实际可执行路径/PID、CPU 累计时间、物理内存足迹、常驻内存、磁盘 IO 和进程能耗计数；允许短暂重叠的 worker，并在重启或进程缺席时留下可追溯样本。报告每 15 次采样自动更新一次，同时生成同名 `.html.json` 摘要；`HEAR_REPORT_EVERY` 可调整频率。意外停止后以 `resume` 代替 `new` 续写同一个 CSV，先校验表头，不覆盖原曲线。也可用 `python3 scripts/report_macos_resources.py <一个或多个 CSV> --output /tmp/hear-resource-report.html --summary /tmp/hear-resource-report.json` 合并重叠采样。报告按 PID 分段显示内存和单核 CPU 曲线、峰值、P95、末值与超过 150 秒的采样空档；空档内的峰值未知。进程能耗计数只能用于同机趋势，不能替代整机电池续航实测。录音覆盖、可回放性与来源缺口仍须以核心状态和媒体清单单独核对。
 

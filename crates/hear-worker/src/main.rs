@@ -315,6 +315,18 @@ fn serve_recognizer(model_dir: &Path) -> Result<(), String> {
 }
 
 fn run() -> Result<(), String> {
+    if std::env::args().nth(1).as_deref() == Some("--runtime-info") {
+        println!(
+            "{}",
+            serde_json::json!({
+                "architecture": std::env::consts::ARCH,
+                "sherpa_onnx": sherpa_onnx::version(),
+                "onnxruntime": sherpa_onnx::onnxruntime_version(),
+                "provider": "cpu",
+            })
+        );
+        return Ok(());
+    }
     if std::env::args().nth(1).as_deref() == Some("--build-info") {
         println!(
             "{}",

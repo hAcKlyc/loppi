@@ -257,7 +257,7 @@ fn replay_saved_vad_through_production_decoder_and_publication() {
         let mut worker = analysis::AnalysisClient::start(
             &worker_path,
             "vad",
-            &model_pack::installed_path(&data),
+            &data.join("models/speech-xasr-v1"),
         )
         .unwrap();
         let context = store.replay_context(&block).unwrap();

@@ -73,8 +73,8 @@ export function ModelPreparation({
 								: running
 									? `${modelLabels[models?.phase ?? ""] ?? "正在准备…"}${models?.phase === "downloading" ? ` · ${models.progress_percent}%` : ""}`
 									: models?.phase === "failed"
-										? "重试安装"
-										: "下载并安装 ↓"}
+										? "重新检查"
+										: "重新检查"}
 						</Button>
 					)}
 					{models?.error && (
@@ -100,7 +100,7 @@ export function ModelPreparation({
 								{models.speaker_phase === "failed"
 									? "人物识别待重试"
 									: models.speaker_phase === "missing"
-										? "人物识别未安装"
+										? "人物识别文件缺失"
 										: "人物识别准备中"}
 							</summary>
 							<p>
@@ -116,7 +116,7 @@ export function ModelPreparation({
 									disabled={busy || running}
 									onClick={() => void prepare()}
 								>
-									准备人物识别
+									重新检查人物识别
 								</Button>
 							)}
 						</details>
@@ -144,7 +144,7 @@ export function ModelPreparation({
 								: ""}
 						</span>
 					</div>
-					<p>在这台电脑上识别人声，生成初步文字。</p>
+					<p>组件已包含在应用中，启动时自动检查，无需额外下载。</p>
 					{models?.error && (
 						<p className="error">
 							{modelErrors[models.error] ?? "组件准备失败，请重试"}
@@ -165,7 +165,7 @@ export function ModelPreparation({
 						</p>
 					)}
 					{models?.phase === "failed" && (
-						<p>完整组件会复用，未完成的下载会重新开始。</p>
+						<p>组件随应用提供。可重新检查；文件损坏或缺失时请重新安装 Hear。</p>
 					)}
 				</div>
 				{needed && (
@@ -179,7 +179,7 @@ export function ModelPreparation({
 							? "正在确认…"
 							: phases.includes("failed")
 								? "重试"
-								: "下载并安装"}
+								: "重新检查"}
 					</Button>
 				)}
 			</div>

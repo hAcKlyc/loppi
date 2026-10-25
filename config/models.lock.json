@@ -1,0 +1,71 @@
+{
+  "schema": 1,
+  "model_version": "x-asr-zipformer-transducer-zh-en-int8-2026-06-03",
+  "speech_directory": "speech-xasr-v1",
+  "speaker_file": "speaker-v1/model.onnx",
+  "files": [
+    {
+      "path": "licenses/campplus/LICENSE",
+      "kind": "speaker",
+      "url": "https://raw.githubusercontent.com/modelscope/3D-Speaker/b6ea24f428a178c02b7ef9d6900569050448c8a1/LICENSE",
+      "bytes": 11357,
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    {
+      "path": "licenses/silero/LICENSE",
+      "kind": "speech",
+      "url": "https://raw.githubusercontent.com/snakers4/silero-vad/caddb3b7ce1dee88a14d5621a0e9a8fdeb2c2c48/LICENSE",
+      "bytes": 1075,
+      "sha256": "2e63e9a38b6e8fc0c7bc37ce174caca1862870856c6daf5697cfb785e925520b"
+    },
+    {
+      "path": "speaker-v1/model.onnx",
+      "kind": "speaker",
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx",
+      "bytes": 28281138,
+      "sha256": "f682b514c05d947ee3fa91cd6ec6c5c7543479a128373fa29b1faedccd21fd11"
+    },
+    {
+      "path": "speech-xasr-v1/silero_vad.onnx",
+      "kind": "speech",
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx",
+      "bytes": 643854,
+      "sha256": "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6"
+    },
+    {
+      "path": "speech-xasr-v1/xasr/LICENSE",
+      "kind": "speech",
+      "url": "https://raw.githubusercontent.com/Gilgamesh-J/X-ASR/838297cd47fed858e6cf72eaf5a52f948a3edd73/LICENSE",
+      "bytes": 11357,
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    {
+      "path": "speech-xasr-v1/xasr/decoder-epoch-99-avg-1.onnx",
+      "kind": "speech",
+      "url": "https://huggingface.co/csukuangfj2/sherpa-onnx-x-asr-zipformer-transducer-zh-en-int8-2026-06-03/resolve/bbc3ebbf8f134848f804967f3a3b69f981308a85/decoder-epoch-99-avg-1.onnx",
+      "bytes": 11309084,
+      "sha256": "c6a045cd52d4d2693c19218f404be6e37b6130e1244814ce31fa2188e4355cb5"
+    },
+    {
+      "path": "speech-xasr-v1/xasr/encoder-epoch-99-avg-1.int8.onnx",
+      "kind": "speech",
+      "url": "https://huggingface.co/csukuangfj2/sherpa-onnx-x-asr-zipformer-transducer-zh-en-int8-2026-06-03/resolve/bbc3ebbf8f134848f804967f3a3b69f981308a85/encoder-epoch-99-avg-1.int8.onnx",
+      "bytes": 161744450,
+      "sha256": "2964d4afd257762931184b15fac04bcae79158b6b84fd9441fc33c8eb5a360ab"
+    },
+    {
+      "path": "speech-xasr-v1/xasr/joiner-epoch-99-avg-1.int8.onnx",
+      "kind": "speech",
+      "url": "https://huggingface.co/csukuangfj2/sherpa-onnx-x-asr-zipformer-transducer-zh-en-int8-2026-06-03/resolve/bbc3ebbf8f134848f804967f3a3b69f981308a85/joiner-epoch-99-avg-1.int8.onnx",
+      "bytes": 2581422,
+      "sha256": "82e88dad29301e29144565cd3b7347fa163f07ddb30ea60346b7c4c536adf4ba"
+    },
+    {
+      "path": "speech-xasr-v1/xasr/tokens.txt",
+      "kind": "speech",
+      "url": "https://huggingface.co/csukuangfj2/sherpa-onnx-x-asr-zipformer-transducer-zh-en-int8-2026-06-03/resolve/bbc3ebbf8f134848f804967f3a3b69f981308a85/tokens.txt",
+      "bytes": 59240,
+      "sha256": "ad0df596d9cc60c90795409549ccf7d1c4f901bdc060dd6b2b067d9ef2fddfaf"
+    }
+  ]
+}

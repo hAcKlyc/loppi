@@ -1,62 +1,96 @@
 #!/usr/bin/env python3
-"""Isolated Core load-check integration. No capture, keys or cloud calls.
-Usage: python3 scripts/smoke_model_preparation.py /path/to/existing/models [core binary]
+"""Verify bundled offline readiness with isolated data, no capture or cloud.
+
+The renamed helper copy uses read-only model files. No historical recordings
+or installed user data are read. Tests actual VAD/ASR loading and explicit retry.
 """
-import argparse, json, os, pathlib, re, shutil, socket, sqlite3, subprocess, tempfile, time, uuid
-root=pathlib.Path(__file__).resolve().parent.parent
-parser=argparse.ArgumentParser(description=__doc__)
-parser.add_argument('models',type=pathlib.Path)
-parser.add_argument('binary',type=pathlib.Path,nargs='?',default=root/'target/debug/hear-core')
-modes=parser.add_mutually_exclusive_group()
-modes.add_argument('--split',action='store_true')
-modes.add_argument('--upgrade',action='store_true')
-args=parser.parse_args();split=args.split;binary=args.binary;models=args.models
-version=int(re.search(r'PROTOCOL_VERSION: u32 = (\d+)',(root/'crates/hear-protocol/src/lib.rs').read_text())[1])
-with tempfile.TemporaryDirectory(prefix='hear-onboarding-model-') as tmp:
- directory=pathlib.Path(tmp)
- # Copy only pinned models; never link user data that the test could mutate.
- shutil.copytree(models,directory/'models')
- if split:
-  staging=directory/'models/.installing-speech-xasr-v1';staging.mkdir()
-  (directory/'models/speech-xasr-v1/silero_vad.onnx').rename(staging/'silero_vad.onnx')
- if args.upgrade:
-  staging=directory/'models/.installing-speech-xasr-v1';staging.mkdir()
-  (directory/'models/speech-xasr-v1/xasr').rename(staging/'xasr')
-  legacy=directory/'models/speech-v1';legacy.mkdir(exist_ok=True)
-  (directory/'models/speech-xasr-v1/silero_vad.onnx').rename(legacy/'silero_vad.onnx')
-  (legacy/'old-model-marker').write_text('preserve previous pack')
-  shutil.rmtree(directory/'models/speech-xasr-v1')
- process=subprocess.Popen([str(binary),'serve','--on-demand'],env=os.environ|{'HEAR_DATA_DIR':tmp},stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
- def query(request):
-  with socket.socket(socket.AF_UNIX) as s:
-   s.settimeout(8);s.connect(str(directory/'core.sock'));s.sendall(json.dumps({'version':version,'id':str(uuid.uuid4()),'client':'cli','request':request}).encode());s.shutdown(socket.SHUT_WR)
-   chunks=[]
-   while chunk:=s.recv(65536):chunks.append(chunk)
-   return json.loads(b''.join(chunks))
- try:
-  deadline=time.monotonic()+100
-  while not (directory/'core.sock').exists() and time.monotonic()<deadline:time.sleep(.1)
-  if split or args.upgrade:
-   while query({'type':'models'})['state']['phase']=='checking':time.sleep(.1)
-   if args.upgrade:assert query({'type':'models'})['state']['phase']=='missing'
-   query({'type':'prepare_models'})
-  observed=set()
-  while time.monotonic()<deadline:
-   result=query({'type':'models'});assert result['type']=='models',result
-   state=result['state'];observed.add(state['phase'])
-   if state['phase'] in ('ready','failed'):break
-   time.sleep(.2)
-  assert state['phase']=='ready',state
-  if split or args.upgrade:assert 'downloading' not in observed,observed
-  if args.upgrade:
-   assert (directory/'models/speech-v1/old-model-marker').read_text()=='preserve previous pack'
-   assert (directory/'models/speech-v1/silero_vad.onnx').is_file()
-  status=query({'type':'status'})['state'];assert not status['enabled_intent'];assert not status['microphone_recording'];assert not status['system_recording']
-  receipt=query({'type':'cloud_configuration_receipt','provider':'llm','request_id':str(uuid.uuid4())});assert receipt['response'] is None and not receipt['pending'],receipt
-  db=sqlite3.connect(directory/'hear.sqlite')
-  for table in ('recording_sessions','audio_blocks','coarse_segments','cloud_tasks'):
-   assert db.execute('SELECT count(*) FROM '+table).fetchone()[0]==0,table
-  db.close()
-  print('PASS: actual VAD/X-ASR load, stages',sorted(observed),'legacy VAD + pinned component cache' if args.upgrade else 'split component reuse' if split else 'whole pack', 'no intent/capture/business data/cloud tasks; receipt query read-only')
- finally:
-  process.terminate();process.wait(timeout=10)
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import socket
+import sqlite3
+import subprocess
+import tempfile
+import time
+import uuid
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--bundle', type=Path, required=True)
+    args = parser.parse_args()
+    version = int(re.search(r'PROTOCOL_VERSION: u32 = (\d+)', (ROOT / 'crates/hear-protocol/src/lib.rs').read_text())[1])
+    with tempfile.TemporaryDirectory(prefix='hear-offline-') as tmp:
+        directory = Path(tmp)
+        helper = directory / '离线 测试.app'
+        shutil.copytree(args.bundle / 'Contents/Library/LoginItems/HearCore.app', helper)
+        model_root = helper / 'Contents/Resources/models'
+        lock = json.loads((model_root / 'models.lock.json').read_text())
+        for entry in lock['files']:
+            path = model_root / entry['path']
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == entry['sha256']
+        for path in model_root.rglob('*'):
+            path.chmod(0o555 if path.is_dir() else 0o444)
+        model_root.chmod(0o555)
+        data = directory / 'data'
+        env = os.environ | {'HEAR_DATA_DIR': str(data), 'HEAR_MODEL_ROOT': '/invalid-development-cache'}
+        process = subprocess.Popen(
+            [str(helper / 'Contents/MacOS/hear-core'), 'serve', '--on-demand'],
+            cwd='/', env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+        )
+
+        def query(request):
+            with socket.socket(socket.AF_UNIX) as stream:
+                stream.settimeout(8)
+                stream.connect(str(data / 'core.sock'))
+                stream.sendall(json.dumps({'version': version, 'id': str(uuid.uuid4()), 'client': 'cli', 'request': request}).encode())
+                stream.shutdown(socket.SHUT_WR)
+                chunks = []
+                while chunk := stream.recv(65536):
+                    chunks.append(chunk)
+                return json.loads(b''.join(chunks))
+
+        def ready():
+            deadline = time.monotonic() + 100
+            while time.monotonic() < deadline:
+                assert process.poll() is None, process.stderr.read().decode()
+                if (data / 'core.sock').exists():
+                    state = query({'type': 'models'})['state']
+                    assert state['phase'] != 'failed', state
+                    if state['phase'] == 'ready' and state['speaker_phase'] == 'ready':
+                        return
+                time.sleep(.1)
+            raise AssertionError('Bundled models did not become ready')
+
+        try:
+            ready()
+            query({'type': 'prepare_models'})
+            query({'type': 'prepare_models'})
+            ready()
+            state = query({'type': 'status'})['state']
+            assert not state['enabled_intent'] and not state['microphone_recording'] and not state['system_recording']
+            assert not (data / 'models').exists(), 'Runtime copied models to user data'
+            with sqlite3.connect(data / 'hear.sqlite') as db:
+                for table in ('recording_sessions', 'audio_blocks', 'coarse_segments', 'cloud_tasks'):
+                    assert db.execute('SELECT count(*) FROM ' + table).fetchone()[0] == 0, table
+            for entry in lock['files']:
+                assert hashlib.sha256((model_root / entry['path']).read_bytes()).hexdigest() == entry['sha256']
+            print('PASS: bundled read-only models, renamed Unicode path, automatic VAD/ASR readiness + retry; no model copy, capture or cloud tasks')
+        finally:
+            if process.poll() is None:
+                process.terminate()
+            process.communicate(timeout=15)
+            for path in model_root.rglob('*'):
+                if path.is_dir():
+                    path.chmod(0o755)
+            model_root.chmod(0o755)
+
+
+if __name__ == '__main__':
+    main()

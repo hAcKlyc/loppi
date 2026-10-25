@@ -34,7 +34,8 @@ export function setupBlocker(
 		state.audio_used_bytes >= state.audio_limit_bytes
 	)
 		return "录音空间不足，请释放磁盘空间或到设置中调整音频上限";
-	if (models.phase !== "ready") return "请先准备本地语音组件";
+	if (models.phase !== "ready")
+		return "请等待本地语音组件检查完成；失败时可重新检查";
 	if (!state.microphone_enabled && !state.system_enabled)
 		return "请至少选择一种声音来源";
 	if (
@@ -111,23 +112,20 @@ export async function confirmCloud(
 	return "unknown";
 }
 export const modelLabels: Record<string, string> = {
-	missing: "尚未安装",
+	missing: "组件文件缺失",
 	checking: "正在检查文件…",
-	downloading: "正在下载",
+	downloading: "正在准备…",
 	verifying: "正在校验…",
-	installing: "正在安装…",
+	installing: "正在准备…",
 	loading: "正在检查模型能否加载…",
 	ready: "已就绪",
 	failed: "准备失败",
 };
 export const modelErrors: Record<string, string> = {
-	model_disk_space: "磁盘空间不足，请释放空间后重试（需保留 2 GB 录音余量）",
-	model_disk_check: "无法读取磁盘空间，请检查目录权限",
-	model_network: "下载连接失败，请检查网络后重试",
-	model_network_timeout: "下载超时，请重试",
-	model_checksum: "文件校验失败，请重新下载",
-	model_archive: "安装包不完整，请重试",
-	model_install: "安装未完成，请检查磁盘和目录权限后重试",
+	model_bundle_missing: "组件文件缺失，请重新安装完整的 Hear 应用",
+	model_bundle_unreadable: "无法读取组件文件，请检查应用权限或重新安装 Hear",
+	model_manifest: "组件版本不匹配，请重新安装完整的 Hear 应用",
+	model_checksum: "组件文件损坏，请重新安装完整的 Hear 应用",
 	model_resources_busy: "电脑资源繁忙，请稍后重试加载检查",
 	model_worker_missing: "语音组件无法启动，请重新安装完整的 Hear 应用",
 	model_load_timeout: "模型加载检查超时，请稍后重试",

@@ -258,7 +258,7 @@ pub fn publish(db: &mut Connection, job: &Job, text: &str) -> Result<bool, Strin
         return Ok(false);
     }
     tx.execute("INSERT OR IGNORE INTO coarse_segments(id,block_id,session_id,source,started_ms,ended_ms,text,model_version)
-      VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",params![job.id,job.block_id,job.session_id,job.source,job.started_ms,job.ended_ms,text,crate::model_pack::COARSE_MODEL_ID]).map_err(|e|e.to_string())?;
+      VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",params![job.id,job.block_id,job.session_id,job.source,job.started_ms,job.ended_ms,text,crate::model_pack::coarse_model_id()]).map_err(|e|e.to_string())?;
     tx.execute(
         "UPDATE coarse_jobs SET state='complete',error_code=NULL WHERE id=?1",
         [&job.id],
