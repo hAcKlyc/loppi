@@ -5,7 +5,7 @@ edition.workspace = true
 
 [dependencies]
 hear-protocol = { path = "../hear-protocol" }
-sherpa-onnx = "=1.13.8"
+sherpa-onnx = "=2.0.0"
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 libc = "0.2"
