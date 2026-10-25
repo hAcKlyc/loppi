@@ -1589,7 +1589,7 @@ dependencies = [
 
 [[package]]
 name = "hear-cli"
-version = "0.1.5"
+version = "0.1.7"
 dependencies = [
  "clap",
  "hear-protocol",
@@ -1600,7 +1600,7 @@ dependencies = [
 
 [[package]]
 name = "hear-core"
-version = "0.1.5"
+version = "0.1.7"
 dependencies = [
  "base64 0.22.1",
  "bzip2 0.5.2",
@@ -1627,7 +1627,7 @@ dependencies = [
 
 [[package]]
 name = "hear-desktop"
-version = "0.1.5"
+version = "0.1.7"
 dependencies = [
  "cc",
  "hear-protocol",
@@ -1642,7 +1642,7 @@ dependencies = [
 
 [[package]]
 name = "hear-protocol"
-version = "0.1.5"
+version = "0.1.7"
 dependencies = [
  "dirs",
  "fs2",
@@ -1653,7 +1653,7 @@ dependencies = [
 
 [[package]]
 name = "hear-worker"
-version = "0.1.5"
+version = "0.1.7"
 dependencies = [
  "hear-protocol",
  "libc",
