@@ -2,7 +2,7 @@
 """Verify real-model retention/recovery on a supplied public speech fixture.
 
 Writes only temporary isolated databases. Never starts native capture or enables
-cloud providers. --models must be an existing model root containing speech-v1.
+cloud providers. --models must be an existing model root containing speech-xasr-v1.
 The supplied WAV must have voiced speech at 1.0–1.5 s (the published zh fixture
 used in the optimization evidence does); otherwise the onset assertion may fail.
 """
@@ -18,7 +18,7 @@ parser.add_argument('--ffmpeg',default=shutil.which('ffmpeg'))
 args=parser.parse_args()
 core=args.core.resolve();cli=args.cli.resolve();models=args.models.resolve()
 assert core.is_file() and cli.is_file() and args.wav.is_file()
-assert (models/'speech-v1').is_dir() and args.ffmpeg, 'models/ffmpeg unavailable'
+assert (models/'speech-xasr-v1').is_dir() and args.ffmpeg, 'models/ffmpeg unavailable'
 phrase=subprocess.check_output([args.ffmpeg,'-v','error','-i',str(args.wav),'-ar','48000','-ac','1','-f','f32le','pipe:1'])
 # Public voiced inner phrase begins 200ms before a 5-second block boundary.
 phrase=phrase[48000*4:72000*4]*6+phrase[48000*4:]

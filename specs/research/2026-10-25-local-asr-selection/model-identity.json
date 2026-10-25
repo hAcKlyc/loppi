@@ -1,0 +1,44 @@
+{
+  "model_id": "x-asr-zipformer-transducer-zh-en-int8-2026-06-03",
+  "format": "offline Zipformer Transducer; encoder/joiner INT8, decoder ONNX",
+  "upstream": "https://github.com/Gilgamesh-J/X-ASR",
+  "conversion_repo": "csukuangfj2/sherpa-onnx-x-asr-zipformer-transducer-zh-en-int8-2026-06-03",
+  "conversion_revision": "bbc3ebbf8f134848f804967f3a3b69f981308a85",
+  "engine": "sherpa-onnx 2.0.0",
+  "provider": "cpu",
+  "threads": 2,
+  "model_files": {
+    "models/xasr/encoder-epoch-99-avg-1.int8.onnx": {
+      "bytes": 161744450,
+      "sha256": "2964d4afd257762931184b15fac04bcae79158b6b84fd9441fc33c8eb5a360ab"
+    },
+    "models/xasr/decoder-epoch-99-avg-1.onnx": {
+      "bytes": 11309084,
+      "sha256": "c6a045cd52d4d2693c19218f404be6e37b6130e1244814ce31fa2188e4355cb5"
+    },
+    "models/xasr/joiner-epoch-99-avg-1.int8.onnx": {
+      "bytes": 2581422,
+      "sha256": "82e88dad29301e29144565cd3b7347fa163f07ddb30ea60346b7c4c536adf4ba"
+    },
+    "models/xasr/tokens.txt": {
+      "bytes": 59240,
+      "sha256": "ad0df596d9cc60c90795409549ccf7d1c4f901bdc060dd6b2b067d9ef2fddfaf"
+    }
+  },
+  "installed_pack": "models/speech-xasr-v1",
+  "previous_pack": "models/speech-v1",
+  "publication_model_version": "x-asr-zipformer-transducer-zh-en-int8-2026-06-03",
+  "rejected_same_named_archive": {
+    "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-x-asr-zipformer-transducer-zh-en-int8-2026-06-03.tar.bz2",
+    "bytes": 136902463,
+    "sha256": "7592d1a1e9bc1e034c39fbaab9b0db8af46429d95d64c6e2a69593934af10e9c",
+    "reason": "Downloaded and verified official archive, but encoder and decoder bytes differ from the evaluated HF revision; LICENSE absent. Never install it as the measured model."
+  },
+  "download_base_url": "https://huggingface.co/csukuangfj2/sherpa-onnx-x-asr-zipformer-transducer-zh-en-int8-2026-06-03/resolve/bbc3ebbf8f134848f804967f3a3b69f981308a85",
+  "license": {
+    "revision": "838297cd47fed858e6cf72eaf5a52f948a3edd73",
+    "url": "https://raw.githubusercontent.com/Gilgamesh-J/X-ASR/838297cd47fed858e6cf72eaf5a52f948a3edd73/LICENSE",
+    "bytes": 11357,
+    "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+  }
+}

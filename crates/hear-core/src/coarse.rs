@@ -258,7 +258,7 @@ pub fn publish(db: &mut Connection, job: &Job, text: &str) -> Result<bool, Strin
         return Ok(false);
     }
     tx.execute("INSERT OR IGNORE INTO coarse_segments(id,block_id,session_id,source,started_ms,ended_ms,text,model_version)
-      VALUES(?1,?2,?3,?4,?5,?6,?7,'sensevoice-int8-2024-07-17')",params![job.id,job.block_id,job.session_id,job.source,job.started_ms,job.ended_ms,text]).map_err(|e|e.to_string())?;
+      VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",params![job.id,job.block_id,job.session_id,job.source,job.started_ms,job.ended_ms,text,crate::model_pack::COARSE_MODEL_ID]).map_err(|e|e.to_string())?;
     tx.execute(
         "UPDATE coarse_jobs SET state='complete',error_code=NULL WHERE id=?1",
         [&job.id],
@@ -397,6 +397,15 @@ mod tests {
         let event = crate::coarse_log_event(&job, &published, "coarse_recognize");
         assert!(published.unwrap());
         assert_eq!(event.event, "coarse_complete");
+        let model: String = store
+            .db
+            .query_row(
+                "SELECT model_version FROM coarse_segments WHERE id=?1",
+                [&job.id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(model, "x-asr-zipformer-transducer-zh-en-int8-2026-06-03");
         let duplicate = publish(&mut store.db, &job, "duplicate");
         let event = crate::coarse_log_event(&job, &duplicate, "coarse_recognize");
         assert!(!duplicate.unwrap());

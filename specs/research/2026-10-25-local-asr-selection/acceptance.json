@@ -1,0 +1,40 @@
+{
+  "status": "passed",
+  "quality_per_build": 682,
+  "builds": 2,
+  "raw_differences": 0,
+  "failures": 0,
+  "vad_events_per_build": 20,
+  "embedding_dimensions": 192,
+  "embedding_max_abs_difference": 0,
+  "selected_inference_files": 4,
+  "license_verified": true,
+  "old_model_files_preserved": 4,
+  "frozen_benchmark_files_verified": 343,
+  "local_links": 39,
+  "network_test": "encoder cache seeded; remaining four components downloaded; interrupted zero-cache attempt preserved",
+  "shared_preservation": "16 initial files verified after reversing only owned documentation hunks",
+  "combined_default_test": "pre-existing prompt example failure recorded; other runtime tests pass; serial doctest pass",
+  "source_sha256": {
+    "crates/hear-core/src/model_pack.rs": "2bcff551e00957e6e08f2b614ecaf84539e4e8a02f16c37f2d3d112d9481df71",
+    "crates/hear-core/src/coarse.rs": "eda320ec36af2f577a8032d0d0a52ddb06a28e4266fa9d1c1050c613797f181a",
+    "crates/hear-worker/src/main.rs": "44c7bf6d6b5b4536334e8d133bab56aadd8059fa739d60215dcd1c6c65b962e7"
+  },
+  "worker_combined": {
+    "status": "passed",
+    "quality_segments": 682,
+    "raw_differences": [],
+    "failures": 0,
+    "vad_samples": 20,
+    "vad_outputs_identical": true,
+    "embedding_dimensions": 192,
+    "embedding_cosine": 1.0000000000000002,
+    "embedding_max_abs_difference": 0.0,
+    "worker_sha256": "8c7d0a7011a7be90d3d8d9dee4ab184ba7e56bb846ef5e7b63c8cf0d6a1e503a",
+    "peak_footprint_bytes": 622265184,
+    "coarse_reservation_bytes": 671088640,
+    "coarse_kill_limit_bytes": 805306368
+  },
+  "manifest_path": "build/xasr-switch/artifacts-manifest.json",
+  "manifest_sha256": "d351a2e30488e8da8f646bee6e70fc096c3e5baae7c98ed1ea2130219da1f922"
+}

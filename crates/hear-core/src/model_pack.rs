@@ -1,25 +1,50 @@
-use bzip2::read::BzDecoder;
 use hear_protocol::ModelPhase;
 use sha2::{Digest, Sha256};
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use tar::Archive;
 
-const SENSE_ARCHIVE_URL: &str = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2";
-const SENSE_ARCHIVE_SHA: &str = "7d1efa2138a65b0b488df37f8b89e3d91a60676e416f515b952358d83dfd347e";
-const SENSE_MODEL_SHA: &str = "c71f0ce00bec95b07744e116345e33d8cbbe08cef896382cf907bf4b51a2cd51";
-const SENSE_TOKENS_SHA: &str = "f449eb28dc567533d7fa59be34e2abca8784f771850c78a47fb731a31429a1dc";
+// Pin the exact measured files. The same-named GitHub tarball has different
+// encoder/decoder bytes and is not interchangeable with this evaluated revision.
+const XASR_BASE_URL: &str = "https://huggingface.co/csukuangfj2/sherpa-onnx-x-asr-zipformer-transducer-zh-en-int8-2026-06-03/resolve/bbc3ebbf8f134848f804967f3a3b69f981308a85";
+const XASR_LICENSE_URL: &str = "https://raw.githubusercontent.com/Gilgamesh-J/X-ASR/838297cd47fed858e6cf72eaf5a52f948a3edd73/LICENSE";
+pub const COARSE_MODEL_ID: &str = "x-asr-zipformer-transducer-zh-en-int8-2026-06-03";
+const XASR_FILES: &[(&str, &str, u64)] = &[
+    (
+        "encoder-epoch-99-avg-1.int8.onnx",
+        "2964d4afd257762931184b15fac04bcae79158b6b84fd9441fc33c8eb5a360ab",
+        161_744_450,
+    ),
+    (
+        "decoder-epoch-99-avg-1.onnx",
+        "c6a045cd52d4d2693c19218f404be6e37b6130e1244814ce31fa2188e4355cb5",
+        11_309_084,
+    ),
+    (
+        "joiner-epoch-99-avg-1.int8.onnx",
+        "82e88dad29301e29144565cd3b7347fa163f07ddb30ea60346b7c4c536adf4ba",
+        2_581_422,
+    ),
+    (
+        "tokens.txt",
+        "ad0df596d9cc60c90795409549ccf7d1c4f901bdc060dd6b2b067d9ef2fddfaf",
+        59_240,
+    ),
+    (
+        "LICENSE",
+        "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+        11357,
+    ),
+];
 const SILERO_URL: &str =
     "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx";
 const SILERO_SHA: &str = "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6";
-const SENSE_ROOT: &str = "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17";
 const SPEAKER_URL: &str = "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx";
 const SPEAKER_SHA: &str = "f682b514c05d947ee3fa91cd6ec6c5c7543479a128373fa29b1faedccd21fd11";
 
 pub fn installed_path(data_dir: &Path) -> PathBuf {
-    data_dir.join("models").join("speech-v1")
+    data_dir.join("models").join("speech-xasr-v1")
 }
 
 pub fn speaker_model_path(data_dir: &Path) -> PathBuf {
@@ -118,9 +143,7 @@ fn verify(path: &Path, sha: &str) -> Result<(), String> {
 
 pub fn ready(data_dir: &Path) -> bool {
     let path = installed_path(data_dir);
-    verify(&path.join("sensevoice/model.int8.onnx"), SENSE_MODEL_SHA).is_ok()
-        && verify(&path.join("sensevoice/tokens.txt"), SENSE_TOKENS_SHA).is_ok()
-        && verify(&path.join("silero_vad.onnx"), SILERO_SHA).is_ok()
+    xasr_ready(&path) && verify(&path.join("silero_vad.onnx"), SILERO_SHA).is_ok()
 }
 
 fn download(
@@ -175,52 +198,6 @@ fn download(
     Ok(())
 }
 
-fn extract_sense(archive_path: &Path, destination: &Path) -> Result<(), String> {
-    fs::create_dir(destination).map_err(|error| error.to_string())?;
-    fs::set_permissions(destination, fs::Permissions::from_mode(0o700))
-        .map_err(|error| error.to_string())?;
-    let input = File::open(archive_path).map_err(|error| error.to_string())?;
-    let mut archive = Archive::new(BzDecoder::new(input));
-    let mut extracted = 0;
-    for entry in archive.entries().map_err(|error| error.to_string())? {
-        let mut entry = entry.map_err(|error| error.to_string())?;
-        let path = entry.path().map_err(|error| error.to_string())?;
-        let mut parts = path.components();
-        if parts
-            .next()
-            .is_none_or(|part| part.as_os_str() != SENSE_ROOT)
-        {
-            return Err("unexpected model archive root".to_owned());
-        }
-        let file = parts.next();
-        if parts.next().is_some() {
-            continue; // test samples and upstream examples are not installed.
-        }
-        let name = match file.map(|part| part.as_os_str().to_string_lossy().into_owned()) {
-            Some(name) if matches!(name.as_str(), "model.int8.onnx" | "tokens.txt" | "LICENSE") => {
-                name
-            }
-            _ => continue,
-        };
-        if !entry.header().entry_type().is_file() || entry.size() > 300_000_000 {
-            return Err("unexpected model archive entry".to_owned());
-        }
-        let path = destination.join(name);
-        let mut output = OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(path)
-            .map_err(|error| error.to_string())?;
-        std::io::copy(&mut entry, &mut output).map_err(|error| error.to_string())?;
-        output.sync_all().map_err(|error| error.to_string())?;
-        extracted += 1;
-    }
-    if extracted != 3 {
-        return Err("SenseVoice archive was incomplete".to_owned());
-    }
-    Ok(())
-}
-
 /// Downloads independently pinned official model artifacts. A crash leaves an
 /// unpublished staging directory, never a partly ready model pack.
 pub fn install(data_dir: &Path, progress: impl Fn(ModelPhase, u8)) -> Result<PathBuf, String> {
@@ -232,12 +209,14 @@ pub fn install(data_dir: &Path, progress: impl Fn(ModelPhase, u8)) -> Result<Pat
     fs::create_dir_all(&root).map_err(|e| e.to_string())?;
     fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).map_err(|e| e.to_string())?;
     // A fixed private staging directory belongs to the single Core installer.
-    // Retain only hash-valid complete resources across retries/restarts. It is
-    // never a published ready pack and provides no byte-range resume.
-    let staging = root.join(".installing-speech-v1");
+    // Keep hash-valid individual files; partial downloads never become ready.
+    let staging = root.join(".installing-speech-xasr-v1");
     fs::create_dir_all(&staging).map_err(|e| e.to_string())?;
     fs::set_permissions(&staging, fs::Permissions::from_mode(0o700)).map_err(|e| e.to_string())?;
-    let mut candidates = vec![target.clone()];
+    let asr = staging.join("xasr");
+    fs::create_dir_all(&asr).map_err(|e| e.to_string())?;
+    // The previous pack may supply the unchanged VAD, never the new ASR.
+    let mut candidates = vec![target.clone(), root.join("speech-v1")];
     for entry in fs::read_dir(&root).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
         if entry.path() != staging
@@ -251,117 +230,76 @@ pub fn install(data_dir: &Path, progress: impl Fn(ModelPhase, u8)) -> Result<Pat
         }
     }
     progress(ModelPhase::Checking, 0);
-    let sense_source = candidates.iter().find(|p| sense_ready(p));
-    let vad_source = candidates
+    let vad = staging.join("silero_vad.onnx");
+    let vad_missing = verify(&vad, SILERO_SHA).is_err();
+    let required: u64 = XASR_FILES
         .iter()
-        .find(|p| verify(&p.join("silero_vad.onnx"), SILERO_SHA).is_ok());
-    let sense_missing = !sense_ready(&staging);
-    let vad_missing = verify(&staging.join("silero_vad.onnx"), SILERO_SHA).is_err();
-    let archive = staging.join("sensevoice.tar.bz2");
-    let archive_valid = verify(&archive, SENSE_ARCHIVE_SHA).is_ok();
-    let required = if sense_missing {
-        239_233_841
-            + 315_894
-            + 71
-            + if sense_source.is_none() && !archive_valid {
-                163_002_883
+        .filter(|(name, sha, _)| verify(&asr.join(name), sha).is_err())
+        .map(|(_, _, bytes)| *bytes)
+        .sum::<u64>()
+        + if vad_missing { 643_854 } else { 0 };
+    check_space(data_dir, required)?;
+    for (name, sha, bytes) in XASR_FILES {
+        let path = asr.join(name);
+        if verify(&path, sha).is_ok() {
+            continue;
+        }
+        remove_if_present(&path)?;
+        if let Some(source) = candidates
+            .iter()
+            .find(|p| verify(&p.join("xasr").join(name), sha).is_ok())
+        {
+            copy_synced(&source.join("xasr").join(name), &path)?;
+        } else {
+            progress(ModelPhase::Downloading, 0);
+            let url = if *name == "LICENSE" {
+                XASR_LICENSE_URL.to_owned()
             } else {
-                0
-            }
-    } else {
-        0
-    } + if vad_missing { 643_854 } else { 0 };
-    if sense_missing && staging.join("sensevoice").exists() {
-        fs::remove_dir_all(staging.join("sensevoice")).map_err(|e| e.to_string())?;
+                format!("{XASR_BASE_URL}/{name}")
+            };
+            download(&url, &path, sha, *bytes, |n| {
+                progress(ModelPhase::Downloading, ((n * 100 / bytes).min(100)) as u8)
+            })?;
+        }
     }
-    if !archive_valid {
-        remove_if_present(&archive)?;
+    progress(ModelPhase::Verifying, 100);
+    if !xasr_ready(&staging) {
+        return Err("model_checksum".into());
     }
     if vad_missing {
-        remove_if_present(&staging.join("silero_vad.onnx"))?;
+        remove_if_present(&vad)?;
+        if let Some(source) = candidates
+            .iter()
+            .find(|p| verify(&p.join("silero_vad.onnx"), SILERO_SHA).is_ok())
+        {
+            copy_synced(&source.join("silero_vad.onnx"), &vad)?;
+        } else {
+            progress(ModelPhase::Downloading, 0);
+            download(SILERO_URL, &vad, SILERO_SHA, 2_000_000, |n| {
+                progress(
+                    ModelPhase::Downloading,
+                    ((n * 100 / 643_854).min(100)) as u8,
+                )
+            })?;
+        }
     }
-    check_space(data_dir, required)?;
-    let result = (|| {
-        if sense_missing {
-            let sense = staging.join("sensevoice");
-            if sense.exists() {
-                fs::remove_dir_all(&sense).map_err(|e| e.to_string())?;
-            }
-            if let Some(source) = sense_source {
-                fs::create_dir(&sense).map_err(|e| e.to_string())?;
-                for name in ["model.int8.onnx", "tokens.txt", "LICENSE"] {
-                    copy_synced(&source.join("sensevoice").join(name), &sense.join(name))?;
-                }
-            } else {
-                if !archive_valid {
-                    remove_if_present(&archive)?;
-                    // Older interrupted installers may have a complete archive.
-                    if let Some(source) = candidates
-                        .iter()
-                        .find(|p| verify(&p.join("sensevoice.tar.bz2"), SENSE_ARCHIVE_SHA).is_ok())
-                    {
-                        copy_synced(&source.join("sensevoice.tar.bz2"), &archive)?;
-                    } else {
-                        progress(ModelPhase::Downloading, 0);
-                        download(
-                            SENSE_ARCHIVE_URL,
-                            &archive,
-                            SENSE_ARCHIVE_SHA,
-                            170_000_000,
-                            |n| {
-                                progress(
-                                    ModelPhase::Downloading,
-                                    ((n * 100 / 163_002_883).min(100)) as u8,
-                                )
-                            },
-                        )?;
-                    }
-                }
-                progress(ModelPhase::Installing, 0);
-                extract_sense(&archive, &sense)?;
-            }
-            progress(ModelPhase::Verifying, 100);
-            if !sense_ready(&staging) {
-                return Err("model_checksum".into());
-            }
-        }
-        remove_if_present(&archive)?;
-        if vad_missing {
-            let vad = staging.join("silero_vad.onnx");
-            remove_if_present(&vad)?;
-            if let Some(source) = vad_source {
-                copy_synced(&source.join("silero_vad.onnx"), &vad)?;
-            } else {
-                progress(ModelPhase::Downloading, 0);
-                download(SILERO_URL, &vad, SILERO_SHA, 2_000_000, |n| {
-                    progress(
-                        ModelPhase::Downloading,
-                        ((n * 100 / 643_854).min(100)) as u8,
-                    )
-                })?;
-            }
-        }
-        progress(ModelPhase::Verifying, 100);
-        verify(&staging.join("silero_vad.onnx"), SILERO_SHA)?;
-        progress(ModelPhase::Installing, 100);
-        if target.exists() {
-            fs::remove_dir_all(&target).map_err(|e| e.to_string())?;
-        }
-        fs::rename(&staging, &target).map_err(|e| e.to_string())?;
-        File::open(&root)
-            .and_then(|f| f.sync_all())
-            .map_err(|e| e.to_string())?;
-        clean_staging(&root, ".installing-")?;
-        Ok(target.clone())
-    })();
-    // Keep complete components after a failed later download. On the next
-    // attempt invalid files are discarded before retrying their download.
-    result
+    progress(ModelPhase::Verifying, 100);
+    verify(&vad, SILERO_SHA)?;
+    progress(ModelPhase::Installing, 100);
+    if target.exists() {
+        fs::remove_dir_all(&target).map_err(|e| e.to_string())?;
+    }
+    fs::rename(&staging, &target).map_err(|e| e.to_string())?;
+    File::open(&root)
+        .and_then(|f| f.sync_all())
+        .map_err(|e| e.to_string())?;
+    clean_staging(&root, ".installing-")?;
+    Ok(target)
 }
-fn sense_ready(root: &Path) -> bool {
-    verify(&root.join("sensevoice/model.int8.onnx"), SENSE_MODEL_SHA).is_ok()
-        && verify(&root.join("sensevoice/tokens.txt"), SENSE_TOKENS_SHA).is_ok()
-        && root.join("sensevoice/LICENSE").is_file()
+fn xasr_ready(root: &Path) -> bool {
+    XASR_FILES
+        .iter()
+        .all(|(name, sha, _)| verify(&root.join("xasr").join(name), sha).is_ok())
 }
 fn remove_if_present(path: &Path) -> Result<(), String> {
     match fs::remove_file(path) {
@@ -433,8 +371,67 @@ mod tests {
     fn model_pack_stays_not_ready_with_partial_or_wrong_weights() {
         let directory = tempfile::tempdir().unwrap();
         let pack = installed_path(directory.path());
-        fs::create_dir_all(pack.join("sensevoice")).unwrap();
-        fs::write(pack.join("sensevoice/model.int8.onnx"), b"wrong").unwrap();
+        fs::create_dir_all(pack.join("xasr")).unwrap();
+        fs::write(pack.join("xasr/encoder-epoch-99-avg-1.int8.onnx"), b"wrong").unwrap();
         assert!(!ready(directory.path()));
+    }
+
+    #[test]
+    fn previous_speech_pack_is_not_the_selected_model() {
+        let directory = tempfile::tempdir().unwrap();
+        let previous = directory.path().join("models/speech-v1");
+        fs::create_dir_all(previous.join("sensevoice")).unwrap();
+        fs::write(previous.join("silero_vad.onnx"), b"old VAD").unwrap();
+        assert_ne!(installed_path(directory.path()), previous);
+        assert!(!ready(directory.path()));
+        assert!(previous.join("silero_vad.onnx").is_file());
+    }
+
+    #[test]
+    #[ignore = "requires the pinned local X-ASR fixture"]
+    fn selected_pack_verifies_each_file_and_reuses_legacy_vad() {
+        let source =
+            PathBuf::from(std::env::var("HEAR_TEST_XASR_MODELS").expect("set fixture root"));
+        let directory = tempfile::tempdir().unwrap();
+        let staging = directory
+            .path()
+            .join("models/.installing-speech-xasr-v1/xasr");
+        fs::create_dir_all(&staging).unwrap();
+        for (name, sha, _) in XASR_FILES {
+            verify(&source.join("speech-xasr-v1/xasr").join(name), sha).unwrap();
+            copy_synced(
+                &source.join("speech-xasr-v1/xasr").join(name),
+                &staging.join(name),
+            )
+            .unwrap();
+        }
+        let legacy = directory.path().join("models/speech-v1");
+        fs::create_dir_all(&legacy).unwrap();
+        copy_synced(
+            &source.join("speech-xasr-v1/silero_vad.onnx"),
+            &legacy.join("silero_vad.onnx"),
+        )
+        .unwrap();
+        assert!(!ready(directory.path()));
+        let downloaded = std::cell::Cell::new(false);
+        let pack = install(directory.path(), |phase, _| {
+            if matches!(phase, ModelPhase::Downloading) {
+                downloaded.set(true);
+            }
+        })
+        .unwrap();
+        assert!(!downloaded.get());
+        assert!(ready(directory.path()));
+        verify(&legacy.join("silero_vad.onnx"), SILERO_SHA).unwrap();
+        for (name, _, _) in XASR_FILES {
+            let file = pack.join("xasr").join(name);
+            let saved = fs::read(&file).unwrap();
+            fs::remove_file(&file).unwrap();
+            assert!(!ready(directory.path()), "missing {name}");
+            fs::write(&file, b"wrong").unwrap();
+            assert!(!ready(directory.path()), "corrupt {name}");
+            fs::write(&file, saved).unwrap();
+        }
+        assert!(ready(directory.path()));
     }
 }

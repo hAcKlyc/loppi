@@ -11,6 +11,7 @@
 | [PRD](specs/prd/prd_0.1.md) | 定位、用户路径、产品行为、数据语义、范围与待确认决策 |
 | [整体架构](specs/ARCHITECTURE.md) | 工作树中的进程、模块与数据边界；区分实现与未通过的验收 |
 | [核心算法](specs/tech_docs/README.md) | 声音处理工作流、事件拟合与全局声纹匹配 |
+| [本地ASR评测与选型](specs/tech_docs/local-asr-benchmark.md) | 当前X-ASR具体权重、20组测试集、五模型效果/成本与升级依据 |
 | [技术 RFC](specs/prd/tech_rfc_0.1.md) | 进程与职责、采集和处理流程、数据生命周期、策略频率、性能与验证 |
 | [设计系统](specs/DESIGN.md) | 视觉原则、组件规则与语义样式 token |
 | [开发计划](plan.md) | 批次、验收证据与未完成的发布门槛 |

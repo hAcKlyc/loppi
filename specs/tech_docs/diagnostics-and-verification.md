@@ -44,7 +44,7 @@ hear logs --from-ms 1792339200000 --to-ms 1792425600000 --capture-span-id <uuid>
 继续使用已有 `LogEvent`/`LogWorker`。字段为固定代码、UUID 或数值；禁止 `error.to_string()`、转录、请求/响应正文或路径直接进入事件。未知错误降为固定分类。`LogContext` 用 typed 字段，不能用任意 JSON map 加料。
 
 - `speech.vad_complete` 在日志线程汇总为 `vad_completed_summary`（按来源计数；读日志时也会刷新）。故障事件仍逐条保存。汇总不绑定单个 job/session，不据此反推某个 block 已完成。
-- `speech.coarse_complete/coarse_failed` 只代表真实 SenseVoice 粗转阶段；清理或重复发布使结果未落库时记录 `coarse_not_published`，不冒充完成或故障；旧版本同名事件曾代表 VAD，分析旧日志须按构建版本区分。
+- `speech.coarse_complete/coarse_failed` 只代表真实本地粗转阶段（当前X-ASR，历史SenseVoice）；清理或重复发布使结果未落库时记录 `coarse_not_published`，不冒充完成或故障；旧版本同名事件曾代表 VAD，分析旧日志须按构建版本和结果model_version区分。具体权重及采用依据见[ASR评测与选型](local-asr-benchmark.md)。
 - 云任务记录 provider、音频范围、尝试次数、单次处理耗时；不完整输出保留固定 finish_reason 分类，JSON 解析失败带行/列和字节数，不保存原输出。`fit_published` 的事件数写 `context.count`，不再冒充 duration_ms。
 - 采集失败保留原生阶段/整数错误、来源和已确认帧数，另记录主显示器当时是否休眠。后者只是 [CGDisplayIsAsleep](https://developer.apple.com/documentation/coregraphics/cgdisplayisasleep(_:)) 的只读观察，不等于机器睡眠、不解释全部失败因果，也不控制是否录制。
 - 无需给所有成功高频事件逐条打日志；任务完成事实已有数据库。失败去重不跨 job 吞记录，以免下一次调查失去关联。

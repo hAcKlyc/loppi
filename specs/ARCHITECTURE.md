@@ -79,7 +79,7 @@ flowchart TD
   B --> V[16 kHz 轻量 VAD]
   V --> R
   V --> J[持久 coarse_jobs]
-  J --> S[SenseVoice 粗转]
+  J --> S[X-ASR 粗转]
   S --> K[候选区间]
   K --> Q1[持久 LLM 队列]
   Q1 --> E[命名事件 / 未整理投影]
@@ -97,7 +97,7 @@ flowchart TD
 
 采集、保留、粗转、候选、两条云队列、声纹与 OCR 不是同一个阻塞链。采集热路径不能等待网络或模型；本地计算积压与云端失败由持久状态表达。`analysis_loop`、`coarse_loop`、`cloud_loop`、`voice_loop`、`capture_supervisor` 分别在[核心](../crates/hear-core/src/main.rs)；事件算法见[核心处理算法](tech_docs/algorithms.md)。
 
-VAD 先事务提交 `coarse_jobs` 的来源/session/16 kHz 样本区间与 `speech_active`，保留判断同时提交，不等待 SenseVoice。粗转任务从原有不可变封块重建输入，使用与 VAD 相同的逐块重采样；不新增另一份音频库。每来源独立追踪 worker 游标，重建或不连续时回放该来源最近最多 6 个连续已完成的人声／尚待判定块，已持久化覆盖区间不重复入队；通过已有 coarse_jobs/旧 coarse_segments 的实际覆盖扣除，允许补齐历史失败空洞，不能以 session 的最大结束点代表全部前缀成功。worker 返回独立的 speech_pending 表示仍有未结束话语；它存在时保留尚未确认的开头，待完整区间发表后再裁决最多 6 个连续前块。该边界覆盖原有 20 秒话语上限及起点回看；已关闭区间的样本终点也能结束其之前的等待。已失去 VAD 上下文的历史完整块由现有 maintenance 有界收敛为 `retain_unresolved_v2`，保留媒体和原始语音标志，避免永久阻塞精转；不把尚未确认的声音直接标为人声。worker 丢弃底层 flush 产生的零样本空片段，核心保留严格时间校验。清理使相交待办失效，发布前复核任务当前状态；all_data 墓碑也约束迟到 VAD 区间。空文字/粗转失败不回写为无人声。
+VAD 先事务提交 `coarse_jobs` 的来源/session/16 kHz 样本区间与 `speech_active`，保留判断同时提交，不等待 X-ASR。粗转任务从原有不可变封块重建输入，使用与 VAD 相同的逐块重采样；不新增另一份音频库。每来源独立追踪 worker 游标，重建或不连续时回放该来源最近最多 6 个连续已完成的人声／尚待判定块，已持久化覆盖区间不重复入队；通过已有 coarse_jobs/旧 coarse_segments 的实际覆盖扣除，允许补齐历史失败空洞，不能以 session 的最大结束点代表全部前缀成功。worker 返回独立的 speech_pending 表示仍有未结束话语；它存在时保留尚未确认的开头，待完整区间发表后再裁决最多 6 个连续前块。该边界覆盖原有 20 秒话语上限及起点回看；已关闭区间的样本终点也能结束其之前的等待。已失去 VAD 上下文的历史完整块由现有 maintenance 有界收敛为 `retain_unresolved_v2`，保留媒体和原始语音标志，避免永久阻塞精转；不把尚未确认的声音直接标为人声。worker 丢弃底层 flush 产生的零样本空片段，核心保留严格时间校验。清理使相交待办失效，发布前复核任务当前状态；all_data 墓碑也约束迟到 VAD 区间。空文字/粗转失败不回写为无人声。
 
 ### 3.1 资源准入与模型寿命
 
@@ -187,10 +187,12 @@ GUI 上下文刷新合并在途请求，仅前台聚焦时周期刷新。连续�
 
 `SetupGroups` 在设置和首次页面共用模型/来源操作；`refreshContext` 仍是 GUI 观察入口。`CloudKeyInput` 保留未保存草稿在组件内，`setup.ts` 仅在当前 WebView 保存未确认请求 ID。云配置使用既有稳定 ID 与 mutation_receipts，`CloudConfigurationReceipt` 是只读查询；失败回执也记录，不因传输失败自动重复供应商验证。凭据只由 Core 验证、Keychain 保存。设置页并列显示两个云服务，独立弹窗显式验证并保存；首次引导 compact 输入仍维持既有提交方式。
 
-必要语音模型在启动校验或显式安装后通过 Governor 的 Coarse 预算准入，以现有 AnalysisClient 运行 VAD 和 SenseVoice 合成静音加载检查；每次各有 30 秒请求上限，退出回收子进程，不建立业务录音或发云请求。ModelState 提供 checking/downloading/installing/verifying/loading/ready/failed 和分组件错误。CampPlus 独立失败不阻断完成。模型安装按锁定包体和解包文件预算加 2 GiB 录音余量检查磁盘；废弃暂存清理、完整包复用，未完成下载重新开始。
+必要语音模型在启动校验或显式安装后通过 Governor 的 Coarse 预算准入，以现有 AnalysisClient 运行 VAD 和 X-ASR 合成静音加载检查；每次各有 30 秒请求上限，退出回收子进程，不建立业务录音或发云请求。ModelState 提供 checking/downloading/installing/verifying/loading/ready/failed 和分组件错误。CampPlus 独立失败不阻断完成。模型安装按锁定包体和解包文件预算加 2 GiB 录音余量检查磁盘；废弃暂存清理、完整包复用，未完成下载重新开始。
 
 权限刷新不发起授权或试录；显式点击由宿主串行授权。Tap marker 仅表示曾完成前台准备，UI 不将其当作当前永久 TCC 授权。上线证据仍以单页首次设置 PRD 的签名新用户和平台验收为准。
 
 候选分析窗口采用 15 分钟上限与 5 分钟安静等待；持久窗口起点和既有成员范围保留，参数变化不触发历史付费重跑。LLM 输出由 Core 按字段和事件接纳：坏摘要增量保留有效旧值（无旧值则空），坏标题沿用旧值或通用标题，非法时间或同响应同源重叠在写入前拒绝整窗；无效来源或已有事件冲突仍只跳过该事件；不再以完整覆盖、未整理下标、事件数量拒绝整批。未覆盖内容保留为未整理素材，响应遗漏不能删除已有事件。原始JSON重复键在Value转换前拒绝，非法输出复用已有有界重试；终态整理失败不阻塞有效事件的自动精转；存储错误、任务版本、清理墓碑和人工优先级保持原有语义。转录完成统计与空结果回听范围从当前 `transcript_tasks` 派生，前端不维护第二份任务状态。入库目录锁竞争通过 IO 错误类型交给原有轮询，不当作文件故障记录告警。
 
 事件理解与原窗口拟合共用 LLM 请求及发布事务。`named_events.understanding_json` 保存带稳定粗转引用的 topics、key_points、mentioned_objects，summary 保持独立文本列且不设字数硬限制。旧理解随下一窗口输入，引用下标每次重新映射；模型返回结构增量及摘要句子增量；摘要句编号由现有字符串临时派生，数据库仍只存完整文本。Core 默认保留未修改旧条目和摘要句子，显式 replaces 修订必须引用当前窗证据，合并后持久化完整快照，不增加调用或持久状态。Core 检查引用归属、范围、来源和输入快照；人工纠错、边界修改、全部数据清理统一失效摘要/结构，只清原声则保留。没有额外调度任务、全局实体 owner、缓存或 GUI 协议扩展；迁移不回填历史付费任务。详见[事件理解算法](tech_docs/algorithms.md#52-llm-拟合)与[交付契约](prd/prd_0.1.6_event-understanding.md)。
+
+本地粗转自2026-10-25采用固定X-ASR离线INT8（2026-06-03），新包为speech-xasr-v1、旧speech-v1保留；模型准备仍由原Core入口与Governor管理，结果按实际model_version归属，不重写历史。具体权重、20例评测集、五配置效果/成本及采用边界见[本地ASR评测与选型](tech_docs/local-asr-benchmark.md)。

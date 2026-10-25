@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use sherpa_onnx::{
-    OfflineRecognizer, OfflineRecognizerConfig, OfflineSenseVoiceModelConfig, SileroVadModelConfig,
+    OfflineRecognizer, OfflineRecognizerConfig, OfflineTransducerModelConfig, SileroVadModelConfig,
     SpeakerEmbeddingExtractor, SpeakerEmbeddingExtractorConfig, VadModelConfig,
     VoiceActivityDetector, Wave,
 };
@@ -254,24 +254,24 @@ fn serve_embeddings(model_path: &Path) -> Result<(), String> {
 
 fn recognizer(model_dir: &Path) -> Result<OfflineRecognizer, String> {
     let mut config = OfflineRecognizerConfig::default();
-    config.model_config.sense_voice = OfflineSenseVoiceModelConfig {
-        model: Some(
+    let asset = |name| {
+        Some(
             model_dir
-                .join("sensevoice/model.int8.onnx")
+                .join("xasr")
+                .join(name)
                 .to_string_lossy()
                 .into_owned(),
-        ),
-        language: Some("auto".to_owned()),
-        use_itn: true,
+        )
     };
-    config.model_config.tokens = Some(
-        model_dir
-            .join("sensevoice/tokens.txt")
-            .to_string_lossy()
-            .into_owned(),
-    );
+    config.model_config.transducer = OfflineTransducerModelConfig {
+        encoder: asset("encoder-epoch-99-avg-1.int8.onnx"),
+        decoder: asset("decoder-epoch-99-avg-1.onnx"),
+        joiner: asset("joiner-epoch-99-avg-1.int8.onnx"),
+    };
+    config.model_config.tokens = asset("tokens.txt");
+    config.model_config.provider = Some("cpu".to_owned());
     config.model_config.num_threads = 2;
-    OfflineRecognizer::create(&config).ok_or_else(|| "SenseVoice model could not load".to_owned())
+    OfflineRecognizer::create(&config).ok_or_else(|| "X-ASR model could not load".to_owned())
 }
 
 fn read_samples(input: &mut impl Read, count: usize) -> Result<Vec<f32>, String> {

@@ -1,0 +1,1015 @@
+{
+  "date": "2026-10-25",
+  "decision": "X-ASR selected by user for local coarse transcription",
+  "dataset": {
+    "events": 20,
+    "inputs": 682,
+    "input_seconds": 4881.324,
+    "scored_inputs": 626,
+    "scored_seconds": 4751.172,
+    "unscored_inputs": 56,
+    "clips_sha256": "2de6a84d7f8c52b68b24e2a52c528c59f68404dd154ea847dfd8c5980c37f473",
+    "suite_sha256": "f36f03cea9726e6f206f32b37b1590aefeb6acdc8006d069ae60d2b86013df21",
+    "reference_manifest_sha256": "fb964a4a0dd3663b4a8467b4c7482edf2744f1777f43e49221b72884dd17bb7c",
+    "relative_to_client_root": "../hear-asr-benchmark/data/v2"
+  },
+  "source": {
+    "benchmark_commit": "aff662d",
+    "results_sha256": "e83928ec773c5129bf3d4bdc5426804e0a8ef686d2bd3211439a46b3d1dd885a",
+    "cohorts_sha256": "f73387ca5520c2e6bc356418a04be5551daa86979b66cbe9f89e08fff8afc9f6",
+    "artifact_manifest_sha256": "1a200eb38273ecad4d3f94723e006d500b7a39eaa1674eb938500b3b070b7234",
+    "report": "reports/selection20-v1"
+  },
+  "models": [
+    {
+      "id": "sensevoice-sherpa200",
+      "label": "SenseVoice INT8 / sherpa 2.0.0",
+      "assets_bytes": 239549806,
+      "runtime_bytes": 26304128,
+      "quality_failures": 0,
+      "cohorts": {
+        "all": {
+          "events": 20,
+          "inputs": 682,
+          "scored_inputs": 626,
+          "failures": 0,
+          "scored_failures": 0,
+          "empty_successes": 0,
+          "zh_cer": {
+            "substitutions": 1761,
+            "deletions": 2410,
+            "insertions": 424,
+            "errors": 4595,
+            "reference_units": 20715,
+            "rate": 0.22181993724354332
+          },
+          "zh_mer": {
+            "substitutions": 1720,
+            "deletions": 2336,
+            "insertions": 376,
+            "errors": 4432,
+            "reference_units": 20055,
+            "rate": 0.22099227125405135
+          },
+          "english_wer": {
+            "substitutions": 102,
+            "deletions": 146,
+            "insertions": 31,
+            "errors": 279,
+            "reference_units": 1146,
+            "rate": 0.24345549738219896
+          },
+          "cloud_zh_cer": {
+            "substitutions": 1784,
+            "deletions": 2788,
+            "insertions": 379,
+            "errors": 4951,
+            "reference_units": 21138,
+            "rate": 0.23422272684265305
+          },
+          "macro_zh_cer": 0.24687073660721154,
+          "key_errors": 227,
+          "key_total": 1189,
+          "key_categories": {
+            "term": {
+              "total": 71,
+              "errors": 36
+            },
+            "number": {
+              "total": 672,
+              "errors": 116
+            },
+            "negation": {
+              "total": 446,
+              "errors": 75
+            }
+          }
+        },
+        "home-v1": {
+          "events": 10,
+          "inputs": 310,
+          "scored_inputs": 270,
+          "failures": 0,
+          "scored_failures": 0,
+          "empty_successes": 0,
+          "zh_cer": {
+            "substitutions": 583,
+            "deletions": 671,
+            "insertions": 73,
+            "errors": 1327,
+            "reference_units": 5104,
+            "rate": 0.25999216300940436
+          },
+          "zh_mer": {
+            "substitutions": 551,
+            "deletions": 675,
+            "insertions": 67,
+            "errors": 1293,
+            "reference_units": 4924,
+            "rate": 0.262591389114541
+          },
+          "english_wer": {
+            "substitutions": 102,
+            "deletions": 146,
+            "insertions": 31,
+            "errors": 279,
+            "reference_units": 1146,
+            "rate": 0.24345549738219896
+          },
+          "cloud_zh_cer": {
+            "substitutions": 577,
+            "deletions": 746,
+            "insertions": 70,
+            "errors": 1393,
+            "reference_units": 5182,
+            "rate": 0.268815129293709
+          },
+          "macro_zh_cer": 0.2471270025976344,
+          "key_errors": 93,
+          "key_total": 391,
+          "key_categories": {
+            "term": {
+              "total": 45,
+              "errors": 17
+            },
+            "number": {
+              "total": 170,
+              "errors": 35
+            },
+            "negation": {
+              "total": 176,
+              "errors": 41
+            }
+          }
+        },
+        "work-v1": {
+          "events": 10,
+          "inputs": 372,
+          "scored_inputs": 356,
+          "failures": 0,
+          "scored_failures": 0,
+          "empty_successes": 0,
+          "zh_cer": {
+            "substitutions": 1178,
+            "deletions": 1739,
+            "insertions": 351,
+            "errors": 3268,
+            "reference_units": 15611,
+            "rate": 0.20933956825315483
+          },
+          "zh_mer": {
+            "substitutions": 1169,
+            "deletions": 1661,
+            "insertions": 309,
+            "errors": 3139,
+            "reference_units": 15131,
+            "rate": 0.2074548939263763
+          },
+          "english_wer": {
+            "substitutions": 0,
+            "deletions": 0,
+            "insertions": 0,
+            "errors": 0,
+            "reference_units": 0,
+            "rate": null
+          },
+          "cloud_zh_cer": {
+            "substitutions": 1207,
+            "deletions": 2042,
+            "insertions": 309,
+            "errors": 3558,
+            "reference_units": 15956,
+            "rate": 0.2229882175983956
+          },
+          "macro_zh_cer": 0.24664009721583094,
+          "key_errors": 134,
+          "key_total": 798,
+          "key_categories": {
+            "negation": {
+              "total": 270,
+              "errors": 34
+            },
+            "number": {
+              "total": 502,
+              "errors": 81
+            },
+            "term": {
+              "total": 26,
+              "errors": 19
+            }
+          }
+        }
+      },
+      "resource": {
+        "rtf": 0.0832955419303785,
+        "latency_p50_seconds": 0.44336964609101415,
+        "latency_p95_seconds": 1.6574595597572626,
+        "cold_seconds": 0.4945947080850601,
+        "rss_peak_bytes": 675889152,
+        "observed_peak_footprint_bytes": 651723664,
+        "idle_footprint_bytes": 564609840,
+        "cpu_seconds_per_audio_minute": 9.90079447766234,
+        "mean_cpu_cores": 1.9759769249509962,
+        "process_estimated_joules_per_audio_minute": 20.38062746554527,
+        "repeat_rtf": [
+          0.08350032183594974,
+          0.0833937938473844,
+          0.08299251010780137
+        ],
+        "failures": 0
+      }
+    },
+    {
+      "id": "xasr-sherpa200",
+      "label": "X-ASR INT8 / sherpa 2.0.0",
+      "assets_bytes": 175694196,
+      "runtime_bytes": 26304128,
+      "quality_failures": 0,
+      "cohorts": {
+        "all": {
+          "events": 20,
+          "inputs": 682,
+          "scored_inputs": 626,
+          "failures": 0,
+          "scored_failures": 0,
+          "empty_successes": 93,
+          "zh_cer": {
+            "substitutions": 1204,
+            "deletions": 2767,
+            "insertions": 414,
+            "errors": 4385,
+            "reference_units": 20715,
+            "rate": 0.21168235578083514
+          },
+          "zh_mer": {
+            "substitutions": 1201,
+            "deletions": 2666,
+            "insertions": 369,
+            "errors": 4236,
+            "reference_units": 20055,
+            "rate": 0.2112191473448018
+          },
+          "english_wer": {
+            "substitutions": 65,
+            "deletions": 46,
+            "insertions": 38,
+            "errors": 149,
+            "reference_units": 1146,
+            "rate": 0.1300174520069808
+          },
+          "cloud_zh_cer": {
+            "substitutions": 1277,
+            "deletions": 3201,
+            "insertions": 425,
+            "errors": 4903,
+            "reference_units": 21138,
+            "rate": 0.23195193490396443
+          },
+          "macro_zh_cer": 0.24063753727897072,
+          "key_errors": 181,
+          "key_total": 1189,
+          "key_categories": {
+            "term": {
+              "total": 71,
+              "errors": 14
+            },
+            "number": {
+              "total": 672,
+              "errors": 98
+            },
+            "negation": {
+              "total": 446,
+              "errors": 69
+            }
+          }
+        },
+        "home-v1": {
+          "events": 10,
+          "inputs": 310,
+          "scored_inputs": 270,
+          "failures": 0,
+          "scored_failures": 0,
+          "empty_successes": 49,
+          "zh_cer": {
+            "substitutions": 391,
+            "deletions": 765,
+            "insertions": 130,
+            "errors": 1286,
+            "reference_units": 5104,
+            "rate": 0.2519592476489028
+          },
+          "zh_mer": {
+            "substitutions": 390,
+            "deletions": 747,
+            "insertions": 111,
+            "errors": 1248,
+            "reference_units": 4924,
+            "rate": 0.25345247766043866
+          },
+          "english_wer": {
+            "substitutions": 65,
+            "deletions": 46,
+            "insertions": 38,
+            "errors": 149,
+            "reference_units": 1146,
+            "rate": 0.1300174520069808
+          },
+          "cloud_zh_cer": {
+            "substitutions": 408,
+            "deletions": 842,
+            "insertions": 129,
+            "errors": 1379,
+            "reference_units": 5182,
+            "rate": 0.26611346970281746
+          },
+          "macro_zh_cer": 0.24648647408598434,
+          "key_errors": 65,
+          "key_total": 391,
+          "key_categories": {
+            "term": {
+              "total": 45,
+              "errors": 3
+            },
+            "number": {
+              "total": 170,
+              "errors": 29
+            },
+            "negation": {
+              "total": 176,
+              "errors": 33
+            }
+          }
+        },
+        "work-v1": {
+          "events": 10,
+          "inputs": 372,
+          "scored_inputs": 356,
+          "failures": 0,
+          "scored_failures": 0,
+          "empty_successes": 44,
+          "zh_cer": {
+            "substitutions": 813,
+            "deletions": 2002,
+            "insertions": 284,
+            "errors": 3099,
+            "reference_units": 15611,
+            "rate": 0.1985138684261098
+          },
+          "zh_mer": {
+            "substitutions": 811,
+            "deletions": 1919,
+            "insertions": 258,
+            "errors": 2988,
+            "reference_units": 15131,
+            "rate": 0.1974753816667768
+          },
+          "english_wer": {
+            "substitutions": 0,
+            "deletions": 0,
+            "insertions": 0,
+            "errors": 0,
+            "reference_units": 0,
+            "rate": null
+          },
+          "cloud_zh_cer": {
+            "substitutions": 869,
+            "deletions": 2359,
+            "insertions": 296,
+            "errors": 3524,
+            "reference_units": 15956,
+            "rate": 0.22085735773376786
+          },
+          "macro_zh_cer": 0.23537349415265843,
+          "key_errors": 116,
+          "key_total": 798,
+          "key_categories": {
+            "negation": {
+              "total": 270,
+              "errors": 36
+            },
+            "number": {
+              "total": 502,
+              "errors": 69
+            },
+            "term": {
+              "total": 26,
+              "errors": 11
+            }
+          }
+        }
+      },
+      "resource": {
+        "rtf": 0.034090319072691694,
+        "latency_p50_seconds": 0.14955391688272357,
+        "latency_p95_seconds": 0.6580602352507412,
+        "cold_seconds": 1.9098940417170525,
+        "rss_peak_bytes": 959234048,
+        "observed_peak_footprint_bytes": 628327240,
+        "idle_footprint_bytes": 288097168,
+        "cpu_seconds_per_audio_minute": 4.325846840373485,
+        "mean_cpu_cores": 2.109449220248868,
+        "process_estimated_joules_per_audio_minute": 7.363446019192561,
+        "repeat_rtf": [
+          0.03237233918663874,
+          0.03340907403282043,
+          0.03648954399861593
+        ],
+        "failures": 0
+      }
+    },
+    {
+      "id": "qwen06-q8",
+      "label": "Qwen3-ASR 0.6B Q8",
+      "assets_bytes": 850423456,
+      "runtime_bytes": 3544000,
+      "quality_failures": 0,
+      "cohorts": {
+        "all": {
+          "events": 20,
+          "inputs": 682,
+          "scored_inputs": 626,
+          "failures": 0,
+          "scored_failures": 0,
+          "empty_successes": 48,
+          "zh_cer": {
+            "substitutions": 1789,
+            "deletions": 1981,
+            "insertions": 586,
+            "errors": 4356,
+            "reference_units": 20715,
+            "rate": 0.2102824040550326
+          },
+          "zh_mer": {
+            "substitutions": 1749,
+            "deletions": 1869,
+            "insertions": 587,
+            "errors": 4205,
+            "reference_units": 20055,
+            "rate": 0.20967339815507355
+          },
+          "english_wer": {
+            "substitutions": 71,
+            "deletions": 45,
+            "insertions": 47,
+            "errors": 163,
+            "reference_units": 1146,
+            "rate": 0.14223385689354276
+          },
+          "cloud_zh_cer": {
+            "substitutions": 1844,
+            "deletions": 2402,
+            "insertions": 584,
+            "errors": 4830,
+            "reference_units": 21138,
+            "rate": 0.22849843883054216
+          },
+          "macro_zh_cer": 0.23521588438952606,
+          "key_errors": 164,
+          "key_total": 1189,
+          "key_categories": {
+            "term": {
+              "total": 71,
+              "errors": 18
+            },
+            "number": {
+              "total": 672,
+              "errors": 86
+            },
+            "negation": {
+              "total": 446,
+              "errors": 60
+            }
+          }
+        },
+        "home-v1": {
+          "events": 10,
+          "inputs": 310,
+          "scored_inputs": 270,
+          "failures": 0,
+          "scored_failures": 0,
+          "empty_successes": 34,
+          "zh_cer": {
+            "substitutions": 501,
+            "deletions": 534,
+            "insertions": 225,
+            "errors": 1260,
+            "reference_units": 5104,
+            "rate": 0.2468652037617555
+          },
+          "zh_mer": {
+            "substitutions": 489,
+            "deletions": 521,
+            "insertions": 216,
+            "errors": 1226,
+            "reference_units": 4924,
+            "rate": 0.24898456539398864
+          },
+          "english_wer": {
+            "substitutions": 71,
+            "deletions": 45,
+            "insertions": 47,
+            "errors": 163,
+            "reference_units": 1146,
+            "rate": 0.14223385689354276
+          },
+          "cloud_zh_cer": {
+            "substitutions": 503,
+            "deletions": 616,
+            "insertions": 229,
+            "errors": 1348,
+            "reference_units": 5182,
+            "rate": 0.26013122346584333
+          },
+          "macro_zh_cer": 0.2373313526851633,
+          "key_errors": 63,
+          "key_total": 391,
+          "key_categories": {
+            "term": {
+              "total": 45,
+              "errors": 2
+            },
+            "number": {
+              "total": 170,
+              "errors": 32
+            },
+            "negation": {
+              "total": 176,
+              "errors": 29
+            }
+          }
+        },
+        "work-v1": {
+          "events": 10,
+          "inputs": 372,
+          "scored_inputs": 356,
+          "failures": 0,
+          "scored_failures": 0,
+          "empty_successes": 14,
+          "zh_cer": {
+            "substitutions": 1288,
+            "deletions": 1447,
+            "insertions": 361,
+            "errors": 3096,
+            "reference_units": 15611,
+            "rate": 0.1983216962398309
+          },
+          "zh_mer": {
+            "substitutions": 1260,
+            "deletions": 1348,
+            "insertions": 371,
+            "errors": 2979,
+            "reference_units": 15131,
+            "rate": 0.1968805763003106
+          },
+          "english_wer": {
+            "substitutions": 0,
+            "deletions": 0,
+            "insertions": 0,
+            "errors": 0,
+            "reference_units": 0,
+            "rate": null
+          },
+          "cloud_zh_cer": {
+            "substitutions": 1341,
+            "deletions": 1786,
+            "insertions": 355,
+            "errors": 3482,
+            "reference_units": 15956,
+            "rate": 0.21822511907746303
+          },
+          "macro_zh_cer": 0.23331196292345255,
+          "key_errors": 101,
+          "key_total": 798,
+          "key_categories": {
+            "negation": {
+              "total": 270,
+              "errors": 31
+            },
+            "number": {
+              "total": 502,
+              "errors": 54
+            },
+            "term": {
+              "total": 26,
+              "errors": 16
+            }
+          }
+        }
+      },
+      "resource": {
+        "rtf": 0.3256563169487268,
+        "latency_p50_seconds": 1.4736625631339848,
+        "latency_p95_seconds": 6.242626433260738,
+        "cold_seconds": 0.6295868745073676,
+        "rss_peak_bytes": 1476624384,
+        "observed_peak_footprint_bytes": 632669600,
+        "idle_footprint_bytes": 290473160,
+        "cpu_seconds_per_audio_minute": 36.789518085298525,
+        "mean_cpu_cores": 1.8808480961267409,
+        "process_estimated_joules_per_audio_minute": 34.355775801038156,
+        "repeat_rtf": [
+          0.3105735924353847,
+          0.3445756405629352,
+          0.3218197178478608
+        ],
+        "failures": 0
+      }
+    },
+    {
+      "id": "qwen17-q8",
+      "label": "Qwen3-ASR 1.7B Q8",
+      "assets_bytes": 2185030624,
+      "runtime_bytes": 3544000,
+      "quality_failures": 1,
+      "cohorts": {
+        "all": {
+          "events": 20,
+          "inputs": 682,
+          "scored_inputs": 626,
+          "failures": 1,
+          "scored_failures": 1,
+          "empty_successes": 55,
+          "zh_cer": {
+            "substitutions": 1406,
+            "deletions": 1925,
+            "insertions": 481,
+            "errors": 3812,
+            "reference_units": 20715,
+            "rate": 0.18402124064687425
+          },
+          "zh_mer": {
+            "substitutions": 1372,
+            "deletions": 1837,
+            "insertions": 432,
+            "errors": 3641,
+            "reference_units": 20055,
+            "rate": 0.18155073547743705
+          },
+          "english_wer": {
+            "substitutions": 57,
+            "deletions": 42,
+            "insertions": 17,
+            "errors": 116,
+            "reference_units": 1146,
+            "rate": 0.1012216404886562
+          },
+          "cloud_zh_cer": {
+            "substitutions": 1560,
+            "deletions": 2409,
+            "insertions": 542,
+            "errors": 4511,
+            "reference_units": 21138,
+            "rate": 0.2134071340713407
+          },
+          "macro_zh_cer": 0.21264943729562194,
+          "key_errors": 150,
+          "key_total": 1189,
+          "key_categories": {
+            "term": {
+              "total": 71,
+              "errors": 16
+            },
+            "number": {
+              "total": 672,
+              "errors": 85
+            },
+            "negation": {
+              "total": 446,
+              "errors": 49
+            }
+          }
+        },
+        "home-v1": {
+          "events": 10,
+          "inputs": 310,
+          "scored_inputs": 270,
+          "failures": 1,
+          "scored_failures": 1,
+          "empty_successes": 37,
+          "zh_cer": {
+            "substitutions": 447,
+            "deletions": 555,
+            "insertions": 179,
+            "errors": 1181,
+            "reference_units": 5104,
+            "rate": 0.2313871473354232
+          },
+          "zh_mer": {
+            "substitutions": 421,
+            "deletions": 556,
+            "insertions": 135,
+            "errors": 1112,
+            "reference_units": 4924,
+            "rate": 0.2258326563769293
+          },
+          "english_wer": {
+            "substitutions": 57,
+            "deletions": 42,
+            "insertions": 17,
+            "errors": 116,
+            "reference_units": 1146,
+            "rate": 0.1012216404886562
+          },
+          "cloud_zh_cer": {
+            "substitutions": 480,
+            "deletions": 645,
+            "insertions": 191,
+            "errors": 1316,
+            "reference_units": 5182,
+            "rate": 0.2539560015438055
+          },
+          "macro_zh_cer": 0.2241802412919464,
+          "key_errors": 63,
+          "key_total": 391,
+          "key_categories": {
+            "term": {
+              "total": 45,
+              "errors": 4
+            },
+            "number": {
+              "total": 170,
+              "errors": 35
+            },
+            "negation": {
+              "total": 176,
+              "errors": 24
+            }
+          }
+        },
+        "work-v1": {
+          "events": 10,
+          "inputs": 372,
+          "scored_inputs": 356,
+          "failures": 0,
+          "scored_failures": 0,
+          "empty_successes": 18,
+          "zh_cer": {
+            "substitutions": 959,
+            "deletions": 1370,
+            "insertions": 302,
+            "errors": 2631,
+            "reference_units": 15611,
+            "rate": 0.1685350073666005
+          },
+          "zh_mer": {
+            "substitutions": 951,
+            "deletions": 1281,
+            "insertions": 297,
+            "errors": 2529,
+            "reference_units": 15131,
+            "rate": 0.16714030797700086
+          },
+          "english_wer": {
+            "substitutions": 0,
+            "deletions": 0,
+            "insertions": 0,
+            "errors": 0,
+            "reference_units": 0,
+            "rate": null
+          },
+          "cloud_zh_cer": {
+            "substitutions": 1080,
+            "deletions": 1764,
+            "insertions": 351,
+            "errors": 3195,
+            "reference_units": 15956,
+            "rate": 0.20023815492604663
+          },
+          "macro_zh_cer": 0.20227171369892996,
+          "key_errors": 87,
+          "key_total": 798,
+          "key_categories": {
+            "negation": {
+              "total": 270,
+              "errors": 25
+            },
+            "number": {
+              "total": 502,
+              "errors": 50
+            },
+            "term": {
+              "total": 26,
+              "errors": 12
+            }
+          }
+        }
+      },
+      "resource": {
+        "rtf": 0.5206222982664374,
+        "latency_p50_seconds": 2.5249524377286434,
+        "latency_p95_seconds": 9.506861726893112,
+        "cold_seconds": 1.5347004998475313,
+        "rss_peak_bytes": 2812608512,
+        "observed_peak_footprint_bytes": 631146920,
+        "idle_footprint_bytes": 292145312,
+        "cpu_seconds_per_audio_minute": 60.48485876504818,
+        "mean_cpu_cores": 1.9348230238897755,
+        "process_estimated_joules_per_audio_minute": 96.74268774801517,
+        "repeat_rtf": [
+          0.5976499149126643,
+          0.5103799460293252,
+          0.45383703385732266
+        ],
+        "failures": 0
+      }
+    },
+    {
+      "id": "paraformer-sherpa200",
+      "label": "Paraformer INT8 / sherpa 2.0.0",
+      "assets_bytes": 227405559,
+      "runtime_bytes": 26303456,
+      "quality_failures": 0,
+      "cohorts": {
+        "all": {
+          "events": 20,
+          "inputs": 682,
+          "scored_inputs": 626,
+          "failures": 0,
+          "scored_failures": 0,
+          "empty_successes": 34,
+          "zh_cer": {
+            "substitutions": 2193,
+            "deletions": 1827,
+            "insertions": 651,
+            "errors": 4671,
+            "reference_units": 20715,
+            "rate": 0.22548877624909486
+          },
+          "zh_mer": {
+            "substitutions": 2206,
+            "deletions": 1720,
+            "insertions": 652,
+            "errors": 4578,
+            "reference_units": 20055,
+            "rate": 0.22827225130890053
+          },
+          "english_wer": {
+            "substitutions": 386,
+            "deletions": 140,
+            "insertions": 67,
+            "errors": 593,
+            "reference_units": 1146,
+            "rate": 0.5174520069808028
+          },
+          "cloud_zh_cer": {
+            "substitutions": 2249,
+            "deletions": 2191,
+            "insertions": 592,
+            "errors": 5032,
+            "reference_units": 21138,
+            "rate": 0.23805468823919007
+          },
+          "macro_zh_cer": 0.2517394541426248,
+          "key_errors": 255,
+          "key_total": 1189,
+          "key_categories": {
+            "term": {
+              "total": 71,
+              "errors": 44
+            },
+            "number": {
+              "total": 672,
+              "errors": 112
+            },
+            "negation": {
+              "total": 446,
+              "errors": 99
+            }
+          }
+        },
+        "home-v1": {
+          "events": 10,
+          "inputs": 310,
+          "scored_inputs": 270,
+          "failures": 0,
+          "scored_failures": 0,
+          "empty_successes": 20,
+          "zh_cer": {
+            "substitutions": 683,
+            "deletions": 569,
+            "insertions": 141,
+            "errors": 1393,
+            "reference_units": 5104,
+            "rate": 0.272923197492163
+          },
+          "zh_mer": {
+            "substitutions": 693,
+            "deletions": 533,
+            "insertions": 129,
+            "errors": 1355,
+            "reference_units": 4924,
+            "rate": 0.27518277822908205
+          },
+          "english_wer": {
+            "substitutions": 386,
+            "deletions": 140,
+            "insertions": 67,
+            "errors": 593,
+            "reference_units": 1146,
+            "rate": 0.5174520069808028
+          },
+          "cloud_zh_cer": {
+            "substitutions": 688,
+            "deletions": 646,
+            "insertions": 140,
+            "errors": 1474,
+            "reference_units": 5182,
+            "rate": 0.2844461597838672
+          },
+          "macro_zh_cer": 0.26075545906202785,
+          "key_errors": 117,
+          "key_total": 391,
+          "key_categories": {
+            "term": {
+              "total": 45,
+              "errors": 23
+            },
+            "number": {
+              "total": 170,
+              "errors": 43
+            },
+            "negation": {
+              "total": 176,
+              "errors": 51
+            }
+          }
+        },
+        "work-v1": {
+          "events": 10,
+          "inputs": 372,
+          "scored_inputs": 356,
+          "failures": 0,
+          "scored_failures": 0,
+          "empty_successes": 14,
+          "zh_cer": {
+            "substitutions": 1510,
+            "deletions": 1258,
+            "insertions": 510,
+            "errors": 3278,
+            "reference_units": 15611,
+            "rate": 0.20998014220741784
+          },
+          "zh_mer": {
+            "substitutions": 1513,
+            "deletions": 1187,
+            "insertions": 523,
+            "errors": 3223,
+            "reference_units": 15131,
+            "rate": 0.2130064106800608
+          },
+          "english_wer": {
+            "substitutions": 0,
+            "deletions": 0,
+            "insertions": 0,
+            "errors": 0,
+            "reference_units": 0,
+            "rate": null
+          },
+          "cloud_zh_cer": {
+            "substitutions": 1561,
+            "deletions": 1545,
+            "insertions": 452,
+            "errors": 3558,
+            "reference_units": 15956,
+            "rate": 0.2229882175983956
+          },
+          "macro_zh_cer": 0.24362504971516202,
+          "key_errors": 138,
+          "key_total": 798,
+          "key_categories": {
+            "negation": {
+              "total": 270,
+              "errors": 48
+            },
+            "number": {
+              "total": 502,
+              "errors": 69
+            },
+            "term": {
+              "total": 26,
+              "errors": 21
+            }
+          }
+        }
+      },
+      "resource": {
+        "rtf": 0.058545733031485275,
+        "latency_p50_seconds": 0.2699886034242809,
+        "latency_p95_seconds": 1.0288202560506756,
+        "cold_seconds": 0.7890816675499082,
+        "rss_peak_bytes": 614907904,
+        "observed_peak_footprint_bytes": 599982944,
+        "idle_footprint_bytes": 540066608,
+        "cpu_seconds_per_audio_minute": 6.937265812581964,
+        "mean_cpu_cores": 1.9729202552658514,
+        "process_estimated_joules_per_audio_minute": 15.323550028506135,
+        "repeat_rtf": [
+          0.06117313273417866,
+          0.06469663593725679,
+          0.049767430423020405
+        ],
+        "failures": 0
+      }
+    }
+  ]
+}
