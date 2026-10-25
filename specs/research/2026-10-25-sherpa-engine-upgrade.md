@@ -48,3 +48,7 @@
 - Adversarial：fresh-context `prod_sherpa_adversarial`，PASS，无阻塞。核对输入/VAD 会话与释放、识别/声纹包装、Core 重采样及进程边界；上游 VAD 起点扩为 i64 与既有转换兼容。
 - 主 Agent 裁决：两路均无修复项；旧引擎同样复现的提示词测试失败为 pre-existing / out-of-scope。无需更改功能候选或使已有验证失效。
 - Architecture：Phase 1 后 fresh-context `prod_sherpa_architecture`，PASS。最终候选只更新既有依赖，锁差异全部落在 sherpa / zip 构建依赖闭包；无新增 owner、状态、协议或兼容路径，无需调整架构/算法文档。
+
+## 最终收尾
+
+实现提交 `02013f9`，三路 required lens 全部 PASS、无修复项。提交后 `verification-final-static.json` 的 typecheck/lint/rust-check 三项通过；逐项重读执行契约，确认最终 HEAD 三处功能文件与审查快照相同、已验收 worker 哈希未变，前述实际模型回归仍有效。既有工作区版本/功能变更保留为 unstaged；本次没有安装或发布客户端。临时验证脚本归档为本机 ignored `production-worker/validation_recipe.py`，不提交音频或识别结果。全部本次验收已完成，后续完整打包安装时应用新引擎。
