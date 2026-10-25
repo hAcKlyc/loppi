@@ -1,0 +1,145 @@
+{
+  "schema": 1,
+  "date": "2026-10-26",
+  "status": "local-release-complete",
+  "release": {
+    "version": "0.1.8",
+    "source": "94fa7a5785d4f2d88029c3593b23473e4601368e",
+    "target": "universal-apple-darwin",
+    "architectures": [
+      "arm64",
+      "x86_64"
+    ],
+    "built_at_epoch": 1792943861,
+    "models_lock_sha256": "e0320694c4f75c3c545886ae3439079c0f9d68fc536f30d8cbc07d1287470519",
+    "models_bytes": 204642977,
+    "native": {
+      "version": "2.0.0",
+      "sha256": "8ed41bf3b27ce55d6527bbc0f7754598c5afbb18e814ff0bddbc9ecd50fb09c5"
+    },
+    "toolchain": {
+      "node": "v24.15.0",
+      "rust": "rustc 1.98.1 (48a229cea 2026-09-01)",
+      "xcode": "Xcode 27.1\nBuild version 27A9275",
+      "sdk": "27.0"
+    },
+    "runtime": {
+      "architecture": "aarch64",
+      "onnxruntime": "1.28.2",
+      "provider": "cpu",
+      "sherpa_onnx": "2.0.0"
+    },
+    "runtime_checked_architecture": "arm64",
+    "intel_native_test": "not run; cross-compiled and slices verified",
+    "minimum_os_runtime_test": "not run",
+    "dmg": "hear_0.1.8_macos-universal2.dmg",
+    "dmg_bytes": 199754527,
+    "dmg_sha256": "6e70d83ab7a64dd468925ce27c376f519541f3c5397558cd92ee38e25b9bbfd3"
+  },
+  "notarization": {
+    "status": "Accepted",
+    "submission_id": "8a644caf-3fe9-48e2-a8de-afeff507ccf7",
+    "stapled": true,
+    "gatekeeper": "accepted"
+  },
+  "artifact": {
+    "status": "passed",
+    "models_copies": 1,
+    "models_bytes": 204642977,
+    "models_lock_sha256": "e0320694c4f75c3c545886ae3439079c0f9d68fc536f30d8cbc07d1287470519",
+    "app_file_bytes": 279596395,
+    "identity": {
+      "schema": 1,
+      "components": {
+        "gui": {
+          "component": "gui",
+          "version": "0.1.8",
+          "protocol_version": 20,
+          "git_sha": "94fa7a5785d4f2d88029c3593b23473e4601368e",
+          "dirty": false,
+          "built_at_epoch": 1792943861
+        },
+        "cli": {
+          "component": "cli",
+          "version": "0.1.8",
+          "protocol_version": 20,
+          "git_sha": "94fa7a5785d4f2d88029c3593b23473e4601368e",
+          "dirty": false,
+          "built_at_epoch": 1792943861
+        },
+        "core": {
+          "component": "core",
+          "version": "0.1.8",
+          "protocol_version": 20,
+          "git_sha": "94fa7a5785d4f2d88029c3593b23473e4601368e",
+          "dirty": false,
+          "built_at_epoch": 1792943861
+        },
+        "worker": {
+          "component": "worker",
+          "version": "0.1.8",
+          "protocol_version": 20,
+          "git_sha": "94fa7a5785d4f2d88029c3593b23473e4601368e",
+          "dirty": false,
+          "built_at_epoch": 1792943861
+        }
+      }
+    },
+    "components": {
+      "gui": {
+        "sha256": "1d47fb09e855acd978abb69f9fc77c0717273ac5ffe271a2b6c0825967c92a71",
+        "bytes": 13632320,
+        "architectures": [
+          "x86_64",
+          "arm64"
+        ]
+      },
+      "cli": {
+        "sha256": "b8ed83cb29462937e1c4fe5283c72f0fbe662e81cfa2b6ba851d42656aa64453",
+        "bytes": 3340816,
+        "architectures": [
+          "x86_64",
+          "arm64"
+        ]
+      },
+      "core": {
+        "sha256": "25cb7edbc25648c1718de0b78604243b3e62e218d27ff9d8e081f84707f55fd9",
+        "bytes": 15742368,
+        "architectures": [
+          "x86_64",
+          "arm64"
+        ]
+      },
+      "worker": {
+        "sha256": "42c9fac3dfa6cccb248d69678a785dd39292eeb8fe9201602681d2c5d8d49ef1",
+        "bytes": 39987728,
+        "architectures": [
+          "x86_64",
+          "arm64"
+        ]
+      }
+    }
+  },
+  "verification": {
+    "model_unit_tests": 5,
+    "recheck_unit_tests": 1,
+    "onboarding_tests": 3,
+    "typescript": "passed",
+    "affected_frontend_format": "passed",
+    "bundled_core_readiness_and_retry": "passed before signing and from final mounted image",
+    "public_audio_source": {
+      "url": "https://huggingface.co/csukuangfj2/sherpa-onnx-x-asr-zipformer-transducer-zh-en-int8-2026-06-03/resolve/bbc3ebbf8f134848f804967f3a3b69f981308a85/test_wavs/0.wav",
+      "bytes": 321744,
+      "sha256": "7d93384ca14702cc584a7a33fe2fed92e89e708549161cb12ea38c916882103b"
+    },
+    "public_asr_vad_match_previous_xasr": true,
+    "embedding_dimensions": 192,
+    "embedding_max_abs_difference": 0.0,
+    "architecture_runtime_test": "Apple Silicon only",
+    "intel_native": "not run; cross-compilation and all four Universal slices verified",
+    "macos_13_runtime": "not run",
+    "full_benchmark_rerun": "skipped at user request",
+    "private_audio_upload": "none",
+    "installed_application": "unchanged"
+  }
+}
