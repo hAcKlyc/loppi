@@ -80,3 +80,15 @@ CLI 的 `transcribe-range` 返回 `range_id` 和 `tasks`；每条任务有可用
 ## 开发验证用云端配置
 
 本机原型从仓库根目录 `.env` 读取 `DEEPSEEK_API_KEY`（事件拟合 LLM）和 `VOLCENGINE_API_KEY`（火山引擎录音文件 ASR）；变量名示例见 [`.env.example`](.env.example)。`.env` 已被 Git 忽略，不在文档、日志或测试输出中保存密钥值。当前优先验证 DeepSeek 官方 API 与火山引擎「录音文件识别标准版HTTP」，具体接口与尚待验证的限制见[技术 RFC](specs/prd/tech_rfc_0.1.md)。正式 macOS 客户端仍由用户在设置中配置凭据并存入 Keychain，不能把开发机 `.env` 打进安装包。
+
+## Agent 接入
+
+保持 hear 运行，同机 Agent 可以通过只读 CLI 或 stdio MCP 找回已有记录。侧栏「Agent 接入」提供当前安装路径对应的配置与 Skill 安装命令；不需要网络端口，也不自动修改 Agent 配置。
+
+```sh
+/Applications/hear.app/Contents/MacOS/hear context list --date today
+/Applications/hear.app/Contents/MacOS/hear context search '发布计划'
+/Applications/hear.app/Contents/MacOS/hear mcp serve
+```
+
+两种入口共享六项能力：状态、时间浏览、关键词检索、事件理解、证据读取、人物查询。使用说明与边界见 [Agent Context 契约](specs/tech_docs/agent-context.md)。

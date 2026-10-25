@@ -1017,6 +1017,13 @@ pub fn resolve_review(
     Ok(())
 }
 
+pub(crate) const PRECISE_VISIBLE: &str = r#"t.state='complete' AND (
+          (t.target_kind='event' AND EXISTS (SELECT 1 FROM named_events e
+            WHERE e.id=t.target_id AND e.deleted_ms IS NULL
+            AND t.target_version=printf('%d:%d:%d',e.source_mask,e.started_ms,e.ended_ms)))
+          OR (t.target_kind='range' AND EXISTS (SELECT 1 FROM manual_ranges m
+            WHERE m.id=t.target_id AND t.target_version=cast(m.revision AS TEXT))))"#;
+
 pub fn search(
     db: &Connection,
     query: Option<&str>,
@@ -1116,12 +1123,7 @@ fn search_sql(db: &Connection, query: Option<&str>) -> Result<(String, String), 
         AND (?3 IS NULL OR EXISTS(SELECT 1 FROM precise_identity_projection identity
           WHERE identity.segment_id=p.id AND identity.person_id=?3))
         AND {match_clause}
-        AND (sr.kind!='precise' OR (t.state='complete' AND (
-          (t.target_kind='event' AND EXISTS (SELECT 1 FROM named_events e
-            WHERE e.id=t.target_id AND e.deleted_ms IS NULL
-            AND t.target_version=printf('%d:%d:%d',e.source_mask,e.started_ms,e.ended_ms)))
-          OR (t.target_kind='range' AND EXISTS (SELECT 1 FROM manual_ranges m
-            WHERE m.id=t.target_id AND t.target_version=cast(m.revision AS TEXT)))))))
+        AND (sr.kind!='precise' OR ({PRECISE_VISIBLE})))
       SELECT hit.kind,hit.item_id,hit.source,hit.started_ms,hit.ended_ms,hit.text,
         hit.person_id,hit.person_name FROM visible hit WHERE ({coarse_duplicate})
         AND (hit.kind!='precise' OR NOT EXISTS (SELECT 1 FROM visible twin
@@ -1158,10 +1160,20 @@ pub fn search_empty_reason(
     end: i64,
     person_id: Option<Uuid>,
 ) -> Result<String, String> {
+    search_empty_reason_for_sources(db, start, end, person_id, 3)
+}
+
+pub(crate) fn search_empty_reason_for_sources(
+    db: &Connection,
+    start: i64,
+    end: i64,
+    person_id: Option<Uuid>,
+    sources: i64,
+) -> Result<String, String> {
     if person_id.is_some() {
         let pending:i64=db.query_row(
             "SELECT EXISTS(SELECT 1 FROM voice_observations WHERE state IN ('pending','processing')
-             AND started_ms<?2 AND ended_ms>?1)",params![start,end],|r|r.get(0)
+             AND started_ms<?2 AND ended_ms>?1 AND (?3=3 OR source='microphone' AND ?3&1!=0 OR source='system' AND ?3&2!=0))",params![start,end,sources],|r|r.get(0)
         ).map_err(|error|error.to_string())?;
         if pending != 0 {
             return Ok("identity_pending".into());
@@ -1170,22 +1182,30 @@ pub fn search_empty_reason(
     for (sql, reason) in [
         (
             "SELECT EXISTS(SELECT 1 FROM moments WHERE kind='screenshot' AND ocr_state='failed'
-             AND anchor_ms>=?1 AND anchor_ms<?2)",
+             AND anchor_ms>=?1 AND anchor_ms<?2 AND ?3>=0)",
             "ocr_failed",
         ),
         (
             "SELECT EXISTS(SELECT 1 FROM cloud_tasks WHERE state='failed'
-            AND started_ms<?2 AND ended_ms>?1)",
+            AND started_ms<?2 AND ended_ms>?1 AND (?3=3 OR source='microphone' AND ?3&1!=0 OR source='system' AND ?3&2!=0 OR source IS NULL AND (
+              target_kind='screenshot'
+              OR target_kind='event' AND EXISTS(SELECT 1 FROM named_events e WHERE e.id=cloud_tasks.target_id AND e.source_mask&?3!=0)
+              OR target_kind='range' AND EXISTS(SELECT 1 FROM manual_ranges r WHERE r.id=cloud_tasks.target_id AND r.source_mask&?3!=0)
+              OR target_kind='candidate' AND EXISTS(SELECT 1 FROM coarse_segments c WHERE c.started_ms<cloud_tasks.ended_ms AND c.ended_ms>cloud_tasks.started_ms AND (c.source='microphone' AND ?3&1!=0 OR c.source='system' AND ?3&2!=0)))))",
             "processing_failed",
         ),
         (
             "SELECT EXISTS(SELECT 1 FROM cloud_tasks WHERE state IN
-            ('pending','processing','submitted') AND started_ms<?2 AND ended_ms>?1)",
+            ('pending','processing','submitted') AND started_ms<?2 AND ended_ms>?1 AND (?3=3 OR source='microphone' AND ?3&1!=0 OR source='system' AND ?3&2!=0 OR source IS NULL AND (
+              target_kind='screenshot'
+              OR target_kind='event' AND EXISTS(SELECT 1 FROM named_events e WHERE e.id=cloud_tasks.target_id AND e.source_mask&?3!=0)
+              OR target_kind='range' AND EXISTS(SELECT 1 FROM manual_ranges r WHERE r.id=cloud_tasks.target_id AND r.source_mask&?3!=0)
+              OR target_kind='candidate' AND EXISTS(SELECT 1 FROM coarse_segments c WHERE c.started_ms<cloud_tasks.ended_ms AND c.ended_ms>cloud_tasks.started_ms AND (c.source='microphone' AND ?3&1!=0 OR c.source='system' AND ?3&2!=0)))))",
             "processing_pending",
         ),
     ] {
         let found: i64 = db
-            .query_row(sql, params![start, end], |r| r.get(0))
+            .query_row(sql, params![start, end, sources], |r| r.get(0))
             .map_err(|error| error.to_string())?;
         if found != 0 {
             return Ok(reason.into());
@@ -1194,10 +1214,10 @@ pub fn search_empty_reason(
     let material: i64 = db
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM audio_blocks WHERE started_ms<?2 AND ended_ms>?1
-           AND retention_decision!='all_data') OR
+           AND retention_decision!='all_data' AND (?3=3 OR source='microphone' AND ?3&1!=0 OR source='system' AND ?3&2!=0)) OR
          EXISTS(SELECT 1 FROM moments WHERE anchor_ms>=?1 AND anchor_ms<?2) OR
-         EXISTS(SELECT 1 FROM search_records WHERE started_ms<?2 AND ended_ms>?1)",
-            params![start, end],
+         EXISTS(SELECT 1 FROM search_records WHERE started_ms<?2 AND ended_ms>?1 AND (source IS NULL OR ?3=3 OR source='microphone' AND ?3&1!=0 OR source='system' AND ?3&2!=0))",
+            params![start, end, sources],
             |r| r.get(0),
         )
         .map_err(|error| error.to_string())?;
@@ -1207,8 +1227,8 @@ pub fn search_empty_reason(
     let cleared: i64 = db
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM clear_ranges
-       WHERE mode='all_data' AND from_ms<?2 AND to_ms>?1)",
-            params![start, end],
+       WHERE mode='all_data' AND from_ms<?2 AND to_ms>?1 AND source_mask&?3!=0)",
+            params![start, end, sources],
             |r| r.get(0),
         )
         .map_err(|error| error.to_string())?;
@@ -1218,8 +1238,8 @@ pub fn search_empty_reason(
     let recorded: i64 = db
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM recording_sessions
-       WHERE started_ms<?2 AND coalesce(ended_ms,last_confirmed_ms)>?1)",
-            params![start, end],
+       WHERE started_ms<?2 AND coalesce(ended_ms,last_confirmed_ms)>?1 AND (?3=3 OR source='microphone' AND ?3&1!=0 OR source='system' AND ?3&2!=0))",
+            params![start, end, sources],
             |r| r.get(0),
         )
         .map_err(|error| error.to_string())?;

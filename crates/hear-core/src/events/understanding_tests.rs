@@ -229,6 +229,7 @@ fn understanding_legacy_migration_and_incomplete_continuation() {
     let first = task(&mut db);
     publish(&mut db, &first, response(&first, Value::Null, None));
     let id = stored(&db).0;
+    crate::context::remove_index_for_legacy_fixture(&db);
     db.execute_batch("ALTER TABLE named_events DROP COLUMN understanding_json; DELETE FROM core_migrations WHERE name='event_understanding_v1'").unwrap();
     init(&db).unwrap();
     init(&db).unwrap();

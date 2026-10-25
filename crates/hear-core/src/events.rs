@@ -4215,6 +4215,7 @@ mod tests {
             100_001,
         )
         .unwrap();
+        crate::context::remove_index_for_legacy_fixture(&db);
         db.execute_batch("ALTER TABLE named_events DROP COLUMN summary; DELETE FROM core_migrations WHERE name='event_summary_v1'").unwrap();
         init(&db).unwrap();
         init(&db).unwrap();

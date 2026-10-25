@@ -83,6 +83,51 @@ async fn cleanup_request(
 }
 
 #[tauri::command]
+async fn agent_access_info() -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let executable = std::env::current_exe().map_err(|e| e.to_string())?;
+        let cli = executable
+            .parent()
+            .ok_or("missing app directory")?
+            .join("hear");
+        let mut info = hear_protocol::agent_assets::info(&cli);
+        info["status"] = hear_protocol::context::execute(hear_protocol::context::Query::Status(
+            hear_protocol::context::Empty {},
+        ));
+        Ok(info)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn copy_agent_text(text: String) -> Result<(), String> {
+    if text.len() > 32768 {
+        return Err("copy text too large".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        use std::io::Write;
+        let mut child = Command::new("/usr/bin/pbcopy")
+            .stdin(Stdio::piped())
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        child
+            .stdin
+            .take()
+            .ok_or("clipboard unavailable")?
+            .write_all(text.as_bytes())
+            .map_err(|e| e.to_string())?;
+        if child.wait().map_err(|e| e.to_string())?.success() {
+            Ok(())
+        } else {
+            Err("clipboard unavailable".into())
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 fn build_info() -> hear_protocol::BuildInfo {
     hear_protocol::build_info("gui")
 }
@@ -343,6 +388,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             build_info,
+            agent_access_info,
+            copy_agent_text,
             onboarding::onboarding_status,
             onboarding::complete_onboarding,
             onboarding::open_privacy_settings,

@@ -26,6 +26,7 @@ mod capture;
 mod cleanup;
 mod cloud;
 mod coarse;
+mod context;
 mod diagnostic_report;
 #[cfg(test)]
 mod diagnostic_tests;
@@ -2472,6 +2473,26 @@ fn serve_one(stream: &mut UnixStream, shared: &Arc<CoreState>) -> Result<bool, S
         }
     } else {
         match envelope.request {
+            Request::Context { query } => {
+                let result = match shared.readers.snapshot() {
+                    Ok(reader) => {
+                        let mut result = context::query(&reader, &query, envelope.id);
+                        if matches!(query, hear_protocol::context::Query::Status(_))
+                            && result["ok"] == true
+                        {
+                            result["data"]["capture"] =
+                                serde_json::to_value(shared.service_state()?)
+                                    .map_err(|e| e.to_string())?;
+                        }
+                        result
+                    }
+                    Err(error) => hear_protocol::context::error(envelope.id, "read_busy", error),
+                };
+                Response::Context {
+                    id: envelope.id,
+                    result,
+                }
+            }
             Request::Lifecycle { .. } => Response::Lifecycle {
                 id: envelope.id,
                 build: hear_protocol::build_info("core"),
@@ -4177,6 +4198,7 @@ impl Store {
         events::init(&db)?;
         usage::init(&db, now_ms()?)?;
         moments::init(&db)?;
+        context::init(&db)?;
         cleanup::init(&db)?;
         ingestion::init(&db)?;
         inventory::init(&db)?;
@@ -4872,7 +4894,8 @@ impl Store {
                     )
                 })
             }
-            Request::Lifecycle { .. }
+            Request::Context { .. }
+            | Request::Lifecycle { .. }
             | Request::Models
             | Request::PrepareModels
             | Request::Probe { .. }

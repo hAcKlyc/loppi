@@ -9,3 +9,6 @@ serde_json.workspace = true
 dirs = "7"
 uuid = { version = "1", features = ["v4", "serde"] }
 fs2 = "0.4"
+chrono = "0.4.45"
+chrono-tz = "0.10.4"
+iana-time-zone = "0.1"

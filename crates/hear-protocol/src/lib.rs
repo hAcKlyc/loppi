@@ -1,3 +1,5 @@
+pub mod agent_assets;
+pub mod context;
 mod diagnostic;
 mod lifecycle;
 pub use diagnostic::*;
@@ -13,7 +15,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
-pub const PROTOCOL_VERSION: u32 = 20;
+pub const PROTOCOL_VERSION: u32 = 21;
 const MAX_RESPONSE_BYTES: u64 = 48 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,6 +48,9 @@ pub enum LifecycleAction {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Request {
+    Context {
+        query: context::Query,
+    },
     Lifecycle {
         action: LifecycleAction,
     },
@@ -313,6 +318,7 @@ pub enum Request {
 impl Request {
     pub fn name(&self) -> &'static str {
         match self {
+            Self::Context { .. } => "context",
             Self::Lifecycle { .. } => "lifecycle",
             Self::Status => "status",
             Self::Diagnose { .. } => "diagnose",
@@ -716,6 +722,10 @@ pub struct SearchHit {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Response {
+    Context {
+        id: Uuid,
+        result: serde_json::Value,
+    },
     Lifecycle {
         id: Uuid,
         build: BuildInfo,
@@ -1104,7 +1114,8 @@ fn send_with_policy(
     }
     let decoded: Response = serde_json::from_slice(&response).map_err(|error| error.to_string())?;
     match &decoded {
-        Response::Lifecycle { id, .. }
+        Response::Context { id, .. }
+        | Response::Lifecycle { id, .. }
         | Response::CloudConfigurationReceipt { id, .. }
         | Response::Status { id, .. }
         | Response::Diagnostic { id, .. }

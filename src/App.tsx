@@ -1,6 +1,7 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { AgentAccess } from "./AgentAccess";
 import {
 	type CloudQueue,
 	type CloudTask,
@@ -30,7 +31,13 @@ import "./App.css";
 import { OnboardingView } from "./OnboardingView";
 import type { ModelState, PrivacyStatus } from "./setup";
 
-type Page = "timeline" | "queue" | "people" | "settings" | "onboarding";
+type Page =
+	| "timeline"
+	| "queue"
+	| "people"
+	| "settings"
+	| "agents"
+	| "onboarding";
 type EventForm = { mode: "create" | "edit"; item?: TimelineItem };
 type EventTool = { item: TimelineItem; mode: "split" | "merge" | "delete" };
 type DataAction = { kind: "export" | "cleanup"; item: TimelineItem };
@@ -794,6 +801,7 @@ function App() {
 								"人物库",
 								"M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM4 21v-2a8 8 0 0 1 16 0v2",
 							],
+							["agents", "Agent 接入", "M8 8 4 12l4 4M16 8l4 4-4 4M14 4l-4 16"],
 							[
 								"settings",
 								"设置",
@@ -916,6 +924,7 @@ function App() {
 						onMutate={mutate}
 					/>
 				)}
+				{page === "agents" && <AgentAccess />}
 				{page === "settings" && (
 					<SettingsView
 						queuesReady={contextReady.queues}

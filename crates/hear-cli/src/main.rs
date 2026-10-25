@@ -1,3 +1,5 @@
+mod context_cli;
+mod mcp;
 use clap::{Parser, Subcommand, ValueEnum};
 use hear_protocol::{
     AudioSource, CleanupMode, ClientKind, CloudProvider, EventSources, LogFilter, LogLevel,
@@ -20,6 +22,15 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Read existing context for an Agent. Never launches Core.
+    Context(context_cli::Context),
+    /// Local stdio Model Context Protocol server.
+    Mcp {
+        #[command(subcommand)]
+        action: McpCommand,
+    },
+    /// Connection configuration, skill installation and diagnostics.
+    Integrations(context_cli::Integrations),
     Status,
     /// Build identity of this CLI; does not start Core.
     BuildInfo,
@@ -188,6 +199,11 @@ enum Command {
         capture_span_id: Option<Uuid>,
     },
     Quit,
+}
+
+#[derive(Subcommand)]
+enum McpCommand {
+    Serve,
 }
 
 #[derive(Subcommand)]
@@ -392,7 +408,32 @@ fn current_ms() -> i64 {
 }
 
 fn main() {
-    let cli = Cli::parse();
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(error) => {
+            if std::env::args().nth(1).as_deref() == Some("context") && error.use_stderr() {
+                std::process::exit(context_cli::emit_error(
+                    "invalid_argument",
+                    error.to_string(),
+                ));
+            }
+            error.exit();
+        }
+    };
+    match cli.command {
+        Command::Context(command) => std::process::exit(context_cli::run(command)),
+        Command::Integrations(command) => std::process::exit(context_cli::integrations(command)),
+        Command::Mcp {
+            action: McpCommand::Serve,
+        } => {
+            if let Err(error) = mcp::serve() {
+                eprintln!("hear MCP: {error}");
+                std::process::exit(1);
+            }
+            return;
+        }
+        _ => {}
+    }
     match &cli.command {
         Command::BuildInfo => {
             println!(
@@ -524,7 +565,11 @@ fn main() {
         }
     };
     let request = match cli.command {
-        Command::BuildInfo | Command::Diagnose { .. } => {
+        Command::Context(_)
+        | Command::Integrations(_)
+        | Command::Mcp { .. }
+        | Command::BuildInfo
+        | Command::Diagnose { .. } => {
             unreachable!("local command handled above")
         }
         Command::Status => Request::Status,
@@ -930,7 +975,8 @@ fn main() {
             println!("{}", serde_json::to_string(&response).unwrap())
         }
         Ok(
-            response @ (Response::Status { .. }
+            response @ (Response::Context { .. }
+            | Response::Status { .. }
             | Response::Diagnostic { .. }
             | Response::Models { .. }
             | Response::ProbeResult { .. }
