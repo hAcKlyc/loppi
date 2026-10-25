@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: implemented
 created: 2026-10-25
 updated: 2026-10-25
 ---
@@ -35,8 +35,8 @@ updated: 2026-10-25
 - [x] 核实当前版本、release脚本、凭据读取边界及已提交X-ASR来源。
 - [x] 统一0.1.7及helper build 7，静态检查并保全共享改动。
 - [x] 三路独立审查、裁决与版本提交。
-- [ ] 干净源码构建签名DMG、公证/装订/Gatekeeper及实际产物核验。
-- [ ] 保存交付包和校验信息、最终台账及本地提交收尾。
+- [x] 干净源码构建签名DMG、公证/装订/Gatekeeper及实际产物核验。
+- [x] 保存交付包和校验信息、最终台账及本地提交收尾。
 
 ### Review Contract
 
@@ -47,3 +47,5 @@ Mode=repair；target为当前index本次七文件机械版本差异和本台账�
 - 2026-10-25：用户要求release；共享清单为0.1.6、最后已交付包0.1.5。选择0.1.7避免混淆现有开发版本，独立worktree从已提交X-ASR的d7deb5e构建，不包含其它未提交功能。现有release入口已支持逐层签名、公证及凭据安全读取，直接复用。
 - 2026-10-25：版本同步自检捕获Cargo.lock中误替换的三项第三方版本，在提交前恢复原锁值；初次static失败回执保留于本机。结构化逐项比对确认最终仅五个本地Cargo包版本变化，npm外部依赖完全相同；其它9份共享功能文件SHA保全。已准备独立worktree和隔离写时复制release缓存，不复用可写的主工作区输出。
 - 2026-10-25：最终static三项全部通过。fresh requirements、adversarial与最终architecture均PASS（release017_requirements/release017_adversarial/release017_architecture），独立确认8文件快照、仅本地发行版本变化与9份共享文件保全；主Agent裁决无阻塞/修复项。进入版本提交和干净源码构建，实际产物门槛仍待完成。
+- 2026-10-25：版本提交`4d2c5eb`后共同static再次通过；从该干净worktree执行既有完整release成功。四组件均为0.1.7、同一Git SHA/epoch、dirty=false，helper build7；实际签名Core隔离加载X-ASR/VAD到ready，无采集/业务数据/云任务。
+- 2026-10-25：DMG公证Accepted（1da6f8d3-8770-43f6-96ad-be22b855e96b）、装订/Gatekeeper通过。独立只读挂载后10份内容与签名App哈希一致、四组件身份及arm64架构正确，无凭据/私人媒体/数据库/权重。交付包及SHA256SUMS/release-info/原始回执均保存在build/releases/0.1.7；DMG SHA256为d278e4ee05c38dbccf0fbbe109630376e4ea2a549ee8d3cc6d8d5a794763cdeb。全部本轮结束条件完成；发行记录见[0.1.7](../research/2026-10-25-release-0.1.7.md)，状态implemented。未安装、重启或远端发布；仅文档收尾，不改实际产物身份。
