@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: implemented
 created: 2026-10-27
 updated: 2026-10-27
 ---
@@ -20,11 +20,15 @@ updated: 2026-10-27
 ### 清单
 - [x] 版本/锁一致、外部依赖不变、原有改动保全
 - [x] 三路审查及版本提交
-- [ ] 干净worktree构建、离线回归及包身份检查
-- [ ] 公证/装订/Gatekeeper及DMG内Agent验证
-- [ ] 交付产物、记录、清理临时worktree
+- [x] 干净worktree构建、离线回归及包身份检查
+- [x] 公证/装订/Gatekeeper及DMG内Agent验证
+- [x] 交付产物、记录、移除临时签名配置
 
 ### 进展
 - 2026-10-27：确认上一发行版0.1.8，当前提交包含已审查的Agent接入；已有Universal2脚本、双Rust target、模型缓存及签名/公证配置，可直接复用。当前9份原有dirty tracked文件哈希已保存，不纳入此版源码。
 
 - 2026-10-27：静态检查(typecheck/lint/workspace check)、结构化锁比对和9份既有文件保全通过；fresh requirements/adversarial/architecture 均PASS，无修复项。即将提交版本并在已准备的隔离目录切换到该提交，产物门槛待构建关闭。
+
+- 2026-10-27：版本提交 `7fcd8ca296bd47a0df9d4f80133db150382621f0`；独立干净受管worktree完整Universal2发行流程完成。四组件0.1.9/IPC21、同一SHA/epoch、dirty=false，helper build9。370项Rust通过/15项既有opt-in忽略，53项前端+3项素材+6项Python及原生入口策略通过；干净源码无需排除原工作区提示词测试。
+- 2026-10-27：Apple公证Accepted（a6a04e32-3b9a-4ae2-a633-3b70ead6d338）、装订及Gatekeeper通过。最终只读DMG内四组件身份/双架构/模型校验、existing-only与CLI/MCP功能烟测通过；第一次验收已通过功能检查，但临时挂载被退出中的测试进程短暂占用，验收脚本等待退出后重验全部通过并卸载，无包内容变更。
+- 2026-10-27：包、SHA256SUMS、release-info、完整日志与公证/实际镜像核验记录复制到 `build/releases/0.1.9/macos-universal2/`；DMG SHA256 `02f818fef171dd1178d885eb79627db6ae633902557fa52674872e35b7c8a59b`。源工作区9份既有修改字节不变。交付JSON记录位于 `specs/research/2026-10-27-release-0.1.9.json`。包已保存在主工作区，临时签名配置已移除。受管构建worktree是当前聊天的primary checkout，应用拒绝归档，因此保留构建目录；这不影响交付物。最终文档提交不重新构建或改变包身份。

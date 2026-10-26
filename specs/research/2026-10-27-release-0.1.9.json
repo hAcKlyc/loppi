@@ -1,0 +1,219 @@
+{
+  "schema": 1,
+  "date": "2026-10-27",
+  "status": "local-release-complete",
+  "release": {
+    "version": "0.1.9",
+    "source": "7fcd8ca296bd47a0df9d4f80133db150382621f0",
+    "target": "universal-apple-darwin",
+    "architectures": [
+      "arm64",
+      "x86_64"
+    ],
+    "built_at_epoch": 1793032607,
+    "models_lock_sha256": "e0320694c4f75c3c545886ae3439079c0f9d68fc536f30d8cbc07d1287470519",
+    "models_bytes": 204642977,
+    "native": {
+      "version": "2.0.0",
+      "sha256": "8ed41bf3b27ce55d6527bbc0f7754598c5afbb18e814ff0bddbc9ecd50fb09c5"
+    },
+    "toolchain": {
+      "node": "v24.15.0",
+      "rust": "rustc 1.98.1 (48a229cea 2026-09-01)",
+      "xcode": "Xcode 27.1\nBuild version 27A9275",
+      "sdk": "27.0"
+    },
+    "runtime": {
+      "architecture": "aarch64",
+      "onnxruntime": "1.28.2",
+      "provider": "cpu",
+      "sherpa_onnx": "2.0.0"
+    },
+    "runtime_checked_architecture": "arm64",
+    "intel_native_test": "not run; cross-compiled and slices verified",
+    "minimum_os_runtime_test": "not run",
+    "dmg": "hear_0.1.9_macos-universal2.dmg",
+    "dmg_bytes": 201535481,
+    "dmg_sha256": "02f818fef171dd1178d885eb79627db6ae633902557fa52674872e35b7c8a59b"
+  },
+  "notarization": {
+    "status": "Accepted",
+    "submission_id": "a6a04e32-3b9a-4ae2-a633-3b70ead6d338",
+    "stapled": true,
+    "gatekeeper": "accepted"
+  },
+  "artifact": {
+    "status": "passed",
+    "identity": {
+      "schema": 1,
+      "components": {
+        "gui": {
+          "component": "gui",
+          "version": "0.1.9",
+          "protocol_version": 21,
+          "git_sha": "7fcd8ca296bd47a0df9d4f80133db150382621f0",
+          "dirty": false,
+          "built_at_epoch": 1793032607
+        },
+        "cli": {
+          "component": "cli",
+          "version": "0.1.9",
+          "protocol_version": 21,
+          "git_sha": "7fcd8ca296bd47a0df9d4f80133db150382621f0",
+          "dirty": false,
+          "built_at_epoch": 1793032607
+        },
+        "core": {
+          "component": "core",
+          "version": "0.1.9",
+          "protocol_version": 21,
+          "git_sha": "7fcd8ca296bd47a0df9d4f80133db150382621f0",
+          "dirty": false,
+          "built_at_epoch": 1793032607
+        },
+        "worker": {
+          "component": "worker",
+          "version": "0.1.9",
+          "protocol_version": 21,
+          "git_sha": "7fcd8ca296bd47a0df9d4f80133db150382621f0",
+          "dirty": false,
+          "built_at_epoch": 1793032607
+        }
+      }
+    },
+    "components": {
+      "gui": {
+        "architectures": [
+          "x86_64",
+          "arm64"
+        ],
+        "sha256": "d3bb662c925f267a2e9457db1f5666cf571f56a841001995218db23fe39bb6e6"
+      },
+      "cli": {
+        "architectures": [
+          "x86_64",
+          "arm64"
+        ],
+        "sha256": "ae89a4c37adf16e0c09bd4acd3a712b83f361aea0d375eda9a5acc3d1d9e90f4"
+      },
+      "core": {
+        "architectures": [
+          "x86_64",
+          "arm64"
+        ],
+        "sha256": "ba9b9198d41fbcb03cf35c96244b3f7fd59225ca799988247f989855458359c3"
+      },
+      "worker": {
+        "architectures": [
+          "x86_64",
+          "arm64"
+        ],
+        "sha256": "f3949dc53d5d64da941171558fa216dd537056a684a7bbc7ac52fe227a58a530"
+      }
+    },
+    "models_copies": 1,
+    "model_bytes": 204642977,
+    "agent_context_smoke": "passed from final mounted DMG",
+    "signature": "verified",
+    "stapled": true,
+    "gatekeeper": "accepted",
+    "runtime_checked_architecture": "arm64",
+    "intel_native_test": "not run; slices verified",
+    "temporary_mount_detached": true
+  },
+  "offline_verification": {
+    "schema": 1,
+    "suite": "test",
+    "passed": true,
+    "checks": [
+      {
+        "name": "rust-regressions",
+        "command": [
+          "cargo",
+          "test",
+          "--workspace",
+          "--locked"
+        ],
+        "seconds": 180.6,
+        "exit_code": 0
+      },
+      {
+        "name": "frontend-regressions",
+        "command": [
+          "node",
+          "--test",
+          "scripts/test_capture_status.mjs",
+          "scripts/test_cloud_task_status.mjs",
+          "scripts/test_detail_entry.mjs",
+          "scripts/test_entry.mjs",
+          "scripts/test_entry_interaction.mjs",
+          "scripts/test_onboarding.mjs",
+          "scripts/test_playback.mjs",
+          "scripts/test_recording_schedule.mjs",
+          "scripts/test_timeline_view.mjs",
+          "scripts/test_usage_statistics.mjs"
+        ],
+        "seconds": 4.9,
+        "exit_code": 0
+      },
+      {
+        "name": "rabbit-assets",
+        "command": [
+          "node",
+          "scripts/test_rabbit_assets.cjs"
+        ],
+        "seconds": 0.72,
+        "exit_code": 0
+      },
+      {
+        "name": "python-regressions",
+        "command": [
+          "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          "scripts",
+          "-p",
+          "test_*.py"
+        ],
+        "seconds": 1.11,
+        "exit_code": 0
+      },
+      {
+        "name": "native-policy-build",
+        "command": [
+          "clang",
+          "-fobjc-arc",
+          "-fblocks",
+          "-mmacosx-version-min=13.0",
+          "scripts/test_native_entry.m",
+          "-framework",
+          "Cocoa",
+          "-framework",
+          "QuartzCore",
+          "-o",
+          "/var/folders/n5/pzrmblj11dbc2ltb0ncd36s00000gn/T/hear-native-policy-3dfjnyqa/entry-policy"
+        ],
+        "seconds": 0.6,
+        "exit_code": 0
+      },
+      {
+        "name": "native-policy",
+        "command": [
+          "/var/folders/n5/pzrmblj11dbc2ltb0ncd36s00000gn/T/hear-native-policy-3dfjnyqa/entry-policy"
+        ],
+        "seconds": 0.45,
+        "exit_code": 0
+      }
+    ],
+    "excluded": [
+      "private fixture tests",
+      "cloud API tests",
+      "permission/capture/sleep acceptance",
+      "signed installation",
+      "browser visual acceptance"
+    ]
+  },
+  "original_changes_preserved": 9
+}
