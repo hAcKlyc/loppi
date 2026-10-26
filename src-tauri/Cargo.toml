@@ -1,6 +1,6 @@
 [package]
 name = "hear-desktop"
-version = "0.1.8"
+version = "0.1.9"
 description = "A private, continuous context recorder for macOS"
 edition = "2024"
 
