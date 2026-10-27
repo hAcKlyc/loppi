@@ -30,8 +30,41 @@ pub struct Progress {
     pub capture: Option<crate::capture::MetricsView>,
 }
 
+pub fn clock_delta_ms(error: &str) -> Option<i64> {
+    [
+        "wall clock changed during audio capture: ",
+        "audio hardware clock changed during capture: ",
+    ]
+    .iter()
+    .find_map(|prefix| {
+        error
+            .strip_prefix(prefix)
+            .and_then(|delta| delta.parse().ok())
+    })
+}
+
 /// Keep operational causes while excluding arbitrary OS/provider messages.
 pub fn error_code(error: &str) -> String {
+    if clock_delta_ms(error).is_some() {
+        return if error.starts_with("wall clock") {
+            "capture_wall_clock_changed"
+        } else {
+            "capture_hardware_clock_changed"
+        }
+        .into();
+    }
+    if let Some((stage, native)) = error
+        .strip_prefix("system audio capture failed at stage ")
+        .and_then(|s| s.split_once(" native "))
+    {
+        if let (Ok(stage), Ok(native)) = (stage.parse::<i32>(), native.parse::<i32>()) {
+            return format!(
+                "system_audio_start_stage_{stage}_native_{}{}",
+                if native < 0 { "neg" } else { "" },
+                native.unsigned_abs()
+            );
+        }
+    }
     for (prefix, code) in [
         (
             "system audio capture failed at stage ",
@@ -292,12 +325,16 @@ pub fn run_child(parent: i32) -> Result<(), String> {
         let mut stopping = None;
         loop {
             if unsafe { libc::getppid() } != parent {
-                std::process::exit(70);
+                // Forced helper termination must not run global native
+                // destructors concurrently with capture/model threads.
+                unsafe { libc::_exit(70) };
             }
             if watch_stop.load(Ordering::Acquire) {
                 let began = stopping.get_or_insert_with(Instant::now);
                 if began.elapsed() > STOP_DEADLINE {
-                    std::process::exit(70);
+                    // Forced helper termination must not run global native
+                    // destructors concurrently with capture/model threads.
+                    unsafe { libc::_exit(70) };
                 }
             }
             std::thread::sleep(Duration::from_millis(100));
@@ -446,6 +483,26 @@ mod tests {
                 "capture_source_failed",
             ),
             ("/Users/private/file: secret", "capture_source_failed"),
+            (
+                "system audio capture failed at stage 2 native -3815",
+                "system_audio_start_stage_2_native_neg3815",
+            ),
+            (
+                "system audio capture failed at stage 2 native -3815 secret",
+                "capture_source_failed",
+            ),
+            (
+                "audio hardware clock changed during capture: -2500",
+                "capture_hardware_clock_changed",
+            ),
+            (
+                "wall clock changed during audio capture: 3000",
+                "capture_wall_clock_changed",
+            ),
+            (
+                "wall clock changed during audio capture: secret",
+                "capture_source_failed",
+            ),
         ] {
             let code = error_code(error);
             assert_eq!(code, expected);

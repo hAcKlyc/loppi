@@ -163,7 +163,15 @@ fn parse_body(response: ureq::Response) -> Result<Value, String> {
         .into_reader()
         .take(8_000_001)
         .read_to_end(&mut bytes)
-        .map_err(|_| "provider_read_failed".to_owned())?;
+        .map_err(|error| {
+            match error.kind() {
+                std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock => {
+                    "provider_read_timeout"
+                }
+                _ => "provider_read_failed",
+            }
+            .to_owned()
+        })?;
     if bytes.len() > 8_000_000 {
         return Err("provider_response_too_large".to_owned());
     }
@@ -1079,7 +1087,7 @@ mod tests {
             .unwrap_err();
         assert!(matches!(
             error.code.as_str(),
-            "provider_read_failed" | "provider_transport"
+            "provider_read_timeout" | "provider_transport"
         ));
         assert!(began.elapsed() < Duration::from_secs(2));
         server.join().unwrap();

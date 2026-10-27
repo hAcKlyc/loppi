@@ -234,6 +234,7 @@ export interface TimelineItem {
 	revision: number | null;
 	fit_state: string | null;
 	processing_state: string;
+	local_analysis_failures?: number;
 	manual_asr_state: string | null;
 	manual_asr_started_ms: number | null;
 	manual_asr_ended_ms: number | null;

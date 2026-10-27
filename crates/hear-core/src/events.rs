@@ -1715,6 +1715,12 @@ pub fn timeline(db: &Connection, start: i64, end: i64) -> Result<Vec<TimelineIte
             summary,
             sources: sources_for(mask),
             revision: Some(revision),
+            local_analysis_failures: asr::local_analysis_failures(
+                db,
+                a.max(start),
+                b.min(end),
+                mask,
+            )?,
             fit_state: Some(event_fit_state(db, &id)?),
             processing_state: event_state(db, &id, &asr_version(mask, a, b))?,
             transcription: transcription_progress(
@@ -1984,6 +1990,7 @@ fn unorganized(db: &Connection, start: i64, end: i64, mask: i64) -> Result<Timel
         summary: None,
         sources: sources_for(mask),
         revision: None,
+        local_analysis_failures: asr::local_analysis_failures(db, start, end, mask)?,
         fit_state: None,
         transcription: None,
         processing_state: if !has_sound {
@@ -2109,6 +2116,7 @@ pub fn event_detail(
         summary,
         sources: sources_for(mask),
         revision: Some(revision),
+        local_analysis_failures: asr::local_analysis_failures(db, start, end, mask)?,
         fit_state: Some(event_fit_state(db, &id.to_string())?),
         processing_state: event_state(db, &id.to_string(), &version)?,
         transcription: transcription_progress(db, "event", &id.to_string(), &version, true)?,
@@ -2844,6 +2852,7 @@ pub fn task_failed_with_retry(
     let transient = error == "provider_deadline"
         || error == "provider_transport"
         || error == "provider_read_failed"
+        || error == "provider_read_timeout"
         || error == "credential_missing"
         || error == "provider_not_configured"
         || error.starts_with("keychain_read_")
@@ -6487,7 +6496,7 @@ mod tests {
             .unwrap()
             .unwrap();
         mark_submit_intent(&db, &task, 7_002).unwrap();
-        task_failed(&db, &task, "provider_read_failed", 7_003).unwrap();
+        task_failed(&db, &task, "provider_read_timeout", 7_003).unwrap();
         // A read timeout is transient, but must respect backoff and keep the
         // original paid request identity for query-before-resubmit recovery.
         assert!(

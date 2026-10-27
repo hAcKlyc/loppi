@@ -185,7 +185,7 @@ pub fn schedule(
 }
 
 /// Projection and scheduling must agree on the same next-event horizon.
-/// Failed work outside this range cannot explain why this event is waiting.
+/// Only work that can still advance delays planning; failures remain local facts.
 pub fn settling_state(
     db: &Connection,
     id: &str,
@@ -196,8 +196,8 @@ pub fn settling_state(
     let horizon:i64=db.query_row("SELECT min(?1,coalesce(min(started_ms),?1)) FROM named_events WHERE deleted_ms IS NULL AND id!=?2 AND started_ms>=?3 AND source_mask&?4=?4",params![end+SETTLE_MS,id,end,mask],|r|r.get(0)).map_err(|e|e.to_string())?;
     let busy: bool=db.query_row("SELECT EXISTS(SELECT 1 FROM audio_blocks b WHERE b.started_ms<?3 AND b.ended_ms>?2
           AND ((b.source='microphone' AND ?4&1!=0) OR (b.source='system' AND ?4&2!=0))
-          AND (b.analysis_state IN('pending','processing','sealing','failed') OR b.retention_decision='pending_vad_v2'))
-          OR EXISTS(SELECT 1 FROM coarse_jobs WHERE started_ms<?3 AND ended_ms>?2 AND state IN('pending','processing','failed') AND ((source='microphone' AND ?4&1!=0) OR(source='system' AND ?4&2!=0)))
+          AND (b.analysis_state IN('processing','sealing') OR (b.analysis_state='pending' AND b.analysis_attempts<3) OR (b.analysis_state='complete' AND b.retention_decision='pending_vad_v2')))
+          OR EXISTS(SELECT 1 FROM coarse_jobs WHERE started_ms<?3 AND ended_ms>?2 AND state IN('pending','processing') AND ((source='microphone' AND ?4&1!=0) OR(source='system' AND ?4&2!=0)))
           OR EXISTS(SELECT 1 FROM candidate_windows WHERE started_ms<?3 AND ended_ms>?2 AND state IN('pending','processing'))
           OR EXISTS(SELECT 1 FROM coarse_segments c WHERE c.started_ms<?3 AND c.ended_ms>?5
              AND ((c.source='microphone' AND ?4&1!=0) OR (c.source='system' AND ?4&2!=0))
@@ -209,22 +209,28 @@ pub fn settling_state(
     if !busy {
         return Ok(None);
     }
-    let analysis_failed: bool = db
-        .query_row(
-            "SELECT EXISTS(SELECT 1 FROM audio_blocks WHERE started_ms<?2 AND ended_ms>?1
+    Ok(Some("settling_asr"))
+}
+
+/// Terminal local failures are independent of cloud transcription progress.
+/// Use the displayed interval, not the planner's next-event settling horizon.
+pub fn local_analysis_failures(
+    db: &Connection,
+    start: i64,
+    end: i64,
+    mask: i64,
+) -> Result<u32, String> {
+    db.query_row(
+        "SELECT (SELECT count(*) FROM audio_blocks WHERE started_ms<?2 AND ended_ms>?1
+          AND retention_decision!='all_data'
           AND ((source='microphone' AND ?3&1!=0) OR(source='system' AND ?3&2!=0))
           AND (analysis_state='failed' OR(analysis_state='pending' AND analysis_attempts>=3)))
-          OR EXISTS(SELECT 1 FROM coarse_jobs WHERE started_ms<?2 AND ended_ms>?1 AND state='failed'
+          + (SELECT count(*) FROM coarse_jobs WHERE started_ms<?2 AND ended_ms>?1 AND state='failed'
           AND ((source='microphone' AND ?3&1!=0) OR(source='system' AND ?3&2!=0)))",
-            params![start, horizon, mask],
-            |r| r.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-    Ok(Some(if analysis_failed {
-        "analysis_failed"
-    } else {
-        "settling_asr"
-    }))
+        params![start, end, mask],
+        |r| r.get(0),
+    )
+    .map_err(|e| e.to_string())
 }
 
 pub fn refresh(db: &mut Connection, now: i64) -> Result<(), String> {

@@ -109,7 +109,9 @@ fn run() -> Result<(), String> {
         }
         if let Some(parent_pid) = parent_pid {
             if unsafe { libc::getppid() } != parent_pid {
-                std::process::exit(70);
+                // Forced helper termination must not run global native
+                // destructors concurrently with capture/model threads.
+                unsafe { libc::_exit(70) };
             }
             thread::spawn(move || {
                 while unsafe { libc::getppid() } == parent_pid {
@@ -117,7 +119,9 @@ fn run() -> Result<(), String> {
                 }
                 // HAL can remain blocked after the caller exits. The child
                 // must not survive its authorization/probe owner.
-                std::process::exit(70);
+                // Forced helper termination must not run global native
+                // destructors concurrently with capture/model threads.
+                unsafe { libc::_exit(70) };
             });
         }
         println!(
@@ -318,14 +322,7 @@ fn run() -> Result<(), String> {
             match serve_one(&mut stream, &shared) {
                 Ok(true) => stop.store(true, Ordering::Release),
                 Ok(false) => {}
-                Err(error) => {
-                    let mut event = LogEvent::simple("ipc", LogLevel::Warn, "request_failed");
-                    event.error_code = Some("invalid_request".to_owned());
-                    shared
-                        .logs
-                        .emit(ClientKind::Core, uuid::Uuid::new_v4(), event);
-                    eprintln!("hear-core request failed: {error}");
-                }
+                Err(_) => {} // serve_one records the phase and known request ID.
             }
             clients.fetch_sub(1, Ordering::AcqRel);
         });
@@ -779,6 +776,7 @@ fn coarse_log_event(job: &coarse::Job, published: &Result<bool, String>, stage: 
     event.context = Some(hear_protocol::LogContext {
         start_ms: Some(job.started_ms),
         end_ms: Some(job.ended_ms),
+        count: Some(job.end.saturating_sub(job.start)),
         source: Some(if job.source == "microphone" {
             AudioSource::Microphone
         } else {
@@ -1405,7 +1403,11 @@ fn voice_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
                         if let Ok(store) = shared.store.lock() {
                             let _ = knowledge::fail_voice(&store.db, work.segment_id, code, now);
                         }
-                        event.level = LogLevel::Warn;
+                        event.level = if code == "resource_deferred" {
+                            LogLevel::Info
+                        } else {
+                            LogLevel::Warn
+                        };
                         event.error_code = Some(code.to_owned());
                     }
                 }
@@ -1805,6 +1807,10 @@ fn start_source(shared: &Arc<CoreState>, source: AudioSource) -> SourceSlot {
             source: Some(source),
             main_display_asleep: system_audio::main_display_asleep(),
             captured_frames: Some(source_frames.load(Ordering::Acquire)),
+            clock_delta_ms: result
+                .as_ref()
+                .err()
+                .and_then(|error| source_process::clock_delta_ms(error)),
             ..Default::default()
         });
         if let Err(error) = &result {
@@ -2422,18 +2428,63 @@ fn current_login_session() -> Result<i64, String> {
     Ok(i64::from(info.session))
 }
 
+fn ipc_failure(shared: &CoreState, id: Option<uuid::Uuid>, code: &str) {
+    let mut event = LogEvent::simple("ipc", LogLevel::Warn, "request_failed");
+    event.error_code = Some(code.to_owned());
+    event.correlation_id = id;
+    shared.logs.emit(
+        ClientKind::Core,
+        id.unwrap_or_else(uuid::Uuid::new_v4),
+        event,
+    );
+}
+
+fn ipc_io_code(error: &std::io::Error, writing: bool) -> &'static str {
+    use std::io::ErrorKind::*;
+    match (writing, error.kind()) {
+        (false, TimedOut | WouldBlock) => "ipc_read_timeout",
+        (true, TimedOut | WouldBlock) => "ipc_write_timeout",
+        (
+            false,
+            BrokenPipe | ConnectionReset | ConnectionAborted | NotConnected | UnexpectedEof,
+        ) => "ipc_read_disconnected",
+        (true, BrokenPipe | ConnectionReset | ConnectionAborted | NotConnected | UnexpectedEof) => {
+            "ipc_write_disconnected"
+        }
+        (false, _) => "ipc_read_failed",
+        (true, _) => "ipc_write_failed",
+    }
+}
+
 fn serve_one(stream: &mut UnixStream, shared: &Arc<CoreState>) -> Result<bool, String> {
-    stream
-        .set_write_timeout(Some(Duration::from_secs(3)))
-        .map_err(|error| error.to_string())?;
-    let input = read_request(stream)?;
+    let input = read_request(stream).inspect_err(|code| ipc_failure(shared, None, code))?;
     if input.is_empty() {
         return Ok(false);
     }
-    if input.len() as u64 > MAX_REQUEST_BYTES {
-        return Err("request exceeded protocol limit".to_owned());
-    }
-    let envelope: Envelope = serde_json::from_slice(&input).map_err(|error| error.to_string())?;
+    let envelope: Envelope = serde_json::from_slice(&input).map_err(|_| {
+        ipc_failure(shared, None, "ipc_invalid_json");
+        "ipc_invalid_json".to_owned()
+    })?;
+    let id = envelope.id;
+    let (body, quit) = handle_request(stream, shared, envelope).inspect_err(|_| {
+        ipc_failure(shared, Some(id), "ipc_execute_failed");
+    })?;
+    stream
+        .set_write_timeout(Some(Duration::from_secs(3)))
+        .and_then(|()| stream.write_all(&body))
+        .map_err(|error| {
+            let code = ipc_io_code(&error, true);
+            ipc_failure(shared, Some(id), code);
+            code.to_owned()
+        })?;
+    Ok(quit)
+}
+
+fn handle_request(
+    stream: &UnixStream,
+    shared: &Arc<CoreState>,
+    envelope: Envelope,
+) -> Result<(Vec<u8>, bool), String> {
     // Store only a digest: ConfigureCloud contains a user-supplied secret.
     let mutation_fingerprint = format!(
         "sha256:{:x}",
@@ -4042,8 +4093,7 @@ fn serve_one(stream: &mut UnixStream, shared: &Arc<CoreState>) -> Result<bool, S
         request_started.elapsed().as_millis() as u64,
         Ordering::AcqRel,
     );
-    stream.write_all(&body).map_err(|error| error.to_string())?;
-    Ok(quit && !matches!(response, Response::Error { .. }))
+    Ok((body, quit && !matches!(response, Response::Error { .. })))
 }
 
 fn read_request(stream: &mut UnixStream) -> Result<Vec<u8>, String> {
@@ -4053,18 +4103,20 @@ fn read_request(stream: &mut UnixStream) -> Result<Vec<u8>, String> {
     loop {
         let remaining = deadline.saturating_duration_since(Instant::now());
         if remaining.is_zero() {
-            return Err("request read deadline exceeded".to_owned());
+            return Err("ipc_read_timeout".to_owned());
         }
         stream
             .set_read_timeout(Some(remaining))
-            .map_err(|error| error.to_string())?;
-        let count = stream.read(&mut chunk).map_err(|error| error.to_string())?;
+            .map_err(|error| ipc_io_code(&error, false).to_owned())?;
+        let count = stream
+            .read(&mut chunk)
+            .map_err(|error| ipc_io_code(&error, false).to_owned())?;
         if count == 0 {
             return Ok(input);
         }
         input.extend_from_slice(&chunk[..count]);
         if input.len() as u64 > MAX_REQUEST_BYTES {
-            return Err("request exceeded protocol limit".to_owned());
+            return Err("ipc_request_too_large".to_owned());
         }
     }
 }

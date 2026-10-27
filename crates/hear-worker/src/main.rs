@@ -299,19 +299,57 @@ fn write_result(output: &mut impl Write, result: &impl Serialize) -> Result<(), 
         .map_err(|e| e.to_string())
 }
 
+// X-ASR's encoder convolutions require several feature frames. VAD flushes
+// and coverage subtraction can produce shorter, valid tails. Pad only the
+// inference buffer: Core retains the original samples and time interval.
+fn recognize(recognizer: &OfflineRecognizer, rate: i32, samples: &[f32]) -> Result<String, String> {
+    if samples.is_empty() {
+        return Ok(String::new());
+    }
+    if rate <= 0 {
+        return Err("invalid sample rate".into());
+    }
+    let minimum = (rate as usize).div_ceil(5); // 200 ms
+    let mut padded = Vec::new();
+    let input = if samples.len() < minimum {
+        padded.extend_from_slice(samples);
+        padded.resize(minimum, 0.0);
+        &padded
+    } else {
+        samples
+    };
+    let stream = recognizer.create_stream();
+    stream.accept_waveform(rate, input);
+    recognizer.decode(&stream);
+    stream
+        .get_result()
+        .map(|r| r.text)
+        .ok_or_else(|| "recognizer result unavailable".into())
+}
+
 fn serve_recognizer(model_dir: &Path) -> Result<(), String> {
     let recognizer = recognizer(model_dir)?;
     let mut input = io::stdin().lock();
     let mut output = io::stdout().lock();
     while let Some(header) = read_header(&mut input)? {
         let samples = read_samples(&mut input, header.samples)?;
-        let stream = recognizer.create_stream();
-        stream.accept_waveform(RATE as i32, &samples);
-        recognizer.decode(&stream);
-        let text = stream.get_result().map(|r| r.text).unwrap_or_default();
+        let text = recognize(&recognizer, RATE as i32, &samples)?;
         write_result(&mut output, &text)?;
     }
     Ok(())
+}
+
+fn watch_parent(parent: i32) {
+    std::thread::spawn(move || {
+        loop {
+            if unsafe { libc::getppid() } != parent {
+                // Another thread may be in ONNX. Running C++ atexit
+                // destructors here races that inference/model initialization.
+                unsafe { libc::_exit(70) };
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+    });
 }
 
 fn run() -> Result<(), String> {
@@ -345,14 +383,7 @@ fn run() -> Result<(), String> {
         if parent <= 1 {
             return Err("invalid parent PID".into());
         }
-        std::thread::spawn(move || {
-            loop {
-                if unsafe { libc::getppid() } != parent {
-                    std::process::exit(70);
-                }
-                std::thread::sleep(std::time::Duration::from_millis(100));
-            }
-        });
+        watch_parent(parent);
     }
     match args.as_slice() {
         [command, model_dir] if command == "vad" => serve_vad(Path::new(model_dir)),
@@ -361,11 +392,7 @@ fn run() -> Result<(), String> {
         [command, model_dir, wav] if command == "self-test" => {
             let recognizer = recognizer(Path::new(model_dir))?;
             let wave = Wave::read(wav).ok_or_else(|| "cannot read test WAV".to_owned())?;
-            let stream = recognizer.create_stream();
-            stream.accept_waveform(wave.sample_rate(), wave.samples());
-            recognizer.decode(&stream);
-            let result = stream.get_result().ok_or_else(|| "no result".to_owned())?;
-            println!("{}", result.text);
+            println!("{}", recognize(&recognizer, wave.sample_rate(), wave.samples())?);
             Ok(())
         }
         _ => Err(
@@ -379,5 +406,27 @@ fn main() {
     if let Err(error) = run() {
         eprintln!("hear-worker: {error}");
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn orphan_watchdog_skips_global_destructors() {
+        if std::env::var_os("HEAR_TEST_ORPHAN_EXIT").is_some() {
+            extern "C" fn destructor() {
+                unsafe { libc::_exit(99) };
+            }
+            assert_eq!(unsafe { libc::atexit(destructor) }, 0);
+            super::watch_parent(std::process::id() as i32);
+            std::thread::sleep(std::time::Duration::from_secs(5));
+            panic!("watchdog did not terminate orphan");
+        }
+        let result = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "tests::orphan_watchdog_skips_global_destructors"])
+            .env("HEAR_TEST_ORPHAN_EXIT", "1")
+            .status()
+            .unwrap();
+        assert_eq!(result.code(), Some(70));
     }
 }

@@ -204,6 +204,7 @@ export function TimelineView({
 			item === activeItem ||
 			item.id !== null ||
 			item.manual_range_id !== null ||
+			(item.local_analysis_failures ?? 0) > 0 ||
 			[
 				"fit_failed",
 				"fit_retrying",
@@ -489,6 +490,7 @@ export function TimelineView({
 									? item.fit_state
 									: null;
 							const processingState = item.processing_state;
+							const localIssue = (item.local_analysis_failures ?? 0) > 0;
 							const processingIssue = [
 								"fit_failed",
 								"fit_credentials_unavailable",
@@ -539,6 +541,11 @@ export function TimelineView({
 													正在记录
 												</span>
 											)}
+											{localIssue && (
+												<span className="event-card-state is-failed">
+													部分本地分析失败 · {item.local_analysis_failures} 项
+												</span>
+											)}
 											{fitIssue && fitIssue !== processingState && (
 												<span className="event-card-state is-failed">
 													{fitIssue === "fit_failed"
@@ -563,7 +570,7 @@ export function TimelineView({
 													? "实时记录内容"
 													: item.manual_range_id
 														? "未命名事件"
-														: (hideCoarse && !processingIssue) ||
+														: (hideCoarse && !processingIssue && !localIssue) ||
 																item.processing_state === "moment_only"
 															? "现场记录"
 															: "未整理素材")}

@@ -54,6 +54,9 @@ def main():
                 binary = str(Path(directory)/'entry-policy')
                 run('native-policy-build', ['clang', '-fobjc-arc', '-fblocks', '-mmacosx-version-min=13.0', 'scripts/test_native_entry.m', '-framework', 'Cocoa', '-framework', 'QuartzCore', '-o', binary])
                 run('native-policy', [binary])
+                binary = str(Path(directory)/'capture-errors')
+                run('native-capture-errors-build', ['clang', '-fobjc-arc', '-fblocks', '-mmacosx-version-min=13.0', 'scripts/test_native_capture_errors.m', '-framework', 'Foundation', '-framework', 'ScreenCaptureKit', '-framework', 'CoreMedia', '-framework', 'CoreGraphics', '-o', binary])
+                run('native-capture-errors', [binary])
         if args.suite in ['all', 'smoke']:
             run('frontend-build', ['npm', 'run', 'build'])
             run('binary-build', ['cargo', 'build', '--workspace', '--locked'])

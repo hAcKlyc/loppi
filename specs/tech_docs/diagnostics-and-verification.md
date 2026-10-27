@@ -44,9 +44,12 @@ hear logs --from-ms 1792339200000 --to-ms 1792425600000 --capture-span-id <uuid>
 继续使用已有 `LogEvent`/`LogWorker`。字段为固定代码、UUID 或数值；禁止 `error.to_string()`、转录、请求/响应正文或路径直接进入事件。未知错误降为固定分类。`LogContext` 用 typed 字段，不能用任意 JSON map 加料。
 
 - `speech.vad_complete` 在日志线程汇总为 `vad_completed_summary`（按来源计数；读日志时也会刷新）。故障事件仍逐条保存。汇总不绑定单个 job/session，不据此反推某个 block 已完成。
-- `speech.coarse_complete/coarse_failed` 只代表真实本地粗转阶段（当前X-ASR，历史SenseVoice）；清理或重复发布使结果未落库时记录 `coarse_not_published`，不冒充完成或故障；旧版本同名事件曾代表 VAD，分析旧日志须按构建版本和结果model_version区分。具体权重及采用依据见[ASR评测与选型](local-asr-benchmark.md)。
+- `speech.coarse_complete/coarse_failed` 只代表真实本地粗转阶段（当前X-ASR，历史SenseVoice）；清理或重复发布使结果未落库时记录 `coarse_not_published`，不冒充完成或故障；旧版本同名事件曾代表 VAD，分析旧日志须按构建版本和结果model_version区分。`context.count` 为该粗转任务真实的 16 kHz 样本数，便于定位极短尾段；具体权重及采用依据见[ASR评测与选型](local-asr-benchmark.md)。
+- IPC 读取超时/断连/超限、无效 JSON、执行异常和写回故障分别使用 `ipc_*` 固定错误码；已解析请求保留原 request/correlation ID，不输出原始异常/请求正文。
+- 声纹资源延期为 info，质量不合格或原声不可用只影响当前声纹观察。
+- 云响应读超时为 `provider_read_timeout`，其它读异常仍为 `provider_read_failed`；两者沿用原队列退避与查询已提交 ID 的规则。
 - 云任务记录 provider、音频范围、尝试次数、单次处理耗时；不完整输出保留固定 finish_reason 分类，JSON 解析失败带行/列和字节数，不保存原输出。`fit_published` 的事件数写 `context.count`，不再冒充 duration_ms。
-- 采集失败保留原生阶段/整数错误、来源和已确认帧数，另记录主显示器当时是否休眠。后者只是 [CGDisplayIsAsleep](https://developer.apple.com/documentation/coregraphics/cgdisplayisasleep(_:)) 的只读观察，不等于机器睡眠、不解释全部失败因果，也不控制是否录制。
+- 采集失败保留原生阶段/整数错误、来源和已确认帧数；SCK discovery 错误与空显示器列表现在带 native 整数（后者为 -3815），不再只剩 stage 2；时钟保护同时记录 `clock_delta_ms`（观察/硬件时钟减映射时钟），另记录主显示器当时是否休眠。后者只是 [CGDisplayIsAsleep](https://developer.apple.com/documentation/coregraphics/cgdisplayisasleep(_:)) 的只读观察，不等于机器睡眠、不解释全部失败因果，也不控制是否录制。
 - 无需给所有成功高频事件逐条打日志；任务完成事实已有数据库。失败去重不跨 job 吞记录，以免下一次调查失去关联。
 
 ## 一个验证入口
@@ -106,3 +109,15 @@ LLM 返回 evidence IDs 后让 Core 导出时间看似更简单，但 coarse obs
 `invalid_fit_boundary_unorganized/uncovered_speech` 是旧版覆盖协议错误，当前不再产生。旧失败不会自动重跑，但不再阻塞有效事件的自动精转。`malformed_entries_and_metadata_preserve_independent_fields_and_slots`、`omitted_speech_and_any_unorganized_metadata_do_not_reject_useful_events` 验证字段隔离与底层素材保留；`invalid_top_level_and_storage_errors_remain_real_failures` 区分模型字段异常与真正存储失败。
 
 显式 ignored 测试 `snapshot_partial_fit_publication_oct23` 在 `HEAR_TEST_DB` 的临时副本调用生产发布与规划函数，验证当天两个失败窗口、原声/粗转/精转原文数量和已有付费请求身份。不调用云服务、不写活跃数据库。原供应商响应没有保存，使用合成异常响应，不能声称重放了原模型输出。
+
+## 极短输入与终态失败隔离
+
+合成 X-ASR 输入不含用户音频，使用已经准备的模型目录：
+
+```sh
+python3 scripts/smoke_recognizer.py --worker target/debug/hear-worker --models /path/to/speech-xasr-v1
+```
+
+一次 worker 连续处理 0、1、32、1056、2080、3200、16000 样本及短/长交替；另验证初始化和已加载状态的真实父进程退出。Rust 子进程回归验证 watchdog 不调用 atexit。默认门禁的 native capture errors 用受控 SCK discovery 回调验证 NSError/无来源传播，不获取权限或启动采集。
+
+`diagnostic_tests::snapshot_local_failures_do_not_block_event_asr` 需要冻结 `HEAR_TEST_DB`、逗号分隔的 `HEAR_TEST_EVENTS` 和只读媒体根 `HEAR_TEST_MEDIA`。它仅在临时副本运行生产 planner，断言生成的输入非空、媒体存在、重复规划幂等，原有音频/本地失败/文字/云任务所有列不变；不会启动云端队列或发送音频。实际证据见 [10/27 调查与修复](../research/2026-10-28-local-failure-isolation.md)。
