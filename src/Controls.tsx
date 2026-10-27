@@ -374,6 +374,8 @@ export function Dialog({
 		const dialog = ref.current;
 		if (!dialog) return;
 		const opener = returnFocusRef?.current ?? document.activeElement;
+		const openerFocusVisible =
+			opener instanceof HTMLElement && opener.matches(":focus-visible");
 		dialog.showModal();
 		const initial =
 			initialFocusRef?.current ??
@@ -409,6 +411,22 @@ export function Dialog({
 								"button:not(:disabled), [tabindex='0']",
 							) ??
 							document.querySelector<HTMLElement>("[data-focus-fallback]"));
+				// Escape must not turn a pointer-opened card into a visibly selected
+				// card. Keep its return focus; resume the normal ring on keyboard use.
+				if (
+					target instanceof HTMLButtonElement &&
+					target === opener &&
+					!openerFocusVisible
+				) {
+					const clearPointerFocus = () => {
+						target.removeAttribute("data-pointer-focus-return");
+						target.removeEventListener("blur", clearPointerFocus);
+						target.removeEventListener("keydown", clearPointerFocus);
+					};
+					target.setAttribute("data-pointer-focus-return", "");
+					target.addEventListener("blur", clearPointerFocus, { once: true });
+					target.addEventListener("keydown", clearPointerFocus, { once: true });
+				}
 				target?.focus({ preventScroll: true });
 			});
 		};
