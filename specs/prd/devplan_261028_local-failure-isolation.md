@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: implemented
 updated: 2026-10-28
 ---
 
@@ -51,7 +51,7 @@ updated: 2026-10-28
   - [x] 稳定性/局部问题投影与 UI、规划回归及冻结库验证。
   - [x] IPC、采集和云调用错误分类；正常声纹延期降级；诊断回归。
   - [x] 完整验证、文档与三视角审查。
-  - [ ] 提交、推送、创建 PR。
+  - [x] 提交、推送、创建 PR。
 
 ### 当前批次 Review 基线
 - Batch base：`667e8fc`。
@@ -77,3 +77,5 @@ updated: 2026-10-28
 - 修复后完整统一门禁再次通过（16 项，Core 350 测试通过）；冻结库复验仍为 18 请求/2,244 分片、原事实保留。requirements/adversarial 均定向复审 PASS，P1 已关闭；进入修复后全量候选的独立 architecture 审查。
 
 - 最终 architecture PASS：Core/worker/UI owner 与生命周期边界正确；无新增持久状态、队列、依赖或重试框架；协议、原生 ABI 与文档义务满足。requirements/adversarial 修复复核均 PASS，全部本次验收已覆盖，进入提交与 PR 交付。
+
+- 代码提交：`4c40434`，已推送 `fix/local-failure-isolation`，PR：<https://github.com/hAcKlyc/hear/pull/17>。最终实现范围、文档、自动/真实模型/冻结库证据及三视角审查完整闭环；本状态指本 PR 开发范围完成，不表示已安装或已通过发行阶段 OS/视觉验收。
