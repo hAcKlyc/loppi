@@ -301,7 +301,10 @@ impl ClockAnchor {
         let mapped_end = self.wall_ms.saturating_add(elapsed_ms);
         let observed_end = wall_ms(packet.wall_at)?;
         if mapped_end.abs_diff(observed_end) > 2_000 {
-            return Err("wall clock changed during audio capture".to_owned());
+            return Err(format!(
+                "wall clock changed during audio capture: {}",
+                observed_end.saturating_sub(mapped_end)
+            ));
         }
         if let Some(start_ns) = packet.sample_start_ns {
             let start_ms = self
@@ -312,7 +315,10 @@ impl ClockAnchor {
                 .wall_ms
                 .saturating_add(hardware_end.saturating_sub(self.monotonic_ns) / 1_000_000);
             if mapped_hardware_end.abs_diff(mapped_end) > 2_000 {
-                return Err("audio hardware clock changed during capture".into());
+                return Err(format!(
+                    "audio hardware clock changed during capture: {}",
+                    mapped_hardware_end.saturating_sub(mapped_end)
+                ));
             }
             return Ok(start_ms);
         }
@@ -612,10 +618,31 @@ mod tests {
             at + Duration::from_secs(2),
             UNIX_EPOCH + Duration::from_millis(7_000),
         );
+        let error = clock
+            .packet_start_ms(&changed, Duration::from_millis(100))
+            .unwrap_err();
         assert!(
-            clock
-                .packet_start_ms(&changed, Duration::from_millis(100))
-                .is_err()
+            crate::source_process::clock_delta_ms(&error)
+                .unwrap()
+                .unsigned_abs()
+                > 2000
+        );
+        assert_eq!(
+            crate::source_process::error_code(&error),
+            "capture_wall_clock_changed"
+        );
+        let mut hardware = packet(
+            at + Duration::from_secs(1),
+            UNIX_EPOCH + Duration::from_millis(11_000),
+        );
+        hardware.sample_start_ns = Some(clock.monotonic_ns + 4_000_000_000);
+        let error = clock
+            .packet_start_ms(&hardware, Duration::from_millis(100))
+            .unwrap_err();
+        assert_eq!(crate::source_process::clock_delta_ms(&error), Some(3000));
+        assert_eq!(
+            crate::source_process::error_code(&error),
+            "capture_hardware_clock_changed"
         );
     }
 }

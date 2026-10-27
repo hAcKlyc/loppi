@@ -154,6 +154,7 @@ impl SystemAudio {
                 callback: unsafe extern "C" fn(*mut c_void, *const f32, u32, u32, u32, u64),
                 stage: *mut i32,
                 prefer_tap: i32,
+                native_error: *mut i32,
             ) -> *mut c_void;
         }
         let tap_available = tap_available();
@@ -174,29 +175,31 @@ impl SystemAudio {
             busy: AtomicBool::new(false),
             dropped: Arc::clone(&dropped),
         }));
-        let (handle, stage) = if use_tap {
+        let (handle, stage, native_error) = if use_tap {
             let (result_sender, result_receiver) = mpsc::sync_channel(1);
             let context_address = context as usize;
             let spawned = thread::Builder::new()
                 .name("hear-tap-start".to_owned())
                 .spawn(move || {
                     let mut stage = 0;
+                    let mut native_error = 0;
                     let handle = unsafe {
                         hear_system_audio_start(
                             context_address as *mut c_void,
                             receive_audio,
                             &mut stage,
                             1,
+                            &mut native_error,
                         )
                     };
-                    let _ = result_sender.send((handle as usize, stage));
+                    let _ = result_sender.send((handle as usize, stage, native_error));
                 });
             if let Err(error) = spawned {
                 unsafe { drop(Box::from_raw(context)) };
                 return Err(format!("system audio startup thread failed: {error}"));
             }
             match result_receiver.recv_timeout(TAP_START_TIMEOUT) {
-                Ok((handle, stage)) => (handle as *mut c_void, stage),
+                Ok((handle, stage, native_error)) => (handle as *mut c_void, stage, native_error),
                 Err(error) => {
                     let _ = std::fs::remove_file(&marker);
                     // The HAL call has no cancellation API. Do not free its
@@ -204,21 +207,35 @@ impl SystemAudio {
                     // this helper so launchd can restart with the legacy
                     // source and a durable gap instead of hanging forever.
                     eprintln!("hear-core Tap startup exceeded deadline: {error}");
-                    std::process::exit(70);
+                    // Forced helper termination must not run global native
+                    // destructors concurrently with capture/model threads.
+                    unsafe { libc::_exit(70) };
                 }
             }
         } else {
             let mut stage = 0;
-            let handle =
-                unsafe { hear_system_audio_start(context.cast(), receive_audio, &mut stage, 0) };
-            (handle, stage)
+            let mut native_error = 0;
+            let handle = unsafe {
+                hear_system_audio_start(
+                    context.cast(),
+                    receive_audio,
+                    &mut stage,
+                    0,
+                    &mut native_error,
+                )
+            };
+            (handle, stage, native_error)
         };
         if handle.is_null() {
             unsafe { drop(Box::from_raw(context)) };
             if use_tap {
                 let _ = std::fs::remove_file(&marker);
             }
-            return Err(format!("system audio capture failed at stage {stage}"));
+            return Err(if native_error == 0 {
+                format!("system audio capture failed at stage {stage}")
+            } else {
+                format!("system audio capture failed at stage {stage} native {native_error}")
+            });
         }
         Ok(Self {
             handle,
@@ -257,7 +274,9 @@ impl Drop for SystemAudio {
             // The owning helper must exit rather than report this source as
             // stopped while its native stream remains live.
             eprintln!("hear-core system audio stop timed out; terminating capture owner");
-            std::process::exit(70);
+            // Forced helper termination must not run global native
+            // destructors concurrently with capture/model threads.
+            unsafe { libc::_exit(70) };
         } else {
             unsafe { drop(Box::from_raw(self.context)) };
         }

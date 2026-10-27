@@ -43,6 +43,8 @@ pub struct LogContext {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub captured_frames: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub clock_delta_ms: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub start_ms: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub end_ms: Option<i64>,

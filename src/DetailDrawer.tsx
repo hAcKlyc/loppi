@@ -1175,6 +1175,15 @@ export function DetailDrawer({
 									)}
 								</strong>
 							</div>
+							{(detail.local_analysis_failures ?? 0) > 0 && (
+								<div>
+									<span>本地分析</span>
+									<strong>
+										部分本地分析失败 · {detail.local_analysis_failures}{" "}
+										项；精转独立处理可用原声
+									</strong>
+								</div>
+							)}
 							{(detail.transcription?.empty_ranges?.length ?? 0) > 0 && (
 								<div className="empty-transcription-ranges">
 									<span>

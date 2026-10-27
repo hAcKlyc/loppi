@@ -87,6 +87,12 @@ test('rendered live cards name the ongoing recording and use an open time range'
     assert.match(blockedNamed,/正在记录/);
     assert.match(blockedNamed,/整理受阻 · 无法读取密钥/);
     assert.match(blockedNamed,/精转完成/);
+    for (const [processing_state, label] of [['pending_asr','待精转'],['transcribed','精转完成']]) {
+      const partial=render(null,{...live,id:'named',processing_state,local_analysis_failures:2});
+      assert.match(partial,/部分本地分析失败 · 2 项/);
+      assert.ok(partial.includes(label));
+    }
+    assert.doesNotMatch(completed,/部分本地分析失败/);
     const partlyFitted=render(null,{...live,id:'named',title:'讨论',processing_state:'transcribed',fit_state:'fit_failed'});
     assert.match(partlyFitted,/部分整理失败/);
     assert.match(partlyFitted,/精转完成/);
@@ -109,8 +115,8 @@ test('hiding coarse keeps failed material visible with its own status and time',
   try {
     const { TimelineView } = await server.ssrLoadModule('/src/TimelineView.tsx');
     const date=new Date(2026,9,23), start=date.getTime()+16*3600000;
-    for(const processing_state of ['fit_failed','fit_retrying','fit_credentials_unavailable']) {
-      const failed={...item,id:null,manual_range_id:null,title:null,sources:'microphone',started_ms:start,ended_ms:start+900000,processing_state,recording_sources:[]};
+    for(const processing_state of ['fit_failed','fit_retrying','fit_credentials_unavailable','raw_audio']) {
+      const failed={...item,id:null,manual_range_id:null,title:null,sources:'microphone',started_ms:start,ended_ms:start+900000,processing_state,local_analysis_failures:processing_state==='raw_audio'?1:undefined,recording_sources:[]};
       const html=renderToStaticMarkup(createElement(TimelineView,{date,items:[failed],gaps:[],moments:[],recordingState:null,loading:false,hideCoarse:true}));
       assert.match(html,/未整理素材/);
       assert.match(html,/16:00/);

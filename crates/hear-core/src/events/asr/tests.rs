@@ -585,11 +585,18 @@ fn projection_and_scheduler_share_next_event_horizon_and_source_scope() {
     )
     .unwrap();
     assert_eq!(
-        event_detail(&db, first, 0, 10).unwrap().processing_state,
-        "analysis_failed"
+        settling_state(&db, &first.to_string(), 1000, 6000, 1).unwrap(),
+        None
+    );
+    // A failure in the settling horizon is not a failure inside this event.
+    assert_eq!(
+        event_detail(&db, first, 0, 10)
+            .unwrap()
+            .local_analysis_failures,
+        0
     );
     refresh(&mut db, 1_000_000).unwrap();
-    assert_eq!(count(&db), 0);
+    assert_eq!(count(&db), 1);
 }
 
 #[test]
@@ -875,11 +882,10 @@ fn independent_event_can_close_stability_early_and_failures_stay_visible() {
     db.execute("UPDATE audio_blocks SET analysis_state='failed'", [])
         .unwrap();
     refresh(&mut db, 1_000_000).unwrap();
-    assert_eq!(count(&db), 0);
-    assert_eq!(
-        event_detail(&db, id, 0, 10).unwrap().processing_state,
-        "analysis_failed"
-    );
+    assert_eq!(count(&db), 1);
+    let detail = event_detail(&db, id, 0, 10).unwrap();
+    assert_eq!(detail.processing_state, "pending_asr");
+    assert_eq!(detail.local_analysis_failures, 1);
     let _ = first;
 }
 
@@ -1340,4 +1346,170 @@ fn shared_recovery_skips_already_covered_member_without_blocking_the_other() {
         event_detail(&db, merged, 0, 10).unwrap().precise_segments[0].text,
         "成功范围"
     );
+}
+
+#[test]
+fn terminal_local_jobs_do_not_block_retained_audio_or_hide_failure_evidence() {
+    for (state, attempts, blocked) in [
+        ("pending", 2, true),
+        ("processing", 3, true),
+        ("failed", 3, false),
+        ("pending", 3, false),
+    ] {
+        let mut db = database();
+        block(&db, "a", 1000, 6000, true);
+        block(&db, "b", 6000, 11000, true);
+        let id = auto(&mut db, 1000, 11000);
+        db.execute("UPDATE audio_blocks SET analysis_state=?1, analysis_attempts=?2, retention_decision='pending_vad_v2', speech_active=0 WHERE id='b'",params![state,attempts]).unwrap();
+        refresh(&mut db, 1_000_000).unwrap();
+        assert_eq!(count(&db), if blocked { 0 } else { 1 });
+        let detail = event_detail(&db, id, 0, 10).unwrap();
+        assert_eq!(detail.local_analysis_failures, u32::from(!blocked));
+        if !blocked {
+            let work = task(&mut db);
+            let input = input(&db, work.id).unwrap().unwrap();
+            assert_eq!(input.parts.len(), 2);
+            assert_eq!(input.duration_ms, 10000);
+            assert_eq!(
+                db.query_row::<i64, _, _>(
+                    "SELECT speech_active FROM audio_blocks WHERE id='b'",
+                    [],
+                    |r| r.get(0)
+                )
+                .unwrap(),
+                0
+            );
+            refresh(&mut db, 1_000_001).unwrap();
+            assert_eq!(count(&db), 1);
+        }
+    }
+    for state in ["pending", "processing", "failed", "complete", "cancelled"] {
+        let mut db = database();
+        block(&db, "a", 1000, 6000, true);
+        let id = auto(&mut db, 1000, 6000);
+        db.execute("INSERT INTO coarse_jobs(id,block_id,session_id,source,start_sample,end_sample,started_ms,ended_ms,state) VALUES('short','a','session','microphone',0,32,1000,1002,?1)",[state]).unwrap();
+        refresh(&mut db, 1_000_000).unwrap();
+        assert_eq!(
+            count(&db),
+            if matches!(state, "pending" | "processing") {
+                0
+            } else {
+                1
+            }
+        );
+        assert_eq!(
+            event_detail(&db, id, 0, 10)
+                .unwrap()
+                .local_analysis_failures,
+            u32::from(state == "failed")
+        );
+        assert_eq!(
+            db.query_row::<String, _, _>(
+                "SELECT state FROM coarse_jobs WHERE id='short'",
+                [],
+                |r| r.get(0)
+            )
+            .unwrap(),
+            state
+        );
+        refresh(&mut db, 1_000_001).unwrap();
+        assert_eq!(
+            count(&db),
+            if matches!(state, "pending" | "processing") {
+                0
+            } else {
+                1
+            }
+        );
+    }
+}
+
+#[test]
+fn terminal_failure_without_media_never_claims_transcription_success() {
+    let mut db = database();
+    block(&db, "gone", 1000, 6000, false);
+    let id = auto(&mut db, 1000, 6000);
+    db.execute("UPDATE audio_blocks SET analysis_state='failed'", [])
+        .unwrap();
+    refresh(&mut db, 1_000_000).unwrap();
+    assert_eq!(count(&db), 0);
+    let detail = event_detail(&db, id, 0, 10).unwrap();
+    assert_eq!(detail.processing_state, "audio_unavailable");
+    assert_eq!(detail.local_analysis_failures, 1);
+    let mut old = serde_json::to_value(&detail).unwrap();
+    old.as_object_mut()
+        .unwrap()
+        .remove("local_analysis_failures");
+    assert_eq!(
+        serde_json::from_value::<TimelineItem>(old)
+            .unwrap()
+            .local_analysis_failures,
+        0
+    );
+}
+
+#[test]
+fn restart_during_final_vad_attempt_does_not_strand_preceding_retention() {
+    for attempts in [2, 3] {
+        let directory = tempfile::tempdir().unwrap();
+        let mut store = crate::Store::new(database()).unwrap();
+        block(&store.db, "onset", 1000, 6000, true);
+        block(&store.db, "tail", 6000, 11000, true);
+        let event = auto(&mut store.db, 1000, 11000);
+        store.db.execute("INSERT INTO recording_sessions VALUES('session','microphone',1000,11000,NULL,'open')", []).unwrap();
+        store
+            .db
+            .execute(
+                "UPDATE audio_blocks SET retention_decision='pending_vad_v2',speech_active=0",
+                [],
+            )
+            .unwrap();
+        store.db.execute("UPDATE audio_blocks SET analysis_state='processing',analysis_attempts=?1,sample_start=240000 WHERE id='tail'", [attempts]).unwrap();
+        // Run the real startup recovery: a third claim interrupted by exit
+        // becomes pending with no further attempts available.
+        store.recover(directory.path()).unwrap();
+        assert_eq!(
+            store
+                .db
+                .query_row::<(String, i64), _, _>(
+                    "SELECT analysis_state,analysis_attempts FROM audio_blocks WHERE id='tail'",
+                    [],
+                    |r| Ok((r.get(0)?, r.get(1)?))
+                )
+                .unwrap(),
+            ("pending".into(), attempts)
+        );
+        refresh(&mut store.db, 1_000_000).unwrap();
+        assert_eq!(count(&store.db), 0);
+        let tx = store.db.transaction().unwrap();
+        assert_eq!(
+            crate::retention::settle_unreachable(&tx).unwrap(),
+            usize::from(attempts == 3)
+        );
+        assert_eq!(crate::retention::settle_unreachable(&tx).unwrap(), 0);
+        tx.commit().unwrap();
+        refresh(&mut store.db, 1_000_001).unwrap();
+        refresh(&mut store.db, 1_000_002).unwrap();
+        assert_eq!(count(&store.db), i64::from(attempts == 3));
+        let detail = event_detail(&store.db, event, 0, 10).unwrap();
+        assert_eq!(detail.local_analysis_failures, u32::from(attempts == 3));
+        assert_eq!(store.db.query_row::<i64,_,_>("SELECT count(*) FROM audio_blocks WHERE media_path IS NOT NULL AND speech_active=0",[],|r|r.get(0)).unwrap(),2);
+        assert_eq!(
+            store
+                .db
+                .query_row::<i64, _, _>("SELECT count(*) FROM media_deletion_jobs", [], |r| r
+                    .get(0))
+                .unwrap(),
+            0
+        );
+        if attempts == 3 {
+            let work = task(&mut store.db);
+            let input = input(&store.db, work.id).unwrap().unwrap();
+            assert_eq!(input.parts.len(), 2);
+            assert_eq!(input.duration_ms, 10000);
+            assert_eq!(detail.processing_state, "pending_asr");
+        } else {
+            assert_eq!(detail.processing_state, "settling_asr");
+        }
+    }
 }

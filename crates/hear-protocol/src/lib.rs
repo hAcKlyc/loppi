@@ -592,6 +592,9 @@ pub struct TimelineItem {
     pub revision: Option<i64>,
     pub fit_state: Option<String>,
     pub processing_state: String,
+    /// Failed local jobs in this interval; never replaces the ASR state.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub local_analysis_failures: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transcription: Option<TranscriptionProgress>,
     pub manual_asr_state: Option<String>,
@@ -607,6 +610,10 @@ pub struct TimelineItem {
     pub recording_sources: Vec<AudioSource>,
     pub coarse_segments: Vec<CoarseSegment>,
     pub precise_segments: Vec<PreciseSegment>,
+}
+
+fn is_zero(value: &u32) -> bool {
+    *value == 0
 }
 
 /// Derived from current task references; no separate persisted status.
@@ -1333,7 +1340,9 @@ mod tests {
         let mut item: TimelineItem = serde_json::from_value(legacy.clone()).unwrap();
         assert!(item.preview.is_none());
         assert!(item.summary.is_none());
+        assert_eq!(item.local_analysis_failures, 0);
         assert_eq!(serde_json::to_value(&item).unwrap(), legacy);
+        item.local_analysis_failures = 2;
         item.summary = Some("事件摘要".into());
         item.preview = Some(TimelinePreview {
             text: "摘录".into(),
@@ -1343,6 +1352,7 @@ mod tests {
         let wire = serde_json::to_value(&item).unwrap();
         assert_eq!(wire["preview"]["text"], "摘录");
         assert_eq!(wire["summary"], "事件摘要");
+        assert_eq!(wire["local_analysis_failures"], 2);
         assert!(
             serde_json::from_value::<TimelineItem>(wire)
                 .unwrap()

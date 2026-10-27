@@ -27,7 +27,7 @@ static HearDestroyTap hear_destroy_tap_function(void) {
 typedef void (*HearAudioCallback)(void *, const float *, uint32_t, uint32_t, uint32_t, uint64_t);
 
 extern int hear_allow_audio_idle_sleep(void);
-extern void *hear_legacy_system_audio_start(void *, HearAudioCallback, int *);
+extern void *hear_legacy_system_audio_start(void *, HearAudioCallback, int *, int *);
 extern int hear_legacy_system_audio_error(void *);
 extern int hear_legacy_system_audio_stop(void *);
 extern int64_t hear_legacy_system_audio_probe(uint32_t, uint64_t *);
@@ -259,7 +259,8 @@ int hear_system_audio_tap_available(void) {
 }
 
 void *hear_system_audio_start(void *context, HearAudioCallback callback, int *stage,
-                              int prefer_tap) {
+                              int prefer_tap, int *native_error) {
+  if (native_error) *native_error = 0;
   HearSystemSession *outer = calloc(1, sizeof(*outer));
   if (!outer) {
     if (stage) *stage = 20;
@@ -267,7 +268,7 @@ void *hear_system_audio_start(void *context, HearAudioCallback callback, int *st
   }
   outer->uses_tap = prefer_tap && hear_system_audio_tap_available();
   outer->session = outer->uses_tap ? hear_tap_start(context, callback, stage)
-                                   : hear_legacy_system_audio_start(context, callback, stage);
+                                   : hear_legacy_system_audio_start(context, callback, stage, native_error);
   if (!outer->session) {
     free(outer);
     return NULL;

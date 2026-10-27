@@ -99,7 +99,9 @@ pub fn resolve_analysis(
 /// context, or at a closed, fully drained stream tail. There is no trustworthy
 /// silence decision left to wait for. Keep its media and speech flag intact;
 /// ASR already includes all retained media. Never reclassify it as silence or
-/// manufacture a speech detection. Process a bounded batch in maintenance.
+/// manufacture a speech detection. A recovered pending block with three
+/// attempts cannot be claimed again; it must not strand its predecessor.
+/// Process a bounded batch in maintenance.
 pub fn settle_unreachable(tx: &Transaction<'_>) -> Result<usize, String> {
     tx.execute(
         "UPDATE audio_blocks SET retention_decision='retain_unresolved_v2' WHERE id IN (
@@ -112,7 +114,9 @@ pub fn settle_unreachable(tx: &Transaction<'_>) -> Result<usize, String> {
               OR (s.state!='open'
                 AND NOT EXISTS(SELECT 1 FROM ingestion_pending_sessions p WHERE p.session_id=b.session_id)
                 AND NOT EXISTS(SELECT 1 FROM audio_blocks p WHERE p.session_id=b.session_id
-                  AND p.analysis_state IN('pending','processing','sealing') AND p.media_path IS NOT NULL)))
+                  AND (p.analysis_state IN('processing','sealing')
+                    OR (p.analysis_state='pending' AND p.analysis_attempts<3))
+                  AND p.media_path IS NOT NULL)))
           ORDER BY b.started_ms,b.id LIMIT 128)", [],
     ).map_err(|e|e.to_string())
 }

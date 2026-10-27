@@ -98,8 +98,9 @@ static void hear_disable_callback(HearSystemSession *session) {
 
 // The caller holds the returned session until stop completes. A queue barrier
 // ensures no callback can use its Rust context after this function returns.
-void *hear_legacy_system_audio_start(void *context, HearAudioCallback callback, int *stage) {
+void *hear_legacy_system_audio_start(void *context, HearAudioCallback callback, int *stage, int *native_error) {
   if (stage) *stage = 0;
+  if (native_error) *native_error = 0;
   if (!context || !callback || !CGPreflightScreenCaptureAccess()) {
     if (stage) *stage = 7;
     return NULL;
@@ -121,6 +122,7 @@ void *hear_legacy_system_audio_start(void *context, HearAudioCallback callback, 
   }
   if (discovery_error || content.displays.count == 0) {
     if (stage) *stage = 2;
+    if (native_error) *native_error = discovery_error ? (int)discovery_error.code : SCStreamErrorNoCaptureSource;
     return NULL;
   }
   NSMutableArray<SCRunningApplication *> *excluded = [NSMutableArray array];
@@ -154,6 +156,7 @@ void *hear_legacy_system_audio_start(void *context, HearAudioCallback callback, 
   if (![session.stream addStreamOutput:session.output type:SCStreamOutputTypeAudio
                     sampleHandlerQueue:session.queue error:&add_error]) {
     if (stage) *stage = 3;
+    if (native_error) *native_error = (int)add_error.code;
     return NULL;
   }
   // SCK produces display frames even for this audio-only consumer. Register
@@ -161,6 +164,7 @@ void *hear_legacy_system_audio_start(void *context, HearAudioCallback callback, 
   if (![session.stream addStreamOutput:session.output type:SCStreamOutputTypeScreen
                     sampleHandlerQueue:session.queue error:&add_error]) {
     if (stage) *stage = 6;
+    if (native_error) *native_error = (int)add_error.code;
     return NULL;
   }
   dispatch_semaphore_t started = dispatch_semaphore_create(0);
@@ -178,6 +182,7 @@ void *hear_legacy_system_audio_start(void *context, HearAudioCallback callback, 
   if (start_error) {
     hear_disable_callback(session);
     if (stage) *stage = 5;
+    if (native_error) *native_error = (int)start_error.code;
     return NULL;
   }
   return (void *)CFBridgingRetain(session);

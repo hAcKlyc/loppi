@@ -95,6 +95,111 @@ fn fixture() -> (tempfile::TempDir, Store) {
 }
 
 #[test]
+#[ignore = "requires HEAR_TEST_DB/EVENTS/MEDIA; offline planner on a temporary copy"]
+fn snapshot_local_failures_do_not_block_event_asr() {
+    use uuid::Uuid;
+    let (_directory, mut store) = fixture();
+    let ids: Vec<String> = std::env::var("HEAR_TEST_EVENTS")
+        .unwrap()
+        .split(',')
+        .map(str::to_owned)
+        .collect();
+    let media = std::path::PathBuf::from(std::env::var("HEAR_TEST_MEDIA").unwrap());
+    assert!(!ids.is_empty());
+    let tables = [
+        "audio_blocks",
+        "coarse_jobs",
+        "coarse_segments",
+        "precise_segments",
+        "cloud_tasks",
+    ];
+    for table in tables {
+        store
+            .db
+            .execute_batch(&format!(
+                "CREATE TEMP TABLE before_{table} AS SELECT * FROM {table}"
+            ))
+            .unwrap();
+    }
+    let now: i64 = store
+        .db
+        .query_row("SELECT max(ended_ms)+3600000 FROM named_events", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    for id in &ids {
+        let before: i64 = store
+            .db
+            .query_row(
+                "SELECT count(*) FROM transcript_tasks WHERE target_kind='event' AND target_id=?1",
+                [id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(before, 0);
+        assert!(
+            events::event_detail(&store.db, Uuid::parse_str(id).unwrap(), 0, 10)
+                .unwrap()
+                .local_analysis_failures
+                > 0
+        );
+    }
+    events::asr::refresh(&mut store.db, now).unwrap();
+    let mut requests = 0;
+    let mut parts = 0;
+    for id in &ids {
+        let tasks: Vec<String> = store
+            .db
+            .prepare("SELECT id FROM transcript_tasks WHERE target_kind='event' AND target_id=?1")
+            .unwrap()
+            .query_map([id], |r| r.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert!(!tasks.is_empty());
+        requests += tasks.len();
+        for task in tasks {
+            let input = events::asr::input(&store.db, Uuid::parse_str(&task).unwrap())
+                .unwrap()
+                .unwrap();
+            assert!(!input.parts.is_empty());
+            parts += input.parts.len();
+            for part in input.parts {
+                assert!(media.join(part.path).is_file());
+            }
+        }
+        assert_eq!(
+            events::event_detail(&store.db, Uuid::parse_str(id).unwrap(), 0, 10)
+                .unwrap()
+                .processing_state,
+            "pending_asr"
+        );
+    }
+    let total: i64 = store
+        .db
+        .query_row("SELECT count(*) FROM cloud_tasks", [], |r| r.get(0))
+        .unwrap();
+    events::asr::refresh(&mut store.db, now + 1).unwrap();
+    assert_eq!(
+        store
+            .db
+            .query_row::<i64, _, _>("SELECT count(*) FROM cloud_tasks", [], |r| r.get(0))
+            .unwrap(),
+        total
+    );
+    for table in tables {
+        assert_eq!(store.db.query_row::<i64,_,_>(&format!("SELECT count(*) FROM (SELECT * FROM before_{table} EXCEPT SELECT * FROM {table})"),[],|r|r.get(0)).unwrap(),0);
+        if table != "cloud_tasks" {
+            assert_eq!(store.db.query_row::<i64,_,_>(&format!("SELECT count(*) FROM (SELECT * FROM {table} EXCEPT SELECT * FROM before_{table})"),[],|r|r.get(0)).unwrap(),0);
+        }
+    }
+    println!(
+        "local_failure_snapshot events={} requests={requests} parts={parts} original_facts_preserved=true",
+        ids.len()
+    );
+}
+
+#[test]
 #[ignore = "requires the Oct 23 frozen HEAR_TEST_DB; synthetic responses, temporary copy, no cloud calls"]
 fn snapshot_partial_fit_publication_oct23() {
     use hear_protocol::CloudProvider;
