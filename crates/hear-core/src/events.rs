@@ -2968,10 +2968,13 @@ pub fn llm_input(db: &Connection, task: &CloudTask) -> Result<String, String> {
     for kind in ["previous_events", "linked_events"] {
         for event in context[kind].as_array_mut().unwrap() {
             event["summary_sentences"] = summary::indexed(event["summary"].as_str());
+            event["summary_chars"] =
+                serde_json::json!(event["summary"].as_str().map_or(0, |s| s.chars().count()));
         }
     }
     serde_json::to_string(&serde_json::json!({
         "candidate":{"start_ms":task.start,"end_ms":task.end},
+        "summary_budget":{"target_chars":900,"tolerance_chars":1100},
         "context":context,
         "observations":lines,
         "evidence":catalog
@@ -4136,33 +4139,85 @@ mod tests {
 
     #[test]
     fn prompt_output_examples_follow_event_contract() {
-        let examples: Vec<serde_json::Value> = FIT_SYSTEM
-            .match_indices("\n{\n")
-            .map(|(i, _)| {
-                serde_json::Deserializer::from_str(&FIT_SYSTEM[i + 1..])
-                    .into_iter::<serde_json::Value>()
-                    .next()
-                    .unwrap()
-                    .unwrap()
-            })
+        use serde_json::{Value, json};
+
+        let blocks: Vec<Value> = FIT_SYSTEM
+            .split("```json\n")
+            .skip(1)
+            .map(|block| serde_json::from_str(block.split_once("\n```").unwrap().0).unwrap())
             .collect();
-        assert_eq!(examples.len(), 2);
-        for output in examples {
-            assert!(output.get("unorganized").is_none());
-            for event in output["events"].as_array().unwrap() {
-                validate_title(event["title"].as_str().unwrap()).unwrap();
-                assert_eq!(
-                    fit_summary(event["summary"].as_str()).as_deref(),
-                    event["summary"].as_str()
-                );
-                let start = event["start_ms"].as_i64().unwrap();
-                let end = event["end_ms"].as_i64().unwrap();
-                assert!(start >= 10000 && end <= 30000 && end > start);
-                if let Some(id) = event["merge_with_event_id"].as_str() {
-                    Uuid::parse_str(id).unwrap();
-                }
+        let [schema, point, update, compress] = blocks.as_slice() else {
+            panic!("expected the output schema and three incremental edit examples");
+        };
+        for (example, kind) in [
+            (point, "point"),
+            (update, "summary_edit"),
+            (compress, "summary_edit"),
+        ] {
+            let required = schema["$defs"][kind]["required"].as_array().unwrap();
+            assert_eq!(example.as_object().unwrap().len(), required.len());
+            for key in required {
+                assert!(example.get(key.as_str().unwrap()).is_some());
             }
         }
+
+        // Exercise the displayed edits against their documented prior content.
+        let evidence: Vec<Value> = (0..12)
+            .map(|i| {
+                json!({
+                    "segment_id":format!("example-{i}"), "source":"microphone",
+                    "start_ms":if i == 0 { 20000 } else { 10000 },
+                    "end_ms":if i == 0 { 30000 } else { 20000 }
+                })
+            })
+            .collect();
+        let input = json!({"candidate":{"start_ms":20000,"end_ms":30000},
+            "observations":[{"evidence_index":0}], "evidence":evidence});
+        let mut prior = json!({"start_ms":10000,"end_ms":20000,
+        "summary":"甲主张扩容，乙担心闲置，尚未决定。",
+        "understanding":{"topics":[],"mentioned_objects":[],"key_points":[
+            {"text":"甲主张扩容","evidence_indices":[10]},
+            {"text":"乙担心扩容后闲置","evidence_indices":[10]},
+            {"text":"尚未决定是否扩容","evidence_indices":[10]}
+        ]}});
+        let result: Value = serde_json::from_str(
+            &understanding::normalize(
+                &json!({"topics":[],"key_points":[point],"mentioned_objects":[]}),
+                &input,
+                Some(&prior),
+                10000,
+                30000,
+                1,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let texts: Vec<&str> = result["key_points"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|point| point["text"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            texts,
+            ["甲主张扩容", "乙担心扩容后闲置", "现决定暂不扩容。"]
+        );
+        assert_eq!(
+            summary::apply(&json!([update]), Some(&prior), &input, 10000, 30000, 1).as_deref(),
+            Some("甲主张扩容，乙担心闲置，现决定暂不扩容。")
+        );
+
+        prior["summary"] = json!(
+            "当前已经实际完成的处理量是70单。 讨论中假设达到100单，那样才会与头部持平，但现在还未达到。"
+        );
+        prior["understanding"]["key_points"] = json!([
+            {"text":"当前处理量70单。","evidence_indices":[10]},
+            {"text":"100单是假设比较值。","evidence_indices":[11]}
+        ]);
+        assert_eq!(
+            summary::apply(&json!([compress]), Some(&prior), &input, 10000, 30000, 1).as_deref(),
+            Some("实有70单；100单与头部持平仍是假设。")
+        );
     }
 
     #[test]

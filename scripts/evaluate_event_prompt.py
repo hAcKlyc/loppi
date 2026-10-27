@@ -200,14 +200,18 @@ def audit_case(path, schema):
             assert saved_event['title'] == event['title'], 'Model title rejected or changed by publication'
             old_u = (ctx or {}).get('understanding')
             allowed = set(current)
+            inherited = set()
             if old_u:
-                allowed.update(j for k in ('key_points', 'mentioned_objects') for v in old_u[k] for j in v['evidence_indices'])
+                inherited.update(j for k in ('key_points', 'mentioned_objects') for v in old_u[k] for j in v['evidence_indices'])
+                allowed.update(inherited)
             summary = event['summary']
             if isinstance(summary, list):
                 old_text = (ctx or {}).get('summary')
                 old_sentences = [s.strip() for s in re.split(r'(?<=[。！？])', old_text or '') if s.strip()]
                 if ctx:
                     assert ctx['summary_sentences'] == [dict(item_index=i,text=s) for i,s in enumerate(old_sentences)]
+                    if 'summary_chars' in ctx:
+                        assert ctx['summary_chars'] == len(old_text or '')
                 used = set(); revised = {}; added = []
                 for update in summary:
                     indices = update['replaces']; refs = update['evidence_indices']
@@ -217,8 +221,14 @@ def audit_case(path, schema):
                     assert all(expected_mask & {'microphone':1,'system':2}[catalog[i]['source']] for i in refs)
                     assert all(catalog[i]['start_ms'] < saved_event['end_ms'] and catalog[i]['end_ms'] > saved_event['start_ms'] for i in refs)
                     text = ' '.join(update['text'].split()); assert text
+                    mode = update.get('mode', 'update')
+                    assert mode in ('update', 'compress')
+                    if mode == 'compress':
+                        assert indices and all(i in inherited for i in refs)
+                        rendered = ' '.join(s.strip() for s in re.split(r'(?<=[。！？])', text) if s.strip())
+                        assert len(rendered) < sum(len(old_sentences[i]) for i in indices) + len(indices) - 1
                     if indices:
-                        assert current.intersection(refs)
+                        assert mode == 'compress' or current.intersection(refs)
                         revised[min(indices)] = text; used.update(indices)
                     else:
                         added.append(text)

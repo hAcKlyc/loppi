@@ -47,7 +47,7 @@ fn understanding_roundtrip_long_summary_metadata_only_update_and_noop() {
         "microphone",
     );
     let task = task(&mut db);
-    let long = "保留具体细节。".repeat(100);
+    let long = "保留具体细节。".repeat(300);
     let mut output = response(&task, structure(json!([0, 0])), None);
     output["events"][0]["summary"] = json!(long);
     assert_eq!(publish(&mut db, &task, output.clone()), 1);
@@ -604,6 +604,95 @@ fn summary_edits_keep_early_details_and_apply_later_correction_in_place() {
     assert_eq!(
         stored(&db).2.as_deref(),
         Some("讨论导出验证与发布安排。 发布改为周一，预算仍为五万元。 先灰度5%，由小林验收。")
+    );
+}
+
+#[test]
+fn summary_compression_then_correction_preserves_constraints_and_other_views() {
+    let mut db = db();
+    let mut id = None;
+    for (n, start) in [1000, 961000, 1921000].into_iter().enumerate() {
+        speech(
+            &db,
+            &format!("budget-{n}"),
+            start,
+            start + 900000,
+            "microphone",
+        );
+        let task = task(&mut db);
+        let input = llm_input(&db, &task).unwrap();
+        let parsed: Value = serde_json::from_str(&input).unwrap();
+        assert_eq!(parsed["summary_budget"]["target_chars"], 900);
+        let old = &parsed["context"]["previous_events"][0];
+        let historical = if n == 0 {
+            0
+        } else {
+            assert_eq!(
+                old["summary_chars"].as_u64().unwrap() as usize,
+                old["summary"].as_str().unwrap().chars().count()
+            );
+            old["understanding"]["key_points"][0]["evidence_indices"][0]
+                .as_u64()
+                .unwrap()
+        };
+        let updates = match n {
+            0 => {
+                json!([{"mode":"update","replaces":[],"text":"讨论连锁门店库存核对项目。 项目服务连锁门店，盘点时各门店分别核对库存。 计划周五灰度5%，预算五万元，由小林验收。 若导出验证失败则暂停发布。","evidence_indices":[0]}])
+            }
+            1 => json!([
+                {"mode":"compress","replaces":[0,1],"text":"按门店分别核对库存。","evidence_indices":[historical]},
+                {"mode":"update","replaces":[],"text":"有人主张取消灰度，另一方坚持保留，尚未形成共识。","evidence_indices":[0]}]),
+            _ => json!([
+                {"mode":"update","replaces":[1],"text":"改为周一灰度5%，预算八万元，仍由小林验收。","evidence_indices":[0,historical]},
+                {"mode":"compress","replaces":[2],"text":"导出验证失败则暂停发布。","evidence_indices":[historical]}]),
+        };
+        let mut output = response(&task, structure(json!([0])), id.as_deref());
+        output["events"][0]["summary"] = updates;
+        publish_fit_with_input(&mut db, &task, &input, output, NOW + 1).unwrap();
+        id = Some(stored(&db).0);
+    }
+    assert_eq!(
+        stored(&db).2.as_deref(),
+        Some(
+            "按门店分别核对库存。 改为周一灰度5%，预算八万元，仍由小林验收。 导出验证失败则暂停发布。 有人主张取消灰度，另一方坚持保留，尚未形成共识。"
+        )
+    );
+}
+
+#[test]
+fn summary_invalid_compression_cannot_consume_old_sentences() {
+    let input = json!({"candidate":{"start_ms":100,"end_ms":200},
+        "observations":[{"evidence_index":0}],
+        "evidence":[{"source":"microphone","start_ms":100,"end_ms":200},
+            {"source":"microphone","start_ms":1,"end_ms":99},
+            {"source":"system","start_ms":1,"end_ms":99}]});
+    let old = json!({"start_ms":1,"end_ms":99,"summary":"如果验证失败，周五发布就必须暂停。 预算五万元。",
+        "understanding":{"key_points":[{"evidence_indices":[1,2]}],"mentioned_objects":[]}});
+    for edit in [
+        json!({"mode":"compress","replaces":[],"text":"暂停发布。","evidence_indices":[1]}),
+        json!({"mode":"compress","replaces":[0],"text":"暂停发布。","evidence_indices":[0]}),
+        json!({"mode":"compress","replaces":[0],"text":"暂停发布。","evidence_indices":[2]}),
+        json!({"mode":"compress","replaces":[0,0],"text":"暂停发布。","evidence_indices":[1]}),
+        json!({"mode":"compress","replaces":[9],"text":"暂停发布。","evidence_indices":[1]}),
+        json!({"mode":"compress","replaces":[0],"text":"如果验证失败，周五发布就必须暂停。","evidence_indices":[1]}),
+        json!({"mode":"rewrite","replaces":[0],"text":"暂停发布。","evidence_indices":[0]}),
+        json!({"mode":null,"replaces":[0],"text":"暂停发布。","evidence_indices":[0]}),
+    ] {
+        assert_eq!(
+            summary::apply(&json!([edit]), Some(&old), &input, 1, 200, 1).as_deref(),
+            old["summary"].as_str()
+        );
+    }
+    // Splitting punctuation adds spaces in storage; raw text length is not sufficient.
+    let mut short_old = old.clone();
+    short_old["summary"] = json!("甲乙丙丁戊己庚辛。");
+    assert_eq!(summary::apply(&json!([{"mode":"compress","replaces":[0],"text":"甲。乙。丙。丁。","evidence_indices":[1]}]), Some(&short_old), &input, 1, 200, 1).as_deref(), short_old["summary"].as_str());
+    let edits = json!([
+        {"mode":"compress","replaces":[0],"text":"验证失败则暂停周五发布。","evidence_indices":[1]},
+        {"mode":"update","replaces":[0],"text":"发布取消。","evidence_indices":[0]}]);
+    assert_eq!(
+        summary::apply(&edits, Some(&old), &input, 1, 200, 1).as_deref(),
+        Some("验证失败则暂停周五发布。 预算五万元。")
     );
 }
 

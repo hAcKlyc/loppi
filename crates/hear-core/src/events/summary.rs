@@ -60,18 +60,26 @@ pub(super) fn apply(
         .filter_map(|o| o["evidence_index"].as_u64())
         .collect();
     let mut allowed = current.clone();
+    let mut inherited = HashSet::new();
     if let Some(prior) = prior {
         for kind in ["key_points", "mentioned_objects"] {
             if let Some(items) = prior["understanding"][kind].as_array() {
                 for item in items {
                     if let Some(refs) = item["evidence_indices"].as_array() {
-                        allowed.extend(refs.iter().filter_map(Value::as_u64));
+                        inherited.extend(refs.iter().filter_map(Value::as_u64));
                     }
                 }
             }
         }
     }
+    allowed.extend(&inherited);
     for update in updates {
+        let compress = match update.get("mode") {
+            None => false, // In-flight proposals from the previous prompt.
+            Some(Value::String(mode)) if mode == "update" => false,
+            Some(Value::String(mode)) if mode == "compress" => true,
+            _ => continue,
+        };
         let Some(text) = fit_summary(update["text"].as_str()) else {
             continue;
         };
@@ -90,14 +98,26 @@ pub(super) fn apply(
         {
             continue;
         }
-        // An omitted earlier point may be added using its inherited evidence;
-        // replacing a saved sentence also requires evidence from this window.
+        if compress
+            && (indices.is_empty()
+                || sentences(&text).join(" ").chars().count()
+                    >= indices
+                        .iter()
+                        .map(|i| old[*i].chars().count())
+                        .sum::<usize>()
+                        + indices.len().saturating_sub(1))
+        {
+            continue;
+        }
+        // Additions may use inherited evidence. Fact revisions require current
+        // evidence; compression uses only the target event's inherited evidence.
         let supported = update["evidence_indices"].as_array().is_some_and(|refs| {
             !refs.is_empty()
                 && refs.iter().all(|i| {
                     i.as_u64().is_some_and(|i| {
                         let r = &input["evidence"][i as usize];
                         allowed.contains(&i)
+                            && (!compress || inherited.contains(&i))
                             && r["source"]
                                 .as_str()
                                 .is_some_and(|s| source_bit(s) & mask != 0)
@@ -110,7 +130,7 @@ pub(super) fn apply(
             refs.iter()
                 .any(|i| i.as_u64().is_some_and(|i| current.contains(&i)))
         });
-        if !supported || (!indices.is_empty() && !fresh) {
+        if !supported || (!compress && !indices.is_empty() && !fresh) {
             continue;
         }
         if let Some(first) = indices.iter().min() {
