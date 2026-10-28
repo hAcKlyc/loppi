@@ -135,7 +135,10 @@ mod tests {
             .map(|s| serde_json::from_str(s).unwrap())
             .collect();
         assert_eq!(lines.len(), 2);
-        assert_eq!(lines[1]["result"]["tools"].as_array().unwrap().len(), 6);
+        assert_eq!(
+            lines[1]["result"]["tools"].as_array().unwrap().len(),
+            context::TOOLS.len()
+        );
     }
     #[test]
     fn malformed_and_uninitialized_requests() {

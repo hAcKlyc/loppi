@@ -360,6 +360,7 @@ fn real_precise_fixture_repair() {
         id,
         &audio,
         crate::cloud::AsrAudioFormat::Ogg,
+        &serde_json::json!({}),
         input.duration_ms,
         Instant::now() + Duration::from_secs(60),
         &meter,
@@ -390,6 +391,123 @@ fn real_precise_fixture_repair() {
                 .unwrap();
                 break;
             }
+        }
+    }
+}
+
+#[test]
+#[ignore = "explicit paid vocabulary acceptance with synthetic text/audio and read-only credential references"]
+fn live_vocabulary_acceptance() {
+    use std::{
+        path::PathBuf,
+        time::{Duration, Instant},
+    };
+    assert_eq!(std::env::var("HEAR_VOCABULARY_LIVE").as_deref(), Ok("1"));
+    let out = PathBuf::from(std::env::var("HEAR_VOCABULARY_OUTPUT").unwrap());
+    std::fs::create_dir_all(&out).unwrap();
+    let source = Connection::open_with_flags(
+        std::env::var("HEAR_REVIEW_SNAPSHOT").unwrap(),
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )
+    .unwrap();
+    struct Meter;
+    impl crate::usage::Meter for Meter {
+        fn begin(&self, _: &str, _: Option<Uuid>, _: Option<i64>) -> Result<String, String> {
+            Ok(Uuid::new_v4().to_string())
+        }
+        fn llm_response(&self, _: &str, _: &Value) -> Result<(), String> {
+            Ok(())
+        }
+        fn asr_response(&self, _: Uuid, _: &str, _: &Value) -> Result<(), String> {
+            Ok(())
+        }
+        fn rejected(&self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+        fn observation_failed(&self) {
+            panic!("usage observation failed")
+        }
+    }
+    let meter = Meter;
+    let key = |provider| {
+        let reference = credential_reference(&source, provider)
+            .unwrap()
+            .expect("configured provider required");
+        crate::cloud::credential(provider, &reference)
+            .unwrap()
+            .expect("credential required")
+    };
+    let input=json!({"candidate":{"start_ms":0,"end_ms":10000},"vocabulary":[{"entity_id":"test-kanshan","name":"看山","kind":"product","aliases":["开山"],"enabled":true},{"entity_id":"test-inception","name":"盗梦空间","kind":"project","aliases":["梦空间"],"enabled":true}],"observations":[{"evidence_index":0,"source":"microphone","start_ms":0,"end_ms":10000,"text":"开山工作台决定先提高额度。小王明天负责验证梦空间项目的导出功能。"}],"evidence":[{"segment_id":"synthetic","source":"microphone","start_ms":0,"end_ms":10000}]}).to_string();
+    let model: String = source
+        .query_row(
+            "SELECT model FROM cloud_queues WHERE provider='llm'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let output = crate::cloud::chat(
+        &key(CloudProvider::Llm),
+        &model,
+        rebuild::SYSTEM,
+        &input,
+        Instant::now() + Duration::from_secs(60),
+        &meter,
+    )
+    .unwrap();
+    std::fs::write(
+        out.join("llm-output.json"),
+        serde_json::to_vec_pretty(&output).unwrap(),
+    )
+    .unwrap();
+    assert!(output.to_string().contains("看山") && output.to_string().contains("盗梦空间"));
+    assert!(!output.to_string().contains("开山"));
+    println!("live LLM vocabulary passed");
+    let audio = std::fs::read(std::env::var("HEAR_VOCABULARY_WAV").unwrap()).unwrap();
+    let id_path = out.join("asr-request-id.txt");
+    let asr_key = key(CloudProvider::Asr);
+    let id = if id_path.exists() {
+        Uuid::parse_str(std::fs::read_to_string(&id_path).unwrap().trim()).unwrap()
+    } else {
+        let id = Uuid::new_v4();
+        std::fs::write(&id_path, id.to_string()).unwrap();
+        crate::cloud::submit_audio(
+            &asr_key,
+            id,
+            &audio,
+            crate::cloud::AsrAudioFormat::Wav,
+            &json!({"hotwords":[{"word":"看山"},{"word":"盗梦空间"}]}),
+            ((audio.len() - 44) / 32) as i64,
+            Instant::now() + Duration::from_secs(60),
+            &meter,
+        )
+        .unwrap();
+        id
+    };
+    let until = Instant::now() + Duration::from_secs(120);
+    loop {
+        match crate::cloud::query_audio(
+            &asr_key,
+            id,
+            Instant::now() + Duration::from_secs(20),
+            &meter,
+        )
+        .unwrap()
+        {
+            crate::cloud::AsrQuery::Complete(items) => {
+                let text = items.iter().map(|v| v.text.as_str()).collect::<String>();
+                std::fs::write(
+                    out.join("asr-output.json"),
+                    serde_json::to_vec_pretty(&json!({"request_id":id,"text":text})).unwrap(),
+                )
+                .unwrap();
+                assert!(text.contains("看山") && text.contains("盗梦空间"), "{text}");
+                println!("live cloud ASR hotwords accepted and both canonical terms recognized");
+                break;
+            }
+            crate::cloud::AsrQuery::Processing if Instant::now() < until => {
+                std::thread::sleep(Duration::from_secs(3))
+            }
+            other => panic!("ASR incomplete; preserve request ID for query only: {other:?}"),
         }
     }
 }

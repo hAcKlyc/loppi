@@ -1,0 +1,24 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>GUI read measurement</title>
+<button id="open">打开详情</button><div id="root"></div>
+<script type="module">
+import React, {Profiler} from 'react';
+import {createRoot} from 'react-dom/client';
+import '/src/App.css';
+const path=new URLSearchParams(location.search).get('drawer') || '/src/DetailDrawer.tsx';
+const {DetailDrawer}=await import(/* @vite-ignore */ path);
+const root=createRoot(document.getElementById('root'));
+document.getElementById('open').onclick=()=>{
+ window.measurement={started:performance.now(),commits:[],requests:[]};
+ const observer=new MutationObserver(()=>{
+  if(document.querySelector('.transcript-row')&&!window.measurement.readable){
+   observer.disconnect();
+   requestAnimationFrame(()=>window.measurement.readable=performance.now());
+  }
+ });
+ observer.observe(document.getElementById('root'),{subtree:true,childList:true});
+ root.render(React.createElement(Profiler,{id:'detail',onRender:(id,phase,ms)=>window.measurement.commits.push({phase,ms})},
+  React.createElement(DetailDrawer,{item:window.fixtureItem,people:[],refreshToken:0,
+   onClose:()=>root.render(null),onEdit:()=>{},onTools:()=>{},onQueue:()=>{},onDataAction:()=>{},onChanged:()=>{},onMessage:()=>{}})));
+};
+window.fixtureReady=true;
+</script></html>

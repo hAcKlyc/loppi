@@ -11,3 +11,5 @@ person_id 与 identity_origin 表示当前发言人归属。microphone 不能自
 coverage 只描述记录。未录、待处理、清理、无匹配分开解释；没有后续记录不能推出没有执行。文字可能仍在而原声已清理。
 
 截图 text 可能包含图像摘要和识别文字，screenshot 字段标明来源与分界；摘要仍是派生理解。text_available=false 表示现场记录存在但文字不可用，不能当成没有截图。
+
+词库的 entity_id 是对象归一标识，与 person_id 分离。别名来自用户配置；自动实体按名称与类型生成稳定 ID，不做隐式同义词或跨实体推断。

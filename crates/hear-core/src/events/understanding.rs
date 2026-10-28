@@ -217,11 +217,16 @@ pub(super) fn normalize(
         })
     };
     let object = |value: &Value| {
+        let (entity_id, name, kind) = crate::vocabulary::entity(
+            &text(&value["name"])?,
+            &text(&value["type"])?,
+            &input["vocabulary"],
+        );
         Some(Object {
-            name: text(&value["name"])?,
-            r#type: text(&value["type"])?,
+            name,
+            r#type: kind,
             context: text(&value["context"])?,
-            entity_id: None,
+            entity_id: Some(entity_id),
             evidence_refs: references(value)?,
         })
     };

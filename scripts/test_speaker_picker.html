@@ -24,7 +24,7 @@ mockIPC(async(command,args)=>{
  if(r.type==='moments') return {type:'moments',moments:[]};
  requests.push(r);
  if(delay) await wait(delay);
- if(failure){const message=failure;failure=null;revision++;groupRevision++;throw Error(message);}
+ if(failure){const message=failure;failure=null;revision++;groupRevision++;return {type:'error',id:'mutation',code:message.startsWith('revision_conflict:')?'revision_conflict':'speaker_binding_invalid',message};}
  if(r.type==='bind_speaker') assigned=r.person_id;
  if(r.type==='create_and_bind_speaker'){assigned='created';people.push({id:assigned,display_name:r.display_name,sample_count:0,created_ms:base,revision:1});return {type:'person_changed',id:'mutation',person_id:assigned,sample_count:0};}
  if(r.type==='unbind_speaker') assigned=null;
@@ -101,11 +101,11 @@ window.runRegression=async()=>{
  check(chips().every(b=>b.disabled)&&panel().querySelector('input').disabled,'保存期间仍能修改目标');
  const inactiveTab=document.querySelector('[role=tab][aria-selected=false]');inactiveTab.click();check(inactiveTab.disabled&&!!panel(),'保存期间可以切换页签并丢失错误');
  const sourceToggle=[...document.querySelectorAll('button')].find(b=>b.textContent==='查看本地粗转');check(sourceToggle.disabled,'保存期间可以切换转录来源');
- panel().dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await wait(30);check(!!panel(),'保存期间被关闭');
+ panel().dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));await wait(30);check(!!panel(),'保存期间被关闭');
  await wait(350);delay=0;
  check(requests.length===before+1&&requests.at(-1).expected_revision===34,'重试未使用刷新版本');
  await open();button('加入声纹样例').click();await wait(180);check(requests.at(-1).type==='add_voice_sample'&&requests.at(-1).expected_revision===8,'声纹样例原入口失效');
- await open();const trigger=chips()[0];panel().dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await wait(80);
+ await open();const trigger=chips()[0];panel().dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));await wait(80);
  check(!panel()&&document.activeElement===trigger,'Esc关闭或焦点恢复失败');
  await open();document.body.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}));await wait(80);check(!panel(),'点击外部没有关闭');
  await open();await input('不应保留');document.querySelector('[role=tab][aria-selected=false]').click();await wait(80);document.querySelector('[role=tab][aria-selected=false]').click();await wait(80);await open();check(panel().querySelector('input').value==='','切换页签仍保留草稿');await close();
@@ -114,7 +114,7 @@ window.runRegression=async()=>{
  check(requests.at(-1).type==='assign_local_speaker'&&requests.at(-1).target_segment_id==='unloaded-sentence'&&requests.at(-1).target_revision===91&&!requests.at(-1).entire_local_speaker,'匿名单句归并未提交两端版本');
  await open();await choose('说话人 2');await confirm();check(requests.at(-1).entire_local_speaker&&requests.at(-1).expected_revision===groupRevision,'匿名整组归并范围错误');
  // A rejected mutation must remain visible even after the entire drawer is closed.
- await open();await choose('陈老师');failure='测试保存失败';delay=100;button('确认').click();await wait(20);const drawerClose=document.querySelector('button[aria-label=关闭详情]');check(drawerClose.disabled,'保存期间详情未锁定关闭');drawerClose.click();await wait(250);check(messages.includes('测试保存失败')&&panel()?.querySelector('[role=alert]'),'失败反馈未保留在活动浮层');await close();document.querySelector('button[aria-label=关闭详情]').click();await wait(30);check(closed,'请求结束后仍无法关闭详情');delay=0;closed=false;render();await wait(150);
+ await open();await choose('陈老师');failure='测试保存失败';delay=100;button('确认').click();await wait(20);const drawerClose=document.querySelector('button[aria-label=关闭详情]');check(drawerClose.disabled,'保存期间详情未锁定关闭');drawerClose.click();await wait(250);check(messages.some(m=>m.includes('测试保存失败'))&&panel()?.querySelector('[role=alert]'),'失败反馈未保留在活动浮层');await close();document.querySelector('button[aria-label=关闭详情]').click();await wait(30);check(closed,'请求结束后仍无法关闭详情');delay=0;closed=false;render();await wait(150);
  // Empty people, long names, and a scrollable library share the same picker.
  people=[];assigned=null;render();await wait(120);await open();check(panel().textContent.includes('还没有人物'),'缺少空态');await close();
  people=Array.from({length:25},(_,i)=>({id:`p-${i}`,display_name:i===0?'一位名字特别长需要自然换行的人物名称':'讨论参与者 '+i,sample_count:0,created_ms:base,revision:1}));render();await wait(120);await open();

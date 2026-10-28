@@ -1,0 +1,58 @@
+[
+  {
+    "case": "old-clean",
+    "core_build": {
+      "component": "core",
+      "version": "0.1.10",
+      "protocol_version": 21,
+      "git_sha": "bf161ccb5311743d037af05a938d8f211ca2becd",
+      "dirty": false,
+      "built_at_epoch": 1793124296
+    },
+    "bind": true,
+    "create_without_audio": true,
+    "projection": true
+  },
+  {
+    "case": "old-migrated",
+    "core_build": {
+      "component": "core",
+      "version": "0.1.10",
+      "protocol_version": 21,
+      "git_sha": "bf161ccb5311743d037af05a938d8f211ca2becd",
+      "dirty": false,
+      "built_at_epoch": 1793124296
+    },
+    "bind": true,
+    "create_without_audio": true,
+    "projection": true
+  },
+  {
+    "case": "current-clean",
+    "core_build": {
+      "component": "core",
+      "version": "0.1.11",
+      "protocol_version": 22,
+      "git_sha": "b4301d1035197c4f0b7dda970c398be0a786f15c",
+      "dirty": false,
+      "built_at_epoch": 1793212797
+    },
+    "bind": true,
+    "create_without_audio": true,
+    "projection": true
+  },
+  {
+    "case": "current-migrated",
+    "core_build": {
+      "component": "core",
+      "version": "0.1.11",
+      "protocol_version": 22,
+      "git_sha": "b4301d1035197c4f0b7dda970c398be0a786f15c",
+      "dirty": false,
+      "built_at_epoch": 1793212797
+    },
+    "bind": true,
+    "create_without_audio": true,
+    "projection": true
+  }
+]

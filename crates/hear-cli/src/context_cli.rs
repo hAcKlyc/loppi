@@ -72,7 +72,10 @@ impl Page {
 #[derive(Subcommand)]
 enum Action {
     /// Availability only; never launches hear.
-    Status,
+    Status {
+        #[arg(long, value_delimiter = ',')]
+        client_tools: Option<Vec<String>>,
+    },
     /// Browse event cards and unorganized ranges. Defaults to today.
     List {
         #[command(flatten)]
@@ -81,6 +84,17 @@ enum Action {
         page: Page,
         #[arg(long, value_enum)]
         sources: Option<super::Sources>,
+    },
+    /// Browse one compact row per event; use full mode for existing detail.
+    Digest {
+        #[command(flatten)]
+        time: Time,
+        #[command(flatten)]
+        page: Page,
+        #[arg(long, value_enum)]
+        sources: Option<super::Sources>,
+        #[arg(long, default_value = "compact", value_parser = ["compact", "full"])]
+        mode: String,
     },
     /// Literal keyword/phrase search, optionally filtered by an identified speaker.
     Search {
@@ -99,6 +113,8 @@ enum Action {
         event_id: Uuid,
         #[arg(long, default_value = "overview")]
         section: String,
+        #[arg(long,action=clap::ArgAction::Set)]
+        include_coverage: Option<bool>,
         #[command(flatten)]
         page: Page,
     },
@@ -116,6 +132,12 @@ enum Action {
         transcript: Option<String>,
         #[arg(long,action=clap::ArgAction::Set)]
         include_moments: Option<bool>,
+        #[arg(long,action=clap::ArgAction::Set)]
+        include_coverage: Option<bool>,
+        #[arg(long)]
+        min_chars: Option<u16>,
+        #[arg(long,action=clap::ArgAction::Set)]
+        dedupe: Option<bool>,
         #[arg(long, value_enum)]
         sources: Option<super::Sources>,
     },
@@ -141,7 +163,12 @@ fn source(s: &super::Sources) -> Value {
 pub fn run(c: Context) -> i32 {
     let mut args = json!({});
     let op = match c.action {
-        Action::Status => "status",
+        Action::Status { client_tools } => {
+            if let Some(v) = client_tools {
+                args["client_tools"] = json!(v);
+            }
+            "status"
+        }
         Action::List {
             time,
             page,
@@ -155,6 +182,22 @@ pub fn run(c: Context) -> i32 {
             }
             page.add(&mut args);
             "list"
+        }
+        Action::Digest {
+            time,
+            page,
+            sources,
+            mode,
+        } => {
+            if let Some(t) = time.value() {
+                args["time"] = t;
+            }
+            if let Some(s) = sources {
+                args["sources"] = source(&s);
+            }
+            args["mode"] = json!(mode);
+            page.add(&mut args);
+            "digest"
         }
         Action::Search {
             query,
@@ -181,10 +224,14 @@ pub fn run(c: Context) -> i32 {
         Action::Event {
             event_id,
             section,
+            include_coverage,
             page,
         } => {
             args["event_id"] = json!(event_id);
             args["section"] = json!(section);
+            if let Some(v) = include_coverage {
+                args["include_coverage"] = json!(v);
+            }
             page.add(&mut args);
             "event"
         }
@@ -195,6 +242,9 @@ pub fn run(c: Context) -> i32 {
             page,
             transcript,
             include_moments,
+            include_coverage,
+            min_chars,
+            dedupe,
             sources,
         } => {
             let mut selector = json!({});
@@ -216,6 +266,15 @@ pub fn run(c: Context) -> i32 {
             }
             if let Some(m) = include_moments {
                 args["include_moments"] = json!(m);
+            }
+            if let Some(v) = include_coverage {
+                args["include_coverage"] = json!(v);
+            }
+            if let Some(v) = min_chars {
+                args["min_chars"] = json!(v);
+            }
+            if let Some(v) = dedupe {
+                args["dedupe"] = json!(v);
             }
             page.add(&mut args);
             "read"
@@ -255,7 +314,10 @@ pub fn run(c: Context) -> i32 {
                     }
                     0
                 }
-                None => emit_error("invalid_argument", "Unknown guide topic"),
+                None => emit_error(
+                    "invalid_argument",
+                    "Unknown guide topic; choose: cli, mcp, evidence, workflows, troubleshooting",
+                ),
             };
         }
     };
@@ -300,7 +362,10 @@ enum Integration {
     /// Show actual CLI location and ready-to-copy configuration.
     Inspect,
     /// Verify Core connectivity without starting it.
-    Doctor,
+    Doctor {
+        #[arg(long, value_delimiter = ',')]
+        client_tools: Option<Vec<String>>,
+    },
     /// Generate config; does not modify the Agent's configuration.
     Configure {
         #[arg(long,default_value="generic",value_parser=["generic","codex"])]
@@ -324,9 +389,10 @@ pub fn integrations(c: Integrations) -> i32 {
         let info = agent_assets::info(&cli);
         match c.action {
             Integration::Inspect => Ok(info),
-            Integration::Doctor => {
+            Integration::Doctor { client_tools } => {
                 let mut info = info;
-                info["status"] = context::execute(Query::Status(context::Empty {}));
+                info["status"] =
+                    context::execute(Query::Status(context::StatusArgs { client_tools }));
                 Ok(info)
             }
             Integration::Configure { target } => Ok(
@@ -353,7 +419,9 @@ pub fn integrations(c: Integrations) -> i32 {
     match result {
         Ok(v) => {
             println!("{v}");
-            if v["status"]["ok"] == false || v["status"]["data"]["online"] == false {
+            if v["status"]["data"]["tool_inventory"]["state"] == "mismatch" {
+                5
+            } else if v["status"]["ok"] == false || v["status"]["data"]["online"] == false {
                 3
             } else {
                 0

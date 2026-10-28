@@ -39,7 +39,7 @@ def main():
         skill = root / "skill folder"
         cli("integrations", "install-skill", "--destination", str(skill))
         cli("integrations", "install-skill", "--destination", str(skill))
-        assert str(CLI) in (skill / "references/cli.md").read_text()
+        assert str(CLI.resolve()) in (skill / "references/cli.md").read_text()
         (skill / "SKILL.md").write_text("custom")
         cli("integrations", "install-skill", "--destination", str(skill), code=2)
         assert (skill / "SKILL.md").read_text() == "custom"
@@ -105,6 +105,17 @@ def main():
                 assert time.monotonic() < deadline and core.poll() is None
                 time.sleep(.05)
             assert cli("context", "status")["data"]["online"] is True
+            # Exercise management over the real Core socket, including receipts.
+            assert cli("vocabulary", "list")["data"]["entries"] == []
+            term = cli("vocabulary", "set", "看山", "--kind", "product", "--alias", "开山")["data"]["entries"][0]
+            assert term["name"] == "看山" and term["aliases"] == ["开山"]
+            repeated = cli("vocabulary", "set", "看山", "--kind", "product", "--alias", "开山")
+            assert repeated["data"]["entries"][0]["entity_id"] == term["entity_id"]
+            conflict = cli("vocabulary", "set", "other", "--alias", "开山", code=2)
+            assert conflict["error"]["code"] == "invalid_argument"
+            settings = cli("vocabulary", "configure", "--local-asr", "false", "--cloud-asr", "false")["data"]["settings"]
+            assert settings == {"llm": True, "local_asr": False, "cloud_asr": False}
+            assert cli("vocabulary", "remove", term["entity_id"])["data"]["entries"] == []
             before = cli("status")["state"]
             mcp = subprocess.Popen([str(CLI), "mcp", "serve"], env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             watcher = selectors.DefaultSelector()
@@ -132,9 +143,15 @@ def main():
             assert init["result"]["capabilities"] == {"tools": {}}
             rpc("notifications/initialized", notification=True)
             tools = rpc("tools/list")["result"]["tools"]
-            assert len(tools) == 6 and all(t["annotations"]["readOnlyHint"] for t in tools)
+            assert len(tools) == 7 and all(t["annotations"]["readOnlyHint"] for t in tools)
+            names = [t["name"] for t in tools]
+            inventory = rpc("tools/call", {"name": "hear_status", "arguments": {"client_tools": names}})["result"]["structuredContent"]["data"]["tool_inventory"]
+            assert inventory["state"] == "matched"
+            missing = cli("context", "status", "--client-tools", ",".join(n for n in names if n != "hear_search_context"))["data"]["tool_inventory"]
+            assert missing["state"] == "mismatch" and missing["missing"] == ["hear_search_context"]
             for name, args, command in [
                 ("hear_list_context", {"time": {"date": "today"}}, ["list", "--date", "today"]),
+                ("hear_digest", {"time": {"date": "today"}}, ["digest", "--date", "today"]),
                 ("hear_search_context", {"query": "fixture"}, ["search", "fixture"]),
                 ("hear_read_context", {"selector": {"time": {"date": "today"}}}, ["read", "--date", "today"]),
                 ("hear_list_people", {}, ["people"]),
@@ -162,7 +179,7 @@ def main():
                 mcp.wait(timeout=5)
             core.terminate()
             core.wait(timeout=5)
-        print("PASS: existing-only, CLI errors, six MCP tools, CLI/MCP parity, concurrent reads, unchanged capture, installation preservation")
+        print("PASS: existing-only, CLI errors, vocabulary management, seven MCP tools, inventory mismatch detection, digest CLI/MCP parity, concurrent reads, unchanged capture, installation preservation")
 
 
 if __name__ == "__main__":

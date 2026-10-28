@@ -1,0 +1,43 @@
+{
+  "dataset": "2026-10-28; 7 events; local SQLite backup copied again into an isolated test directory",
+  "runtime": "debug builds; 3-second SQLite read deadline retained",
+  "wire_harness": "Actual hear CLI and stdio MCP binaries connected to a read-only context dispatcher using the same Pool/query code; no capture/cloud workers; installed app unchanged",
+  "results": [
+    "acceptance events=7 calls=100 p95=1803ms max=2885ms digest_events=1",
+    "event p95=465ms max=1860ms",
+    "wire CLI 7/7 max=163ms; MCP 100/100 p95=951ms max=2305ms; tools=7/7"
+  ],
+  "installed_mcp_tools": [
+    "hear_status",
+    "hear_list_context",
+    "hear_search_context",
+    "hear_get_event",
+    "hear_read_context",
+    "hear_list_people"
+  ],
+  "updated_mcp_tool_count": 7,
+  "myagents_client_injection": "not observable from this workspace; global definition initializes, current workspace has project=false",
+  "local_asr_fixture": {
+    "kind": "macOS Tingting synthetic audio, 16kHz mono PCM; 我们讨论看山工作台的额度。明天继续推进盗梦空间项目。",
+    "disabled": "我们讨论看山工作台的额度明天继续推进到梦空间项目",
+    "enabled": "我们讨论看山工作台的额度明天继续推进盗梦空间项目",
+    "hotwords": [
+      "看山",
+      "盗梦空间"
+    ],
+    "decoding": "modified_beam_search; BPE; score=3.5"
+  },
+  "live_cloud_validation": {
+    "attempted": true,
+    "result": "blocked before any cloud request",
+    "reason": "macOS Keychain rejected development test process: keychain_read_-25293"
+  },
+  "skill_validation": "quick_validate.py passed",
+  "smoke": "PASS: existing-only, CLI errors, vocabulary management, seven MCP tools, inventory mismatch detection, digest CLI/MCP parity, concurrent reads, unchanged capture, installation preservation",
+  "final_build": "cargo build -p hear-cli -p hear-core -p hear-worker --locked passed",
+  "final_core_suite": {
+    "passed": 358,
+    "failed": 0,
+    "ignored": 18
+  }
+}

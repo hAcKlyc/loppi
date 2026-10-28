@@ -29,20 +29,20 @@ async function until(check){for(let i=0;i<200;i++){if(check())return;await new P
 function openAt(){const track=document.querySelector('.day-map-track'),box=track.getBoundingClientRect();track.querySelector('button').dispatchEvent(new PointerEvent('click',{bubbles:true,detail:1,clientX:Math.ceil(box.left+box.width*(17*60+54)/1440),clientY:box.top+4}));}
 function close(){document.querySelector('.detail-header [aria-label="关闭详情"]').click();}
 document.getElementById('run').onclick=async()=>{const output=document.getElementById('result');output.textContent='检查中…';try{
- openAt();await until(()=>document.querySelectorAll('.transcript-row').length===300);await frames();
+ openAt();await until(()=>document.querySelectorAll('.transcript-row').length===270);await frames();
  const enteredAt=Number(document.querySelector('.player-track').value);assert(enteredAt>=target&&enteredAt<target+86400000/document.querySelector('.day-map-track').getBoundingClientRect().width+1,'播放器未停在点击分钟');
  assert(document.querySelector('[aria-label="播放录音"]'),'打开时自动播放');
- assert(requests.includes('event_detail:200'),'目标在后页但未加载');
+ assert(requests.includes('event_detail:240'),'目标在后页但未加载');
  const list=document.querySelector('.transcript-list'),row=list.querySelectorAll('.transcript-row')[268],box=list.getBoundingClientRect(),r=row.getBoundingClientRect();
  assert(r.top>=box.top-1&&r.top<box.bottom,'最近文本未滚动可见');
  assert(enteredAt>rows[268].ended_ms&&enteredAt<rows[269].started_ms,'夹具没有覆盖句间空隙');
  assert(row.classList.contains('is-current')&&row.getAttribute('aria-current')==='true','暂停时的最近文本没有选中态');
  list.scrollTop=30;version++;render();await frames();await frames();assert(list.scrollTop===30,'刷新抢走阅读位置');assert(Number(document.querySelector('.player-track').value)===enteredAt,'刷新重置播放器');
- close();await frames();document.querySelector('.day-map-event').click();await until(()=>document.querySelectorAll('.transcript-row').length===100);assert(Number(document.querySelector('.player-track').value)===from,'键盘打开误用旧指针时间');
- close();await frames();document.querySelector('.event-card').click();await until(()=>document.querySelectorAll('.transcript-row').length===100);assert(Number(document.querySelector('.player-track').value)===from,'卡片打开误用时间轴位置');
+ close();await frames();document.querySelector('.day-map-event').click();await until(()=>document.querySelectorAll('.transcript-row').length===30);assert(Number(document.querySelector('.player-track').value)===from,'键盘打开误用旧指针时间');
+ close();await frames();document.querySelector('.event-card').click();await until(()=>document.querySelectorAll('.transcript-row').length===30);assert(Number(document.querySelector('.player-track').value)===from,'卡片打开误用时间轴位置');
  close();await frames();let release;hold=new Promise(r=>release=r);openAt();await frames();const count=requests.length;close();hold=null;release();await frames();await frames();assert(!document.querySelector('.detail-drawer'),'关闭后迟到结果重新打开');assert(requests.length===count,'关闭后仍继续翻页');
  assert(!requests.some(r=>r.startsWith('playback_chunk')),'无播放意图却读取音频');
- openAt();await until(()=>document.querySelectorAll('.transcript-row').length===300);await frames();
+ openAt();await until(()=>document.querySelectorAll('.transcript-row').length===270);await frames();
  const positioned=document.querySelector('.transcript-row.is-current');assert(positioned?.textContent.includes('第 269 条'),'重开后缺少定位高亮');
  document.querySelector('[aria-label="播放录音"]').click();await frames();assert(document.querySelector('[aria-label="暂停播放"]'),'播放状态未切换');assert(!document.querySelector('.transcript-row.is-current'),'播放间隙保留了伪当前句高亮');
  document.querySelector('[aria-label="暂停播放"]').click();await frames();assert(document.querySelector('.transcript-row.is-current')?.textContent.includes('第 269 条'),'暂停后未恢复最近文本选中态');

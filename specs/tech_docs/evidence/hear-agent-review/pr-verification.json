@@ -1,0 +1,205 @@
+{
+  "schema": 1,
+  "suite": "all",
+  "passed": true,
+  "checks": [
+    {
+      "name": "typecheck",
+      "command": [
+        "npm",
+        "run",
+        "typecheck"
+      ],
+      "seconds": 2.22,
+      "exit_code": 0
+    },
+    {
+      "name": "lint",
+      "command": [
+        "npm",
+        "run",
+        "lint"
+      ],
+      "seconds": 0.46,
+      "exit_code": 0
+    },
+    {
+      "name": "rust-check",
+      "command": [
+        "cargo",
+        "check",
+        "--workspace",
+        "--locked"
+      ],
+      "seconds": 14.02,
+      "exit_code": 0
+    },
+    {
+      "name": "rust-regressions",
+      "command": [
+        "cargo",
+        "test",
+        "--workspace",
+        "--locked"
+      ],
+      "seconds": 58.41,
+      "exit_code": 0
+    },
+    {
+      "name": "frontend-regressions",
+      "command": [
+        "node",
+        "--test",
+        "scripts/test_capture_status.mjs",
+        "scripts/test_cloud_task_status.mjs",
+        "scripts/test_detail_entry.mjs",
+        "scripts/test_entry.mjs",
+        "scripts/test_entry_interaction.mjs",
+        "scripts/test_onboarding.mjs",
+        "scripts/test_playback.mjs",
+        "scripts/test_recording_schedule.mjs",
+        "scripts/test_timeline_view.mjs",
+        "scripts/test_usage_statistics.mjs"
+      ],
+      "seconds": 5.17,
+      "exit_code": 0
+    },
+    {
+      "name": "rabbit-assets",
+      "command": [
+        "node",
+        "scripts/test_rabbit_assets.cjs"
+      ],
+      "seconds": 0.29,
+      "exit_code": 0
+    },
+    {
+      "name": "python-regressions",
+      "command": [
+        "/Users/zhihu/miniconda3/bin/python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "scripts",
+        "-p",
+        "test_*.py"
+      ],
+      "seconds": 1.31,
+      "exit_code": 0
+    },
+    {
+      "name": "native-policy-build",
+      "command": [
+        "clang",
+        "-fobjc-arc",
+        "-fblocks",
+        "-mmacosx-version-min=13.0",
+        "scripts/test_native_entry.m",
+        "-framework",
+        "Cocoa",
+        "-framework",
+        "QuartzCore",
+        "-o",
+        "/var/folders/lt/tx2xdhgx3g97md2696nm0fww0000gn/T/hear-native-policy-x54637jf/entry-policy"
+      ],
+      "seconds": 0.68,
+      "exit_code": 0
+    },
+    {
+      "name": "native-policy",
+      "command": [
+        "/var/folders/lt/tx2xdhgx3g97md2696nm0fww0000gn/T/hear-native-policy-x54637jf/entry-policy"
+      ],
+      "seconds": 0.4,
+      "exit_code": 0
+    },
+    {
+      "name": "native-capture-errors-build",
+      "command": [
+        "clang",
+        "-fobjc-arc",
+        "-fblocks",
+        "-mmacosx-version-min=13.0",
+        "scripts/test_native_capture_errors.m",
+        "-framework",
+        "Foundation",
+        "-framework",
+        "ScreenCaptureKit",
+        "-framework",
+        "CoreMedia",
+        "-framework",
+        "CoreGraphics",
+        "-o",
+        "/var/folders/lt/tx2xdhgx3g97md2696nm0fww0000gn/T/hear-native-policy-x54637jf/capture-errors"
+      ],
+      "seconds": 0.63,
+      "exit_code": 0
+    },
+    {
+      "name": "native-capture-errors",
+      "command": [
+        "/var/folders/lt/tx2xdhgx3g97md2696nm0fww0000gn/T/hear-native-policy-x54637jf/capture-errors"
+      ],
+      "seconds": 0.45,
+      "exit_code": 0
+    },
+    {
+      "name": "frontend-build",
+      "command": [
+        "npm",
+        "run",
+        "build"
+      ],
+      "seconds": 2.57,
+      "exit_code": 0
+    },
+    {
+      "name": "binary-build",
+      "command": [
+        "cargo",
+        "build",
+        "--workspace",
+        "--locked"
+      ],
+      "seconds": 9.9,
+      "exit_code": 0
+    },
+    {
+      "name": "component-identities",
+      "command": [
+        "/Users/zhihu/miniconda3/bin/python3",
+        "scripts/verify_build_identity.py",
+        "--directory",
+        "target/debug"
+      ],
+      "seconds": 2.69,
+      "exit_code": 0
+    },
+    {
+      "name": "isolated-core",
+      "command": [
+        "/Users/zhihu/miniconda3/bin/python3",
+        "scripts/smoke_core.py"
+      ],
+      "seconds": 4.66,
+      "exit_code": 0
+    },
+    {
+      "name": "isolated-diagnostics",
+      "command": [
+        "/Users/zhihu/miniconda3/bin/python3",
+        "scripts/smoke_diagnostics.py"
+      ],
+      "seconds": 3.39,
+      "exit_code": 0
+    }
+  ],
+  "excluded": [
+    "private fixture tests",
+    "cloud API tests",
+    "permission/capture/sleep acceptance",
+    "signed installation",
+    "browser visual acceptance"
+  ]
+}

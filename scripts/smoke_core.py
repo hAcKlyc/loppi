@@ -45,7 +45,8 @@ def main() -> None:
             assert [entry["event"] for entry in entries] == [
                 "request_received", "set_source", "request_received", "pause"
             ]
-            assert [entry["client"] for entry in entries] == ["cli", "core", "cli", "core"]
+            # 一条请求的接收与处理记录统一归属发起方；关联靠 request_id。
+            assert [entry["client"] for entry in entries] == ["cli", "cli", "cli", "cli"]
             assert all(entry["correlation_id"] == entry["request_id"] for entry in entries)
             archive_fifo = Path(directory, "logs/hear.01.jsonl")
             os.mkfifo(archive_fifo)

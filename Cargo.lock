@@ -1601,7 +1601,7 @@ dependencies = [
 
 [[package]]
 name = "hear-cli"
-version = "0.1.10"
+version = "0.1.11"
 dependencies = [
  "clap",
  "hear-protocol",
@@ -1612,7 +1612,7 @@ dependencies = [
 
 [[package]]
 name = "hear-core"
-version = "0.1.10"
+version = "0.1.11"
 dependencies = [
  "base64 0.22.1",
  "bzip2 0.5.2",
@@ -1639,7 +1639,7 @@ dependencies = [
 
 [[package]]
 name = "hear-desktop"
-version = "0.1.10"
+version = "0.1.11"
 dependencies = [
  "cc",
  "hear-protocol",
@@ -1654,7 +1654,7 @@ dependencies = [
 
 [[package]]
 name = "hear-protocol"
-version = "0.1.10"
+version = "0.1.11"
 dependencies = [
  "chrono",
  "chrono-tz",
@@ -1668,13 +1668,14 @@ dependencies = [
 
 [[package]]
 name = "hear-worker"
-version = "0.1.10"
+version = "0.1.11"
 dependencies = [
  "hear-protocol",
  "libc",
  "serde",
  "serde_json",
  "sherpa-onnx",
+ "tempfile",
 ]
 
 [[package]]

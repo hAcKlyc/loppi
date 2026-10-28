@@ -67,6 +67,7 @@ pub struct AnalysisClient {
     input: ChildStdin,
     output: ChildStdout,
     last_used: Instant,
+    hotwords: Vec<String>,
     cursors: std::collections::HashMap<String, (String, u64)>,
     resident: Option<crate::resources::Resident>,
 }
@@ -112,6 +113,7 @@ impl AnalysisClient {
             input,
             output,
             last_used: Instant::now(),
+            hotwords: Vec::new(),
             cursors: std::collections::HashMap::new(),
             resident: None,
         })
@@ -165,6 +167,9 @@ impl AnalysisClient {
         }
         Ok(result)
     }
+    pub fn set_hotwords(&mut self, words: Vec<String>) {
+        self.hotwords = words;
+    }
     pub fn request<T: DeserializeOwned>(
         &mut self,
         source: &str,
@@ -180,7 +185,7 @@ impl AnalysisClient {
         }
         let deadline = Instant::now() + timeout;
         self.last_used = Instant::now();
-        let header = serde_json::to_vec(&serde_json::json!({"source":source,"session":session,"start_sample":start,"samples":samples.len(),"flush":flush})).map_err(|e|e.to_string())?;
+        let header = serde_json::to_vec(&serde_json::json!({"source":source,"session":session,"start_sample":start,"samples":samples.len(),"flush":flush,"hotwords":self.hotwords})).map_err(|e|e.to_string())?;
         let mut frame = Vec::with_capacity(4 + header.len() + samples.len() * 4);
         frame.extend_from_slice(&(header.len() as u32).to_le_bytes());
         frame.extend_from_slice(&header);

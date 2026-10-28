@@ -11,6 +11,14 @@ const errorLabels: Record<string, string> = {
 	range_no_audio: "所选时间没有可精转的原声",
 	range_invalid: "请选择有效的精转时间和声音来源",
 	invalid_time_range: "请选择有效的时间范围",
+	invalid_calendar_range: "请选择有效的日期范围",
+	invalid_transcript_page: "转录分页参数无效，请重新打开详情",
+	event_not_found: "事件已删除，请返回时间线重新选择",
+	query_timeout: "记录查询超时，请稍后重试",
+	read_busy: "记录读取繁忙，请稍后重试",
+	db_locked: "记录正在更新，请稍后重试",
+	query_failed: "记录查询失败，请查看诊断日志",
+	core_transport: "无法读取本地服务响应，请稍后重试",
 	revision_conflict: "内容已更新，请重新确认后再试",
 	setup_incomplete: "请先完成云端服务设置",
 	model_not_ready: "本地语音模型尚未准备好",
@@ -372,11 +380,31 @@ export async function core<T extends CoreResponse = CoreResponse>(
 	requestId?: string,
 ): Promise<T> {
 	if (!isTauri()) throw new Error("请在 hear 桌面应用中查看记录");
-	const response = await invoke<T>("core_request", { request, requestId });
-	if (response.type === "error") {
-		throw new Error(`${String(response.code)}: ${String(response.message)}`);
+	const id = requestId ?? crypto.randomUUID();
+	const started = performance.now();
+	try {
+		const response = await invoke<T>("core_request", {
+			request,
+			requestId: id,
+		});
+		if (response.type === "error") {
+			throw new Error(`${String(response.code)}: ${String(response.message)}`);
+		}
+		return response;
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		const code = /^([a-z_0-9]+):/.exec(message)?.[1] ?? "core_transport";
+		// Only metadata: never dump request arguments, transcripts or provider bodies.
+		console.warn("hear_core_request_failed", {
+			command: request.type,
+			request_id: id,
+			code,
+			duration_ms: Math.round(performance.now() - started),
+		});
+		throw new Error(
+			code === "core_transport" ? `core_transport: ${message}` : message,
+		);
 	}
-	return response;
 }
 
 export async function executeCleanup(

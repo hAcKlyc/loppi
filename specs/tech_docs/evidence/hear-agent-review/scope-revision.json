@@ -1,0 +1,45 @@
+{
+  "cli": {
+    "pages": [
+      {
+        "events": 7,
+        "response_bytes": 6696
+      }
+    ],
+    "elapsed_ms": 220,
+    "events": 7
+  },
+  "mcp": {
+    "pages": 1,
+    "events": 7,
+    "elapsed_ms": 240
+  },
+  "full_mode": "passed; lightweight fields only",
+  "scope": "real CLI/stdio MCP and full Core using isolated backup of the migrated original DB; no production writes, capture or cloud requests",
+  "restore": {
+    "ok": true,
+    "capture_blocker": "none",
+    "paused_intent": true,
+    "schedule": {
+      "enabled": true,
+      "start_minute": 600,
+      "stop_minute": 1380,
+      "paused_by_schedule": false,
+      "next_at_ms": 1793239200000,
+      "next_action": "start",
+      "error": null
+    },
+    "gui_running": true,
+    "allow_capture": true,
+    "normal_run": true,
+    "build": {
+      "component": "core",
+      "version": "0.1.10",
+      "protocol_version": 21,
+      "git_sha": "bf161ccb5311743d037af05a938d8f211ca2becd",
+      "dirty": false,
+      "built_at_epoch": 1793124296
+    },
+    "errors": []
+  }
+}

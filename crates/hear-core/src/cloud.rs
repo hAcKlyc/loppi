@@ -63,6 +63,31 @@ pub fn credential(provider: CloudProvider, reference: &str) -> Result<Option<Str
     }
 }
 
+/// Check the actual signed Core's Keychain access without starting services,
+/// prompting, changing credentials, or calling a cloud provider. Never return secrets/references.
+pub fn check_credentials(database: &std::path::Path) -> Result<Value, String> {
+    let db =
+        rusqlite::Connection::open_with_flags(database, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(|e| e.to_string())?;
+    db.busy_timeout(Duration::from_secs(2))
+        .map_err(|e| e.to_string())?;
+    let mut providers = Vec::new();
+    for provider in [CloudProvider::Llm, CloudProvider::Asr] {
+        let (state, error) = match crate::events::credential_reference(&db, provider)? {
+            None => ("not_configured", None),
+            Some(reference) => match credential(provider, &reference) {
+                Ok(Some(secret)) if !secret.is_empty() => ("readable", None),
+                Ok(_) => ("unavailable", Some("credential_missing".to_owned())),
+                Err(error) => ("unavailable", Some(error)),
+            },
+        };
+        providers.push(json!({"provider":provider,"state":state,"error":error}));
+    }
+    Ok(json!({"ok":providers.iter().all(|p|p["state"]=="readable"),
+        "build":hear_protocol::build_info("core"),"providers":providers,
+        "network_requests":false,"user_interaction":false}))
+}
+
 pub fn save_credential(provider: CloudProvider, secret: &str) -> Result<String, String> {
     if secret.len() < 8 || secret.len() > 4096 || secret.chars().any(char::is_control) {
         return Err("invalid cloud credential format".to_owned());
@@ -466,6 +491,7 @@ pub fn submit_audio(
     request_id: Uuid,
     audio: &[u8],
     format: AsrAudioFormat,
+    vocabulary: &Value,
     duration_ms: i64,
     deadline: Instant,
     meter: &dyn Meter,
@@ -477,11 +503,7 @@ pub fn submit_audio(
     if audio.len() > maximum || audio.len() < minimum {
         return Err("asr_audio_size".to_owned().into());
     }
-    let body = json!({
-        "user": {"uid":"hear-local"},
-        "audio": {"data":base64::engine::general_purpose::STANDARD.encode(audio),"format":name},
-        "request": {"model_name":"bigmodel","enable_speaker_info":true,"show_utterances":true,"ssd_version":"300"}
-    });
+    let body = audio_body(audio, name, vocabulary);
     remaining(deadline)?;
     let usage_id = meter.begin(VOLC_RESOURCE, Some(request_id), Some(duration_ms))?;
     let (status, _, response) = metered_result(
@@ -495,6 +517,21 @@ pub fn submit_audio(
     } else {
         Err(format!("provider_status_{status}").into())
     }
+}
+
+fn audio_body(audio: &[u8], name: &str, vocabulary: &Value) -> Value {
+    let mut body = json!({
+        "user": {"uid":"hear-local"},
+        "audio": {"data":base64::engine::general_purpose::STANDARD.encode(audio),"format":name},
+        "request": {"model_name":"bigmodel","enable_speaker_info":true,"show_utterances":true,"ssd_version":"300"}
+    });
+    if vocabulary["hotwords"]
+        .as_array()
+        .is_some_and(|words| !words.is_empty())
+    {
+        body["request"]["corpus"] = json!({"context":vocabulary.to_string()});
+    }
+    body
 }
 
 #[derive(Debug, Clone)]
@@ -707,6 +744,7 @@ pub fn verify_asr(key: &str, meter: &dyn Meter) -> Result<(), String> {
         request_id,
         &wav,
         AsrAudioFormat::Wav,
+        &json!({}),
         1000,
         deadline,
         meter,
@@ -725,6 +763,51 @@ pub fn verify_asr(key: &str, meter: &dyn Meter) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn credential_check_is_read_only_and_does_not_expose_references() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("hear.sqlite");
+        assert!(check_credentials(&path).is_err());
+        assert!(!path.exists(), "check must not create an empty database");
+        let store = crate::Store::new(rusqlite::Connection::open(&path).unwrap()).unwrap();
+        let db = &store.db;
+        let empty = check_credentials(&path).unwrap();
+        assert_eq!(empty["ok"], false);
+        assert_eq!(empty["providers"][0]["state"], "not_configured");
+        let invalid_reference = "private-reference-must-not-appear";
+        crate::events::set_configured_with_credential(
+            db,
+            CloudProvider::Llm,
+            "deepseek-flash",
+            invalid_reference,
+        )
+        .unwrap();
+        let result = check_credentials(&path).unwrap();
+        assert_eq!(result["ok"], false);
+        assert_eq!(result["providers"][0]["state"], "unavailable");
+        assert_eq!(result["network_requests"], false);
+        assert_eq!(result["user_interaction"], false);
+        assert!(!result.to_string().contains(invalid_reference));
+        assert_eq!(
+            crate::events::credential_reference(db, CloudProvider::Llm).unwrap(),
+            Some(invalid_reference.to_owned())
+        );
+    }
+    #[test]
+    fn asr_hotwords_are_a_json_string_and_empty_config_omits_corpus() {
+        let context = json!({"hotwords":[{"word":"看山"},{"word":"盗梦空间"}]});
+        let body = audio_body(&[], "wav", &context);
+        assert_eq!(
+            serde_json::from_str::<Value>(body["request"]["corpus"]["context"].as_str().unwrap())
+                .unwrap(),
+            context
+        );
+        assert!(
+            audio_body(&[], "wav", &json!({}))["request"]
+                .get("corpus")
+                .is_none()
+        );
+    }
     #[test]
     fn duplicate_keys_are_rejected_before_value_overwrite() {
         for content in [

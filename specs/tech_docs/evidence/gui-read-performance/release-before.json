@@ -1,0 +1,478 @@
+{
+  "build": {
+    "component": "core",
+    "version": "0.1.11",
+    "protocol_version": 22,
+    "git_sha": "b4301d1035197c4f0b7dda970c398be0a786f15c",
+    "dirty": false,
+    "built_at_epoch": 1793212797
+  },
+  "cli": [
+    {
+      "command": [
+        "timeline",
+        "1793116800000",
+        "1793203200000"
+      ],
+      "ms": 1200.069583,
+      "bytes": 24799
+    },
+    {
+      "command": [
+        "context",
+        "list",
+        "--date",
+        "2026-10-28"
+      ],
+      "ms": 1132.618584,
+      "bytes": 13411
+    },
+    {
+      "command": [
+        "context",
+        "read",
+        "--event",
+        "4b0b5314-0fad-4e0b-bdab-d7afbba4e3e7",
+        "--limit",
+        "50"
+      ],
+      "ms": 319.5723750000002,
+      "bytes": 17442
+    },
+    {
+      "command": [
+        "context",
+        "read",
+        "--from",
+        "2026-10-28T12:00:00+08:00",
+        "--to",
+        "2026-10-28T15:00:00+08:00",
+        "--limit",
+        "50"
+      ],
+      "ms": 236.24325,
+      "bytes": 18376
+    }
+  ],
+  "wire": [
+    {
+      "command": "timeline",
+      "id": "9d64f136-708d-4254-8129-e7ae48901ea6",
+      "ms": 940.0917499999996,
+      "parse_ms": 3.062249999999949,
+      "bytes": 20223
+    },
+    {
+      "command": "event_detail",
+      "id": "cf574408-96a0-425b-b923-da3c9b59cc40",
+      "offset": 0,
+      "limit": 100,
+      "ms": 1603.5463329999993,
+      "parse_ms": 0.22641699999985576,
+      "bytes": 68994,
+      "fields": {
+        "id": 38,
+        "manual_range_id": 4,
+        "started_ms": 13,
+        "ended_ms": 13,
+        "title": 61,
+        "sources": 12,
+        "revision": 2,
+        "fit_state": 8,
+        "processing_state": 13,
+        "transcription": 61,
+        "manual_asr_state": 4,
+        "manual_asr_started_ms": 4,
+        "manual_asr_ended_ms": 4,
+        "manual_asr_source": 4,
+        "summary": 3520,
+        "coarse_segments": 22332,
+        "precise_segments": 42559
+      }
+    },
+    {
+      "command": "event_detail",
+      "id": "c55b6a46-cf49-4d6e-94c1-19fd7a2ee169",
+      "offset": 0,
+      "limit": 30,
+      "ms": 1517.7948339999994,
+      "parse_ms": 0.09529100000054314,
+      "bytes": 22663,
+      "fields": {
+        "id": 38,
+        "manual_range_id": 4,
+        "started_ms": 13,
+        "ended_ms": 13,
+        "title": 61,
+        "sources": 12,
+        "revision": 2,
+        "fit_state": 8,
+        "processing_state": 13,
+        "transcription": 61,
+        "manual_asr_state": 4,
+        "manual_asr_started_ms": 4,
+        "manual_asr_ended_ms": 4,
+        "manual_asr_source": 4,
+        "summary": 3520,
+        "coarse_segments": 6770,
+        "precise_segments": 11790
+      }
+    },
+    {
+      "command": "event_detail",
+      "id": "31245994-6cca-4fda-92c3-575d4e67877f",
+      "offset": 300,
+      "limit": 1,
+      "ms": 1071.9996660000015,
+      "parse_ms": 0.039333999999144,
+      "bytes": 4702
+    },
+    {
+      "command": "event_detail",
+      "id": "af6fc056-f569-45a0-84e2-7439935e57d0",
+      "offset": 0,
+      "limit": 100,
+      "ms": 1598.8654999999999,
+      "parse_ms": 0.23816700000134006,
+      "bytes": 68994
+    },
+    {
+      "command": "session_speakers",
+      "id": "e1e39e9d-4191-4f80-8108-83717ff61ccb",
+      "ms": 3008.935374999999,
+      "parse_ms": 0.070041000000856,
+      "bytes": 109,
+      "code": "speaker_invalid"
+    },
+    {
+      "command": "event_detail",
+      "id": "aff4195b-cb3c-47b2-857a-d6aaba03285d",
+      "offset": 300,
+      "limit": 1,
+      "ms": 1008.4794169999986,
+      "parse_ms": 0.038292000001092674,
+      "bytes": 4702
+    },
+    {
+      "command": "event_detail",
+      "id": "73a4a43c-0937-45ba-84a4-776d43675e2d",
+      "offset": 0,
+      "limit": 100,
+      "ms": 898.1884580000005,
+      "parse_ms": 0.19195899999976973,
+      "bytes": 68994
+    },
+    {
+      "command": "session_speakers",
+      "id": "9b4f3f38-6d81-483b-a1c2-5e8f30c30e83",
+      "ms": 2285.0440420000014,
+      "parse_ms": 0.05004199999893899,
+      "bytes": 3016
+    },
+    {
+      "command": "moments",
+      "id": "b5c6f81f-f656-4ba9-8a77-e12e48f1f70f",
+      "offset": 0,
+      "limit": 200,
+      "ms": 6.022000000000844,
+      "parse_ms": 0.020583999998052604,
+      "bytes": 75
+    },
+    {
+      "command": "event_detail",
+      "id": "08a80251-9809-4bd9-a940-6edbaaa97d68",
+      "offset": 300,
+      "limit": 1,
+      "ms": 694.9181659999995,
+      "parse_ms": 0.0415419999990263,
+      "bytes": 4702
+    },
+    {
+      "command": "event_detail",
+      "id": "31df6d91-8cd9-4aef-bf70-d3d8ccb9abde",
+      "offset": 0,
+      "limit": 100,
+      "ms": 1184.2410419999978,
+      "parse_ms": 0.2522500000013679,
+      "bytes": 68994
+    },
+    {
+      "command": "session_speakers",
+      "id": "f561bd6a-1410-4a18-ad1e-116afc7a78e6",
+      "ms": 2242.307249999998,
+      "parse_ms": 0.02916700000059791,
+      "bytes": 3016
+    },
+    {
+      "command": "moments",
+      "id": "d14224ca-62b0-4138-bed8-cccfea9098d6",
+      "offset": 0,
+      "limit": 200,
+      "ms": 23.19116600000052,
+      "parse_ms": 0.9735839999993914,
+      "bytes": 75
+    },
+    {
+      "command": "event_detail",
+      "id": "ca9535aa-46c5-41c5-9fe3-f22d9941f633",
+      "offset": 300,
+      "limit": 1,
+      "ms": 535.8033340000002,
+      "parse_ms": 0.040415999999822816,
+      "bytes": 4702
+    },
+    {
+      "command": "event_detail",
+      "id": "11b07c0c-9c10-40c2-81ee-af9923be3f49",
+      "offset": 0,
+      "limit": 100,
+      "ms": 1073.2686250000006,
+      "parse_ms": 0.193583000000217,
+      "bytes": 68994
+    },
+    {
+      "command": "session_speakers",
+      "id": "5d66f665-994a-4716-9f32-1889f299d8a2",
+      "ms": 2112.2119999999995,
+      "parse_ms": 0.03912499999933061,
+      "bytes": 3016
+    },
+    {
+      "command": "moments",
+      "id": "2956ed84-718d-4a9d-b61a-17fd42d1275d",
+      "offset": 0,
+      "limit": 200,
+      "ms": 24.16216600000189,
+      "parse_ms": 0.01504199999908451,
+      "bytes": 75
+    },
+    {
+      "command": "event_detail",
+      "id": "b3ad4f5a-c94d-49d7-9224-722cc563e4da",
+      "offset": 300,
+      "limit": 1,
+      "ms": 531.1467499999999,
+      "parse_ms": 0.04312500000014552,
+      "bytes": 4702
+    },
+    {
+      "command": "event_detail",
+      "id": "5651a853-e6f2-48bf-a60f-6076232561f7",
+      "offset": 0,
+      "limit": 100,
+      "ms": 965.6927920000016,
+      "parse_ms": 0.20533299999806331,
+      "bytes": 68994
+    },
+    {
+      "command": "session_speakers",
+      "id": "bb0c07a4-4034-4ecb-96a1-08c047c4c51e",
+      "ms": 2202.3855000000003,
+      "parse_ms": 0.028750000001309672,
+      "bytes": 3016
+    },
+    {
+      "command": "moments",
+      "id": "95a34147-e41c-466b-8014-5b0b8adbd610",
+      "offset": 0,
+      "limit": 200,
+      "ms": 11.762917000000016,
+      "parse_ms": 0.01358299999992596,
+      "bytes": 75
+    }
+  ],
+  "browser": [
+    {
+      "started": 285.00000000000006,
+      "commits": [
+        {
+          "phase": "mount",
+          "ms": 28
+        },
+        {
+          "phase": "update",
+          "ms": 3.0000000000009095
+        }
+      ],
+      "requests": [
+        {
+          "command": "event_detail",
+          "id": "af6fc056-f569-45a0-84e2-7439935e57d0",
+          "started": 325,
+          "ended": 1948
+        },
+        {
+          "command": "session_speakers",
+          "id": "e1e39e9d-4191-4f80-8108-83717ff61ccb",
+          "started": 1948,
+          "ended": 4961
+        }
+      ],
+      "click_to_readable_ms": null,
+      "error": "转录读取失败：speaker_invalid: interrupted重新加载"
+    },
+    {
+      "started": 188,
+      "commits": [
+        {
+          "phase": "mount",
+          "ms": 18
+        },
+        {
+          "phase": "update",
+          "ms": 14
+        },
+        {
+          "phase": "update",
+          "ms": 0
+        },
+        {
+          "phase": "update",
+          "ms": 8.000000000000455
+        }
+      ],
+      "requests": [
+        {
+          "command": "event_detail",
+          "id": "73a4a43c-0937-45ba-84a4-776d43675e2d",
+          "started": 213,
+          "ended": 1126
+        },
+        {
+          "command": "session_speakers",
+          "id": "9b4f3f38-6d81-483b-a1c2-5e8f30c30e83",
+          "started": 1126,
+          "ended": 3413.0000000000005
+        },
+        {
+          "command": "moments",
+          "id": "b5c6f81f-f656-4ba9-8a77-e12e48f1f70f",
+          "started": 3509,
+          "ended": 3517
+        }
+      ],
+      "readable": 3505,
+      "click_to_readable_ms": 3317
+    },
+    {
+      "started": 174.00000000000003,
+      "commits": [
+        {
+          "phase": "mount",
+          "ms": 18
+        },
+        {
+          "phase": "update",
+          "ms": 16
+        },
+        {
+          "phase": "update",
+          "ms": 0
+        },
+        {
+          "phase": "update",
+          "ms": 7
+        }
+      ],
+      "requests": [
+        {
+          "command": "event_detail",
+          "id": "31df6d91-8cd9-4aef-bf70-d3d8ccb9abde",
+          "started": 200,
+          "ended": 1404.0000000000002
+        },
+        {
+          "command": "session_speakers",
+          "id": "f561bd6a-1410-4a18-ad1e-116afc7a78e6",
+          "started": 1404.0000000000002,
+          "ended": 3649
+        },
+        {
+          "command": "moments",
+          "id": "d14224ca-62b0-4138-bed8-cccfea9098d6",
+          "started": 3703.0000000000005,
+          "ended": 3729
+        }
+      ],
+      "readable": 3698,
+      "click_to_readable_ms": 3524
+    },
+    {
+      "started": 167,
+      "commits": [
+        {
+          "phase": "mount",
+          "ms": 17
+        },
+        {
+          "phase": "update",
+          "ms": 15.000000000000455
+        },
+        {
+          "phase": "update",
+          "ms": 0
+        }
+      ],
+      "requests": [
+        {
+          "command": "event_detail",
+          "id": "11b07c0c-9c10-40c2-81ee-af9923be3f49",
+          "started": 192,
+          "ended": 1279.0000000000002
+        },
+        {
+          "command": "session_speakers",
+          "id": "5d66f665-994a-4716-9f32-1889f299d8a2",
+          "started": 1279.0000000000002,
+          "ended": 3393.0000000000005
+        }
+      ],
+      "readable": 3438,
+      "click_to_readable_ms": 3271
+    },
+    {
+      "started": 167,
+      "commits": [
+        {
+          "phase": "mount",
+          "ms": 21
+        },
+        {
+          "phase": "update",
+          "ms": 11.999999999999545
+        },
+        {
+          "phase": "update",
+          "ms": 0
+        },
+        {
+          "phase": "update",
+          "ms": 8
+        }
+      ],
+      "requests": [
+        {
+          "command": "event_detail",
+          "id": "5651a853-e6f2-48bf-a60f-6076232561f7",
+          "started": 195,
+          "ended": 1175
+        },
+        {
+          "command": "session_speakers",
+          "id": "bb0c07a4-4034-4ecb-96a1-08c047c4c51e",
+          "started": 1176,
+          "ended": 3380
+        },
+        {
+          "command": "moments",
+          "id": "95a34147-e41c-466b-8014-5b0b8adbd610",
+          "started": 3426,
+          "ended": 3450
+        }
+      ],
+      "readable": 3422,
+      "click_to_readable_ms": 3255
+    }
+  ],
+  "limits": "Real Core socket + Playwright WebKit through an exposed-function bridge, not native Tauri invoke. React development build. No private payloads retained."
+}

@@ -92,7 +92,7 @@ async fn agent_access_info() -> Result<serde_json::Value, String> {
             .join("hear");
         let mut info = hear_protocol::agent_assets::info(&cli);
         info["status"] = hear_protocol::context::execute(hear_protocol::context::Query::Status(
-            hear_protocol::context::Empty {},
+            hear_protocol::context::StatusArgs::default(),
         ));
         Ok(info)
     })
