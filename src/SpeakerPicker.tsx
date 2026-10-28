@@ -173,6 +173,22 @@ export function SpeakerPicker({
 			role="dialog"
 			aria-labelledby={`${id}-title`}
 			aria-busy={pending}
+			onMouseDown={(event) => {
+				if (event.button !== 0 || !(event.target instanceof Element)) return;
+				const target = event.target.closest("button, label");
+				const control =
+					target instanceof HTMLLabelElement ? target.control : target;
+				if (
+					(control instanceof HTMLButtonElement ||
+						control instanceof HTMLInputElement) &&
+					!control.disabled
+				) {
+					// WebKit otherwise blurs the search to the outer dialog before click,
+					// dismissing this picker before a choice, scope or submit can run.
+					event.preventDefault();
+					control.focus({ preventScroll: true });
+				}
+			}}
 			onBlur={(event) => {
 				if (
 					!submitting.current &&
