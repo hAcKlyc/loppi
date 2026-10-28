@@ -541,7 +541,7 @@ type CloseReason = "close-button" | "escape" | "backdrop";
 
 ### Agent 接入页（2026-10-26）
 
-侧栏位于人物库之后、设置之前。页面采用同一灰绿 canvas、白色接入表面、深绿主操作；用途与一句真实场景优先于协议术语。主内容只有 MCP / CLI + Skill 两个 tab；MCP 内选择 Codex 或通用配置，CLI 示例折叠。完整参数和工作流放在随包 Skill references。
+侧栏位于人物库之后、设置之前。页面采用同一灰绿 canvas、白色接入表面、深绿主操作；标题与用途说明之后直接展示接入配置，不保留中间场景文案和示意图。主内容只有 MCP / CLI + Skill 两个 tab；MCP 内「通用 JSON」位于左侧且默认选中，右侧为 Codex，CLI 示例折叠。完整参数和工作流放在随包 Skill references。
 
 连接状态来自 existing-only Core 请求。复制必须等待剪贴板回执；错误、后台未连接、版本不兼容和缺少 CLI 分别显示可行动说明。使用真实可执行路径，不假定 PATH。代码块允许换行，760×540 的原有主窗下限不出现横向溢出。复用 Tabs 的方向键移动焦点、Enter / Space 激活约定。
 

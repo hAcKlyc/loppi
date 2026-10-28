@@ -20,7 +20,7 @@ type Connection = {
 
 export function AgentAccess() {
 	const [mode, setMode] = useState<"mcp" | "cli">("mcp");
-	const [target, setTarget] = useState<"codex" | "generic">("codex");
+	const [target, setTarget] = useState<"codex" | "generic">("generic");
 	const [connection, setConnection] = useState<Connection | null>(null);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState("");
@@ -73,31 +73,6 @@ export function AgentAccess() {
 				<h1 id="agent-access-title">Agent 接入</h1>
 				<p>让你的 Agent 找回 hear 里的谈话与日常。</p>
 			</header>
-			<div className="agent-intro">
-				<div className="agent-intro-copy">
-					<span className="agent-eyebrow">从这里，接着聊</span>
-					<p className="agent-example">“上次聊到哪里了？”</p>
-					<p>
-						回顾今天的讨论，找回一个约定，核对原话。
-						<br />
-						相关记录会带着时间与出处，交给你正在使用的 Agent。
-					</p>
-				</div>
-				<div className="agent-path" aria-hidden="true">
-					<div className="agent-path-source">
-						<span />
-						<span />
-						<span />
-					</div>
-					<svg viewBox="0 0 76 40" fill="none" aria-hidden="true">
-						<path d="M0 20h67m-8-7 8 7-8 7" />
-					</svg>
-					<div className="agent-path-destination">↳</div>
-					<span>hear</span>
-					<span />
-					<span>你的 Agent</span>
-				</div>
-			</div>
 			<section
 				className="agent-connection"
 				aria-labelledby="agent-connect-title"
@@ -163,8 +138,8 @@ export function AgentAccess() {
 									label="配置格式"
 									value={target}
 									options={[
-										{ value: "codex", label: "Codex" },
 										{ value: "generic", label: "通用 JSON" },
+										{ value: "codex", label: "Codex" },
 									]}
 									onChange={(value) => {
 										setTarget(value);
