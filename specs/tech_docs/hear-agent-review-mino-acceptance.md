@@ -21,15 +21,13 @@ Mino 结论：验收通过，授权提交 PR。正式合并与发布由 Ethan �
 
 ## 三点反馈的处理
 
-### 1. 后续：digest compact 模式
+### 1. 已实现：digest compact 模式
 
-不阻塞本 PR。10-28 全天目前需 21 页、24 个 fragment 才覆盖 7 个事件，每页约 2000 字符。记录后续需求：增加 compact 模式，只返回标题、topics、decisions、todos 和计数，不分页展开 key_points 正文；正文继续按需通过 event/read 获取。本 PR 不扩展实现范围，也不将此项计为已完成。
+初版 10-28 全天需 21 页、24 个 fragment 覆盖 7 个事件。最终默认 compact：每个事件一行，只含标题、时间、topics、要点条数和理解状态，不展开 key_points 正文。标题最多 160 字，topics 最多 6 条、每条 80 字，并标识截断；细节通过 event_id 读取。保留 mode=full 供需要正文的调用，游标绑定模式，单页仍有大小限制。7 个极端长事件的边界测试两页内拿全；真实数据结果见下方补充记录。
 
-### 2. 当前限制：旧事件没有结构化行动字段
+### 2. 不做：决策/待办抽取和旧事件补齐
 
-升级前的 understanding 不含 decisions/todos，因此 digest 返回空数组及 `structured_actions_available=false`。这只表示尚未生成，不表示原谈话没有决定或待办。
-
-需要补齐时，由用户显式执行 `hear understanding rebuild EVENT_ID`，等待已配置且未暂停的 LLM 队列成功，再读 digest。重建可能计费；不重跑 ASR、不改事件标题和边界。新版也会在处理新录制时请求这些字段，但本次没有新录制/真实云端生成的效果验收。CLI/MCP SKILL 已补充这一路径；云端 ASR 词库按 Ethan 决定留待 release 后实测。
+按 Ethan 最新决定，第一次粗转 LLM 处理只保留 topics、key_points、mentioned_objects。移除了决策/待办的生成定义、输出 schema、增量替换、event section、digest 字段和状态标记；不保留空字段或开关。旧理解 JSON 中额外字段忽略，不迁移，不为其重建。通用理解重建仍可修复缺失理解或应用新词库。云端 ASR 词库留待 release 后实测。
 
 ### 3. 已确认：protocol 21 可打开迁移后的库
 
@@ -42,7 +40,7 @@ Mino 结论：验收通过，授权提交 PR。正式合并与发布由 Ethan �
 - named_events、coarse_segments、precise_segments、vocabulary_entries、entities 的逐行内容散列与数量保持一致。
 - 两版启动后的 `PRAGMA quick_check` 均为 ok。
 
-随后实际运行 `control.py restore` 切回原安装版 Core，直接打开原库成功；`context status`、事件列表和短区间读取通过。没有恢复数据库备份、没有替换 `/Applications/hear.app`。录音仍暂停，原有云端队列开关已恢复。机器可读副本验证见 [downgrade-compatibility.json](evidence/hear-agent-review/downgrade-compatibility.json)。
+随后实际运行 `control.py restore` 切回原安装版 Core，直接打开原库成功；`context status`、事件列表和短区间读取通过。没有恢复数据库备份、没有替换 `/Applications/hear.app`。数据库兼容性成立；当时只恢复 Core 的 on-demand 状态未恢复 GUI/采集通道，后续按下面的正常应用路径修正。机器可读副本验证见 [downgrade-compatibility.json](evidence/hear-agent-review/downgrade-compatibility.json)。
 
 兼容原因：本批新增表、触发器、索引及可重建查询视图，没有改名/删除原版依赖的表或列，也未引入拒绝旧版打开的 schema gate。两版启动时各自重建查询视图。新增词库表可保留在库内，但 protocol 21 不提供新版词库、digest 和健康度接口，P0 查询性能修复也不会随数据库保留给旧二进制。CLI 与 Core 必须配套使用；数据库可回退不代表 protocol 21/22 可混用。
 
@@ -51,15 +49,30 @@ Mino 结论：验收通过，授权提交 PR。正式合并与发布由 Ethan �
 本机已完成以下步骤，当前无需重复执行：
 
 ```sh
-python3 /Users/zhihu/Documents/project/hear/build/agent-review-debug/control.py restore
+python3 scripts/restore_debug_session.py --session-dir build/agent-review-debug
 /Applications/hear.app/Contents/MacOS/hear build-info
 /Applications/hear.app/Contents/MacOS/hear context status
 ```
 
 MCP 指回 `/Applications/hear.app/Contents/MacOS/hear`，args 为 `["mcp","serve"]`，移除 debug 专用 env 并重连。此次没有改 MyAgents 配置；若验收时自行改过配置，应自行切回。
 
-恢复脚本先核对 debug Core 身份，正常退出并等待 owner 锁释放，再启动原 Core；不同时运行两个 Core，不覆盖数据库，不恢复录音。原库备份仍保留在 git 忽略目录 `build/agent-review-debug/backup/hear-before-debug.sqlite`。备份仅作异常恢复兜底；正常切回不应用旧备份覆盖后续新增数据。
+恢复脚本已改为 `scripts/restore_debug_session.py`：核对 owner，必要时退出 debug Core 并等待锁释放，然后通过 LaunchServices 打开原应用。应用自行管理 Core，脚本不手工改运行标志。完成后必须通过 GUI 存活、配套 Core 构建、normal_run/allow_capture、capture_blocker、暂停意图与计划配置自检，否则非零退出。原库备份仍保留在 git 忽略目录 `build/agent-review-debug/backup/hear-before-debug.sqlite`。备份仅作异常恢复兜底；正常切回不应用旧备份覆盖后续新增数据。
 
 源代码回归与完整 11 条验收矩阵见 [修复与验收](hear-agent-review-acceptance.md)。
 
 提交前统一离线 gate `python3 scripts/verify.py` 全部通过，含静态检查、Rust/前端/Python/原生回归、构建身份及 Core/诊断冒烟；见 [pr-verification.json](evidence/hear-agent-review/pr-verification.json)。SKILL 校验与格式检查通过。
+
+## 最终范围修订复验
+
+2026-10-29 开发侧以迁移后原库的 SQLite backup 启动隔离 Core，使用本次源码构建的真实 CLI 和 stdio MCP 复验，未向生产库写入，也未启用录音或云端请求：
+
+| 项目 | 结果 |
+|---|---|
+| 默认 compact，10-28 全天 | CLI 一页返回全部 7 个事件，6,696 bytes，220ms；stdio MCP 同样一页 7 个事件，240ms。 |
+| full 模式 | 原摘要和轻结构仍可分页读取，输出无已移除字段。 |
+| 边界回归 | 7 个长标题、多主题、各 200 条要点的事件两页内返回；模式变更不能复用游标；旧 JSON 额外字段不影响读取且存储不变。 |
+| 原安装版实际恢复 | 正常 GUI 存活，protocol 21 Core，normal_run=true、allow_capture=true、capture_blocker=none。 |
+| 暂停与计划 | paused_intent=true；计划仍启用，10:00–23:00，schedule.error=null；采集通道已恢复，录音仍暂停。 |
+| restore 失败检测 | query_only、GUI 缺失、暂停/计划变化和暂停时仍采集均有失败回归；自检不通过返回非零。 |
+
+机器可读记录：[scope-revision.json](evidence/hear-agent-review/scope-revision.json)。恢复使用原生产库且没有覆盖备份。初轮 debug app 保留作验收历史，本次 compact 复验使用新构建的 `target/debug` 二进制，未重打或替换该历史包。

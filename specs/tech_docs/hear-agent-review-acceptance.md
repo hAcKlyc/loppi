@@ -29,7 +29,7 @@
 | tools/list 与客户端注入一致（6/6），有启动自检 | 服务端通过；MyAgents 实际注入待联验 | 已安装旧版直接 tools/list 确认 6/6、含 search。修复版增加 digest，共 7/7；独立 MCP 客户端比对通过。新增 hear_status(client_tools) / doctor --client-tools，明确 matched/mismatch/client_not_reported；缺 search 的回归测试通过。当前工作区 project=false，不能冒称 Mino 会话实际注入已修复。 |
 | 词库可配置；摘要不再“开山”；支持的 ASR 热词生效、有开关 | 本地与确定性回归通过；云端实测待验证 | CLI 词条/别名/类型/开关已实现；LLM 输入含词库，生成内容规范化回归通过。本地实际音频关闭识别为“到梦空间”，开启为“盗梦空间”；云端请求按官方格式注入、重试保持词库快照，参数测试通过。真实 LLM/云 ASR 测试因 Keychain -25293 在读取凭据时终止，未发云端请求，不能宣称云端效果已验收。 |
 | mentioned_objects 带 entity_id，跨两天一致 | 通过 | 专名与实体表打通；跨天“开山/看山”及关闭注入后的 ID 稳定回归通过。未配置对象按规范名称+类型生成稳定 ID；不做隐式语义同一性判断。 |
-| hear_digest 返回 decisions / todos | 通过 | MCP 与 CLI 均有入口；两字段携带 evidence_refs，todo 可含 owner/due。已生成快照可一次获取这些结构；内容过大按 event_fragment 分页。旧快照缺少字段时显式 structured_actions_available=false，不伪造决定/待办。 |
+| 决策/待办抽取及旧事件补齐 | 不做 | 按 Ethan 最新范围移除生成 schema、增量逻辑、section、digest 字段和状态占位；旧 JSON 额外字段忽略，不迁移。digest 仅提供轻量概览。 |
 | hear_status 提供七天各音源成功率与 gap 汇总 | 通过 | health_7d 按音源给 recorded_ms、gap_ms、observed_ms、success_rate 和原因汇总。比例按已知录音/gap 区间并集计算，排除未知时间；不是识别准确率。时段 gap_summary 不受 gaps 详情截断影响，有重叠区间测试。 |
 | 默认去空/去重复，或提供 min_chars / dedupe | 通过 | 默认 min_chars=1；完整被精转覆盖的粗转继续去重。提供 min_chars 和 dedupe=true，后者可隐藏部分重叠的粗转。默认保留尚有独有内容的部分重叠粗转；ref 读不受过滤影响。 |
 | SKILL 同步工具、超时、分页、词库、digest | 通过 | 已更新入口与五份 references，quick_validate 通过；安装与 CLI/MCP 冒烟通过。既有用户自定义 SKILL 不被静默覆盖。 |
@@ -38,7 +38,7 @@
 
 ```sh
 hear context digest --date 2026-10-28
-hear context event EVENT_ID --section decisions
+hear context digest --date 2026-10-28 --mode compact
 hear context read --event EVENT_ID --min-chars 6 --dedupe true --include-coverage false
 hear vocabulary set '看山' --kind product --alias '开山'
 hear vocabulary set '盗梦空间' --kind project --alias '梦空间'
@@ -53,15 +53,17 @@ hear context status --client-tools hear_status,hear_list_context,hear_search_con
 
 ## 验证与复现
 
-- `cargo test --workspace --locked`：全工作区通过；后续修复的 Core 路径另跑完整 Core 回归：358 通过、0 失败、18 个需专用环境的测试忽略。最终 CLI/Core/worker 构建通过。
+- `cargo test --workspace --locked`：全工作区通过；后续修复的 Core 路径另跑完整 Core 回归通过（最新统计见机器可读 gate）。最终 CLI/Core/worker 构建通过。
 - `python3 scripts/smoke_agent_context.py`：词库真实 IPC 增改删与开关、七工具、缺工具检测、digest CLI/MCP 一致、离线/参数错误、并发读取、保持采集关闭、安装保留用户内容全部通过。
 - `context::tests::review_dataset_acceptance`：读取预先制作的 SQLite backup，再复制进临时目录；不会打开生产库写连接。`HEAR_REVIEW_WIRE=1` 使用真实 CLI/MCP 二进制连接同一 Pool/query 实现的临时只读 dispatcher，避免启动录音/模型后台任务。它验证 wire 和查询路径，不宣称替换了安装版 App。
-- `events::rebuild::tests`：词库注入、证据、决定/待办、受 ASR 管理的事件、边界与标题保护、不触发 ASR。
+- `events::rebuild::tests`：词库注入、证据、受 ASR 管理的事件、边界与标题保护、不触发 ASR。
 - 词库冲突与容量、云端重试词库不可变、跨天实体、空白过滤、gap 汇总、客户端缺工具/错误重试语义、热词分词均有回归测试。
+- 最终 compact 真实 CLI/MCP 复验：迁移后原库副本的全天 7 个事件一页返回，CLI 6,696 bytes / 220ms，stdio MCP 240ms。长事件边界、游标模式隔离与旧 JSON 额外字段忽略的回归通过。
+- 正常应用路径 restore 实机通过：原 GUI 和 protocol 21 Core 正常，capture_blocker=none、allow_capture=true、paused_intent=true，10:00–23:00 计划不变。脚本自检失败返回非零，未覆盖数据库备份。
 - 本地热词：使用系统 TTS 生成非用户录音的固定语句，真实 X-ASR worker 解码；测试普通公开模型音频时开关两种路径也正常。
 - `git diff --check`、Rust 格式检查及 SKILL 校验。
 
-机器可读结果：[evidence/hear-agent-review/acceptance.json](evidence/hear-agent-review/acceptance.json)。
+机器可读结果：[首轮验收](evidence/hear-agent-review/acceptance.json)、[最终范围修订](evidence/hear-agent-review/scope-revision.json)、[完整离线 gate](evidence/hear-agent-review/pr-verification.json)。
 
 私有数据及合成音频留在系统临时目录；仓库证据仅保留计时、测试状态、合成语句与工具名，不保存用户谈话正文或凭据。
 

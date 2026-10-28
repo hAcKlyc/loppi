@@ -384,7 +384,7 @@ fn empty_filter_dedupe_and_skipped_coverage_are_explicit() {
 }
 
 #[test]
-fn digest_actions_and_gap_totals_survive_paging() {
+fn digest_and_gap_totals_survive_paging() {
     let db = db();
     let (eid, _) = fixture(&db);
     for i in 0..20 {
@@ -396,13 +396,110 @@ fn digest_actions_and_gap_totals_survive_paging() {
     }
     let v = run(&db, "digest", json!({"time":time(),"limit":1}));
     assert_eq!(v["data"]["events"][0]["event_id"], eid.to_string());
-    assert!(v["data"]["events"][0]["decisions"].is_array());
-    assert_eq!(
-        v["data"]["events"][0]["structured_actions_available"],
-        false
-    );
+    assert_eq!(v["data"]["events"][0]["key_points_count"], 1);
     assert_eq!(v["quality"]["gap_summary"][0]["duration_ms"], 10000);
     assert_eq!(v["quality"]["gaps_truncated"], true);
+}
+
+#[test]
+fn compact_digest_keeps_seven_large_events_within_two_pages() {
+    let db = db();
+    for _ in 0..7 {
+        let (eid, _) = fixture(&db);
+        let mut u: Value = serde_json::from_str(
+            &load_event(&db, &eid.to_string())
+                .unwrap()
+                .understanding
+                .unwrap(),
+        )
+        .unwrap();
+        u["topics"] = json!(vec!["很长的话题".repeat(30); 8]);
+        u["key_points"] = json!(vec![u["key_points"][0].clone(); 200]);
+        // Unsupported legacy extras are ignored without rewriting stored JSON.
+        u["decisions"] = json!([{"invalid_old_field":true}]);
+        u["todos"] = json!("old unsupported value");
+        db.execute(
+            "UPDATE named_events SET title=?2,summary=?3,understanding_json=?4 WHERE id=?1",
+            params![
+                eid.to_string(),
+                "长标题".repeat(100),
+                "正文".repeat(10000),
+                u.to_string()
+            ],
+        )
+        .unwrap();
+    }
+    let mut args = json!({"time":time()});
+    let mut ids = std::collections::HashSet::new();
+    let mut pages = 0;
+    loop {
+        let v = run(&db, "digest", args.clone());
+        pages += 1;
+        assert_eq!(v["data"]["mode"], "compact");
+        for row in v["data"]["events"].as_array().unwrap() {
+            assert!(ids.insert(row["event_id"].as_str().unwrap().to_owned()));
+            assert_eq!(row["key_points_count"], 200);
+            assert_eq!(row["topics_count"], 8);
+            assert_eq!(row["topics_truncated"], true);
+            assert_eq!(row["title_truncated"], true);
+            for absent in [
+                "summary",
+                "key_points",
+                "mentioned_objects",
+                "event_fragment",
+                "decisions",
+                "todos",
+                "structured_actions_available",
+            ] {
+                assert!(row.get(absent).is_none());
+            }
+        }
+        if v["page"]["has_more"] == false {
+            break;
+        }
+        assert!(pages < 2);
+        let mut wrong_mode = args.clone();
+        wrong_mode["mode"] = json!("full");
+        wrong_mode["cursor"] = v["page"]["next_cursor"].clone();
+        assert_eq!(
+            query(
+                &db,
+                &Query::parse("digest", wrong_mode).unwrap(),
+                Uuid::new_v4()
+            )["error"]["code"],
+            "cursor_stale"
+        );
+        args["cursor"] = v["page"]["next_cursor"].clone();
+    }
+    assert_eq!(ids.len(), 7);
+    let v = run(
+        &db,
+        "digest",
+        json!({"time":time(),"mode":"full","limit":1}),
+    );
+    let row = &v["data"]["events"][0];
+    assert!(row["summary"].is_array() && row["event_fragment"].is_object());
+    assert!(row.get("decisions").is_none() && row.get("todos").is_none());
+    let eid = ids.iter().next().unwrap();
+    let v = run(&db, "event", json!({"event_id":eid,"section":"overview"}));
+    assert_eq!(v["data"]["understanding_available"], true);
+    assert_eq!(
+        v["data"]["sections"],
+        json!([
+            "summary",
+            "topics",
+            "key_points",
+            "mentioned_objects",
+            "moments"
+        ])
+    );
+    assert!(
+        load_event(&db, eid)
+            .unwrap()
+            .understanding
+            .unwrap()
+            .contains("invalid_old_field")
+    );
 }
 
 #[test]

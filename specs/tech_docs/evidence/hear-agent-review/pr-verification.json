@@ -10,7 +10,7 @@
         "run",
         "typecheck"
       ],
-      "seconds": 2.63,
+      "seconds": 2.22,
       "exit_code": 0
     },
     {
@@ -20,7 +20,7 @@
         "run",
         "lint"
       ],
-      "seconds": 0.55,
+      "seconds": 0.46,
       "exit_code": 0
     },
     {
@@ -31,7 +31,7 @@
         "--workspace",
         "--locked"
       ],
-      "seconds": 20.68,
+      "seconds": 14.02,
       "exit_code": 0
     },
     {
@@ -42,7 +42,7 @@
         "--workspace",
         "--locked"
       ],
-      "seconds": 63.38,
+      "seconds": 58.41,
       "exit_code": 0
     },
     {
@@ -61,7 +61,7 @@
         "scripts/test_timeline_view.mjs",
         "scripts/test_usage_statistics.mjs"
       ],
-      "seconds": 5.31,
+      "seconds": 5.17,
       "exit_code": 0
     },
     {
@@ -70,7 +70,7 @@
         "node",
         "scripts/test_rabbit_assets.cjs"
       ],
-      "seconds": 0.3,
+      "seconds": 0.29,
       "exit_code": 0
     },
     {
@@ -85,7 +85,7 @@
         "-p",
         "test_*.py"
       ],
-      "seconds": 1.21,
+      "seconds": 1.31,
       "exit_code": 0
     },
     {
@@ -101,17 +101,17 @@
         "-framework",
         "QuartzCore",
         "-o",
-        "/var/folders/lt/tx2xdhgx3g97md2696nm0fww0000gn/T/hear-native-policy-6g3_8jyg/entry-policy"
+        "/var/folders/lt/tx2xdhgx3g97md2696nm0fww0000gn/T/hear-native-policy-x54637jf/entry-policy"
       ],
-      "seconds": 0.73,
+      "seconds": 0.68,
       "exit_code": 0
     },
     {
       "name": "native-policy",
       "command": [
-        "/var/folders/lt/tx2xdhgx3g97md2696nm0fww0000gn/T/hear-native-policy-6g3_8jyg/entry-policy"
+        "/var/folders/lt/tx2xdhgx3g97md2696nm0fww0000gn/T/hear-native-policy-x54637jf/entry-policy"
       ],
-      "seconds": 0.45,
+      "seconds": 0.4,
       "exit_code": 0
     },
     {
@@ -131,17 +131,17 @@
         "-framework",
         "CoreGraphics",
         "-o",
-        "/var/folders/lt/tx2xdhgx3g97md2696nm0fww0000gn/T/hear-native-policy-6g3_8jyg/capture-errors"
+        "/var/folders/lt/tx2xdhgx3g97md2696nm0fww0000gn/T/hear-native-policy-x54637jf/capture-errors"
       ],
-      "seconds": 0.61,
+      "seconds": 0.63,
       "exit_code": 0
     },
     {
       "name": "native-capture-errors",
       "command": [
-        "/var/folders/lt/tx2xdhgx3g97md2696nm0fww0000gn/T/hear-native-policy-6g3_8jyg/capture-errors"
+        "/var/folders/lt/tx2xdhgx3g97md2696nm0fww0000gn/T/hear-native-policy-x54637jf/capture-errors"
       ],
-      "seconds": 0.4,
+      "seconds": 0.45,
       "exit_code": 0
     },
     {
@@ -151,7 +151,7 @@
         "run",
         "build"
       ],
-      "seconds": 2.56,
+      "seconds": 2.57,
       "exit_code": 0
     },
     {
@@ -162,7 +162,7 @@
         "--workspace",
         "--locked"
       ],
-      "seconds": 11.01,
+      "seconds": 9.9,
       "exit_code": 0
     },
     {
@@ -173,7 +173,7 @@
         "--directory",
         "target/debug"
       ],
-      "seconds": 1.79,
+      "seconds": 2.69,
       "exit_code": 0
     },
     {
@@ -182,7 +182,7 @@
         "/Users/zhihu/miniconda3/bin/python3",
         "scripts/smoke_core.py"
       ],
-      "seconds": 4.67,
+      "seconds": 4.66,
       "exit_code": 0
     },
     {
@@ -191,7 +191,7 @@
         "/Users/zhihu/miniconda3/bin/python3",
         "scripts/smoke_diagnostics.py"
       ],
-      "seconds": 3.4,
+      "seconds": 3.39,
       "exit_code": 0
     }
   ],

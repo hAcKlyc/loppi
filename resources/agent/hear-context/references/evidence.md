@@ -1,6 +1,6 @@
 # 证据
 
-摘要、topics、key_points、mentioned_objects、decisions、todos 是基于粗转的派生理解，用于定位与概览。决定、承诺、数字和直接引语应核对原文。理解缺失时按原文回答，不为获取字段自动重新转写。
+摘要、topics、key_points、mentioned_objects 是基于粗转的派生理解，用于定位与概览。决定、承诺、数字和直接引语应核对原文。理解缺失时按原文回答，不为获取字段自动重新转写。
 
 best_available 优先当前有效精转和人工修正文；未完整覆盖的粗转保留并标记 overlaps_precise。不要把重叠文本当成重复发生。粗转引用始终解析为原始粗转；可另读同时间范围精转作对照。
 

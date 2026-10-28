@@ -62,7 +62,7 @@ pub(super) fn apply(
     let mut allowed = current.clone();
     let mut inherited = HashSet::new();
     if let Some(prior) = prior {
-        for kind in ["key_points", "mentioned_objects", "decisions", "todos"] {
+        for kind in ["key_points", "mentioned_objects"] {
             if let Some(items) = prior["understanding"][kind].as_array() {
                 for item in items {
                     if let Some(refs) = item["evidence_indices"].as_array() {

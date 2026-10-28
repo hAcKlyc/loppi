@@ -404,12 +404,14 @@ fn understanding(db: &Connection, e: &Event) -> Result<Option<Value>> {
         return Ok(None);
     }
     let mut records = std::collections::HashMap::new();
-    for key in ["decisions", "todos"] {
-        if !v[key].is_array() {
-            v[key] = json!([]);
-        }
-    }
-    for section in ["key_points", "mentioned_objects", "decisions", "todos"] {
+    // Read only the supported lightweight fields; legacy extras stay untouched in storage.
+    v.as_object_mut().unwrap().retain(|key, _| {
+        matches!(
+            key.as_str(),
+            "schema_version" | "topics" | "key_points" | "mentioned_objects"
+        )
+    });
+    for section in ["key_points", "mentioned_objects"] {
         for item in v[section].as_array_mut().unwrap() {
             let Some(refs) = item["evidence_refs"].as_array() else {
                 return Ok(None);
@@ -536,9 +538,7 @@ fn event(db: &Connection, q: &Query, a: &api::EventArgs, id: Uuid) -> Result<Val
                 "topics",
                 "key_points",
                 "mentioned_objects",
-                "moments",
-                "decisions",
-                "todos"
+                "moments"
             ]);
         }
         "summary" => {
@@ -999,7 +999,7 @@ fn understanding_state(db: &Connection, eid: &str, e: &Event, available: bool) -
     )
 }
 
-fn digest(db: &Connection, q: &Query, a: &api::ListArgs, id: Uuid) -> Result<Value> {
+fn digest(db: &Connection, q: &Query, a: &api::DigestArgs, id: Uuid) -> Result<Value> {
     let mut page = Page::new(
         q,
         a.cursor.as_deref(),
@@ -1029,7 +1029,26 @@ fn digest(db: &Connection, q: &Query, a: &api::ListArgs, id: Uuid) -> Result<Val
             return Err("cursor_stale: digest event changed".into());
         }
         let state = understanding_state(db, &eid, &e, u.is_some())?;
-        let base = json!({"event_id":eid,"content_version":version,"title":e.title,"from":api::timestamp(e.start),"to":api::timestamp(e.end),"content_kind":"derived","understanding_source":"coarse_transcript","understanding_state":state,"summary":[],"topics":[],"key_points":[],"mentioned_objects":[],"decisions":[],"todos":[],"structured_actions_available":e.understanding.as_deref().and_then(|s|serde_json::from_str::<Value>(s).ok()).is_some_and(|v|v["decisions"].is_array() && v["todos"].is_array())});
+        if a.mode == api::DigestMode::Compact {
+            let topics = u.as_ref().and_then(|v| v["topics"].as_array());
+            let topics_count = topics.map_or(0, Vec::len);
+            items.push(Item {
+                time: e.start,
+                key: eid.clone(),
+                value: json!({"event_id":eid,"content_version":version,"title":excerpt(&e.title,160),"title_truncated":e.title.chars().count()>160,"from":api::timestamp(e.start),"to":api::timestamp(e.end),"content_kind":"derived","understanding_state":state,"topics":topics.into_iter().flatten().take(6).map(|v|excerpt(v.as_str().unwrap_or(""),80)).collect::<Vec<_>>(),"topics_count":topics_count,"topics_truncated":topics.is_some_and(|v|v.len()>6 || v.iter().take(6).any(|v|v.as_str().is_some_and(|s|s.chars().count()>80))),"key_points_count":u.as_ref().and_then(|v|v["key_points"].as_array()).map(Vec::len)}),
+            });
+            // One look-ahead row is sufficient to produce the next cursor.
+            if items
+                .iter()
+                .filter(|i| page.accepts(i.time, &i.key))
+                .count()
+                > page.limit
+            {
+                break;
+            }
+            continue;
+        }
+        let base = json!({"event_id":eid,"content_version":version,"title":e.title,"from":api::timestamp(e.start),"to":api::timestamp(e.end),"content_kind":"derived","understanding_source":"coarse_transcript","understanding_state":state,"summary":[],"topics":[],"key_points":[],"mentioned_objects":[]});
         let mut fragments = Vec::new();
         let mut fragment = base.clone();
         let mut entries: Vec<(&str, Value)> = Vec::new();
@@ -1039,13 +1058,7 @@ fn digest(db: &Connection, q: &Query, a: &api::ListArgs, id: Uuid) -> Result<Val
             }
         }
         if let Some(u) = u {
-            for key in [
-                "topics",
-                "key_points",
-                "mentioned_objects",
-                "decisions",
-                "todos",
-            ] {
+            for key in ["topics", "key_points", "mentioned_objects"] {
                 entries.extend(u[key].as_array().unwrap().iter().cloned().map(|v| (key, v)));
             }
         }
@@ -1071,5 +1084,17 @@ fn digest(db: &Connection, q: &Query, a: &api::ListArgs, id: Uuid) -> Result<Val
             });
         }
     }
-    page.finish(id,json!({"events":[],"note":"Existing derived results only; empty action arrays with structured_actions_available=false mean not generated. Combine event fragments by event_id."}),items,coverage(db,&range,m)?)
+    let mut result = page.finish(
+        id,
+        json!({"events":[],"mode":a.mode}),
+        items,
+        coverage(db, &range, m)?,
+    )?;
+    if a.mode == api::DigestMode::Compact {
+        result["page"]
+            .as_object_mut()
+            .unwrap()
+            .remove("text_chunk_characters");
+    }
+    Ok(result)
 }

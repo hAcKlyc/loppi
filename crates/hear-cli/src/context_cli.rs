@@ -85,7 +85,7 @@ enum Action {
         #[arg(long, value_enum)]
         sources: Option<super::Sources>,
     },
-    /// Read structured daily/event digest with decisions and todos.
+    /// Browse one compact row per event; use full mode for existing detail.
     Digest {
         #[command(flatten)]
         time: Time,
@@ -93,6 +93,8 @@ enum Action {
         page: Page,
         #[arg(long, value_enum)]
         sources: Option<super::Sources>,
+        #[arg(long, default_value = "compact", value_parser = ["compact", "full"])]
+        mode: String,
     },
     /// Literal keyword/phrase search, optionally filtered by an identified speaker.
     Search {
@@ -185,6 +187,7 @@ pub fn run(c: Context) -> i32 {
             time,
             page,
             sources,
+            mode,
         } => {
             if let Some(t) = time.value() {
                 args["time"] = t;
@@ -192,6 +195,7 @@ pub fn run(c: Context) -> i32 {
             if let Some(s) = sources {
                 args["sources"] = source(&s);
             }
+            args["mode"] = json!(mode);
             page.add(&mut args);
             "digest"
         }

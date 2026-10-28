@@ -461,19 +461,7 @@ fn live_vocabulary_acceptance() {
     .unwrap();
     assert!(output.to_string().contains("看山") && output.to_string().contains("盗梦空间"));
     assert!(!output.to_string().contains("开山"));
-    assert!(
-        !output["events"][0]["understanding"]["decisions"]
-            .as_array()
-            .unwrap()
-            .is_empty()
-    );
-    assert!(
-        !output["events"][0]["understanding"]["todos"]
-            .as_array()
-            .unwrap()
-            .is_empty()
-    );
-    println!("live LLM vocabulary + decisions/todos passed");
+    println!("live LLM vocabulary passed");
     let audio = std::fs::read(std::env::var("HEAR_VOCABULARY_WAV").unwrap()).unwrap();
     let id_path = out.join("asr-request-id.txt");
     let asr_key = key(CloudProvider::Asr);

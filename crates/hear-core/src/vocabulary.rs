@@ -223,8 +223,6 @@ pub fn normalize_generated(value: &mut Value, vocabulary: &Value) {
                         | "understanding"
                         | "key_points"
                         | "mentioned_objects"
-                        | "decisions"
-                        | "todos"
                         | "summary_update"
                         | "append"
                         | "replace"
