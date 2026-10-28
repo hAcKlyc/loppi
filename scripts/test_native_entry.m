@@ -11,10 +11,12 @@
 @property BOOL isKeyWindow;
 - (void)makeKeyAndOrderFront:(id)sender;
 - (void)resignKeyWindow;
+- (NSPoint)convertPointToScreen:(NSPoint)point;
 @end
 @implementation EntryTestWindow
 - (void)makeKeyAndOrderFront:(id)sender { (void)sender; }
 - (void)resignKeyWindow { self.isKeyWindow=NO; }
+- (NSPoint)convertPointToScreen:(NSPoint)point { return NSMakePoint(point.x+self.frame.origin.x,point.y+self.frame.origin.y); }
 @end
 @interface EntryTest : HearEntry
 @property NSPoint testPoint;
@@ -35,9 +37,13 @@
   return g;
 }
 @end
-static int enters, releases, dismissals, presented, focused;
+static int enters, releases, dismissals, presented, focused, dragStarts, dragEnds, marks;
+static __weak HearEntry *observedEntry;
+static HearEntryGeometry dragStartGeometry;
 static uint64_t confirmedGeneration;
 static void eventReceived(int kind,int value,uint64_t generation) {
+  if(kind==5) { if(value) { dragStarts++; dragStartGeometry=observedEntry.geometry; } else dragEnds++; }
+  if(kind==10) marks++;
   if(kind==8) { presented++; confirmedGeneration=generation; }
   if(kind==9) { focused++; confirmedGeneration=generation; }
   if(kind==1 && value) enters++;
@@ -166,7 +172,108 @@ static void testTopLayouts(void) {
   g=topLayout(screen,32,NSZeroRect,right,1,NO,NO,&frame);
   assert(g.band==0 && NSMidX(frame)==735); // incomplete safe areas are not a notch
 }
+@interface FloatingTestScreen : NSObject
+@property NSRect visibleFrame;
+@end
+@implementation FloatingTestScreen
+@end
+@interface FloatingTestEvent : NSObject
+@property NSEventType type;
+@property NSWindow *window;
+@property NSPoint locationInWindow;
+@end
+@implementation FloatingTestEvent
+@end
+@interface FloatingTest : HearEntry
+@property FloatingTestScreen *screen;
+@end
+@implementation FloatingTest
+- (NSScreen *)floatingScreen { return (NSScreen *)self.screen; }
+- (void)moveFloatingTo:(NSPoint)anchor { self.anchor=anchor; [self layout]; }
+- (HearEntryGeometry)layoutAnimated:(double)duration {
+  (void)duration;
+  NSRect frame;
+  self.geometry=floatingLayout(self.screen.visibleFrame,self.anchor,(self.view!=0 || self.feedback) && !self.drag,&frame);
+  ((EntryTestWindow *)self.window).frame=frame; self.targetFrame=frame;
+  return self.geometry;
+}
+@end
+static void testFloating(void) {
+  // Same production geometry on positive and negative-coordinate displays.
+  for(int display=0;display<2;display++) {
+    NSRect screen=NSMakeRect(display ? -1920 : 0,display ? -300 : 0,1470,900);
+    NSPoint candidates[]={NSMakePoint(NSMinX(screen)+100,NSMidY(screen)),NSMakePoint(NSMaxX(screen)-100,NSMidY(screen)),NSMakePoint(NSMidX(screen),NSMinY(screen)+90),NSMakePoint(NSMidX(screen),NSMaxY(screen)-90)};
+    for(int edge=0;edge<4;edge++) {
+      NSPoint anchor=floatingAnchor(screen,candidates[edge],YES);
+      assert(edge!=0 || anchor.x==NSMinX(screen)+34);
+      assert(edge!=1 || anchor.x==NSMaxX(screen)-34);
+      assert(edge!=2 || anchor.y==NSMinY(screen)+34);
+      assert(edge!=3 || anchor.y==NSMaxY(screen)-34);
+      NSRect frame;
+      HearEntryGeometry g=floatingLayout(screen,anchor,YES,&frame);
+      assert(NSContainsRect(screen,frame));
+      assert(fabs(frame.origin.x+g.rabbit_x+26-anchor.x)<0.001);
+      assert(fabs(NSMaxY(frame)-g.rabbit_y-26-anchor.y)<0.001);
+      assert(hitRegion(g,1,1,YES,NSMakePoint(g.rabbit_x+26,g.rabbit_y+26)));
+      assert(hitRegion(g,1,1,NO,NSMakePoint(60,g.menu_y+80)));
+      assert(!hitRegion(g,1,1,NO,NSMakePoint(8,g.menu_y)));
+      if(edge==3) assert(g.menu_y==55 && g.rabbit_y==8);
+      NSRect compact; HearEntryGeometry c=floatingLayout(screen,anchor,NO,&compact);
+      assert(c.rabbit_x==8 && c.rabbit_y==8 && NSContainsRect(screen,compact));
+    }
+  }
+  EntryTestWindow *window=[EntryTestWindow new];
+  FloatingTest *e=[FloatingTest new]; e.window=(NSWindow *)window; e.callback=eventReceived;
+  observedEntry=e;
+  e.screen=[FloatingTestScreen new]; e.screen.visibleFrame=NSMakeRect(0,0,1000,800);
+  e.mode=1; e.anchor=NSMakePoint(966,400); [e layout];
+  FloatingTestEvent *event=[FloatingTestEvent new]; event.window=e.window;
+  event.type=NSEventTypeLeftMouseDown;
+  event.locationInWindow=NSMakePoint(e.anchor.x-window.frame.origin.x,e.anchor.y-window.frame.origin.y);
+  assert([e checkPointer:(NSEvent *)event]); // Event coordinates, not a later hardware cursor sample.
+  event.type=NSEventTypeLeftMouseDragged;
+  assert([e updatePointer:(NSEvent *)event at:NSMakePoint(963,400)]);
+  assert(!e.drag && marks==0 && dragStarts==0);
+  event.type=NSEventTypeLeftMouseUp;
+  assert([e updatePointer:(NSEvent *)event at:NSMakePoint(963,400)]);
+  assert(marks==1 && dragEnds==0 && !e.dragPending);
+  e.feedback=YES; [e layout];
+  assert(e.geometry.height==230 && e.geometry.rabbit_y==170);
+  event.type=NSEventTypeLeftMouseDown;
+  assert([e updatePointer:(NSEvent *)event at:e.anchor]);
+  event.type=NSEventTypeLeftMouseDragged;
+  assert([e updatePointer:(NSEvent *)event at:NSMakePoint(959,400)]);
+  assert(e.drag && e.view==0 && dragStarts==1);
+  assert(dragStartGeometry.width==68 && dragStartGeometry.height==68);
+  assert(dragStartGeometry.rabbit_x==8 && dragStartGeometry.rabbit_y==8);
+  assert([e updatePointer:(NSEvent *)event at:NSMakePoint(100,500)]);
+  assert(NSEqualPoints(e.anchor,NSMakePoint(100,500)));
+  event.type=NSEventTypeLeftMouseUp;
+  assert([e updatePointer:(NSEvent *)event at:NSMakePoint(80,510)]);
+  assert(!e.drag && !e.dragPending && dragEnds==1 && marks==1);
+  assert(NSEqualPoints(e.anchor,NSMakePoint(34,510)));
+  // Unrelated releases cannot save again or become marks.
+  [e updatePointer:(NSEvent *)event at:NSMakePoint(80,510)];
+  assert(dragEnds==1 && marks==1);
+  // The last dragged sample can still be below threshold; mouse-up is final.
+  e.feedback=NO; e.anchor=NSMakePoint(966,400); [e layout];
+  event.type=NSEventTypeLeftMouseDown;
+  [e updatePointer:(NSEvent *)event at:e.anchor];
+  event.type=NSEventTypeLeftMouseDragged;
+  [e updatePointer:(NSEvent *)event at:NSMakePoint(960,400)];
+  assert(!e.drag);
+  event.type=NSEventTypeLeftMouseUp;
+  [e updatePointer:(NSEvent *)event at:NSMakePoint(950,400)];
+  assert(marks==1 && dragStarts==2 && dragEnds==2 && !e.dragPending);
+  event.type=NSEventTypeLeftMouseDown;
+  assert([e updatePointer:(NSEvent *)event at:e.anchor]);
+  void *handle=(__bridge void *)window;
+  objc_setAssociatedObject(window,HearEntryKey,e,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  hear_entry_layout(handle,0,0,0,0,0,1);
+  assert(!e.dragPending && !e.drag && marks==1);
+}
 int main(void) {
+  testFloating();
   NSRect target=NSMakeRect(529,796,412,160);
   NSRect peak=expansionPeak(NSMakeRect(825,924,44,32),target);
   assert(peak.size.width>412 && peak.size.width<420);
@@ -206,7 +313,7 @@ int main(void) {
   HearEntryGeometry compact={44,32,32,8,2};
   assert(hitRegion(compact,0,0,NO,NSMakePoint(22,16)));
   assert(!hitRegion(compact,0,0,NO,NSMakePoint(0,0)));
-  HearEntryGeometry floating={132,230,0,72,170};
+  HearEntryGeometry floating={132,230,0,72,170,0,0,8};
   assert(hitRegion(floating,1,1,NO,NSMakePoint(98,196)));
   assert(hitRegion(floating,1,1,NO,NSMakePoint(50,100)));
   assert(!hitRegion(floating,1,1,NO,NSMakePoint(0,200)));

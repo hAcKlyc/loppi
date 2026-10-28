@@ -36,7 +36,6 @@ unsafe extern "C" {
         restore: i32,
         generation: u64,
     ) -> i32;
-    fn hear_entry_drag(window: *mut std::ffi::c_void, dragging: i32);
     fn hear_entry_position(window: *mut std::ffi::c_void) -> *mut libc::c_char;
     fn hear_entry_restore(window: *mut std::ffi::c_void, uuid: *const libc::c_char, x: f64, y: f64);
     fn hear_entry_window_id(window: *mut std::ffi::c_void) -> u32;
@@ -371,6 +370,7 @@ pub struct Geometry {
     rabbit_y: f64,
     top_band: f64,
     top_shift: f64,
+    menu_y: f64,
 }
 
 async fn native<T: Send + 'static>(
@@ -402,7 +402,7 @@ async fn native<T: Send + 'static>(
 }
 extern "C" fn native_event(kind: i32, value: i32, generation: u64) {
     let Some(app) = HOST.get() else { return };
-    if kind == 2 || kind == 3 {
+    if kind == 2 || kind == 3 || (kind == 5 && value == 1) {
         let runtime = app.state::<Arc<EntryRuntime>>();
         let mut inner = runtime.inner.lock().unwrap();
         inner.canceled_generation = inner.layout_generation;
@@ -420,10 +420,17 @@ extern "C" fn native_event(kind: i32, value: i32, generation: u64) {
     } else {
         None
     };
+    // Read and save the exact release position before another gesture can
+    // change it. The WebView is a projection, not the owner of drag completion.
+    let error = if kind == 5 && value == 0 {
+        save_entry_position(app).err()
+    } else {
+        None
+    };
     let _ = app.emit_to(
         "float",
         "hear-entry-native",
-        serde_json::json!({"kind":kind,"value":value,"generation":generation,"geometry":geometry}),
+        serde_json::json!({"kind":kind,"value":value,"generation":generation,"geometry":geometry,"error":error}),
     );
 }
 pub fn install(
@@ -608,37 +615,27 @@ pub async fn entry_focus(
     })
     .await
 }
-#[tauri::command]
-pub async fn entry_drag(app: tauri::AppHandle, dragging: bool) -> Result<(), String> {
-    let saved = native(app.clone(), move |_, n| {
+fn save_entry_position(app: &tauri::AppHandle) -> Result<(), String> {
+    let window = app.get_webview_window("float").ok_or("entry unavailable")?;
+    let n = window.ns_window().map_err(|error| error.to_string())?;
+    let position = {
+        let p = unsafe { hear_entry_position(n) };
+        if p.is_null() {
+            return Err("cannot read entry position".into());
+        }
+        let result = serde_json::from_slice::<Position>(unsafe { CStr::from_ptr(p) }.to_bytes())
+            .map_err(|e| e.to_string());
         unsafe {
-            hear_entry_drag(n, dragging as i32);
+            libc::free(p.cast());
         }
-        if dragging {
-            Ok(None)
-        } else {
-            let p = unsafe { hear_entry_position(n) };
-            if p.is_null() {
-                return Err("cannot read entry position".into());
-            }
-            let result =
-                serde_json::from_slice::<Position>(unsafe { CStr::from_ptr(p) }.to_bytes())
-                    .map_err(|e| e.to_string());
-            unsafe {
-                libc::free(p.cast());
-            }
-            result.map(Some)
-        }
-    })
-    .await?;
-    if let Some(position) = saved {
-        let runtime = app.state::<Arc<EntryRuntime>>();
-        let mut inner = runtime.inner.lock().unwrap();
-        let mut prefs = inner.prefs.clone();
-        prefs.floating = Some(position);
-        runtime.save(&prefs)?;
-        inner.prefs = prefs;
-    }
+        result?
+    };
+    let runtime = app.state::<Arc<EntryRuntime>>();
+    let mut inner = runtime.inner.lock().unwrap();
+    let mut prefs = inner.prefs.clone();
+    prefs.floating = Some(position);
+    runtime.save(&prefs)?;
+    inner.prefs = prefs;
     Ok(())
 }
 #[derive(Deserialize)]

@@ -4,9 +4,7 @@ use std::time::{Duration, Instant};
 use tauri::Manager;
 mod entry;
 mod onboarding;
-use entry::{
-    EntryRuntime, entry_action, entry_drag, entry_focus, entry_layout, entry_mode, entry_snapshot,
-};
+use entry::{EntryRuntime, entry_action, entry_focus, entry_layout, entry_mode, entry_snapshot};
 use std::sync::{Arc, Mutex};
 static PRIVACY_REQUEST: Mutex<()> = Mutex::new(());
 
@@ -409,7 +407,6 @@ pub fn run() {
             entry_mode,
             entry_layout,
             entry_focus,
-            entry_drag,
             entry_action
         ])
         .build(tauri::generate_context!())
