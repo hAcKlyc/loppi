@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: implemented
 updated: 2026-10-28
 ---
 
@@ -32,7 +32,7 @@ updated: 2026-10-28
   - [x] 拉取 origin/main，创建独立工作树与分支。
   - [x] 实现与回归。
   - [x] 静态、构建、交互/浏览器和离线验证。
-  - [ ] 三视角审查、提交、PR。
+  - [x] 三视角审查、提交、PR。
 
 ### 当前批次 Review 基线
 - Base：bf161ccb5311743d037af05a938d8f211ca2becd
@@ -52,3 +52,5 @@ updated: 2026-10-28
 
 - 2026-10-28：cross-review-code 三路 fresh-context review 均 PASS。requirements 核对全部契约；adversarial 独立运行 10,000 组双音源/重叠/同起点数据，部分投影均为完整投影前缀；architecture 确认状态与生命周期仍归 DetailDrawer，无额外 owner/protocol/store。两项补充测试建议（range_detail 单独交互、刷新修改旧正文）属非阻塞覆盖建议，不扩大本次实现。
 - 最终单批次整体门禁通过：定向 9 项、lint/typecheck/build 复核通过，完整离线与浏览器证据仍适用；无阻塞发现或待决策。待 Git 提交和 PR 交付。
+
+- 2026-10-28：实现提交 `5a529c0`，已推送分支并创建 [PR #18](https://github.com/hAcKlyc/hear/pull/18)。整份需求实现与验证完成；本机安装版未替换。
