@@ -75,6 +75,15 @@ fn run() -> Result<(), String> {
         );
         return Ok(());
     }
+    if args.as_slice() == ["--check-credentials"] {
+        let result = cloud::check_credentials(&data_dir()?.join("hear.sqlite"))?;
+        println!("{}", serde_json::to_string_pretty(&result).unwrap());
+        return if result["ok"] == true {
+            Ok(())
+        } else {
+            Err("configured cloud credentials are not readable; see check results".into())
+        };
+    }
     if args.first().is_some_and(|s| s == "capture-source") {
         if args.len() != 2 {
             return Err("invalid capture helper arguments".into());
