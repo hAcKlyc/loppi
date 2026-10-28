@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: implemented
 updated: 2026-10-29
 ---
 
@@ -32,7 +32,7 @@ updated: 2026-10-29
   - [x] 定位现有实现，澄清四边吸附。
   - [x] 实现与回归。
   - [x] 构建和真实 macOS 验证。
-  - [ ] 三视角审查、修复、提交及本地整合。
+  - [x] 三视角审查、修复、提交及本地整合。
 
 ### 当前批次 Review 基线
 - Base：69863c1fa8bcab08cf4475d6147506e2819dad5c。
@@ -52,3 +52,4 @@ updated: 2026-10-29
 - 2026-10-29：requirements 与 adversarial 初审各发现一个范围内阻塞：提示仍显示时开始事件携带旧的大窗口几何；最后一次 mouse-up 才越过 7pt 时可能误触标记。主 Agent 确认均违反拖动/点击互斥和几何契约，分别修为先移动并收紧窗口再发开始事件、拖动与松手共用阈值判定；没有新增状态 owner 或保存路径。两位原 reviewer 定向复核 PASS。
 - 2026-10-29：修复后原生生产回归、React 交互、typecheck、lint、cargo check 和匹配核心/GUI 构建 PASS。实际桌面在 2.01 秒内完成点击标记 → 收起菜单 → 提示仍显示时拖到右边，兔子与提示完整可见，落点 x > 0.97，moments 仅由点击从 1 增至 2，拖动无新增；最后样本越阈值由精确原生事件序列回归覆盖。未受两处输入修复影响的后台离线检查沿用上述 16 项证据。最终架构审查待完成。
 - 2026-10-29：最终 fresh-context architecture 审查 PASS，确认现有原生 owner、React 投影与 GUI 配置边界，未新增 store/队列/重试/兼容层；同步 RFC 中本地事件监听消费范围的旧描述后定点复核通过。三项 required lens 完成，两个阻塞均根因修复，证据缺口已关闭，无待用户决策。隔离测试应用已关闭。
+- 2026-10-29：Batch 1 提交 `154c53ea90f337fee18615e1f94a350365b0f77b`；最终 HEAD 重新执行 typecheck、lint、cargo check 均 PASS。逐条核对本台账，单批次最终候选已覆盖全部需求与 mandatory 桌面验收，review 后仅修正文档，不重复扩大审查。已 fast-forward 整合到 `/Users/ethan/Projects/hear` 的 `codex/event-understanding`，原有未跟踪文件状态完全一致。状态改为 implemented；安装版未替换、外接屏未实测的边界保持如上。
