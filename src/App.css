@@ -2381,3 +2381,10 @@ body.floating-body .float-wrap {
 	font-size: var(--type-meta);
 	color: var(--color-danger);
 }
+
+.transcript-pagination {
+	padding: var(--space-4);
+	text-align: center;
+	color: var(--color-text-secondary);
+	font-size: var(--type-meta);
+}
