@@ -39,11 +39,23 @@ struct Understanding {
     topics: Vec<String>,
     key_points: Vec<Point>,
     mentioned_objects: Vec<Object>,
+    #[serde(default)]
+    decisions: Vec<Point>,
+    #[serde(default)]
+    todos: Vec<Todo>,
 }
 
 #[derive(Serialize, Deserialize)]
 struct Point {
     text: String,
+    evidence_refs: Vec<EvidenceRef>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct Todo {
+    text: String,
+    owner: Option<String>,
+    due: Option<String>,
     evidence_refs: Vec<EvidenceRef>,
 }
 
@@ -83,6 +95,8 @@ pub(super) fn prepare_context(
                         .iter()
                         .flat_map(|o| &o.evidence_refs),
                 )
+                .chain(stored.decisions.iter().flat_map(|p| &p.evidence_refs))
+                .chain(stored.todos.iter().flat_map(|p| &p.evidence_refs))
             {
                 let exists: bool = db
                     .query_row(
@@ -105,7 +119,7 @@ pub(super) fn prepare_context(
             }
             let mut value = serde_json::to_value(stored).map_err(|e| e.to_string())?;
             value.as_object_mut().unwrap().remove("schema_version");
-            for key in ["key_points", "mentioned_objects"] {
+            for key in ["key_points", "mentioned_objects", "decisions", "todos"] {
                 for (item_index, item) in value[key].as_array_mut().unwrap().iter_mut().enumerate()
                 {
                     item["item_index"] = json!(item_index);
@@ -172,7 +186,7 @@ pub(super) fn normalize(
         .collect();
     let mut allowed = current.clone();
     if let Some(prior) = prior {
-        for key in ["key_points", "mentioned_objects"] {
+        for key in ["key_points", "mentioned_objects", "decisions", "todos"] {
             if let Some(items) = prior["understanding"][key].as_array() {
                 for item in items {
                     if let Some(indices) = item["evidence_indices"].as_array() {
@@ -217,11 +231,16 @@ pub(super) fn normalize(
         })
     };
     let object = |value: &Value| {
+        let (entity_id, name, kind) = crate::vocabulary::entity(
+            &text(&value["name"])?,
+            &text(&value["type"])?,
+            &input["vocabulary"],
+        );
         Some(Object {
-            name: text(&value["name"])?,
-            r#type: text(&value["type"])?,
+            name,
+            r#type: kind,
             context: text(&value["context"])?,
-            entity_id: None,
+            entity_id: Some(entity_id),
             evidence_refs: references(value)?,
         })
     };
@@ -230,6 +249,8 @@ pub(super) fn normalize(
         topics: Vec::new(),
         key_points: Vec::new(),
         mentioned_objects: Vec::new(),
+        decisions: Vec::new(),
+        todos: Vec::new(),
     };
     for topic in old["topics"]
         .as_array()?
@@ -268,6 +289,26 @@ pub(super) fn normalize(
             result.mentioned_objects.push(object);
         }
     }
+    let empty_items = Vec::new();
+    result.decisions = update_items(
+        old["decisions"].as_array().unwrap_or(&empty_items),
+        output["decisions"].as_array().unwrap_or(&empty_items),
+        &current,
+        point,
+    );
+    result.todos = update_items(
+        old["todos"].as_array().unwrap_or(&empty_items),
+        output["todos"].as_array().unwrap_or(&empty_items),
+        &current,
+        |v| {
+            Some(Todo {
+                text: text(&v["text"])?,
+                owner: text(&v["owner"]),
+                due: text(&v["due"]),
+                evidence_refs: references(v)?,
+            })
+        },
+    );
     serde_json::to_string(&result).ok()
 }
 

@@ -51,6 +51,7 @@ mod storage;
 mod system_audio;
 mod unilogs;
 mod usage;
+mod vocabulary;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum LaunchMode {
@@ -717,6 +718,22 @@ fn coarse_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
                 );
             }
             stage = "coarse_recognize";
+            let v = vocabulary::list(&shared.store.lock().map_err(|e| e.to_string())?.db)?;
+            worker
+                .as_mut()
+                .unwrap()
+                .set_hotwords(if v["settings"]["local_asr"] == true {
+                    serde_json::from_value::<Vec<hear_protocol::vocabulary::Entry>>(
+                        v["entries"].clone(),
+                    )
+                    .map_err(|e| e.to_string())?
+                    .into_iter()
+                    .filter(|e| e.enabled)
+                    .map(|e| e.name)
+                    .collect()
+                } else {
+                    Vec::new()
+                });
             worker.as_mut().unwrap().request(
                 &job.source,
                 &job.session_id,
@@ -1499,7 +1516,11 @@ fn process_cloud_task(
             let output = cloud::chat(
                 &key,
                 &task.model_id,
-                events::FIT_SYSTEM,
+                if task.target_kind == "event" {
+                    events::rebuild::SYSTEM
+                } else {
+                    events::FIT_SYSTEM
+                },
                 &input,
                 deadline,
                 &meter,
@@ -1611,12 +1632,17 @@ fn process_cloud_task(
                         let store = shared.store.lock().map_err(|e| e.to_string())?;
                         events::mark_submit_intent(&store.db, task, now_ms()?)?;
                     }
+                    let vocabulary = {
+                        let store = shared.store.lock().map_err(|e| e.to_string())?;
+                        vocabulary::submission_context(&store.db, task.id)?
+                    };
                     let meter = usage::Recorder::task(shared, task.provider, task.id)?;
                     cloud::submit_audio(
                         &key,
                         task.remote_id,
                         &ogg,
                         cloud::AsrAudioFormat::Ogg,
+                        &vocabulary,
                         audio_duration,
                         deadline,
                         &meter,
@@ -2725,6 +2751,45 @@ fn handle_request(
                         code: "task_not_retryable".to_owned(),
                         message: "task is not failed or no longer matches the current event"
                             .to_owned(),
+                    },
+                }
+            }
+            Request::Vocabulary { action } => {
+                let result = if matches!(action, hear_protocol::vocabulary::Action::List) {
+                    vocabulary::list(&*shared.readers.snapshot()?)
+                } else {
+                    let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                    return_response_vocabulary(
+                        &mut store,
+                        envelope.id,
+                        &mutation_fingerprint,
+                        &action,
+                    )
+                };
+                Response::Context {
+                    id: envelope.id,
+                    result: match result {
+                        Ok(v) => hear_protocol::context::success(envelope.id, v),
+                        Err(e) => hear_protocol::context::error(envelope.id, "invalid_argument", e),
+                    },
+                }
+            }
+            Request::RebuildUnderstanding { event_id } => {
+                let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                match store.mutate_response(envelope.id, &mutation_fingerprint, |tx| {
+                    let count = events::rebuild_understanding(tx, event_id, now_ms()?)?;
+                    Ok(Response::Context {
+                        id: envelope.id,
+                        result: hear_protocol::context::success(
+                            envelope.id,
+                            serde_json::json!({"queued":count,"event_id":event_id}),
+                        ),
+                    })
+                }) {
+                    Ok(v) => v,
+                    Err(e) => Response::Context {
+                        id: envelope.id,
+                        result: hear_protocol::context::error(envelope.id, "derivation_failed", e),
                     },
                 }
             }
@@ -4250,6 +4315,7 @@ impl Store {
         events::init(&db)?;
         usage::init(&db, now_ms()?)?;
         moments::init(&db)?;
+        vocabulary::init(&db)?;
         context::init(&db)?;
         cleanup::init(&db)?;
         ingestion::init(&db)?;
@@ -4967,6 +5033,8 @@ impl Store {
             | Request::SetCloudPaused { .. }
             | Request::RetryCloudTask { .. }
             | Request::ProcessNow
+            | Request::Vocabulary { .. }
+            | Request::RebuildUnderstanding { .. }
             | Request::Timeline { .. }
             | Request::CalendarDays { .. }
             | Request::EventDetail { .. }
@@ -6175,5 +6243,24 @@ mod tests {
             LogEvent::simple("ipc", LogLevel::Info, &"x".repeat(1024 * 1024)),
         );
         assert_eq!(logs.dropped.load(Ordering::Relaxed), 2);
+    }
+}
+
+fn return_response_vocabulary(
+    store: &mut Store,
+    id: uuid::Uuid,
+    fingerprint: &str,
+    action: &hear_protocol::vocabulary::Action,
+) -> Result<serde_json::Value, String> {
+    let response = store.mutate_response(id, fingerprint, |tx| {
+        Ok(Response::Context {
+            id,
+            result: hear_protocol::context::success(id, vocabulary::apply(tx, action)?),
+        })
+    })?;
+    if let Response::Context { result, .. } = response {
+        Ok(result["data"].clone())
+    } else {
+        Err("unexpected vocabulary receipt".into())
     }
 }

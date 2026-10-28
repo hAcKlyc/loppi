@@ -21,6 +21,37 @@ struct Cli {
 }
 
 #[derive(Subcommand)]
+enum VocabularyCommand {
+    List,
+    Set {
+        name: String,
+        #[arg(long, default_value = "term")]
+        kind: String,
+        #[arg(long = "alias")]
+        aliases: Vec<String>,
+        #[arg(long)]
+        id: Option<Uuid>,
+        #[arg(long,default_value_t=true,action=clap::ArgAction::Set)]
+        enabled: bool,
+    },
+    Remove {
+        id: Uuid,
+    },
+    Configure {
+        #[arg(long,action=clap::ArgAction::Set)]
+        llm: Option<bool>,
+        #[arg(long,action=clap::ArgAction::Set)]
+        local_asr: Option<bool>,
+        #[arg(long,action=clap::ArgAction::Set)]
+        cloud_asr: Option<bool>,
+    },
+}
+#[derive(Subcommand)]
+enum UnderstandingCommand {
+    Rebuild { event_id: Uuid },
+}
+
+#[derive(Subcommand)]
 enum Command {
     /// Read existing context for an Agent. Never launches Core.
     Context(context_cli::Context),
@@ -83,6 +114,16 @@ enum Command {
         action: CloudCommand,
     },
     ProcessNow,
+    /// Manage canonical terms, aliases and per-engine injection switches.
+    Vocabulary {
+        #[command(subcommand)]
+        action: VocabularyCommand,
+    },
+    /// Explicitly regenerate existing understanding using retained coarse text.
+    Understanding {
+        #[command(subcommand)]
+        action: UnderstandingCommand,
+    },
     Timeline {
         from_ms: i64,
         to_ms: i64,
@@ -661,6 +702,39 @@ fn main() {
             CloudCommand::Retry { task_id } => Request::RetryCloudTask { task_id },
         },
         Command::ProcessNow => Request::ProcessNow,
+        Command::Understanding {
+            action: UnderstandingCommand::Rebuild { event_id },
+        } => Request::RebuildUnderstanding { event_id },
+        Command::Vocabulary { action } => Request::Vocabulary {
+            action: match action {
+                VocabularyCommand::List => hear_protocol::vocabulary::Action::List,
+                VocabularyCommand::Set {
+                    id,
+                    name,
+                    kind,
+                    aliases,
+                    enabled,
+                } => hear_protocol::vocabulary::Action::Upsert {
+                    id,
+                    name,
+                    kind,
+                    aliases,
+                    enabled,
+                },
+                VocabularyCommand::Remove { id } => {
+                    hear_protocol::vocabulary::Action::Remove { id }
+                }
+                VocabularyCommand::Configure {
+                    llm,
+                    local_asr,
+                    cloud_asr,
+                } => hear_protocol::vocabulary::Action::Configure {
+                    llm,
+                    local_asr,
+                    cloud_asr,
+                },
+            },
+        },
         Command::Timeline { from_ms, to_ms } => Request::Timeline { from_ms, to_ms },
         Command::Moments {
             from_ms,
@@ -971,12 +1045,15 @@ fn main() {
         request,
         cli.request_id.unwrap_or_else(Uuid::new_v4),
     ) {
+        Ok(Response::Context { result, .. }) => {
+            println!("{result}");
+            std::process::exit(context_cli::exit_code(&result));
+        }
         Ok(response @ Response::CloudConfigurationReceipt { .. }) => {
             println!("{}", serde_json::to_string(&response).unwrap())
         }
         Ok(
-            response @ (Response::Context { .. }
-            | Response::Status { .. }
+            response @ (Response::Status { .. }
             | Response::Diagnostic { .. }
             | Response::Models { .. }
             | Response::ProbeResult { .. }

@@ -2,6 +2,7 @@ pub mod agent_assets;
 pub mod context;
 mod diagnostic;
 mod lifecycle;
+pub mod vocabulary;
 pub use diagnostic::*;
 pub use lifecycle::quit_gui_core;
 use serde::{Deserialize, Serialize};
@@ -15,7 +16,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
-pub const PROTOCOL_VERSION: u32 = 21;
+pub const PROTOCOL_VERSION: u32 = 22;
 const MAX_RESPONSE_BYTES: u64 = 48 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -118,6 +119,12 @@ pub enum Request {
         task_id: Uuid,
     },
     ProcessNow,
+    Vocabulary {
+        action: vocabulary::Action,
+    },
+    RebuildUnderstanding {
+        event_id: Uuid,
+    },
     Timeline {
         from_ms: i64,
         to_ms: i64,
@@ -341,6 +348,8 @@ impl Request {
             Self::SetCloudPaused { .. } => "set_cloud_paused",
             Self::RetryCloudTask { .. } => "retry_cloud_task",
             Self::ProcessNow => "process_now",
+            Self::Vocabulary { .. } => "vocabulary",
+            Self::RebuildUnderstanding { .. } => "rebuild_understanding",
             Self::Timeline { .. } => "timeline",
             Self::CalendarDays { .. } => "calendar_days",
             Self::EventDetail { .. } => "event_detail",

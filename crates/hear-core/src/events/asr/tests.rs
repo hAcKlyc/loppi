@@ -770,6 +770,7 @@ fn live_synthetic_compaction_keeps_phrase_timing_and_metered_duration() {
             request,
             &bytes,
             cloud::AsrAudioFormat::Ogg,
+            &serde_json::json!({}),
             input.duration_ms,
             Instant::now() + Duration::from_secs(60),
             &meter,

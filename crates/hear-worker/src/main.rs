@@ -21,6 +21,8 @@ struct WorkHeader {
     start_sample: u64,
     samples: usize,
     flush: bool,
+    #[serde(default)]
+    hotwords: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -188,7 +190,7 @@ fn read_header<R: Read>(input: &mut R) -> Result<Option<WorkHeader>, String> {
         Err(error) => return Err(error.to_string()),
     }
     let size = u32::from_le_bytes(size) as usize;
-    if size == 0 || size > 4096 {
+    if size == 0 || size > 65536 {
         return Err("worker request header exceeded limit".to_owned());
     }
     let mut bytes = vec![0; size];
@@ -253,6 +255,9 @@ fn serve_embeddings(model_path: &Path) -> Result<(), String> {
 }
 
 fn recognizer(model_dir: &Path) -> Result<OfflineRecognizer, String> {
+    recognizer_configured(model_dir, false)
+}
+fn recognizer_configured(model_dir: &Path, hotwords: bool) -> Result<OfflineRecognizer, String> {
     let mut config = OfflineRecognizerConfig::default();
     let asset = |name| {
         Some(
@@ -271,7 +276,22 @@ fn recognizer(model_dir: &Path) -> Result<OfflineRecognizer, String> {
     config.model_config.tokens = asset("tokens.txt");
     config.model_config.provider = Some("cpu".to_owned());
     config.model_config.num_threads = 2;
-    OfflineRecognizer::create(&config).ok_or_else(|| "X-ASR model could not load".to_owned())
+    let mut vocabulary_file = None;
+    if hotwords {
+        let mut file = tempfile::NamedTempFile::new().map_err(|e| e.to_string())?;
+        file.write_all(include_bytes!("../resources/xasr-bpe.vocab"))
+            .map_err(|e| e.to_string())?;
+        config.model_config.bpe_vocab = Some(file.path().to_string_lossy().into_owned());
+        vocabulary_file = Some(file);
+        config.decoding_method = Some("modified_beam_search".into());
+        config.model_config.modeling_unit = Some("bpe".into());
+        config.hotwords_score = 3.5;
+        config.max_active_paths = 4;
+    }
+    let result =
+        OfflineRecognizer::create(&config).ok_or_else(|| "X-ASR model could not load".to_owned());
+    drop(vocabulary_file);
+    result
 }
 
 fn read_samples(input: &mut impl Read, count: usize) -> Result<Vec<f32>, String> {
@@ -303,6 +323,14 @@ fn write_result(output: &mut impl Write, result: &impl Serialize) -> Result<(), 
 // and coverage subtraction can produce shorter, valid tails. Pad only the
 // inference buffer: Core retains the original samples and time interval.
 fn recognize(recognizer: &OfflineRecognizer, rate: i32, samples: &[f32]) -> Result<String, String> {
+    recognize_biased(recognizer, rate, samples, "")
+}
+fn recognize_biased(
+    recognizer: &OfflineRecognizer,
+    rate: i32,
+    samples: &[f32],
+    hotwords: &str,
+) -> Result<String, String> {
     if samples.is_empty() {
         return Ok(String::new());
     }
@@ -318,7 +346,11 @@ fn recognize(recognizer: &OfflineRecognizer, rate: i32, samples: &[f32]) -> Resu
     } else {
         samples
     };
-    let stream = recognizer.create_stream();
+    let stream = if hotwords.is_empty() {
+        recognizer.create_stream()
+    } else {
+        recognizer.create_stream_with_hotwords(hotwords)
+    };
     stream.accept_waveform(rate, input);
     recognizer.decode(&stream);
     stream
@@ -327,13 +359,52 @@ fn recognize(recognizer: &OfflineRecognizer, rate: i32, samples: &[f32]) -> Resu
         .ok_or_else(|| "recognizer result unavailable".into())
 }
 
+fn encoded_hotwords(words: &[String]) -> String {
+    words
+        .iter()
+        .take(100)
+        .filter(|s| {
+            !s.is_empty()
+                && s.chars().count() <= 100
+                && !s.chars().any(|c| c.is_control() || c == '/' || c == ':')
+        })
+        .map(|s| {
+            let mut encoded = String::new();
+            for c in s.to_uppercase().chars() {
+                if matches!(c as u32, 0x3400..=0x9fff | 0xf900..=0xfaff | 0x20000..=0x323af) {
+                    encoded.push(' ');
+                    encoded.push(c);
+                    encoded.push(' ');
+                } else {
+                    encoded.push(c);
+                }
+            }
+            encoded.split_whitespace().collect::<Vec<_>>().join(" ")
+        })
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
 fn serve_recognizer(model_dir: &Path) -> Result<(), String> {
-    let recognizer = recognizer(model_dir)?;
+    let mut recognizer = None;
+    let mut biased = false;
     let mut input = io::stdin().lock();
     let mut output = io::stdout().lock();
     while let Some(header) = read_header(&mut input)? {
         let samples = read_samples(&mut input, header.samples)?;
-        let text = recognize(&recognizer, RATE as i32, &samples)?;
+        let hotwords = encoded_hotwords(&header.hotwords);
+        let enabled = !hotwords.is_empty();
+        if recognizer.is_none() || biased != enabled {
+            drop(recognizer.take()); // Release the old model before allocating its replacement.
+            recognizer = Some(recognizer_configured(model_dir, enabled)?);
+            biased = enabled;
+        }
+        let text = recognize_biased(
+            recognizer.as_ref().unwrap(),
+            RATE as i32,
+            &samples,
+            &hotwords,
+        )?;
         write_result(&mut output, &text)?;
     }
     Ok(())
@@ -411,6 +482,19 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn hotwords_follow_xasr_chinese_character_and_english_bpe_boundaries() {
+        assert_eq!(
+            super::encoded_hotwords(&[
+                "看山".into(),
+                "盗梦空间".into(),
+                "AI搜索".into(),
+                "MyAgents".into()
+            ]),
+            "看 山/盗 梦 空 间/AI 搜 索/MYAGENTS"
+        );
+        assert_eq!(super::encoded_hotwords(&[]), "");
+    }
     #[test]
     fn orphan_watchdog_skips_global_destructors() {
         if std::env::var_os("HEAR_TEST_ORPHAN_EXIT").is_some() {

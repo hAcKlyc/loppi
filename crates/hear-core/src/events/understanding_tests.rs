@@ -65,7 +65,16 @@ fn understanding_roundtrip_long_summary_metadata_only_update_and_noop() {
         understanding["key_points"][0]["evidence_refs"],
         json!([{"segment_id":"00000000-0000-4000-8000-000000000001","source":"microphone","start_ms":1000,"end_ms":10000}])
     );
-    assert!(understanding["mentioned_objects"][0]["entity_id"].is_null());
+    assert!(
+        understanding["mentioned_objects"][0]["entity_id"]
+            .as_str()
+            .unwrap()
+            .starts_with("entity:")
+    );
+    assert_ne!(
+        understanding["mentioned_objects"][0]["entity_id"],
+        "model-guessed-person"
+    );
     assert!(!understanding.to_string().contains("evidence_indices"));
     let count: i64 = db
         .query_row("SELECT count(*) FROM cloud_tasks", [], |r| r.get(0))
@@ -230,7 +239,7 @@ fn understanding_legacy_migration_and_incomplete_continuation() {
     publish(&mut db, &first, response(&first, Value::Null, None));
     let id = stored(&db).0;
     crate::context::remove_index_for_legacy_fixture(&db);
-    db.execute_batch("ALTER TABLE named_events DROP COLUMN understanding_json; DELETE FROM core_migrations WHERE name='event_understanding_v1'").unwrap();
+    db.execute_batch("DROP TRIGGER understanding_entities; DROP TRIGGER understanding_entities_insert; ALTER TABLE named_events DROP COLUMN understanding_json; DELETE FROM core_migrations WHERE name='event_understanding_v1'").unwrap();
     init(&db).unwrap();
     init(&db).unwrap();
     assert_eq!(refresh_candidates(&mut db, NOW, true).unwrap(), 0);

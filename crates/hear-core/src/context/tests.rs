@@ -361,3 +361,321 @@ fn coverage_respects_sources_for_failures_and_pending_jobs() {
         "no_match"
     );
 }
+
+#[test]
+fn empty_filter_dedupe_and_skipped_coverage_are_explicit() {
+    let db = db();
+    let (eid, _) = fixture(&db);
+    speech(&db, 11000, 12000, "  ");
+    precise(&db, eid, "event", 1000, 5000, "精转");
+    let v = run(
+        &db,
+        "read",
+        json!({"selector":{"event_id":eid},"dedupe":true,"include_coverage":false}),
+    );
+    assert_eq!(v["quality"]["coverage_state"], "not_requested");
+    assert_eq!(v["data"]["items"].as_array().unwrap().len(), 1);
+    let v = run(
+        &db,
+        "read",
+        json!({"selector":{"event_id":eid},"min_chars":0}),
+    );
+    assert_eq!(v["data"]["items"].as_array().unwrap().len(), 3);
+}
+
+#[test]
+fn digest_actions_and_gap_totals_survive_paging() {
+    let db = db();
+    let (eid, _) = fixture(&db);
+    for i in 0..20 {
+        db.execute(
+            "INSERT INTO media_gaps(id,source,started_ms,ended_ms,reason) VALUES(?1,'system',?2,?3,'source_failure')",
+            params![i.to_string(), i * 1000, i * 1000 + 500],
+        )
+        .unwrap();
+    }
+    let v = run(&db, "digest", json!({"time":time(),"limit":1}));
+    assert_eq!(v["data"]["events"][0]["event_id"], eid.to_string());
+    assert!(v["data"]["events"][0]["decisions"].is_array());
+    assert_eq!(
+        v["data"]["events"][0]["structured_actions_available"],
+        false
+    );
+    assert_eq!(v["quality"]["gap_summary"][0]["duration_ms"], 10000);
+    assert_eq!(v["quality"]["gaps_truncated"], true);
+}
+
+#[test]
+#[ignore = "local read-only backup acceptance; set HEAR_REVIEW_SNAPSHOT to a closed SQLite backup"]
+fn review_dataset_acceptance() {
+    let source = std::env::var("HEAR_REVIEW_SNAPSHOT").unwrap();
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("hear.sqlite");
+    std::fs::copy(source, &path).unwrap();
+    let store = crate::Store::new(Connection::open(&path).unwrap()).unwrap();
+    let mut stmt=store.db.prepare("SELECT id FROM named_events WHERE deleted_ms IS NULL AND started_ms>=1793116800000 AND started_ms<1793203200000 ORDER BY started_ms").unwrap();
+    let ids = stmt
+        .query_map([], |r| r.get::<_, String>(0))
+        .unwrap()
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .unwrap();
+    assert_eq!(ids.len(), 7);
+    let pool = crate::reads::Pool::open(&path).unwrap();
+    let mut timings = Vec::new();
+    let mut event_timings = Vec::new();
+    for i in 0..100 {
+        let (op, args) = if i % 2 == 0 {
+            (
+                "event",
+                json!({"event_id":ids[(i/2)%7],"section":"key_points"}),
+            )
+        } else {
+            (
+                "read",
+                json!({"selector":{"time":{"from":"2026-10-28T12:00:00+08:00","to":"2026-10-28T15:00:00+08:00"}}}),
+            )
+        };
+        let start = std::time::Instant::now();
+        let result = run(&pool.snapshot().unwrap(), op, args);
+        timings.push(start.elapsed().as_millis());
+        if op == "event" {
+            event_timings.push(start.elapsed().as_millis());
+        }
+        if result["page"]["has_more"] == true {
+            assert!(result["page"]["next_cursor"].is_string());
+            assert_eq!(result["page"]["truncated"], true);
+        }
+    }
+    let digest = run(
+        &pool.snapshot().unwrap(),
+        "digest",
+        json!({"time":{"date":"2026-10-28","timezone":"Asia/Shanghai"}}),
+    );
+    let status = run(&pool.snapshot().unwrap(), "status", json!({}));
+    assert_eq!(
+        status["data"]["health_7d"]["sources"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    timings.sort();
+    println!(
+        "acceptance events={} calls=100 p95={}ms max={}ms digest_events={}",
+        ids.len(),
+        timings[94],
+        timings[99],
+        digest["data"]["events"].as_array().unwrap().len()
+    );
+    assert!(timings[94] < 2000);
+    event_timings.sort();
+    assert!(event_timings[47] < 2000);
+    println!(
+        "event p95={}ms max={}ms",
+        event_timings[47], event_timings[49]
+    );
+    if std::env::var("HEAR_REVIEW_WIRE").as_deref() == Ok("1") {
+        review_wire(&path, &ids);
+    }
+}
+
+fn review_wire(path: &std::path::Path, ids: &[String]) {
+    use std::io::{BufRead, Read, Write};
+    use std::process::{Command, Stdio};
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
+    let dir = path.parent().unwrap();
+    let listener = std::os::unix::net::UnixListener::bind(dir.join("core.sock")).unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let stop = Arc::new(AtomicBool::new(false));
+    let done = stop.clone();
+    let pool = crate::reads::Pool::open(path).unwrap();
+    let server = std::thread::spawn(move || {
+        while !done.load(Ordering::Relaxed) {
+            let (mut stream, _) = match listener.accept() {
+                Ok(v) => v,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                    continue;
+                }
+                Err(e) => panic!("{e}"),
+            };
+            stream.set_nonblocking(false).unwrap();
+            stream
+                .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                .unwrap();
+            let mut raw = Vec::new();
+            stream.read_to_end(&mut raw).unwrap();
+            if raw.is_empty() {
+                continue;
+            }
+            let envelope: hear_protocol::Envelope = serde_json::from_slice(&raw).unwrap();
+            let hear_protocol::Request::Context { query: q } = envelope.request else {
+                panic!("read-only acceptance harness")
+            };
+            assert_eq!(envelope.version, hear_protocol::PROTOCOL_VERSION);
+            let value = query(&pool.snapshot().unwrap(), &q, envelope.id);
+            let response = hear_protocol::Response::Context {
+                id: envelope.id,
+                result: value,
+            };
+            stream
+                .write_all(&serde_json::to_vec(&response).unwrap())
+                .unwrap();
+        }
+    });
+    let cli = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/debug/hear");
+    let mut cli_times = Vec::new();
+    for id in ids {
+        let start = std::time::Instant::now();
+        let output = Command::new(&cli)
+            .env("HEAR_DATA_DIR", dir)
+            .args(["context", "event", id, "--section", "key_points"])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+        let v: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(v["ok"], true);
+        cli_times.push(start.elapsed().as_millis());
+    }
+    let mut child = Command::new(&cli)
+        .env("HEAR_DATA_DIR", dir)
+        .args(["mcp", "serve"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    let mut stdout = std::io::BufReader::new(child.stdout.take().unwrap());
+    let mut rpc = |request: Value| {
+        writeln!(stdin, "{request}").unwrap();
+        stdin.flush().unwrap();
+        let mut line = String::new();
+        stdout.read_line(&mut line).unwrap();
+        serde_json::from_str::<Value>(&line).unwrap()
+    };
+    rpc(
+        json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"acceptance","version":"1"}}}),
+    );
+    // A notification has no reply; deliver it before the first ordinary request.
+    // Drop the closure's borrows briefly to write the notification.
+    drop(rpc);
+    writeln!(
+        stdin,
+        "{}",
+        json!({"jsonrpc":"2.0","method":"notifications/initialized"})
+    )
+    .unwrap();
+    stdin.flush().unwrap();
+    let mut rpc = |request: Value| {
+        writeln!(stdin, "{request}").unwrap();
+        stdin.flush().unwrap();
+        let mut line = String::new();
+        stdout.read_line(&mut line).unwrap();
+        serde_json::from_str::<Value>(&line).unwrap()
+    };
+    let discovery = rpc(json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}));
+    let names: Vec<_> = discovery["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v["name"].clone())
+        .collect();
+    assert_eq!(names.len(), 7);
+    let status = rpc(
+        json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"hear_status","arguments":{"client_tools":names}}}),
+    );
+    assert_eq!(
+        status["result"]["structuredContent"]["data"]["tool_inventory"]["state"],
+        "matched"
+    );
+    let mut timings = Vec::new();
+    for i in 0..100 {
+        let (name, args) = if i % 2 == 0 {
+            (
+                "hear_get_event",
+                json!({"event_id":ids[(i/2)%7],"section":"key_points"}),
+            )
+        } else {
+            (
+                "hear_read_context",
+                json!({"selector":{"time":{"from":"2026-10-28T12:00:00+08:00","to":"2026-10-28T15:00:00+08:00"}}}),
+            )
+        };
+        let start = std::time::Instant::now();
+        let v = rpc(
+            json!({"jsonrpc":"2.0","id":i+10,"method":"tools/call","params":{"name":name,"arguments":args}}),
+        );
+        assert_eq!(v["result"]["isError"], false, "{v}");
+        assert_eq!(v["result"]["structuredContent"]["ok"], true);
+        timings.push(start.elapsed().as_millis());
+    }
+    drop(rpc);
+    drop(stdin);
+    assert!(child.wait().unwrap().success());
+    stop.store(true, Ordering::Relaxed);
+    server.join().unwrap();
+    timings.sort();
+    cli_times.sort();
+    assert!(timings[94] < 2000);
+    assert!(cli_times[6] < 2000);
+    println!(
+        "wire CLI 7/7 max={}ms; MCP 100/100 p95={}ms max={}ms; tools={}/{}",
+        cli_times[6],
+        timings[94],
+        timings[99],
+        names.len(),
+        names.len()
+    );
+}
+
+#[test]
+fn vocabulary_entities_resolve_across_days_and_disabled_injection() {
+    let db = db();
+    let vocabulary = crate::vocabulary::apply(
+        &db,
+        &hear_protocol::vocabulary::Action::Upsert {
+            id: None,
+            name: "看山".into(),
+            kind: "product".into(),
+            aliases: vec!["开山".into()],
+            enabled: true,
+        },
+    )
+    .unwrap();
+    let expected = vocabulary["entries"][0]["entity_id"].clone();
+    for (day, name) in [(0, "开山"), (1, "看山")] {
+        let start = day * 86_400_000 + 1000;
+        let end = start + 1000;
+        let sid = speech(&db, start, end, "讨论看山额度");
+        let eid = Uuid::new_v4();
+        let u = json!({"schema_version":1,"topics":[],"key_points":[],"mentioned_objects":[{"name":name,"type":"产品","context":"讨论额度","entity_id":null,"evidence_refs":[{"segment_id":sid,"source":"microphone","start_ms":start,"end_ms":end}]}]});
+        db.execute("INSERT INTO named_events(id,started_ms,ended_ms,title,source_mask,revision,origin,boundary_locked,title_locked,asr_required,created_ms,understanding_json) VALUES(?1,?2,?3,'词库测试',1,1,'manual',1,1,0,0,?4)",params![eid.to_string(),start,end,u.to_string()]).unwrap();
+        let result = run(
+            &db,
+            "event",
+            json!({"event_id":eid,"section":"mentioned_objects"}),
+        );
+        assert_eq!(result["data"]["items"][0]["entity_id"], expected);
+        if day == 0 {
+            crate::vocabulary::apply(
+                &db,
+                &hear_protocol::vocabulary::Action::Upsert {
+                    id: Some(Uuid::parse_str(expected.as_str().unwrap()).unwrap()),
+                    name: "看山".into(),
+                    kind: "product".into(),
+                    aliases: vec!["开山".into()],
+                    enabled: false,
+                },
+            )
+            .unwrap();
+        }
+    }
+}

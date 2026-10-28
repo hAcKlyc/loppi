@@ -14,6 +14,7 @@ use uuid::Uuid;
 #[cfg(test)]
 mod activity_tests;
 pub(crate) mod asr;
+pub mod rebuild;
 mod summary;
 mod understanding;
 #[cfg(test)]
@@ -2692,7 +2693,7 @@ pub fn task_current(db: &Connection, task: &CloudTask) -> Result<bool, String> {
     }
     let erased: bool = db
         .query_row(
-            "SELECT EXISTS(SELECT 1 FROM clear_ranges c WHERE (c.mode='all_data' OR (c.mode='raw_audio' AND (SELECT submit_attempts FROM cloud_tasks WHERE id=?1)=0))
+            "SELECT EXISTS(SELECT 1 FROM clear_ranges c WHERE (c.mode='all_data' OR (c.mode='raw_audio' AND (SELECT provider='asr' AND submit_attempts=0 FROM cloud_tasks WHERE id=?1)))
          AND c.committed_ms > (SELECT created_ms FROM cloud_tasks WHERE id=?1)
          AND c.from_ms<?3 AND c.to_ms>?2
          AND (?4 IS NULL OR (?4='microphone' AND c.source_mask&1!=0)
@@ -2952,6 +2953,9 @@ pub fn mark_submit_intent(db: &Connection, task: &CloudTask, now: i64) -> Result
 }
 
 pub fn llm_input(db: &Connection, task: &CloudTask) -> Result<String, String> {
+    if task.target_kind == "event" {
+        return rebuild::input(db, task);
+    }
     let items = evidence(db, task.start, task.end)?;
     let mut lines = Vec::new();
     let mut catalog = Vec::new();
@@ -2984,6 +2988,7 @@ pub fn llm_input(db: &Connection, task: &CloudTask) -> Result<String, String> {
     serde_json::to_string(&serde_json::json!({
         "candidate":{"start_ms":task.start,"end_ms":task.end},
         "summary_budget":{"target_chars":900,"tolerance_chars":1100},
+        "vocabulary":crate::vocabulary::llm_context(db)?,
         "context":context,
         "observations":lines,
         "evidence":catalog
@@ -3172,6 +3177,13 @@ pub fn publish_fit_with_input(
     result: serde_json::Value,
     now: i64,
 ) -> Result<usize, String> {
+    if task.target_kind == "event" {
+        return rebuild::publish(db, task, input, result, now);
+    }
+    let mut result = result;
+    let sent_vocabulary: serde_json::Value =
+        serde_json::from_str(input).map_err(|_| "invalid_fit_input")?;
+    crate::vocabulary::normalize_generated(&mut result, &sent_vocabulary["vocabulary"]);
     let events = result["events"].as_array().ok_or("invalid_fit_schema")?;
     let tx = db.transaction().map_err(|e| e.to_string())?;
     if !task_current(&tx, task)? {
@@ -6597,4 +6609,12 @@ mod tests {
             "transcribed"
         );
     }
+}
+
+pub fn rebuild_understanding(
+    tx: &Transaction<'_>,
+    event_id: Uuid,
+    now: i64,
+) -> Result<usize, String> {
+    rebuild::enqueue(tx, event_id, now)
 }

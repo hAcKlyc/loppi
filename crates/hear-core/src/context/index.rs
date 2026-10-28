@@ -41,23 +41,31 @@ pub fn init(db: &Connection) -> Result<(), String> {
     // A view, not another copy of transcript text. Reuse the legacy search's
     // publication predicate and its correction-maintained text projection.
     db.execute_batch(&format!(r#"
+        CREATE INDEX IF NOT EXISTS context_record_time ON search_records(kind,source,started_ms,ended_ms);
+        CREATE INDEX IF NOT EXISTS context_record_end ON search_records(kind,source,ended_ms,started_ms);
         DROP VIEW IF EXISTS context_preferred;
         DROP VIEW IF EXISTS context_visible;
-        CREATE VIEW context_visible AS
+        DROP VIEW IF EXISTS context_records;
+        CREATE VIEW context_records AS
         SELECT sr.rowid,sr.kind,sr.item_id,sr.source,sr.started_ms,sr.ended_ms,sr.text,
-          identity.person_id,identity.person_name,identity.person_origin,t.target_kind,
+          (SELECT person_id FROM precise_identity_projection WHERE segment_id=p.id) person_id,
+          (SELECT person_name FROM precise_identity_projection WHERE segment_id=p.id) person_name,
+          (SELECT person_origin FROM precise_identity_projection WHERE segment_id=p.id) person_origin,
+          (SELECT t.target_kind FROM transcript_tasks t WHERE t.id=p.task_id
+            AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms AND ({0})
+            ORDER BY t.target_kind LIMIT 1) target_kind,
           EXISTS(SELECT 1 FROM text_corrections c WHERE c.current_segment_id=p.id AND c.state='active') corrected
         FROM search_records sr
         LEFT JOIN precise_segments p ON sr.kind='precise' AND p.id=sr.item_id
-        LEFT JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms
-        LEFT JOIN precise_identity_projection identity ON identity.segment_id=p.id
-        WHERE sr.kind!='precise' OR ({})
+        WHERE sr.kind!='precise' OR EXISTS(SELECT 1 FROM transcript_tasks t WHERE t.id=p.task_id
+          AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms AND ({0}));
+        CREATE VIEW context_visible AS SELECT * FROM context_records
         UNION ALL SELECT NULL,'mark',id,NULL,anchor_ms,anchor_ms+1,'',NULL,NULL,NULL,NULL,0 FROM moments WHERE kind='mark'
         UNION ALL SELECT NULL,'ocr',m.id,NULL,m.anchor_ms,m.anchor_ms+1,'',NULL,NULL,NULL,NULL,0
         FROM moments m WHERE m.kind='screenshot' AND NOT EXISTS(
           SELECT 1 FROM search_records sr WHERE sr.kind='ocr' AND sr.item_id=m.id);
         CREATE VIEW context_preferred AS SELECT hit.* FROM context_visible hit
-        WHERE hit.kind!='precise' OR NOT EXISTS(SELECT 1 FROM context_visible twin
+        WHERE hit.kind!='precise' OR NOT EXISTS(SELECT 1 FROM context_records twin
           WHERE twin.kind='precise' AND twin.source=hit.source
             AND twin.started_ms=hit.started_ms AND twin.ended_ms=hit.ended_ms AND twin.text=hit.text
             AND twin.person_id IS hit.person_id AND twin.person_origin IS hit.person_origin

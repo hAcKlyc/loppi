@@ -1,0 +1,4 @@
+Exported SentencePiece pieces and float scores, preserving order.
+Source: https://huggingface.co/csukuangfj2/sherpa-onnx-x-asr-zipformer-transducer-zh-en-int8-2026-06-03/resolve/bbc3ebbf8f134848f804967f3a3b69f981308a85/bpe.model
+Source SHA256: f3858eb428e082d7e89f13b0711c7a2ce195fa98dd5b80879645d346fb3e01e7
+License: Apache-2.0 (X-ASR model).

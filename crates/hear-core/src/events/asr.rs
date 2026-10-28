@@ -523,7 +523,7 @@ pub fn inherit(tx: &Transaction<'_>, old: &str, new: &str) -> Result<(), String>
 }
 
 pub fn current(db: &Connection, task: &CloudTask) -> Result<Option<bool>, String> {
-    if task.target_kind != "event" {
+    if task.target_kind != "event" || task.provider != CloudProvider::Asr {
         return Ok(None);
     }
     let managed: bool = db

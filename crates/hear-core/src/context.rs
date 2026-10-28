@@ -1,4 +1,5 @@
 //! Agent consumption projections. All reads use Core's short SQLite snapshots.
+mod health;
 mod index;
 #[cfg(test)]
 mod tests;
@@ -204,6 +205,9 @@ impl Page {
                 break;
             }
             bytes += size;
+            if data.get("events").is_some() {
+                self.cursor.version = value["content_version"].as_str().map(str::to_owned);
+            }
             output.push(value);
             self.cursor.time = item.time;
             self.cursor.key = item.key;
@@ -214,9 +218,13 @@ impl Page {
                 break;
             }
         }
-        data["items"] = json!(output);
+        if data.get("events").is_some() {
+            data["events"] = json!(output);
+        } else {
+            data["items"] = json!(output);
+        }
         let mut response = api::success(id, data);
-        response["page"] = json!({"has_more":more,"next_cursor":if more{Some(encode(&self.cursor))}else{None},"consistency":"live","text_chunk_characters":2000});
+        response["page"] = json!({"truncated":more,"has_more":more,"next_cursor":if more{Some(encode(&self.cursor))}else{None},"consistency":"live","text_chunk_characters":2000});
         response["quality"] = quality;
         if let Some(r) = &self.cursor.range {
             response["query"] = json!({"from":api::timestamp(r.from_ms),"to":api::timestamp(r.to_ms),"timezone":r.timezone});
@@ -232,11 +240,12 @@ pub fn query(db: &Connection, q: &Query, id: Uuid) -> Value {
     let result = (|| {
         q.validate()?;
         match q {
-            Query::Status(_) => Ok(api::success(
+            Query::Status(a) => Ok(api::success(
                 id,
-                json!({"online":true,"api_version":api::API_VERSION,"timezone":api::timezone(),"server_time":api::timestamp(api::now_ms()),"capabilities":api::TOOLS.iter().map(|(_,n,_)|*n).collect::<Vec<_>>(),"processing":crate::events::queue_states(db)?}),
+                json!({"online":true,"tool_inventory":api::tool_inventory(a.client_tools.as_deref()),"api_version":api::API_VERSION,"timezone":api::timezone(),"server_time":api::timestamp(api::now_ms()),"capabilities":api::TOOLS.iter().map(|(_,n,_)|*n).collect::<Vec<_>>(),"processing":crate::events::queue_states(db)?,"health_7d":health::recent(db)?}),
             )),
             Query::List(a) => list(db, q, a, id),
+            Query::Digest(a) => digest(db, q, a, id),
             Query::Search(a) => search(db, q, a, id),
             Query::Event(a) => event(db, q, a, id),
             Query::Read(a) => read(db, q, a, id),
@@ -252,6 +261,8 @@ pub fn query(db: &Connection, q: &Query, id: Uuid) -> Value {
                 "ref_unavailable"
             } else if e.contains("interrupted") {
                 "query_timeout"
+            } else if e.contains("database is locked") || e.contains("database table is locked") {
+                "db_locked"
             } else if e.contains("capacity busy") {
                 "read_busy"
             } else if e.starts_with("record_too_large") {
@@ -281,7 +292,7 @@ fn coverage(db: &Connection, r: &TimeRange, m: i64) -> Result<Value> {
     }
     let counts:(i64,i64,i64)=sql(db.query_row("SELECT (SELECT count(*) FROM context_visible WHERE kind='coarse' AND started_ms<?2 AND ended_ms>?1 AND (source='microphone' AND ?3&1!=0 OR source='system' AND ?3&2!=0)),(SELECT count(*) FROM context_visible WHERE kind='precise' AND started_ms<?2 AND ended_ms>?1 AND (source='microphone' AND ?3&1!=0 OR source='system' AND ?3&2!=0)),(SELECT count(*) FROM audio_blocks WHERE started_ms<?2 AND ended_ms>?1 AND media_path IS NOT NULL AND (source='microphone' AND ?3&1!=0 OR source='system' AND ?3&2!=0))",params![r.from_ms,r.to_ms,m],|row|Ok((row.get(0)?,row.get(1)?,row.get(2)?))))?;
     Ok(
-        json!({"coverage_state":"observed_only","issues":issues,"gaps":relevant.iter().take(12).collect::<Vec<_>>(),"gaps_truncated":relevant.len()>12,"coarse_segments":counts.0,"precise_segments":counts.1,"retained_audio_blocks":counts.2,"note":"Coverage describes recorded material, not all real-world activity. Text and retained audio are independent."}),
+        json!({"coverage_state":"observed_only","issues":issues,"gaps":relevant.iter().take(12).collect::<Vec<_>>(),"gaps_truncated":relevant.len()>12,"gap_summary":health::gaps(db,r,m)?,"coarse_segments":counts.0,"precise_segments":counts.1,"retained_audio_blocks":counts.2,"note":"Coverage describes recorded material, not all real-world activity. Text and retained audio are independent."}),
     )
 }
 
@@ -392,7 +403,13 @@ fn understanding(db: &Connection, e: &Event) -> Result<Option<Value>> {
     {
         return Ok(None);
     }
-    for section in ["key_points", "mentioned_objects"] {
+    let mut records = std::collections::HashMap::new();
+    for key in ["decisions", "todos"] {
+        if !v[key].is_array() {
+            v[key] = json!([]);
+        }
+    }
+    for section in ["key_points", "mentioned_objects", "decisions", "todos"] {
         for item in v[section].as_array_mut().unwrap() {
             let Some(refs) = item["evidence_refs"].as_array() else {
                 return Ok(None);
@@ -405,7 +422,10 @@ fn understanding(db: &Connection, e: &Event) -> Result<Option<Value>> {
                 let Some(id) = r["segment_id"].as_str() else {
                     return Ok(None);
                 };
-                let Some(record) = record(db, "coarse", id)? else {
+                if !records.contains_key(id) {
+                    records.insert(id.to_owned(), record(db, "coarse", id)?);
+                }
+                let Some(record) = records[id].as_ref() else {
                     return Ok(None);
                 };
                 if record["started_ms"] != r["start_ms"]
@@ -424,6 +444,17 @@ fn understanding(db: &Connection, e: &Event) -> Result<Option<Value>> {
             item["evidence_refs"] = json!(resolved);
             item["content_kind"] = json!("derived");
         }
+    }
+    let vocabulary = crate::vocabulary::list(db)?;
+    for object in v["mentioned_objects"].as_array_mut().unwrap() {
+        let (id, name, kind) = crate::vocabulary::entity(
+            object["name"].as_str().unwrap_or(""),
+            object["type"].as_str().unwrap_or(""),
+            &vocabulary["entries"],
+        );
+        object["entity_id"] = json!(id);
+        object["name"] = json!(name);
+        object["type"] = json!(kind);
     }
     Ok(Some(v))
 }
@@ -468,15 +499,23 @@ fn event(db: &Connection, q: &Query, a: &api::EventArgs, id: Uuid) -> Result<Val
         a.limit.unwrap_or(20) as usize,
         false,
     )?;
-    let version = event_version(db, &eid, &e)?;
+    let understanding = understanding(db, &e)?;
+    let version = hash(&(
+        e.start,
+        e.end,
+        &e.title,
+        e.revision,
+        e.mask,
+        &e.summary,
+        &understanding,
+    ));
     if page.cursor.version.as_ref().is_some_and(|v| v != &version) {
         return Err("cursor_stale: event content changed".into());
     }
     page.cursor.version = Some(version.clone());
-    let understanding = understanding(db, &e)?;
     let section = a.section.as_deref().unwrap_or("overview");
     let mut items = Vec::new();
-    let mut data = json!({"event_id":eid,"title":e.title,"from":api::timestamp(e.start),"to":api::timestamp(e.end),"content_version":version,"section":section,"understanding_available":understanding.is_some(),"understanding_source":"coarse_transcript"});
+    let mut data = json!({"event_id":eid,"title":e.title,"from":api::timestamp(e.start),"to":api::timestamp(e.end),"content_version":version,"section":section,"understanding_available":understanding.is_some(),"understanding_state":understanding_state(db,&eid,&e,understanding.is_some())?,"understanding_source":"coarse_transcript"});
     match section {
         "overview" => {
             data["summary_excerpt"] = json!(e.summary.as_deref().map(|s| excerpt(s, 1000)));
@@ -497,7 +536,9 @@ fn event(db: &Connection, q: &Query, a: &api::EventArgs, id: Uuid) -> Result<Val
                 "topics",
                 "key_points",
                 "mentioned_objects",
-                "moments"
+                "moments",
+                "decisions",
+                "todos"
             ]);
         }
         "summary" => {
@@ -562,20 +603,53 @@ fn event(db: &Connection, q: &Query, a: &api::EventArgs, id: Uuid) -> Result<Val
         id,
         data,
         items,
-        coverage(
-            db,
-            &TimeRange {
-                from_ms: e.start,
-                to_ms: e.end,
-                timezone: api::timezone(),
-            },
-            e.mask,
-        )?,
+        if a.include_coverage == Some(false) {
+            json!({"coverage_state":"not_requested"})
+        } else {
+            coverage(
+                db,
+                &TimeRange {
+                    from_ms: e.start,
+                    to_ms: e.end,
+                    timezone: api::timezone(),
+                },
+                e.mask,
+            )?
+        },
     )
 }
 
 fn record(db: &Connection, kind: &str, id: &str) -> Result<Option<Value>> {
-    let row:Option<(Option<String>,i64,i64,String,Option<String>,Option<String>,Option<String>,bool)>=sql(db.query_row("SELECT source,started_ms,ended_ms,text,person_id,person_name,person_origin,corrected FROM context_visible WHERE kind=?1 AND item_id=?2",params![kind,id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?,r.get(6)?,r.get(7)?))).optional())?;
+    let statement = if matches!(kind, "coarse" | "note") {
+        "SELECT source,started_ms,ended_ms,text,NULL,NULL,NULL,0 FROM search_records WHERE kind=?1 AND item_id=?2"
+    } else if kind == "precise" {
+        "SELECT source,started_ms,ended_ms,text,person_id,person_name,person_origin,corrected FROM context_records WHERE kind=?1 AND item_id=?2"
+    } else {
+        "SELECT source,started_ms,ended_ms,text,person_id,person_name,person_origin,corrected FROM context_visible WHERE kind=?1 AND item_id=?2"
+    };
+    let row: Option<(
+        Option<String>,
+        i64,
+        i64,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        bool,
+    )> = sql(db
+        .query_row(statement, params![kind, id], |r| {
+            Ok((
+                r.get(0)?,
+                r.get(1)?,
+                r.get(2)?,
+                r.get(3)?,
+                r.get(4)?,
+                r.get(5)?,
+                r.get(6)?,
+                r.get(7)?,
+            ))
+        })
+        .optional())?;
     let Some((source, start, end, text, person_id, person_name, origin, corrected)) = row else {
         return Ok(None);
     };
@@ -680,7 +754,7 @@ fn read(db: &Connection, q: &Query, a: &api::ReadArgs, id: Uuid) -> Result<Value
         page.range(a.selector.time.as_ref(), false, true)?
     };
     let mode = a.transcript.as_deref().unwrap_or("best_available");
-    let mut stmt=sql(db.prepare("SELECT kind,item_id,started_ms FROM context_preferred c WHERE started_ms<?2 AND ended_ms>?1 AND (source IS NULL OR source='microphone' AND ?3&1!=0 OR source='system' AND ?3&2!=0) AND ((kind IN ('note','ocr','mark') AND ?4) OR (kind IN ('coarse','precise') AND (?5='best_available' OR kind=?5))) AND (?5!='best_available' OR kind!='coarse' OR NOT EXISTS(SELECT 1 FROM context_visible p WHERE p.kind='precise' AND p.source=c.source AND p.started_ms<=c.started_ms AND p.ended_ms>=c.ended_ms)) AND (started_ms>?6 OR started_ms=?6 AND kind||':'||item_id>=?7) ORDER BY started_ms,kind||':'||item_id LIMIT ?8"))?;
+    let mut stmt=sql(db.prepare("SELECT kind,item_id,started_ms FROM context_preferred c WHERE started_ms<?2 AND ended_ms>?1 AND (source IS NULL OR source='microphone' AND ?3&1!=0 OR source='system' AND ?3&2!=0) AND ((kind IN ('note','ocr','mark') AND ?4) OR (kind IN ('coarse','precise') AND (?5='best_available' OR kind=?5))) AND (?5!='best_available' OR kind!='coarse' OR NOT EXISTS(SELECT 1 FROM context_records p WHERE p.kind='precise' AND p.source=c.source AND ((?10=0 AND p.started_ms<=c.started_ms AND p.ended_ms>=c.ended_ms) OR (?10=1 AND p.started_ms<c.ended_ms AND p.ended_ms>c.started_ms)))) AND (kind NOT IN ('coarse','precise') OR length(trim(text))>=?9) AND (started_ms>?6 OR started_ms=?6 AND kind||':'||item_id>=?7) ORDER BY started_ms,kind||':'||item_id LIMIT ?8"))?;
     for row in sql(stmt.query_map(
         params![
             range.from_ms,
@@ -690,7 +764,9 @@ fn read(db: &Connection, q: &Query, a: &api::ReadArgs, id: Uuid) -> Result<Value
             mode,
             page.cursor.time,
             page.cursor.key,
-            page.limit as i64 + 2
+            page.limit as i64 + 2,
+            a.min_chars.unwrap_or(1),
+            a.dedupe.unwrap_or(false)
         ],
         |r| {
             Ok((
@@ -703,7 +779,7 @@ fn read(db: &Connection, q: &Query, a: &api::ReadArgs, id: Uuid) -> Result<Value
         let (kind, item_id, time) = sql(row)?;
         if let Some(mut value) = record(db, &kind, &item_id)? {
             if kind == "coarse" && mode == "best_available" {
-                value["overlaps_precise"]=json!(sql(db.query_row("SELECT EXISTS(SELECT 1 FROM context_visible p WHERE p.kind='precise' AND p.source=?3 AND p.started_ms<?2 AND p.ended_ms>?1)",params![value["started_ms"].as_i64(),value["ended_ms"].as_i64(),value["source"].as_str()],|r|r.get::<_,bool>(0)))?);
+                value["overlaps_precise"]=json!(sql(db.query_row("SELECT EXISTS(SELECT 1 FROM context_records p WHERE p.kind='precise' AND p.source=?3 AND p.started_ms<?2 AND p.ended_ms>?1)",params![value["started_ms"].as_i64(),value["ended_ms"].as_i64(),value["source"].as_str()],|r|r.get::<_,bool>(0)))?);
             }
             items.push(Item {
                 time,
@@ -716,7 +792,11 @@ fn read(db: &Connection, q: &Query, a: &api::ReadArgs, id: Uuid) -> Result<Value
         id,
         json!({"transcript":mode}),
         items,
-        coverage(db, &range, m)?,
+        if a.include_coverage == Some(false) {
+            json!({"coverage_state":"not_requested"})
+        } else {
+            coverage(db, &range, m)?
+        },
     )
 }
 
@@ -883,4 +963,113 @@ pub(crate) fn remove_index_for_legacy_fixture(db: &Connection) {
         DELETE FROM core_migrations WHERE name='agent_context_event_search_v1';",
     )
     .unwrap();
+}
+
+fn understanding_state(db: &Connection, eid: &str, e: &Event, available: bool) -> Result<Value> {
+    if available {
+        return Ok(json!({"state":"ready","reason":null,"retryable":false}));
+    }
+    let task: Option<(String, String, Option<String>)> = sql(db.query_row(
+        "SELECT t.id,t.state,t.error_code FROM cloud_tasks t WHERE t.provider='llm' AND t.state!='superseded' AND ((t.target_kind='event' AND t.target_id=?1 AND t.target_version=printf('%d:%d:%d',?2,?3,?4)) OR (t.target_kind='candidate' AND EXISTS(SELECT 1 FROM event_candidate_links l JOIN candidate_windows c ON c.id=l.candidate_id WHERE l.event_id=?1 AND l.candidate_id=t.target_id AND t.target_version=c.input_hash))) ORDER BY t.updated_ms DESC LIMIT 1",
+        params![eid,e.mask,e.start,e.end], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional())?;
+    let input: bool = sql(db.query_row("SELECT EXISTS(SELECT 1 FROM coarse_segments WHERE started_ms<?2 AND ended_ms>?1 AND length(trim(text))>0 AND (source='microphone' AND ?3&1!=0 OR source='system' AND ?3&2!=0))",params![e.start,e.end,e.mask],|r|r.get(0)))?;
+    let (state, reason, task_id) = match task {
+        Some((id, state, reason)) if state == "failed" => (
+            "failed",
+            reason.unwrap_or("derivation_failed".into()),
+            Some(id),
+        ),
+        Some((id, state, _)) if state == "pending" || state == "processing" => {
+            ("pending", state, Some(id))
+        }
+        _ if e.understanding.is_some() => ("invalid", "evidence_or_schema_invalid".into(), None),
+        _ => (
+            "not_generated",
+            if input {
+                "missing_understanding"
+            } else {
+                "no_coarse_text"
+            }
+            .into(),
+            None,
+        ),
+    };
+    Ok(
+        json!({"state":state,"reason":reason,"retryable":input && state!="pending","task_id":task_id,"rebuild_command":if input {Some(format!("hear understanding rebuild {eid}"))}else{None}}),
+    )
+}
+
+fn digest(db: &Connection, q: &Query, a: &api::ListArgs, id: Uuid) -> Result<Value> {
+    let mut page = Page::new(
+        q,
+        a.cursor.as_deref(),
+        a.limit.unwrap_or(20) as usize,
+        false,
+    )?;
+    let range = page.range(a.time.as_ref(), true, true)?;
+    let m = mask(a.sources);
+    let mut stmt = sql(db.prepare("SELECT id FROM named_events WHERE deleted_ms IS NULL AND started_ms<?2 AND ended_ms>?1 AND source_mask&?3!=0 ORDER BY started_ms,id"))?;
+    let ids = sql(
+        sql(stmt.query_map(params![range.from_ms, range.to_ms, m], |r| {
+            r.get::<_, String>(0)
+        }))?
+        .collect::<rusqlite::Result<Vec<_>>>(),
+    )?;
+    let mut items = Vec::new();
+    for eid in ids {
+        let e = load_event(db, &eid)?;
+        if e.start < page.cursor.time {
+            continue;
+        }
+        let u = understanding(db, &e)?;
+        let version = hash(&(e.start, e.end, &e.title, e.revision, e.mask, &e.summary, &u));
+        if page.cursor.key.starts_with(&format!("{eid}:"))
+            && page.cursor.version.as_ref().is_some_and(|v| v != &version)
+        {
+            return Err("cursor_stale: digest event changed".into());
+        }
+        let state = understanding_state(db, &eid, &e, u.is_some())?;
+        let base = json!({"event_id":eid,"content_version":version,"title":e.title,"from":api::timestamp(e.start),"to":api::timestamp(e.end),"content_kind":"derived","understanding_source":"coarse_transcript","understanding_state":state,"summary":[],"topics":[],"key_points":[],"mentioned_objects":[],"decisions":[],"todos":[],"structured_actions_available":e.understanding.as_deref().and_then(|s|serde_json::from_str::<Value>(s).ok()).is_some_and(|v|v["decisions"].is_array() && v["todos"].is_array())});
+        let mut fragments = Vec::new();
+        let mut fragment = base.clone();
+        let mut entries: Vec<(&str, Value)> = Vec::new();
+        if let Some(summary) = &e.summary {
+            for chars in summary.chars().collect::<Vec<_>>().chunks(2000) {
+                entries.push(("summary", json!(chars.iter().collect::<String>())));
+            }
+        }
+        if let Some(u) = u {
+            for key in [
+                "topics",
+                "key_points",
+                "mentioned_objects",
+                "decisions",
+                "todos",
+            ] {
+                entries.extend(u[key].as_array().unwrap().iter().cloned().map(|v| (key, v)));
+            }
+        }
+        for (key, entry) in entries {
+            let size = serde_json::to_vec(&entry).unwrap().len();
+            if size > 10 * 1024 {
+                return Err("record_too_large: use event section for this digest entry".into());
+            }
+            if serde_json::to_vec(&fragment).unwrap().len() + size > 12 * 1024 {
+                fragments.push(fragment);
+                fragment = base.clone();
+            }
+            fragment[key].as_array_mut().unwrap().push(entry);
+        }
+        fragments.push(fragment);
+        let count = fragments.len();
+        for (index, mut value) in fragments.into_iter().enumerate() {
+            value["event_fragment"] = json!({"index":index,"count":count});
+            items.push(Item {
+                time: e.start,
+                key: format!("{eid}:{index:08}"),
+                value,
+            });
+        }
+    }
+    page.finish(id,json!({"events":[],"note":"Existing derived results only; empty action arrays with structured_actions_available=false mean not generated. Combine event fragments by event_id."}),items,coverage(db,&range,m)?)
 }

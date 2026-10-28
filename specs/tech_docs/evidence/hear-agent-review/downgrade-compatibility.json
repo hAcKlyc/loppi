@@ -1,0 +1,129 @@
+{
+  "scope": "isolated SQLite backup of migrated production DB; real installed protocol 21 and debug protocol 22 binaries",
+  "checks": [
+    {
+      "phase": "old",
+      "command": [
+        "status"
+      ],
+      "passed": true,
+      "elapsed_ms": 24
+    },
+    {
+      "phase": "old",
+      "command": [
+        "context",
+        "list",
+        "--date",
+        "2026-10-28"
+      ],
+      "passed": true,
+      "elapsed_ms": 1594
+    },
+    {
+      "phase": "old",
+      "command": [
+        "context",
+        "read",
+        "--from",
+        "2026-10-28T12:28:43+08:00",
+        "--to",
+        "2026-10-28T12:33:43+08:00"
+      ],
+      "passed": true,
+      "elapsed_ms": 1064
+    },
+    {
+      "phase": "old",
+      "command": [
+        "cloud",
+        "status"
+      ],
+      "passed": true,
+      "elapsed_ms": 17
+    },
+    {
+      "phase": "old",
+      "database_integrity_and_retained_content": true,
+      "existing_event_update_triggers": true
+    },
+    {
+      "phase": "new",
+      "command": [
+        "status"
+      ],
+      "passed": true,
+      "elapsed_ms": 25
+    },
+    {
+      "phase": "new",
+      "command": [
+        "context",
+        "list",
+        "--date",
+        "2026-10-28"
+      ],
+      "passed": true,
+      "elapsed_ms": 2434
+    },
+    {
+      "phase": "new",
+      "command": [
+        "context",
+        "read",
+        "--from",
+        "2026-10-28T12:28:43+08:00",
+        "--to",
+        "2026-10-28T12:33:43+08:00"
+      ],
+      "passed": true,
+      "elapsed_ms": 261
+    },
+    {
+      "phase": "new",
+      "command": [
+        "cloud",
+        "status"
+      ],
+      "passed": true,
+      "elapsed_ms": 22
+    },
+    {
+      "phase": "new",
+      "database_integrity_and_retained_content": true,
+      "existing_event_update_triggers": true
+    }
+  ],
+  "passed": true,
+  "production_restore": {
+    "passed": true,
+    "original_database_retained": true,
+    "backup_not_restored": true,
+    "protocol_version": 21,
+    "recording_paused": true,
+    "checks": [
+      {
+        "command": [
+          "context",
+          "list",
+          "--date",
+          "2026-10-28"
+        ],
+        "passed": true,
+        "elapsed_ms": 1657
+      },
+      {
+        "command": [
+          "context",
+          "read",
+          "--from",
+          "2026-10-28T12:28:43+08:00",
+          "--to",
+          "2026-10-28T12:33:43+08:00"
+        ],
+        "passed": true,
+        "elapsed_ms": 917
+      }
+    ]
+  }
+}

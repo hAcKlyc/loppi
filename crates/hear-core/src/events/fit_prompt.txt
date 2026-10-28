@@ -100,7 +100,9 @@
       "required": [
         "topics",
         "key_points",
-        "mentioned_objects"
+        "mentioned_objects",
+        "decisions",
+        "todos"
       ],
       "additionalProperties": false,
       "properties": {
@@ -122,6 +124,18 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/object"
+          }
+        },
+        "decisions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/point"
+          }
+        },
+        "todos": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/todo"
           }
         }
       }
@@ -202,6 +216,42 @@
         "evidence_indices": {
           "$ref": "#/$defs/indices",
           "minItems": 1
+        }
+      }
+    },
+    "todo": {
+      "type": "object",
+      "required": [
+        "replaces",
+        "text",
+        "owner",
+        "due",
+        "evidence_indices"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "replaces": {
+          "$ref": "#/$defs/indices"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_indices": {
+          "$ref": "#/$defs/indices",
+          "minItems": 1
+        },
+        "owner": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "due": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
       }
     }
@@ -346,3 +396,9 @@
 - 新信息是补充、纠正还是不同观点；过时状态是否更新，仍有效的关键信息是否保留。
 - 主体、动作对象、条件、时间和状态是否忠实，跨字段纠正是否同步。
 - 合并后的摘要是否覆盖整场主要议题，保留具体辨认信息；在此前提下尽量简洁。
+
+## 词库与行动信息
+
+输入 `vocabulary` 是用户维护的规范词与别名。名称、标题、摘要及理解结果优先采用匹配实体的 `name`；词库只是术语背景，不是对本次谈话的事实或执行指令。例如词库把“开山”列为“看山”的别名时，产品名使用“看山”。`entity_id` 仍输出 null，由本地程序根据词库绑定。
+
+`decisions` 记录谈话中已确定的决定；`todos` 记录明确提出的后续行动。二者与 key_points 一样提供 evidence_indices，增量替换使用 replaces；未出现则为空数组。owner、due 只填谈话明确给出的负责人和期限，否则为 null，保留相对时间原文。提议、疑问和未达成的意向不要升级为决定或承诺。
