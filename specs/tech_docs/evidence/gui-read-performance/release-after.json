@@ -1,0 +1,572 @@
+{
+  "build": {
+    "component": "core",
+    "version": "0.1.11",
+    "protocol_version": 22,
+    "git_sha": "b4301d1035197c4f0b7dda970c398be0a786f15c",
+    "dirty": true,
+    "built_at_epoch": 1793214190
+  },
+  "cli": [
+    {
+      "command": [
+        "timeline",
+        "1793116800000",
+        "1793203200000"
+      ],
+      "ms": 818.8392920000001,
+      "bytes": 24799
+    },
+    {
+      "command": [
+        "context",
+        "list",
+        "--date",
+        "2026-10-28"
+      ],
+      "ms": 425.16433400000005,
+      "bytes": 13411
+    },
+    {
+      "command": [
+        "context",
+        "read",
+        "--event",
+        "4b0b5314-0fad-4e0b-bdab-d7afbba4e3e7",
+        "--limit",
+        "50"
+      ],
+      "ms": 296.37162499999977,
+      "bytes": 17442
+    },
+    {
+      "command": [
+        "context",
+        "read",
+        "--from",
+        "2026-10-28T12:00:00+08:00",
+        "--to",
+        "2026-10-28T15:00:00+08:00",
+        "--limit",
+        "50"
+      ],
+      "ms": 228.60016600000017,
+      "bytes": 18376
+    }
+  ],
+  "wire": [
+    {
+      "command": "timeline",
+      "id": "5288e2af-9331-47f9-9dd4-e8a25cbe4ccd",
+      "ms": 375.00829200000044,
+      "parse_ms": 0.11529099999961545,
+      "bytes": 20223,
+      "core_ms": 359,
+      "serialize_us": 25
+    },
+    {
+      "command": "event_detail",
+      "id": "037a1fe2-314e-4688-b796-db0882fa6046",
+      "offset": 0,
+      "limit": 100,
+      "ms": 109.72262499999988,
+      "parse_ms": 0.21383300000024974,
+      "bytes": 68994,
+      "fields": {
+        "id": 38,
+        "manual_range_id": 4,
+        "started_ms": 13,
+        "ended_ms": 13,
+        "title": 61,
+        "sources": 12,
+        "revision": 2,
+        "fit_state": 8,
+        "processing_state": 13,
+        "transcription": 61,
+        "manual_asr_state": 4,
+        "manual_asr_started_ms": 4,
+        "manual_asr_ended_ms": 4,
+        "manual_asr_source": 4,
+        "summary": 3520,
+        "coarse_segments": 22332,
+        "precise_segments": 42559
+      },
+      "core_ms": 89,
+      "serialize_us": 50
+    },
+    {
+      "command": "event_detail",
+      "id": "07a5c385-b985-4b22-a16c-28e24691835b",
+      "offset": 0,
+      "limit": 30,
+      "ms": 80.73083399999996,
+      "parse_ms": 0.08379100000001927,
+      "bytes": 22663,
+      "fields": {
+        "id": 38,
+        "manual_range_id": 4,
+        "started_ms": 13,
+        "ended_ms": 13,
+        "title": 61,
+        "sources": 12,
+        "revision": 2,
+        "fit_state": 8,
+        "processing_state": 13,
+        "transcription": 61,
+        "manual_asr_state": 4,
+        "manual_asr_started_ms": 4,
+        "manual_asr_ended_ms": 4,
+        "manual_asr_source": 4,
+        "summary": 3520,
+        "coarse_segments": 6770,
+        "precise_segments": 11790
+      },
+      "core_ms": 77,
+      "serialize_us": 16
+    },
+    {
+      "command": "event_detail",
+      "id": "cbf6daf0-a4e1-4098-9a8e-7b8495e30741",
+      "offset": 300,
+      "limit": 1,
+      "ms": 67.07770899999923,
+      "parse_ms": 0.04758300000048621,
+      "bytes": 4702,
+      "core_ms": 66,
+      "serialize_us": 4
+    },
+    {
+      "command": "event_detail",
+      "id": "720a6433-ee2d-4753-b02f-309e6581513c",
+      "offset": 0,
+      "limit": 30,
+      "ms": 468.83908299999985,
+      "parse_ms": 0.0999999999994543,
+      "bytes": 22663,
+      "core_ms": 455,
+      "serialize_us": 17
+    },
+    {
+      "command": "moments",
+      "id": "81f5e10a-3dce-4784-befe-1e3a117d7aeb",
+      "offset": 0,
+      "limit": 200,
+      "ms": 24.046707999999853,
+      "parse_ms": 0.016584000000875676,
+      "bytes": 75,
+      "core_ms": 0,
+      "serialize_us": 1
+    },
+    {
+      "command": "session_speakers",
+      "id": "3931f7b6-9dcf-4992-a8f7-8d9dc6784573",
+      "ms": 230.26004099999955,
+      "parse_ms": 0.03970900000058464,
+      "bytes": 3016,
+      "core_ms": 209,
+      "serialize_us": 6
+    },
+    {
+      "command": "event_detail",
+      "id": "307983fd-c082-4c85-a598-34fef0018153",
+      "offset": 300,
+      "limit": 1,
+      "ms": 76.56845900000008,
+      "parse_ms": 0.05587500000001455,
+      "bytes": 4702,
+      "core_ms": 64,
+      "serialize_us": 3
+    },
+    {
+      "command": "event_detail",
+      "id": "9c879019-bbfb-44bb-a528-b239c33eed33",
+      "offset": 0,
+      "limit": 30,
+      "ms": 90.35412499999984,
+      "parse_ms": 0.08266700000058336,
+      "bytes": 22663,
+      "core_ms": 82,
+      "serialize_us": 16
+    },
+    {
+      "command": "moments",
+      "id": "f933f45a-6cac-44f5-9def-2b331ca3af7c",
+      "offset": 0,
+      "limit": 200,
+      "ms": 6.4409579999992275,
+      "parse_ms": 0.008042000000386906,
+      "bytes": 75,
+      "core_ms": 0,
+      "serialize_us": 1
+    },
+    {
+      "command": "session_speakers",
+      "id": "5c4d93b4-395d-46c1-9229-73e708430915",
+      "ms": 197.68754100000024,
+      "parse_ms": 0.027291999999761174,
+      "bytes": 3016,
+      "core_ms": 185,
+      "serialize_us": 6
+    },
+    {
+      "command": "event_detail",
+      "id": "91944338-3778-453a-bd2f-6ec3bfe03537",
+      "offset": 300,
+      "limit": 1,
+      "ms": 91.87783300000046,
+      "parse_ms": 0.0378339999997479,
+      "bytes": 4702,
+      "core_ms": 66,
+      "serialize_us": 3
+    },
+    {
+      "command": "event_detail",
+      "id": "d9a2e4c5-358e-4247-908a-b34cbe150aee",
+      "offset": 0,
+      "limit": 30,
+      "ms": 84.02179200000046,
+      "parse_ms": 0.09520799999972951,
+      "bytes": 22663,
+      "core_ms": 82,
+      "serialize_us": 16
+    },
+    {
+      "command": "moments",
+      "id": "272bfffe-598f-45ec-9df5-26e14867d4d2",
+      "offset": 0,
+      "limit": 200,
+      "ms": 19.372792000000118,
+      "parse_ms": 0.00595800000064628,
+      "bytes": 75,
+      "core_ms": 0,
+      "serialize_us": 0
+    },
+    {
+      "command": "session_speakers",
+      "id": "345e09e3-8a7d-425b-81df-ab7b61b7c3eb",
+      "ms": 302.2513749999998,
+      "parse_ms": 0.03195800000048621,
+      "bytes": 3016,
+      "core_ms": 277,
+      "serialize_us": 5
+    },
+    {
+      "command": "event_detail",
+      "id": "73667362-a24e-43b7-bd50-c5e0e7b71d11",
+      "offset": 300,
+      "limit": 1,
+      "ms": 71.97820800000045,
+      "parse_ms": 0.03620799999953306,
+      "bytes": 4702,
+      "core_ms": 63,
+      "serialize_us": 4
+    },
+    {
+      "command": "event_detail",
+      "id": "c065a3a7-b4d6-4317-89b1-194f353ddd22",
+      "offset": 0,
+      "limit": 30,
+      "ms": 82.21983400000045,
+      "parse_ms": 0.08674999999948341,
+      "bytes": 22663,
+      "core_ms": 81,
+      "serialize_us": 16
+    },
+    {
+      "command": "moments",
+      "id": "3d733043-3151-42b4-aa65-087594929d7b",
+      "offset": 0,
+      "limit": 200,
+      "ms": 25.26970799999981,
+      "parse_ms": 0.006667000000561529,
+      "bytes": 75,
+      "core_ms": 0,
+      "serialize_us": 0
+    },
+    {
+      "command": "session_speakers",
+      "id": "df1072cc-3463-4083-980f-9b550ff731d5",
+      "ms": 190.222667,
+      "parse_ms": 0.02695800000037707,
+      "bytes": 3016,
+      "core_ms": 184,
+      "serialize_us": 5
+    },
+    {
+      "command": "event_detail",
+      "id": "dd8dd459-d810-4f4a-b05b-6e6702044019",
+      "offset": 300,
+      "limit": 1,
+      "ms": 71.12474999999904,
+      "parse_ms": 0.03600000000005821,
+      "bytes": 4702,
+      "core_ms": 64,
+      "serialize_us": 3
+    },
+    {
+      "command": "event_detail",
+      "id": "c1f2eef0-db00-4679-bdba-8fc8f77405f6",
+      "offset": 0,
+      "limit": 30,
+      "ms": 89.65504200000032,
+      "parse_ms": 0.09933300000011513,
+      "bytes": 22663,
+      "core_ms": 81,
+      "serialize_us": 16
+    },
+    {
+      "command": "moments",
+      "id": "064cc413-7ade-4224-a14d-578fbbebedc7",
+      "offset": 0,
+      "limit": 200,
+      "ms": 6.3003330000010465,
+      "parse_ms": 0.005541999998968095,
+      "bytes": 75,
+      "core_ms": 0,
+      "serialize_us": 1
+    },
+    {
+      "command": "session_speakers",
+      "id": "c837937c-43d7-471b-92f0-7d8a823688ea",
+      "ms": 192.65341699999954,
+      "parse_ms": 0.029875000000174623,
+      "bytes": 3016,
+      "core_ms": 184,
+      "serialize_us": 6
+    }
+  ],
+  "browser": [
+    {
+      "started": 250,
+      "commits": [
+        {
+          "phase": "mount",
+          "ms": 26
+        },
+        {
+          "phase": "update",
+          "ms": 7
+        },
+        {
+          "phase": "update",
+          "ms": 5
+        },
+        {
+          "phase": "update",
+          "ms": 3.0000000000001137
+        }
+      ],
+      "requests": [
+        {
+          "command": "event_detail",
+          "id": "720a6433-ee2d-4753-b02f-309e6581513c",
+          "started": 285.00000000000006,
+          "ended": 766
+        },
+        {
+          "command": "moments",
+          "id": "81f5e10a-3dce-4784-befe-1e3a117d7aeb",
+          "started": 830.0000000000001,
+          "ended": 863
+        },
+        {
+          "command": "session_speakers",
+          "id": "3931f7b6-9dcf-4992-a8f7-8d9dc6784573",
+          "started": 767,
+          "ended": 1000
+        }
+      ],
+      "readable": 838,
+      "click_to_readable_ms": 588
+    },
+    {
+      "started": 161,
+      "commits": [
+        {
+          "phase": "mount",
+          "ms": 17
+        },
+        {
+          "phase": "update",
+          "ms": 5.999999999999943
+        },
+        {
+          "phase": "update",
+          "ms": 0
+        },
+        {
+          "phase": "update",
+          "ms": 2
+        },
+        {
+          "phase": "update",
+          "ms": 3
+        }
+      ],
+      "requests": [
+        {
+          "command": "event_detail",
+          "id": "9c879019-bbfb-44bb-a528-b239c33eed33",
+          "started": 186,
+          "ended": 282
+        },
+        {
+          "command": "moments",
+          "id": "f933f45a-6cac-44f5-9def-2b331ca3af7c",
+          "started": 309,
+          "ended": 318
+        },
+        {
+          "command": "session_speakers",
+          "id": "5c4d93b4-395d-46c1-9229-73e708430915",
+          "started": 282,
+          "ended": 482
+        }
+      ],
+      "readable": 307,
+      "click_to_readable_ms": 146
+    },
+    {
+      "started": 178,
+      "commits": [
+        {
+          "phase": "mount",
+          "ms": 18
+        },
+        {
+          "phase": "update",
+          "ms": 5
+        },
+        {
+          "phase": "update",
+          "ms": 0
+        },
+        {
+          "phase": "update",
+          "ms": 3
+        },
+        {
+          "phase": "update",
+          "ms": 3
+        }
+      ],
+      "requests": [
+        {
+          "command": "event_detail",
+          "id": "d9a2e4c5-358e-4247-908a-b34cbe150aee",
+          "started": 203,
+          "ended": 292
+        },
+        {
+          "command": "moments",
+          "id": "272bfffe-598f-45ec-9df5-26e14867d4d2",
+          "started": 319,
+          "ended": 340
+        },
+        {
+          "command": "session_speakers",
+          "id": "345e09e3-8a7d-425b-81df-ab7b61b7c3eb",
+          "started": 293,
+          "ended": 597
+        }
+      ],
+      "readable": 317,
+      "click_to_readable_ms": 139
+    },
+    {
+      "started": 146,
+      "commits": [
+        {
+          "phase": "mount",
+          "ms": 17
+        },
+        {
+          "phase": "update",
+          "ms": 6
+        },
+        {
+          "phase": "update",
+          "ms": 0
+        },
+        {
+          "phase": "update",
+          "ms": 4
+        },
+        {
+          "phase": "update",
+          "ms": 3
+        }
+      ],
+      "requests": [
+        {
+          "command": "event_detail",
+          "id": "c065a3a7-b4d6-4317-89b1-194f353ddd22",
+          "started": 170,
+          "ended": 258
+        },
+        {
+          "command": "moments",
+          "id": "3d733043-3151-42b4-aa65-087594929d7b",
+          "started": 285.00000000000006,
+          "ended": 311
+        },
+        {
+          "command": "session_speakers",
+          "id": "df1072cc-3463-4083-980f-9b550ff731d5",
+          "started": 258,
+          "ended": 450
+        }
+      ],
+      "readable": 282,
+      "click_to_readable_ms": 136
+    },
+    {
+      "started": 158,
+      "commits": [
+        {
+          "phase": "mount",
+          "ms": 18
+        },
+        {
+          "phase": "update",
+          "ms": 6.000000000000057
+        },
+        {
+          "phase": "update",
+          "ms": 0
+        },
+        {
+          "phase": "update",
+          "ms": 3
+        },
+        {
+          "phase": "update",
+          "ms": 3
+        }
+      ],
+      "requests": [
+        {
+          "command": "event_detail",
+          "id": "c1f2eef0-db00-4679-bdba-8fc8f77405f6",
+          "started": 183,
+          "ended": 279
+        },
+        {
+          "command": "moments",
+          "id": "064cc413-7ade-4224-a14d-578fbbebedc7",
+          "started": 306,
+          "ended": 315
+        },
+        {
+          "command": "session_speakers",
+          "id": "c837937c-43d7-471b-92f0-7d8a823688ea",
+          "started": 279,
+          "ended": 474.00000000000006
+        }
+      ],
+      "readable": 303,
+      "click_to_readable_ms": 145
+    }
+  ],
+  "limits": "Real Core socket + Playwright WebKit through an exposed-function bridge, not native Tauri invoke. React development build. No private payloads retained."
+}

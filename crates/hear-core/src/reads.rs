@@ -11,6 +11,34 @@ use std::time::{Duration, Instant};
 
 const READERS: usize = 2;
 const CACHE_BYTES: usize = 4 * 1024 * 1024;
+
+/// Preserve the failure layer. A SQLite interruption is never invalid user input.
+pub fn error_code(error: &str) -> &'static str {
+    match error {
+        "invalid time range" => "invalid_time_range",
+        "invalid calendar boundaries" => "invalid_calendar_range",
+        "invalid transcript page" => "invalid_transcript_page",
+        "event not found" => "event_not_found",
+        "segment is no longer current" => "speaker_invalid",
+        _ if error.contains("interrupted") => "query_timeout",
+        _ if error.contains("database is locked") || error.contains("database table is locked") => {
+            "db_locked"
+        }
+        _ if error.contains("capacity busy") => "read_busy",
+        _ => "query_failed",
+    }
+}
+
+/// An allowlisted diagnostic cause, never SQL, provider bodies or private text.
+pub fn failure_cause(error: &str) -> &'static str {
+    match error {
+        _ if error.contains("no such table") || error.contains("no such column") => "db_schema",
+        _ if error.contains("constraint failed") => "db_constraint",
+        _ if error.contains("disk I/O error") => "db_io",
+        _ if error.contains("malformed") => "db_corrupt",
+        _ => error_code(error),
+    }
+}
 struct Cached {
     version: i64,
     key: String,
@@ -127,6 +155,21 @@ impl Drop for Snapshot<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn query_failures_keep_their_layer() {
+        for (error, code) in [
+            ("interrupted", "query_timeout"),
+            ("database is locked", "db_locked"),
+            ("read capacity busy", "read_busy"),
+            ("invalid time range", "invalid_time_range"),
+            ("event not found", "event_not_found"),
+            ("invalid transcript page", "invalid_transcript_page"),
+            ("no such table: private", "query_failed"),
+        ] {
+            assert_eq!(error_code(error), code);
+        }
+        assert_eq!(failure_cause("no such column: private"), "db_schema");
+    }
     #[test]
     fn snapshots_cache_only_their_version_and_do_not_hold_writer() {
         let dir = tempfile::tempdir().unwrap();

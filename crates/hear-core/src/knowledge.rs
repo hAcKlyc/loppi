@@ -398,9 +398,10 @@ fn revision_parts(
     let ids = serde_json::to_string(ids).map_err(|e| e.to_string())?;
     let mut output = std::collections::HashMap::new();
     let mut stmt = db.prepare("SELECT p.id,p.source,p.started_ms,p.ended_ms,p.text,p.speaker_scope,
-      coalesce(p.speaker_label,''),coalesce(g.group_id,'') FROM precise_segments p
-      JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms LEFT JOIN precise_group_membership g
-      ON g.segment_id=p.id
+      coalesce(p.speaker_label,''),coalesce(a.group_id,g.group_id,'') FROM precise_segments p
+      JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms
+      LEFT JOIN local_speaker_assignments a ON a.segment_id=p.id
+      LEFT JOIN speaker_groups g ON g.speaker_scope=p.speaker_scope AND g.speaker_label=p.speaker_label
       WHERE p.id IN (SELECT value FROM json_each(?1)) AND t.state='complete' AND
       ((t.target_kind='event' AND EXISTS(SELECT 1 FROM named_events e WHERE e.id=t.target_id
         AND e.deleted_ms IS NULL AND t.target_version=printf('%d:%d:%d',e.source_mask,e.started_ms,e.ended_ms)))
@@ -1358,22 +1359,32 @@ pub fn session_speakers(
     if visible_segment(db, segment_id)?.is_none() {
         return Err("segment is no longer current".into());
     }
+    // Resolve the seed before expanding the session. Joining two compound task
+    // views prevents predicate pushdown and visits every historical segment.
+    let (kind, target, version): (String, String, String) = db
+        .query_row(
+            "SELECT t.target_kind,t.target_id,t.target_version FROM precise_segments seed
+         JOIN transcript_tasks t ON t.id=seed.task_id
+         AND seed.started_ms>=t.started_ms AND seed.ended_ms<=t.ended_ms
+         WHERE seed.id=?1 AND t.state='complete' LIMIT 1",
+            [segment_id.to_string()],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .map_err(|e| e.to_string())?;
     let mut stmt = db
         .prepare(
             "SELECT i.speaker,p.id,i.person_id FROM precise_segments p
          JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms
          JOIN precise_identity_projection i ON i.segment_id=p.id
-         JOIN precise_segments seed ON seed.id=?1
-         JOIN transcript_tasks st ON st.id=seed.task_id AND seed.started_ms>=st.started_ms AND seed.ended_ms<=st.ended_ms
-         WHERE t.target_kind=st.target_kind AND t.target_id=st.target_id
-         AND t.target_version=st.target_version AND t.state='complete'
+         WHERE t.target_kind=?1 AND t.target_id=?2
+         AND t.target_version=?3 AND t.state='complete'
          AND i.speaker IS NOT NULL ORDER BY p.started_ms,p.id",
         )
         .map_err(|e| e.to_string())?;
     let mut result: Vec<hear_protocol::LocalSpeaker> = Vec::new();
     let mut indices = std::collections::HashMap::new();
     for row in stmt
-        .query_map([segment_id.to_string()], |r| {
+        .query_map(params![kind, target, version], |r| {
             Ok((
                 r.get::<_, String>(0)?,
                 r.get::<_, String>(1)?,

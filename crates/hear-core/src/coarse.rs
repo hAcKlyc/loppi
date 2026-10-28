@@ -16,6 +16,7 @@ pub fn init(db: &Connection) -> Result<(), String> {
       CREATE INDEX IF NOT EXISTS coarse_jobs_oldest ON coarse_jobs(started_ms,id) WHERE state='pending';
       CREATE INDEX IF NOT EXISTS coarse_jobs_session_end ON coarse_jobs(session_id,end_sample);
       CREATE INDEX IF NOT EXISTS coarse_segments_session_end ON coarse_segments(session_id,ended_ms);
+      CREATE INDEX IF NOT EXISTS coarse_jobs_failed_time ON coarse_jobs(source,started_ms,ended_ms) WHERE state='failed';
       CREATE INDEX IF NOT EXISTS coarse_jobs_range ON coarse_jobs(source,started_ms,ended_ms);")
       .map_err(|e|e.to_string())
 }

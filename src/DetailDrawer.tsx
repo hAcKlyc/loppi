@@ -27,6 +27,8 @@ import { MomentList } from "./MomentList";
 import { type Chunk, ContinuousPlayback } from "./playback";
 import { type SpeakerAction, SpeakerPicker } from "./SpeakerPicker";
 
+const PAGE_SIZE = 30;
+
 type Props = {
 	item: TimelineItem;
 	initialAt?: number;
@@ -191,6 +193,10 @@ export function DetailDrawer({
 	};
 	const [detail, setDetail] = useState<TimelineItem>(item);
 	const [localSpeakers, setLocalSpeakers] = useState<LocalSpeaker[]>([]);
+	const [speakersReady, setSpeakersReady] = useState(false);
+	const [speakersError, setSpeakersError] = useState<string | null>(null);
+	const detailRef = useRef(detail);
+	detailRef.current = detail;
 	const [detailReady, setDetailReady] = useState(false);
 	const [detailError, setDetailError] = useState<string | null>(null);
 	const [tab, setTab] = useState<"transcript" | "info">("transcript");
@@ -238,7 +244,7 @@ export function DetailDrawer({
 	});
 
 	const load = useCallback(
-		async (page: number) => {
+		async (page: number, append = false) => {
 			const token = ++detailRequest.current;
 			setDetailError(null);
 			try {
@@ -253,13 +259,18 @@ export function DetailDrawer({
 				for (let attempt = 0; attempt < 2; attempt++) {
 					allCoarse.length = 0;
 					allPrecise.length = 0;
-					for (let offset = 0; ; offset += 100) {
+					const appendPage = append && attempt === 0;
+					if (appendPage) {
+						allCoarse.push(...detailRef.current.coarse_segments);
+						allPrecise.push(...detailRef.current.precise_segments);
+					}
+					for (let offset = appendPage ? page : 0; ; offset += PAGE_SIZE) {
 						const request = item.id
 							? {
 									type: "event_detail",
 									event_id: item.id,
 									offset,
-									limit: 100,
+									limit: PAGE_SIZE,
 								}
 							: {
 									type: "range_detail",
@@ -267,7 +278,7 @@ export function DetailDrawer({
 									ended_ms: item.ended_ms,
 									sources: item.sources,
 									offset,
-									limit: 100,
+									limit: PAGE_SIZE,
 								};
 						response = await core<{
 							type: "event";
@@ -284,12 +295,12 @@ export function DetailDrawer({
 							(pageCoversTime(
 								response.event.coarse_segments,
 								entryTime(response.event, target),
-								100,
+								PAGE_SIZE,
 							) &&
 								pageCoversTime(
 									response.event.precise_segments,
 									entryTime(response.event, target),
-									100,
+									PAGE_SIZE,
 								));
 						if (offset >= page && covered) break;
 					}
@@ -300,18 +311,6 @@ export function DetailDrawer({
 						break;
 				}
 				if (!response) return;
-				const speakers = allPrecise[0]
-					? await core<{
-							type: "session_speakers";
-							id: string;
-							speakers: LocalSpeaker[];
-						}>({
-							type: "session_speakers",
-							segment_id: allPrecise[0].id,
-						})
-					: { speakers: [] };
-				if (token !== detailRequest.current) return;
-				setLocalSpeakers(speakers.speakers);
 				setPlayhead((current) =>
 					Math.max(
 						response.event.started_ms,
@@ -332,10 +331,33 @@ export function DetailDrawer({
 				offset.current = loadedPage;
 				setDetailReady(true);
 				setHasMore(
-					response.event.coarse_segments.length >= 100 ||
-						response.event.precise_segments.length >= 100,
+					response.event.coarse_segments.length >= PAGE_SIZE ||
+						response.event.precise_segments.length >= PAGE_SIZE,
 				);
 				setInfoError(null);
+				// Text and notes become readable before the independent identity list.
+				setSpeakersError(null);
+				if (allPrecise[0]) {
+					try {
+						const speakers = await core<
+							CoreResponse & { speakers: LocalSpeaker[] }
+						>({
+							type: "session_speakers",
+							segment_id: allPrecise[0].id,
+						});
+						if (token !== detailRequest.current) return;
+						setLocalSpeakers(speakers.speakers);
+						setSpeakersReady(true);
+					} catch (error) {
+						if (token === detailRequest.current) {
+							setSpeakersError(userError(error));
+							setSpeakersReady(false);
+						}
+					}
+				} else {
+					setLocalSpeakers([]);
+					setSpeakersReady(true);
+				}
 			} catch (error) {
 				if (token === detailRequest.current) setDetailError(userError(error));
 			}
@@ -920,6 +942,12 @@ export function DetailDrawer({
 								</div>
 							)}
 						</div>
+						{speakersError && (
+							<LoadError
+								message={`说话人读取失败：${speakersError}`}
+								retry={() => void load(offset.current)}
+							/>
+						)}
 						{detailError && (
 							<LoadError
 								message={`转录读取失败：${detailError}`}
@@ -1120,9 +1148,13 @@ export function DetailDrawer({
 												precise &&
 												speakerAnchor.current && (
 													<SpeakerPicker
-														peopleReady={peopleReady}
-														peopleError={peopleError}
-														onPeopleRetry={onPeopleRetry}
+														peopleReady={peopleReady && speakersReady}
+														peopleError={speakersError || peopleError}
+														onPeopleRetry={
+															speakersError
+																? () => void load(offset.current)
+																: onPeopleRetry
+														}
 														key={segment.id}
 														anchor={speakerAnchor.current}
 														people={people}
@@ -1142,7 +1174,7 @@ export function DetailDrawer({
 								<button
 									type="button"
 									className="load-more"
-									onClick={() => void load(offset.current + 100)}
+									onClick={() => void load(offset.current + PAGE_SIZE, true)}
 								>
 									显示更多文字
 								</button>

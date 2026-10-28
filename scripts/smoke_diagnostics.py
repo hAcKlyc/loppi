@@ -11,8 +11,8 @@ import time
 import uuid
 
 ROOT = Path(__file__).resolve().parent.parent
-CLI = ROOT/'target/debug/hear'
-CORE = ROOT/'target/debug/hear-core'
+CLI = Path(os.environ.get('HEAR_TEST_CLI', ROOT/'target/debug/hear'))
+CORE = Path(os.environ.get('HEAR_TEST_CORE', ROOT/'target/debug/hear-core'))
 
 
 def main():
@@ -59,14 +59,56 @@ def main():
                     if close_reader:
                         assert client.recv(1) # Close only after the response starts writing.
                     else:
+                        response = b''
                         try:
-                            while client.recv(8192):
-                                pass
+                            while chunk := client.recv(8192):
+                                response += chunk
                         except ConnectionResetError:
                             pass
+                        return json.loads(response) if response else None
             wire(b'{"secret":"synthetic-private-marker"')
             execute_id, payload = envelope(dict(type='usage_statistics', boundaries=[]))
             wire(payload)
+            # Semantic errors and database failures have different codes; both
+            # are logged even when the dispatcher returns Response::Error.
+            cases = [
+                (dict(type='timeline', from_ms=100, to_ms=1), 'invalid_time_range'),
+                (dict(type='event_detail', event_id=str(uuid.uuid4()), offset=0, limit=30), 'event_not_found'),
+                (dict(type='calendar_days', boundaries=[]), 'invalid_calendar_range'),
+            ]
+            checked = []
+            for request, expected in cases:
+                identity, payload = envelope(request)
+                response = wire(payload)
+                assert response['code'] == expected, response
+                checked.append((identity, request['type'], expected, expected))
+            # A missing schema used to be mislabeled "invalid time range" or
+            # "event changed". Simulate it only in this temporary database.
+            with sqlite3.connect(data/'hear.sqlite') as db:
+                db.execute('ALTER TABLE named_events RENAME TO unavailable_events')
+            for request in [dict(type='timeline', from_ms=0, to_ms=1000), cases[1][0]]:
+                identity, payload = envelope(request)
+                response = wire(payload)
+                assert response['code'] == 'query_failed', response
+                checked.append((identity, request['type'], 'query_failed', 'db_schema'))
+            # Force SQLite's actual three-second progress-handler deadline in
+            # both GUI paths; a result-independent recursive aggregate cannot
+            # finish within the deadline even on a fast machine.
+            with sqlite3.connect(data/'hear.sqlite') as db:
+                db.execute("""CREATE VIEW named_events AS
+                    WITH RECURSIVE slow(x) AS (VALUES(0) UNION ALL SELECT x+1 FROM slow WHERE x<1000000000)
+                    SELECT '00000000-0000-0000-0000-000000000001' AS id,
+                    0 AS started_ms,1000 AS ended_ms,'fixture' AS title,sum(x) AS revision,
+                    1 AS source_mask,NULL AS summary,NULL AS deleted_ms FROM slow""")
+            for request in [dict(type='timeline', from_ms=0, to_ms=1000),
+                            dict(type='event_detail', event_id='00000000-0000-0000-0000-000000000001', offset=0, limit=30)]:
+                identity, payload = envelope(request)
+                response = wire(payload)
+                assert response['code'] == 'query_timeout', response
+                checked.append((identity, request['type'], 'query_timeout', 'query_timeout'))
+            with sqlite3.connect(data/'hear.sqlite') as db:
+                db.execute('DROP VIEW named_events')
+                db.execute('ALTER TABLE unavailable_events RENAME TO named_events')
             # A response larger than the socket buffer makes write failure
             # deterministic; closing a tiny status response can race success.
             seed = dict(timestamp_ms=now, run_id=str(uuid.uuid4()), elapsed_ms=0,
@@ -94,6 +136,14 @@ def main():
             for code, identity in [('ipc_execute_failed',execute_id),('ipc_write_disconnected',write_id)]:
                 assert failures[code]['request_id'] == identity
                 assert failures[code]['correlation_id'] == identity
+            assert failures['ipc_execute_failed']['context']['command'] == 'usage_statistics'
+            assert failures['ipc_write_disconnected']['context']['command'] == 'logs'
+            for identity, expected_command, code, cause in checked:
+                record = next(r for r in records if r.get('request_id') == identity and r.get('error_code') == code)
+                assert record['level'] == 'warn' and record['correlation_id'] == identity
+                assert record['context']['command'] == expected_command
+                assert record['context']['cause'] == cause
+                assert record['duration_ms'] >= 0 and record['context']['output_bytes'] > 0
             assert 'synthetic-private-marker' not in (data/'logs/hear.jsonl').read_text()
             with sqlite3.connect(f'file:{data}/hear.sqlite?mode=ro',uri=True) as db:
                 assert db.execute('select count(*) from recording_sessions').fetchone()[0]==0

@@ -37,6 +37,12 @@ pub enum OutputFinishReason {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct LogContext {
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cause: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub serialize_us: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub finish_reason: Option<OutputFinishReason>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub main_display_asleep: Option<bool>,

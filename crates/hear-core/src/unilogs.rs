@@ -266,6 +266,9 @@ pub(crate) fn valid_event(event: &LogEvent) -> bool {
     token(&event.component)
         && token(&event.event)
         && event.error_code.as_deref().is_none_or(token)
+        && event.context.as_ref().is_none_or(|c| {
+            c.command.as_deref().is_none_or(token) && c.cause.as_deref().is_none_or(token)
+        })
         && event.build.as_ref().is_none_or(|b| {
             matches!(b.component.as_str(), "core" | "cli" | "gui" | "worker")
                 && b.git_sha.len() <= 64

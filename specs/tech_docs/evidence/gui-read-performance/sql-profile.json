@@ -1,0 +1,1923 @@
+{
+  "before": [
+    {
+      "bytes": 15934,
+      "operation": "timeline",
+      "plans": [
+        {
+          "plan": [
+            "CO-ROUTINE (subquery-2)",
+            "COMPOUND QUERY",
+            "LEFT-MOST SUBQUERY",
+            "SEARCH audio_blocks USING INDEX audio_blocks_source_end (source=? AND ended_ms>?)",
+            "UNION ALL",
+            "SEARCH coarse_segments USING INDEX coarse_segments_ended (ended_ms>?)",
+            "SCAN (subquery-2)"
+          ],
+          "sql": "SELECT min(started_ms),max(ended_ms) FROM (\n              SELECT started_ms,ended_ms FROM audio_blocks\n                WHERE source=?3 AND media_path IS NOT NULL AND started_ms < ?2 AND ended_ms > ?1\n              UNION ALL SELECT started_ms,ended_ms FROM coarse_segments\n                WHERE source=?3 AND started_ms < ?2 AND ended_ms > ?1)"
+        },
+        {
+          "plan": [
+            "SCAN cloud_tasks",
+            "CORRELATED SCALAR SUBQUERY 1",
+            "SCAN p",
+            "USE TEMP B-TREE FOR ORDER BY"
+          ],
+          "sql": "SELECT CASE WHEN state='complete'\n          AND NOT EXISTS(SELECT 1 FROM precise_segments p WHERE p.task_id=cloud_tasks.id)\n          THEN 'no_transcript' ELSE state END,started_ms,ended_ms,source FROM cloud_tasks\n        WHERE target_kind='range' AND started_ms < ?2 AND ended_ms > ?1\n          AND source IN (CASE WHEN ?3&1!=0 THEN 'microphone' END, CASE WHEN ?3&2!=0 THEN 'system' END)\n          AND state!='superseded' ORDER BY created_ms DESC LIMIT 1"
+        },
+        {
+          "plan": [
+            "SCAN CONSTANT ROW",
+            "SCALAR SUBQUERY 1",
+            "MULTI-INDEX OR",
+            "INDEX 1",
+            "SEARCH audio_blocks USING INDEX audio_blocks_source_time (source=? AND started_ms<?)",
+            "INDEX 2",
+            "SEARCH audio_blocks USING INDEX audio_blocks_source_time (source=? AND started_ms<?)",
+            "SCALAR SUBQUERY 2",
+            "MULTI-INDEX OR",
+            "INDEX 1",
+            "SEARCH coarse_jobs USING INDEX coarse_jobs_range (source=? AND started_ms<?)",
+            "INDEX 2",
+            "SEARCH coarse_jobs USING INDEX coarse_jobs_range (source=? AND started_ms<?)"
+          ],
+          "sql": "SELECT (SELECT count(*) FROM audio_blocks WHERE started_ms<?2 AND ended_ms>?1\n          AND retention_decision!='all_data'\n          AND ((source='microphone' AND ?3&1!=0) OR(source='system' AND ?3&2!=0))\n          AND (analysis_state='failed' OR(analysis_state='pending' AND analysis_attempts>=3)))\n          + (SELECT count(*) FROM coarse_jobs WHERE started_ms<?2 AND ended_ms>?1 AND state='failed'\n          AND ((source='microphone' AND ?3&1!=0) OR(source='system' AND ?3&2!=0)))"
+        },
+        {
+          "plan": [
+            "SCAN CONSTANT ROW",
+            "SCALAR SUBQUERY 1",
+            "SEARCH e USING INDEX sqlite_autoindex_named_events_1 (id=?)",
+            "SCAN g",
+            "SCALAR SUBQUERY 2",
+            "SEARCH e USING INDEX sqlite_autoindex_named_events_1 (id=?)",
+            "MULTI-INDEX OR",
+            "INDEX 1",
+            "SEARCH b USING COVERING INDEX audio_blocks_speech_time (source=? AND ended_ms>?)",
+            "INDEX 2",
+            "SEARCH b USING COVERING INDEX audio_blocks_speech_time (source=? AND ended_ms>?)",
+            "SCALAR SUBQUERY 3",
+            "SEARCH e USING INDEX sqlite_autoindex_named_events_1 (id=?)",
+            "SEARCH c USING INDEX clear_ranges_time (from_ms<?)"
+          ],
+          "sql": "SELECT EXISTS(SELECT 1 FROM named_events e JOIN media_gaps g\n           ON g.started_ms<e.ended_ms AND coalesce(g.ended_ms,e.ended_ms)>e.started_ms\n           AND ((g.source='microphone' AND e.source_mask&1!=0)\n             OR (g.source='system' AND e.source_mask&2!=0)) WHERE e.id=?1)\n         OR EXISTS(SELECT 1 FROM named_events e JOIN audio_blocks b\n           ON b.started_ms<e.ended_ms AND b.ended_ms>e.started_ms\n           AND ((b.source='microphone' AND e.source_mask&1!=0)\n             OR (b.source='system' AND e.source_mask&2!=0))\n           WHERE e.id=?1 AND b.speech_active=1 AND b.media_path IS NULL)\n         OR EXISTS(SELECT 1 FROM named_events e JOIN clear_ranges c\n           ON c.from_ms<e.ended_ms AND c.to_ms>e.started_ms\n           AND c.source_mask&e.source_mask!=0 AND c.mode='all_data'\n           AND c.committed_ms>=e.created_ms WHERE e.id=?1)"
+        },
+        {
+          "plan": [
+            "CO-ROUTINE transcript_tasks",
+            "COMPOUND QUERY",
+            "LEFT-MOST SUBQUERY",
+            "SEARCH e USING INDEX sqlite_autoindex_named_events_1 (id=?)",
+            "SEARCH t USING INDEX cloud_tasks_run (provider=?)",
+            "SEARCH r USING INDEX sqlite_autoindex_event_asr_refs_1 (event_id=? AND task_id=?)",
+            "UNION ALL",
+            "SEARCH t USING INDEX cloud_tasks_run (provider=? AND target_kind=? AND target_id=? AND target_version=?)",
+            "CORRELATED SCALAR SUBQUERY 5",
+            "SEARCH s USING COVERING INDEX sqlite_autoindex_event_asr_state_1 (event_id=?)",
+            "SCAN t",
+            "CORRELATED SCALAR SUBQUERY 1",
+            "SEARCH p USING INDEX precise_segments_time (started_ms>?)",
+            "CORRELATED SCALAR SUBQUERY 2",
+            "SEARCH p USING INDEX precise_segments_time (started_ms<?)",
+            "USE TEMP B-TREE FOR ORDER BY"
+          ],
+          "sql": "SELECT t.state,t.source,t.started_ms,t.ended_ms,\n        EXISTS(SELECT 1 FROM precise_segments p WHERE p.task_id=t.id\n          AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms),\n        EXISTS(SELECT 1 FROM precise_segments p WHERE p.task_id=t.id\n          AND p.started_ms<t.ended_ms AND p.ended_ms>t.started_ms\n          AND (p.started_ms<t.started_ms OR p.ended_ms>t.ended_ms))\n        FROM transcript_tasks t WHERE t.provider='asr' AND t.target_kind=?1\n          AND t.target_id=?2 AND t.target_version=?3 AND t.state!='superseded'\n        ORDER BY t.started_ms,t.ended_ms,t.source"
+        },
+        {
+          "plan": [
+            "CO-ROUTINE transcript_tasks",
+            "COMPOUND QUERY",
+            "LEFT-MOST SUBQUERY",
+            "SEARCH e USING INDEX sqlite_autoindex_named_events_1 (id=?)",
+            "SEARCH r USING INDEX sqlite_autoindex_event_asr_refs_1 (event_id=?)",
+            "SEARCH t USING INDEX sqlite_autoindex_cloud_tasks_1 (id=?)",
+            "UNION ALL",
+            "SCAN t",
+            "CORRELATED SCALAR SUBQUERY 4",
+            "SEARCH s USING COVERING INDEX sqlite_autoindex_event_asr_state_1 (event_id=?)",
+            "SEARCH p USING INDEX precise_segments_time (started_ms<?)",
+            "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?)",
+            "BLOOM FILTER ON t (target_kind=? AND target_id=? AND target_version=? AND state=? AND id=?)",
+            "SEARCH t USING AUTOMATIC PARTIAL COVERING INDEX (target_kind=? AND target_id=? AND target_version=? AND state=? AND id=?)",
+            "SEARCH a USING INDEX sqlite_autoindex_local_speaker_assignments_1 (segment_id=?) LEFT-JOIN",
+            "SEARCH g USING INDEX sqlite_autoindex_speaker_groups_1 (speaker_scope=? AND speaker_label=?) LEFT-JOIN",
+            "SEARCH b USING INDEX speaker_bindings_current (current_segment_id=? AND state=?) LEFT-JOIN",
+            "SEARCH person USING INDEX sqlite_autoindex_people_1 (id=?) LEFT-JOIN",
+            "CORRELATED SCALAR SUBQUERY 8",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 9",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 10",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+            "CORRELATED SCALAR SUBQUERY 1",
+            "SEARCH c USING INDEX text_corrections_segment (current_segment_id=? AND state=?)",
+            "USE TEMP B-TREE FOR ORDER BY",
+            "CORRELATED SCALAR SUBQUERY 8",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 9",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 10",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+            "CORRELATED SCALAR SUBQUERY 8",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 9",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 10",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+            "CORRELATED SCALAR SUBQUERY 8",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 9",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 10",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+            "USE TEMP B-TREE FOR LAST TERM OF ORDER BY"
+          ],
+          "sql": "SELECT p.id,p.source,p.started_ms,p.ended_ms,p.text,\n             identity.speaker,p.speaker_label,\n             (SELECT c.text FROM text_corrections c WHERE c.current_segment_id=p.id\n              AND c.state='active' ORDER BY c.updated_ms DESC LIMIT 1),\n             identity.person_id,identity.person_name,identity.person_origin\n        FROM precise_segments p JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms\n        JOIN precise_identity_projection identity ON identity.segment_id=p.id\n        WHERE t.target_kind=?1 AND t.target_id=?2 AND t.target_version=?3 AND t.state='complete'\n          AND p.started_ms < ?5 AND p.ended_ms > ?4\n          ORDER BY p.started_ms,p.id LIMIT ?6 OFFSET ?7"
+        },
+        {
+          "plan": [
+            "SEARCH coarse_segments USING INDEX coarse_segments_time (started_ms<?)",
+            "USE TEMP B-TREE FOR LAST TERM OF ORDER BY"
+          ],
+          "sql": "SELECT id,source,started_ms,ended_ms,text FROM coarse_segments\n        WHERE started_ms < ?2 AND ended_ms > ?1 AND trim(text)!=''\n          AND source IN (CASE WHEN ?3&1!=0 THEN 'microphone' END, CASE WHEN ?3&2!=0 THEN 'system' END)\n        ORDER BY started_ms,id LIMIT ?4 OFFSET ?5"
+        }
+      ],
+      "query_ms": 2802.675083,
+      "serialize_ms": 0.48095899999999997,
+      "statement_count": 117,
+      "queries": [
+        {
+          "sql": "SELECT id,started_ms,ended_ms,title,revision,source_mask,summary FROM named_events\n        WHERE deleted_ms IS NULL AND started_ms < ?2 AND ended_ms > ?1 ORDER BY started_ms",
+          "calls": 1,
+          "elapsed_ms": [
+            1.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 1312
+        },
+        {
+          "sql": "SELECT id,started_ms,ended_ms,source_mask,revision FROM manual_ranges m\n         WHERE started_ms<?2 AND ended_ms>?1 AND (\n           EXISTS(SELECT 1 FROM audio_blocks b WHERE b.media_path IS NOT NULL\n             AND b.started_ms<m.ended_ms AND b.ended_ms>m.started_ms\n             AND b.source IN (CASE WHEN m.source_mask&1!=0 THEN 'microphone' END,\n               CASE WHEN m.source_mask&2!=0 THEN 'system' END))\n           OR EXISTS(SELECT 1 FROM coarse_segments c WHERE c.started_ms<m.ended_ms\n             AND c.ended_ms>m.started_ms\n             AND ((c.source='microphone' AND m.source_mask&1!=0)\n               OR (c.source='system' AND m.source_mask&2!=0)))\n           OR EXISTS(SELECT 1 FROM precise_segments p JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms\n             WHERE t.target_kind='range' AND t.target_id=m.id AND t.state='complete'\n               AND t.target_version=cast(m.revision AS TEXT)\n               AND p.started_ms<m.ended_ms AND p.ended_ms>m.started_ms\n               AND ((p.source='microphone' AND m.source_mask&1!=0)\n                 OR (p.source='system' AND m.source_mask&2!=0))))\n         ORDER BY m.rowid",
+          "calls": 1,
+          "elapsed_ms": [
+            0.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 19
+        },
+        {
+          "sql": "SELECT min(started_ms),max(ended_ms) FROM (\n              SELECT started_ms,ended_ms FROM audio_blocks\n                WHERE source=?3 AND media_path IS NOT NULL AND started_ms < ?2 AND ended_ms > ?1\n              UNION ALL SELECT started_ms,ended_ms FROM coarse_segments\n                WHERE source=?3 AND started_ms < ?2 AND ended_ms > ?1)",
+          "calls": 2,
+          "elapsed_ms": [
+            14.0,
+            0.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 79969
+        },
+        {
+          "sql": "SELECT EXISTS(SELECT 1 FROM audio_blocks WHERE media_path IS NOT NULL\n\t\t AND started_ms<?2 AND ended_ms>?1 AND\n\t\t source IN (CASE WHEN ?3&1!=0 THEN 'microphone' END, CASE WHEN ?3&2!=0 THEN 'system' END))",
+          "calls": 8,
+          "elapsed_ms": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 400
+        },
+        {
+          "sql": "SELECT EXISTS(SELECT 1 FROM audio_blocks WHERE speech_active=1 AND retention_decision!='all_data'\n         AND started_ms<?2 AND ended_ms>?1 AND\n         source IN (CASE WHEN ?3&1!=0 THEN 'microphone' END, CASE WHEN ?3&2!=0 THEN 'system' END)\n         UNION ALL SELECT 1 FROM coarse_segments WHERE started_ms<?2 AND ended_ms>?1 AND\n         source IN (CASE WHEN ?3&1!=0 THEN 'microphone' END, CASE WHEN ?3&2!=0 THEN 'system' END))",
+          "calls": 8,
+          "elapsed_ms": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 520
+        },
+        {
+          "sql": "SELECT state,error_code FROM candidate_windows\n        WHERE started_ms < ?2 AND ended_ms > ?1\n        ORDER BY CASE WHEN state='failed' OR (state='pending' AND error_code IS NOT NULL)\n          THEN 0 ELSE 1 END, ended_ms DESC LIMIT 1",
+          "calls": 8,
+          "elapsed_ms": [
+            2.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 14141
+        },
+        {
+          "sql": "SELECT CASE WHEN state='complete'\n          AND NOT EXISTS(SELECT 1 FROM precise_segments p WHERE p.task_id=cloud_tasks.id)\n          THEN 'no_transcript' ELSE state END,started_ms,ended_ms,source FROM cloud_tasks\n        WHERE target_kind='range' AND started_ms < ?2 AND ended_ms > ?1\n          AND source IN (CASE WHEN ?3&1!=0 THEN 'microphone' END, CASE WHEN ?3&2!=0 THEN 'system' END)\n          AND state!='superseded' ORDER BY created_ms DESC LIMIT 1",
+          "calls": 8,
+          "elapsed_ms": [
+            14.0,
+            0.0,
+            0.0,
+            1.0,
+            1.0,
+            0.0,
+            1.0,
+            1.0
+          ],
+          "scan_steps": 15928,
+          "vm_steps": 48024
+        },
+        {
+          "sql": "SELECT (SELECT count(*) FROM audio_blocks WHERE started_ms<?2 AND ended_ms>?1\n          AND retention_decision!='all_data'\n          AND ((source='microphone' AND ?3&1!=0) OR(source='system' AND ?3&2!=0))\n          AND (analysis_state='failed' OR(analysis_state='pending' AND analysis_attempts>=3)))\n          + (SELECT count(*) FROM coarse_jobs WHERE started_ms<?2 AND ended_ms>?1 AND state='failed'\n          AND ((source='microphone' AND ?3&1!=0) OR(source='system' AND ?3&2!=0)))",
+          "calls": 15,
+          "elapsed_ms": [
+            354.0,
+            51.0,
+            52.0,
+            57.0,
+            51.0,
+            53.0,
+            58.0,
+            64.0,
+            56.0,
+            83.0,
+            58.0,
+            57.0,
+            49.0,
+            47.0,
+            53.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 8274112
+        },
+        {
+          "sql": "SELECT DISTINCT c.state,c.error_code FROM event_candidate_links l\n            JOIN candidate_windows c ON c.id=l.candidate_id WHERE l.event_id=?1",
+          "calls": 7,
+          "elapsed_ms": [
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 346
+        },
+        {
+          "sql": "SELECT EXISTS(SELECT 1 FROM event_asr_state WHERE event_id=?1 AND coalesce(planned_version,'')!=?2)",
+          "calls": 7,
+          "elapsed_ms": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 147
+        },
+        {
+          "sql": "SELECT EXISTS(SELECT 1 FROM named_events e JOIN media_gaps g\n           ON g.started_ms<e.ended_ms AND coalesce(g.ended_ms,e.ended_ms)>e.started_ms\n           AND ((g.source='microphone' AND e.source_mask&1!=0)\n             OR (g.source='system' AND e.source_mask&2!=0)) WHERE e.id=?1)\n         OR EXISTS(SELECT 1 FROM named_events e JOIN audio_blocks b\n           ON b.started_ms<e.ended_ms AND b.ended_ms>e.started_ms\n           AND ((b.source='microphone' AND e.source_mask&1!=0)\n             OR (b.source='system' AND e.source_mask&2!=0))\n           WHERE e.id=?1 AND b.speech_active=1 AND b.media_path IS NULL)\n         OR EXISTS(SELECT 1 FROM named_events e JOIN clear_ranges c\n           ON c.from_ms<e.ended_ms AND c.to_ms>e.started_ms\n           AND c.source_mask&e.source_mask!=0 AND c.mode='all_data'\n           AND c.committed_ms>=e.created_ms WHERE e.id=?1)",
+          "calls": 7,
+          "elapsed_ms": [
+            10.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            2.0
+          ],
+          "scan_steps": 43631,
+          "vm_steps": 427779
+        },
+        {
+          "sql": "SELECT state,count(*) FROM transcript_tasks WHERE provider='asr'\n        AND target_kind='event' AND target_id=?1 AND target_version=?2\n        AND state!='superseded' GROUP BY state",
+          "calls": 7,
+          "elapsed_ms": [
+            6.0,
+            1.0,
+            2.0,
+            2.0,
+            2.0,
+            1.0,
+            2.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 191630
+        },
+        {
+          "sql": "SELECT t.state,t.source,t.started_ms,t.ended_ms,\n        EXISTS(SELECT 1 FROM precise_segments p WHERE p.task_id=t.id\n          AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms),\n        EXISTS(SELECT 1 FROM precise_segments p WHERE p.task_id=t.id\n          AND p.started_ms<t.ended_ms AND p.ended_ms>t.started_ms\n          AND (p.started_ms<t.started_ms OR p.ended_ms>t.ended_ms))\n        FROM transcript_tasks t WHERE t.provider='asr' AND t.target_kind=?1\n          AND t.target_id=?2 AND t.target_version=?3 AND t.state!='superseded'\n        ORDER BY t.started_ms,t.ended_ms,t.source",
+          "calls": 14,
+          "elapsed_ms": [
+            469.0,
+            142.0,
+            74.0,
+            75.0,
+            33.0,
+            37.0,
+            50.0,
+            56.0,
+            45.0,
+            46.0,
+            42.0,
+            44.0,
+            127.0,
+            132.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 18978766
+        },
+        {
+          "sql": "SELECT p.id,p.source,p.started_ms,p.ended_ms,p.text,\n             identity.speaker,p.speaker_label,\n             (SELECT c.text FROM text_corrections c WHERE c.current_segment_id=p.id\n              AND c.state='active' ORDER BY c.updated_ms DESC LIMIT 1),\n             identity.person_id,identity.person_name,identity.person_origin\n        FROM precise_segments p JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms\n        JOIN precise_identity_projection identity ON identity.segment_id=p.id\n        WHERE t.target_kind=?1 AND t.target_id=?2 AND t.target_version=?3 AND t.state='complete'\n          AND p.started_ms < ?5 AND p.ended_ms > ?4\n          ORDER BY p.started_ms,p.id LIMIT ?6 OFFSET ?7",
+          "calls": 7,
+          "elapsed_ms": [
+            38.0,
+            10.0,
+            11.0,
+            10.0,
+            10.0,
+            10.0,
+            10.0
+          ],
+          "scan_steps": 13937,
+          "vm_steps": 1379758
+        },
+        {
+          "sql": "SELECT DISTINCT anchor_ms FROM moments WHERE anchor_ms>=?1 AND anchor_ms<?2 ORDER BY anchor_ms",
+          "calls": 1,
+          "elapsed_ms": [
+            0.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 22
+        },
+        {
+          "sql": "SELECT p.id,p.source,p.started_ms,p.ended_ms,p.text,\n             identity.speaker,p.speaker_label,\n             (SELECT c.text FROM text_corrections c WHERE c.current_segment_id=p.id\n              AND c.state='active' ORDER BY c.updated_ms DESC LIMIT 1),\n             identity.person_id,identity.person_name,identity.person_origin\n        FROM precise_segments p JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms\n        JOIN precise_identity_projection identity ON identity.segment_id=p.id\n        JOIN manual_ranges m ON m.id=t.target_id\n        WHERE t.target_kind='range' AND t.state='complete' AND t.target_version=cast(m.revision AS TEXT)\n          AND (?6 IS NULL OR m.id=?6)\n          AND p.started_ms < ?2 AND p.ended_ms > ?1\n          AND ((p.source='microphone' AND ?3&1!=0) OR (p.source='system' AND ?3&2!=0))\n          ORDER BY p.started_ms,p.id LIMIT ?4 OFFSET ?5",
+          "calls": 8,
+          "elapsed_ms": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 312
+        },
+        {
+          "sql": "SELECT id,source,started_ms,ended_ms,text FROM coarse_segments\n        WHERE started_ms < ?2 AND ended_ms > ?1 AND trim(text)!=''\n          AND source IN (CASE WHEN ?3&1!=0 THEN 'microphone' END, CASE WHEN ?3&2!=0 THEN 'system' END)\n        ORDER BY started_ms,id LIMIT ?4 OFFSET ?5",
+          "calls": 8,
+          "elapsed_ms": [
+            44.0,
+            7.0,
+            7.0,
+            7.0,
+            6.0,
+            7.0,
+            6.0,
+            7.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 889117
+        }
+      ]
+    },
+    {
+      "bytes": 68925,
+      "operation": "event_detail",
+      "plans": [
+        {
+          "plan": [
+            "SCAN CONSTANT ROW",
+            "SCALAR SUBQUERY 1",
+            "MULTI-INDEX OR",
+            "INDEX 1",
+            "SEARCH audio_blocks USING INDEX audio_blocks_source_time (source=? AND started_ms<?)",
+            "INDEX 2",
+            "SEARCH audio_blocks USING INDEX audio_blocks_source_time (source=? AND started_ms<?)",
+            "SCALAR SUBQUERY 2",
+            "MULTI-INDEX OR",
+            "INDEX 1",
+            "SEARCH coarse_jobs USING INDEX coarse_jobs_range (source=? AND started_ms<?)",
+            "INDEX 2",
+            "SEARCH coarse_jobs USING INDEX coarse_jobs_range (source=? AND started_ms<?)"
+          ],
+          "sql": "SELECT (SELECT count(*) FROM audio_blocks WHERE started_ms<?2 AND ended_ms>?1\n          AND retention_decision!='all_data'\n          AND ((source='microphone' AND ?3&1!=0) OR(source='system' AND ?3&2!=0))\n          AND (analysis_state='failed' OR(analysis_state='pending' AND analysis_attempts>=3)))\n          + (SELECT count(*) FROM coarse_jobs WHERE started_ms<?2 AND ended_ms>?1 AND state='failed'\n          AND ((source='microphone' AND ?3&1!=0) OR(source='system' AND ?3&2!=0)))"
+        },
+        {
+          "plan": [
+            "CO-ROUTINE transcript_tasks",
+            "COMPOUND QUERY",
+            "LEFT-MOST SUBQUERY",
+            "SEARCH e USING INDEX sqlite_autoindex_named_events_1 (id=?)",
+            "SEARCH t USING INDEX cloud_tasks_run (provider=?)",
+            "SEARCH r USING INDEX sqlite_autoindex_event_asr_refs_1 (event_id=? AND task_id=?)",
+            "UNION ALL",
+            "SEARCH t USING INDEX cloud_tasks_run (provider=? AND target_kind=? AND target_id=? AND target_version=?)",
+            "CORRELATED SCALAR SUBQUERY 5",
+            "SEARCH s USING COVERING INDEX sqlite_autoindex_event_asr_state_1 (event_id=?)",
+            "SCAN t",
+            "CORRELATED SCALAR SUBQUERY 1",
+            "SEARCH p USING INDEX precise_segments_time (started_ms>?)",
+            "CORRELATED SCALAR SUBQUERY 2",
+            "SEARCH p USING INDEX precise_segments_time (started_ms<?)",
+            "USE TEMP B-TREE FOR ORDER BY"
+          ],
+          "sql": "SELECT t.state,t.source,t.started_ms,t.ended_ms,\n        EXISTS(SELECT 1 FROM precise_segments p WHERE p.task_id=t.id\n          AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms),\n        EXISTS(SELECT 1 FROM precise_segments p WHERE p.task_id=t.id\n          AND p.started_ms<t.ended_ms AND p.ended_ms>t.started_ms\n          AND (p.started_ms<t.started_ms OR p.ended_ms>t.ended_ms))\n        FROM transcript_tasks t WHERE t.provider='asr' AND t.target_kind=?1\n          AND t.target_id=?2 AND t.target_version=?3 AND t.state!='superseded'\n        ORDER BY t.started_ms,t.ended_ms,t.source"
+        },
+        {
+          "plan": [
+            "CO-ROUTINE transcript_tasks",
+            "COMPOUND QUERY",
+            "LEFT-MOST SUBQUERY",
+            "SEARCH e USING INDEX sqlite_autoindex_named_events_1 (id=?)",
+            "SEARCH r USING INDEX sqlite_autoindex_event_asr_refs_1 (event_id=?)",
+            "SEARCH t USING INDEX sqlite_autoindex_cloud_tasks_1 (id=?)",
+            "UNION ALL",
+            "SCAN t",
+            "CORRELATED SCALAR SUBQUERY 4",
+            "SEARCH s USING COVERING INDEX sqlite_autoindex_event_asr_state_1 (event_id=?)",
+            "SEARCH p USING INDEX precise_segments_time (started_ms<?)",
+            "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?)",
+            "BLOOM FILTER ON t (target_kind=? AND target_id=? AND target_version=? AND state=? AND id=?)",
+            "SEARCH t USING AUTOMATIC PARTIAL COVERING INDEX (target_kind=? AND target_id=? AND target_version=? AND state=? AND id=?)",
+            "SEARCH a USING INDEX sqlite_autoindex_local_speaker_assignments_1 (segment_id=?) LEFT-JOIN",
+            "SEARCH g USING INDEX sqlite_autoindex_speaker_groups_1 (speaker_scope=? AND speaker_label=?) LEFT-JOIN",
+            "SEARCH b USING INDEX speaker_bindings_current (current_segment_id=? AND state=?) LEFT-JOIN",
+            "SEARCH person USING INDEX sqlite_autoindex_people_1 (id=?) LEFT-JOIN",
+            "CORRELATED SCALAR SUBQUERY 8",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 9",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 10",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+            "CORRELATED SCALAR SUBQUERY 1",
+            "SEARCH c USING INDEX text_corrections_segment (current_segment_id=? AND state=?)",
+            "USE TEMP B-TREE FOR ORDER BY",
+            "CORRELATED SCALAR SUBQUERY 8",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 9",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 10",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+            "CORRELATED SCALAR SUBQUERY 8",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 9",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 10",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+            "CORRELATED SCALAR SUBQUERY 8",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 9",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 10",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+            "USE TEMP B-TREE FOR LAST TERM OF ORDER BY"
+          ],
+          "sql": "SELECT p.id,p.source,p.started_ms,p.ended_ms,p.text,\n             identity.speaker,p.speaker_label,\n             (SELECT c.text FROM text_corrections c WHERE c.current_segment_id=p.id\n              AND c.state='active' ORDER BY c.updated_ms DESC LIMIT 1),\n             identity.person_id,identity.person_name,identity.person_origin\n        FROM precise_segments p JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms\n        JOIN precise_identity_projection identity ON identity.segment_id=p.id\n        WHERE t.target_kind=?1 AND t.target_id=?2 AND t.target_version=?3 AND t.state='complete'\n          AND p.started_ms < ?5 AND p.ended_ms > ?4\n          ORDER BY p.started_ms,p.id LIMIT ?6 OFFSET ?7"
+        },
+        {
+          "plan": [
+            "CO-ROUTINE transcript_tasks",
+            "COMPOUND QUERY",
+            "LEFT-MOST SUBQUERY",
+            "SCAN r",
+            "SEARCH e USING INDEX sqlite_autoindex_named_events_1 (id=?)",
+            "SEARCH t USING INDEX sqlite_autoindex_cloud_tasks_1 (id=?)",
+            "UNION ALL",
+            "SCAN t",
+            "CORRELATED SCALAR SUBQUERY 6",
+            "SEARCH s USING COVERING INDEX sqlite_autoindex_event_asr_state_1 (event_id=?)",
+            "MATERIALIZE precise_group_membership",
+            "COMPOUND QUERY",
+            "LEFT-MOST SUBQUERY",
+            "SCAN local_speaker_assignments",
+            "UNION ALL",
+            "SCAN p",
+            "CORRELATED SCALAR SUBQUERY 9",
+            "SEARCH a USING COVERING INDEX sqlite_autoindex_local_speaker_assignments_1 (segment_id=?)",
+            "SEARCH g USING INDEX sqlite_autoindex_speaker_groups_1 (speaker_scope=? AND speaker_label=?) LEFT-JOIN",
+            "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?)",
+            "LIST SUBQUERY 1",
+            "SCAN json_each VIRTUAL TABLE INDEX 1:",
+            "SEARCH t USING AUTOMATIC PARTIAL COVERING INDEX (state=? AND id=?)",
+            "CORRELATED SCALAR SUBQUERY 2",
+            "SEARCH e USING INDEX sqlite_autoindex_named_events_1 (id=?)",
+            "CORRELATED SCALAR SUBQUERY 3",
+            "SEARCH m USING INDEX sqlite_autoindex_manual_ranges_1 (id=?)",
+            "SEARCH g USING AUTOMATIC COVERING INDEX (segment_id=?) LEFT-JOIN"
+          ],
+          "sql": "SELECT p.id,p.source,p.started_ms,p.ended_ms,p.text,p.speaker_scope,\n      coalesce(p.speaker_label,''),coalesce(g.group_id,'') FROM precise_segments p\n      JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms LEFT JOIN precise_group_membership g\n      ON g.segment_id=p.id\n      WHERE p.id IN (SELECT value FROM json_each(?1)) AND t.state='complete' AND\n      ((t.target_kind='event' AND EXISTS(SELECT 1 FROM named_events e WHERE e.id=t.target_id\n        AND e.deleted_ms IS NULL AND t.target_version=printf('%d:%d:%d',e.source_mask,e.started_ms,e.ended_ms)))\n       OR (t.target_kind='range' AND EXISTS(SELECT 1 FROM manual_ranges m WHERE m.id=t.target_id\n        AND t.target_version=cast(m.revision AS TEXT))))"
+        },
+        {
+          "plan": [
+            "MERGE (UNION ALL)",
+            "LEFT",
+            "SEARCH local_speaker_assignments USING INDEX local_speaker_assignments_group (group_id=?)",
+            "SEARCH p USING COVERING INDEX sqlite_autoindex_precise_segments_1 (id=?)",
+            "USE TEMP B-TREE FOR ORDER BY",
+            "RIGHT",
+            "SEARCH g USING INDEX speaker_groups_group (group_id=?)",
+            "SEARCH p USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 3",
+            "SEARCH a USING COVERING INDEX sqlite_autoindex_local_speaker_assignments_1 (segment_id=?)",
+            "SEARCH p USING COVERING INDEX sqlite_autoindex_precise_segments_1 (id=?)",
+            "USE TEMP B-TREE FOR ORDER BY"
+          ],
+          "sql": "SELECT p.id FROM precise_segments p JOIN precise_group_membership g ON g.segment_id=p.id WHERE g.group_id=?1 AND p.id>?2 ORDER BY p.id LIMIT 256"
+        }
+      ],
+      "query_ms": 1626.282,
+      "serialize_ms": 1.768375,
+      "statement_count": 64,
+      "queries": [
+        {
+          "sql": "SELECT started_ms,ended_ms,title,revision,source_mask,summary FROM named_events\n         WHERE id=?1 AND deleted_ms IS NULL",
+          "calls": 1,
+          "elapsed_ms": [
+            0.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 19
+        },
+        {
+          "sql": "SELECT (SELECT count(*) FROM audio_blocks WHERE started_ms<?2 AND ended_ms>?1\n          AND retention_decision!='all_data'\n          AND ((source='microphone' AND ?3&1!=0) OR(source='system' AND ?3&2!=0))\n          AND (analysis_state='failed' OR(analysis_state='pending' AND analysis_attempts>=3)))\n          + (SELECT count(*) FROM coarse_jobs WHERE started_ms<?2 AND ended_ms>?1 AND state='failed'\n          AND ((source='microphone' AND ?3&1!=0) OR(source='system' AND ?3&2!=0)))",
+          "calls": 1,
+          "elapsed_ms": [
+            48.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 580620
+        },
+        {
+          "sql": "SELECT DISTINCT c.state,c.error_code FROM event_candidate_links l\n            JOIN candidate_windows c ON c.id=l.candidate_id WHERE l.event_id=?1",
+          "calls": 1,
+          "elapsed_ms": [
+            0.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 133
+        },
+        {
+          "sql": "SELECT EXISTS(SELECT 1 FROM event_asr_state WHERE event_id=?1 AND coalesce(planned_version,'')!=?2)",
+          "calls": 1,
+          "elapsed_ms": [
+            0.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 21
+        },
+        {
+          "sql": "SELECT EXISTS(SELECT 1 FROM named_events e JOIN media_gaps g\n           ON g.started_ms<e.ended_ms AND coalesce(g.ended_ms,e.ended_ms)>e.started_ms\n           AND ((g.source='microphone' AND e.source_mask&1!=0)\n             OR (g.source='system' AND e.source_mask&2!=0)) WHERE e.id=?1)\n         OR EXISTS(SELECT 1 FROM named_events e JOIN audio_blocks b\n           ON b.started_ms<e.ended_ms AND b.ended_ms>e.started_ms\n           AND ((b.source='microphone' AND e.source_mask&1!=0)\n             OR (b.source='system' AND e.source_mask&2!=0))\n           WHERE e.id=?1 AND b.speech_active=1 AND b.media_path IS NULL)\n         OR EXISTS(SELECT 1 FROM named_events e JOIN clear_ranges c\n           ON c.from_ms<e.ended_ms AND c.to_ms>e.started_ms\n           AND c.source_mask&e.source_mask!=0 AND c.mode='all_data'\n           AND c.committed_ms>=e.created_ms WHERE e.id=?1)",
+          "calls": 1,
+          "elapsed_ms": [
+            1.0
+          ],
+          "scan_steps": 6233,
+          "vm_steps": 59128
+        },
+        {
+          "sql": "SELECT state,count(*) FROM transcript_tasks WHERE provider='asr'\n        AND target_kind='event' AND target_id=?1 AND target_version=?2\n        AND state!='superseded' GROUP BY state",
+          "calls": 1,
+          "elapsed_ms": [
+            2.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 27822
+        },
+        {
+          "sql": "SELECT t.state,t.source,t.started_ms,t.ended_ms,\n        EXISTS(SELECT 1 FROM precise_segments p WHERE p.task_id=t.id\n          AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms),\n        EXISTS(SELECT 1 FROM precise_segments p WHERE p.task_id=t.id\n          AND p.started_ms<t.ended_ms AND p.ended_ms>t.started_ms\n          AND (p.started_ms<t.started_ms OR p.ended_ms>t.ended_ms))\n        FROM transcript_tasks t WHERE t.provider='asr' AND t.target_kind=?1\n          AND t.target_id=?2 AND t.target_version=?3 AND t.state!='superseded'\n        ORDER BY t.started_ms,t.ended_ms,t.source",
+          "calls": 2,
+          "elapsed_ms": [
+            125.0,
+            122.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 5732360
+        },
+        {
+          "sql": "SELECT id,source,started_ms,ended_ms,text FROM coarse_segments\n        WHERE started_ms < ?2 AND ended_ms > ?1 AND trim(text)!=''\n          AND source IN (CASE WHEN ?3&1!=0 THEN 'microphone' END, CASE WHEN ?3&2!=0 THEN 'system' END)\n        ORDER BY started_ms,id LIMIT ?4 OFFSET ?5",
+          "calls": 1,
+          "elapsed_ms": [
+            7.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 115536
+        },
+        {
+          "sql": "SELECT p.id,p.source,p.started_ms,p.ended_ms,p.text,\n             identity.speaker,p.speaker_label,\n             (SELECT c.text FROM text_corrections c WHERE c.current_segment_id=p.id\n              AND c.state='active' ORDER BY c.updated_ms DESC LIMIT 1),\n             identity.person_id,identity.person_name,identity.person_origin\n        FROM precise_segments p JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms\n        JOIN precise_identity_projection identity ON identity.segment_id=p.id\n        WHERE t.target_kind=?1 AND t.target_id=?2 AND t.target_version=?3 AND t.state='complete'\n          AND p.started_ms < ?5 AND p.ended_ms > ?4\n          ORDER BY p.started_ms,p.id LIMIT ?6 OFFSET ?7",
+          "calls": 1,
+          "elapsed_ms": [
+            18.0
+          ],
+          "scan_steps": 1991,
+          "vm_steps": 255664
+        },
+        {
+          "sql": "SELECT p.id,p.source,p.started_ms,p.ended_ms,p.text,p.speaker_scope,\n      coalesce(p.speaker_label,''),coalesce(g.group_id,'') FROM precise_segments p\n      JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms LEFT JOIN precise_group_membership g\n      ON g.segment_id=p.id\n      WHERE p.id IN (SELECT value FROM json_each(?1)) AND t.state='complete' AND\n      ((t.target_kind='event' AND EXISTS(SELECT 1 FROM named_events e WHERE e.id=t.target_id\n        AND e.deleted_ms IS NULL AND t.target_version=printf('%d:%d:%d',e.source_mask,e.started_ms,e.ended_ms)))\n       OR (t.target_kind='range' AND EXISTS(SELECT 1 FROM manual_ranges m WHERE m.id=t.target_id\n        AND t.target_version=cast(m.revision AS TEXT))))",
+          "calls": 10,
+          "elapsed_ms": [
+            139.0,
+            121.0,
+            131.0,
+            123.0,
+            120.0,
+            120.0,
+            119.0,
+            123.0,
+            120.0,
+            122.0
+          ],
+          "scan_steps": 436340,
+          "vm_steps": 13339892
+        },
+        {
+          "sql": "SELECT current_segment_id,id||':'||state||':'||revision||':'||text FROM text_corrections WHERE current_segment_id IN(SELECT value FROM json_each(?1)) ORDER BY current_segment_id,id",
+          "calls": 10,
+          "elapsed_ms": [
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 14038
+        },
+        {
+          "sql": "SELECT current_segment_id,id||':'||person_id||':'||origin||':'||apply_scope||':'||state FROM speaker_bindings WHERE current_segment_id IN(SELECT value FROM json_each(?1)) ORDER BY current_segment_id,id",
+          "calls": 10,
+          "elapsed_ms": [
+            0.0,
+            1.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 15628
+        },
+        {
+          "sql": "SELECT p.segment_id,s.id||':'||s.person_id FROM voice_samples s JOIN\n          (SELECT id AS sample_id,segment_id FROM voice_samples WHERE segment_id IN(SELECT value FROM json_each(?1))\n           UNION SELECT sample_id,segment_id FROM voice_sample_parts WHERE segment_id IN(SELECT value FROM json_each(?1))) p\n          ON p.sample_id=s.id WHERE s.revoked_ms IS NULL ORDER BY p.segment_id,s.id",
+          "calls": 10,
+          "elapsed_ms": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scan_steps": 80,
+          "vm_steps": 23778
+        },
+        {
+          "sql": "SELECT p.id FROM precise_segments p JOIN precise_group_membership g ON g.segment_id=p.id WHERE g.group_id=?1 AND p.id>?2 ORDER BY p.id LIMIT 256",
+          "calls": 14,
+          "elapsed_ms": [
+            11.0,
+            2.0,
+            2.0,
+            2.0,
+            1.0,
+            2.0,
+            1.0,
+            0.0,
+            0.0,
+            2.0,
+            1.0,
+            1.0,
+            2.0,
+            0.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 138996
+        }
+      ]
+    },
+    {
+      "bytes": 2933,
+      "operation": "session_speakers",
+      "plans": [
+        {
+          "plan": [
+            "CO-ROUTINE transcript_tasks",
+            "COMPOUND QUERY",
+            "LEFT-MOST SUBQUERY",
+            "SCAN r",
+            "SEARCH e USING INDEX sqlite_autoindex_named_events_1 (id=?)",
+            "SEARCH t USING INDEX sqlite_autoindex_cloud_tasks_1 (id=?)",
+            "UNION ALL",
+            "SCAN t",
+            "CORRELATED SCALAR SUBQUERY 6",
+            "SEARCH s USING COVERING INDEX sqlite_autoindex_event_asr_state_1 (event_id=?)",
+            "MATERIALIZE precise_group_membership",
+            "COMPOUND QUERY",
+            "LEFT-MOST SUBQUERY",
+            "SCAN local_speaker_assignments",
+            "UNION ALL",
+            "SCAN p",
+            "CORRELATED SCALAR SUBQUERY 9",
+            "SEARCH a USING COVERING INDEX sqlite_autoindex_local_speaker_assignments_1 (segment_id=?)",
+            "SEARCH g USING INDEX sqlite_autoindex_speaker_groups_1 (speaker_scope=? AND speaker_label=?) LEFT-JOIN",
+            "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?)",
+            "LIST SUBQUERY 1",
+            "SCAN json_each VIRTUAL TABLE INDEX 1:",
+            "SEARCH t USING AUTOMATIC PARTIAL COVERING INDEX (state=? AND id=?)",
+            "CORRELATED SCALAR SUBQUERY 2",
+            "SEARCH e USING INDEX sqlite_autoindex_named_events_1 (id=?)",
+            "CORRELATED SCALAR SUBQUERY 3",
+            "SEARCH m USING INDEX sqlite_autoindex_manual_ranges_1 (id=?)",
+            "SEARCH g USING AUTOMATIC COVERING INDEX (segment_id=?) LEFT-JOIN"
+          ],
+          "sql": "SELECT p.id,p.source,p.started_ms,p.ended_ms,p.text,p.speaker_scope,\n      coalesce(p.speaker_label,''),coalesce(g.group_id,'') FROM precise_segments p\n      JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms LEFT JOIN precise_group_membership g\n      ON g.segment_id=p.id\n      WHERE p.id IN (SELECT value FROM json_each(?1)) AND t.state='complete' AND\n      ((t.target_kind='event' AND EXISTS(SELECT 1 FROM named_events e WHERE e.id=t.target_id\n        AND e.deleted_ms IS NULL AND t.target_version=printf('%d:%d:%d',e.source_mask,e.started_ms,e.ended_ms)))\n       OR (t.target_kind='range' AND EXISTS(SELECT 1 FROM manual_ranges m WHERE m.id=t.target_id\n        AND t.target_version=cast(m.revision AS TEXT))))"
+        },
+        {
+          "plan": [
+            "MERGE (UNION ALL)",
+            "LEFT",
+            "SEARCH local_speaker_assignments USING INDEX local_speaker_assignments_group (group_id=?)",
+            "SEARCH p USING COVERING INDEX sqlite_autoindex_precise_segments_1 (id=?)",
+            "USE TEMP B-TREE FOR ORDER BY",
+            "RIGHT",
+            "SEARCH g USING INDEX speaker_groups_group (group_id=?)",
+            "SEARCH p USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 3",
+            "SEARCH a USING COVERING INDEX sqlite_autoindex_local_speaker_assignments_1 (segment_id=?)",
+            "SEARCH p USING COVERING INDEX sqlite_autoindex_precise_segments_1 (id=?)",
+            "USE TEMP B-TREE FOR ORDER BY"
+          ],
+          "sql": "SELECT p.id FROM precise_segments p JOIN precise_group_membership g ON g.segment_id=p.id WHERE g.group_id=?1 AND p.id>?2 ORDER BY p.id LIMIT 256"
+        },
+        {
+          "plan": [
+            "CO-ROUTINE transcript_tasks",
+            "COMPOUND QUERY",
+            "LEFT-MOST SUBQUERY",
+            "SCAN r",
+            "SEARCH e USING INDEX sqlite_autoindex_named_events_1 (id=?)",
+            "SEARCH t USING INDEX sqlite_autoindex_cloud_tasks_1 (id=?)",
+            "UNION ALL",
+            "SCAN t",
+            "CORRELATED SCALAR SUBQUERY 3",
+            "SEARCH s USING COVERING INDEX sqlite_autoindex_event_asr_state_1 (event_id=?)",
+            "MATERIALIZE transcript_tasks",
+            "COMPOUND QUERY",
+            "LEFT-MOST SUBQUERY",
+            "SCAN r",
+            "SEARCH e USING INDEX sqlite_autoindex_named_events_1 (id=?)",
+            "SEARCH t USING INDEX sqlite_autoindex_cloud_tasks_1 (id=?)",
+            "UNION ALL",
+            "SCAN t",
+            "CORRELATED SCALAR SUBQUERY 11",
+            "SEARCH s USING COVERING INDEX sqlite_autoindex_event_asr_state_1 (event_id=?)",
+            "SEARCH seed USING INDEX sqlite_autoindex_precise_segments_1 (id=?)",
+            "SCAN p USING INDEX precise_segments_time",
+            "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?)",
+            "SEARCH t USING AUTOMATIC PARTIAL COVERING INDEX (state=? AND id=?)",
+            "SEARCH a USING INDEX sqlite_autoindex_local_speaker_assignments_1 (segment_id=?) LEFT-JOIN",
+            "SEARCH g USING INDEX sqlite_autoindex_speaker_groups_1 (speaker_scope=? AND speaker_label=?) LEFT-JOIN",
+            "CORRELATED SCALAR SUBQUERY 7",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 8",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 9",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+            "SEARCH b USING INDEX speaker_bindings_current (current_segment_id=? AND state=?) LEFT-JOIN",
+            "BLOOM FILTER ON st (id=? AND target_version=? AND target_id=? AND target_kind=?)",
+            "SEARCH st USING AUTOMATIC COVERING INDEX (id=? AND target_version=? AND target_id=? AND target_kind=?)",
+            "CORRELATED SCALAR SUBQUERY 7",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 8",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 9",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+            "CORRELATED SCALAR SUBQUERY 7",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 8",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 9",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+            "USE TEMP B-TREE FOR LAST TERM OF ORDER BY"
+          ],
+          "sql": "SELECT i.speaker,p.id,i.person_id FROM precise_segments p\n         JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms\n         JOIN precise_identity_projection i ON i.segment_id=p.id\n         JOIN precise_segments seed ON seed.id=?1\n         JOIN transcript_tasks st ON st.id=seed.task_id AND seed.started_ms>=st.started_ms AND seed.ended_ms<=st.ended_ms\n         WHERE t.target_kind=st.target_kind AND t.target_id=st.target_id\n         AND t.target_version=st.target_version AND t.state='complete'\n         AND i.speaker IS NOT NULL ORDER BY p.started_ms,p.id"
+        }
+      ],
+      "query_ms": 5086.454,
+      "serialize_ms": 0.087,
+      "statement_count": 129,
+      "queries": [
+        {
+          "sql": "SELECT p.source,p.started_ms,p.ended_ms FROM precise_segments p\n         JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms\n         WHERE p.id=?1 AND t.state='complete' AND\n           ((t.target_kind='event' AND EXISTS (\n              SELECT 1 FROM named_events e WHERE e.id=t.target_id\n              AND e.deleted_ms IS NULL\n              AND t.target_version=printf('%d:%d:%d',e.source_mask,e.started_ms,e.ended_ms)))\n             OR (t.target_kind='range' AND EXISTS (\n              SELECT 1 FROM manual_ranges m WHERE m.id=t.target_id\n              AND t.target_version=cast(m.revision AS TEXT))))",
+          "calls": 1,
+          "elapsed_ms": [
+            3.0
+          ],
+          "scan_steps": 1538,
+          "vm_steps": 86053
+        },
+        {
+          "sql": "SELECT p.id FROM precise_segments p JOIN precise_group_membership g ON g.segment_id=p.id WHERE g.group_id=?1 AND p.id>?2 ORDER BY p.id LIMIT 256",
+          "calls": 39,
+          "elapsed_ms": [
+            3.0,
+            2.0,
+            3.0,
+            3.0,
+            11.0,
+            0.0,
+            0.0,
+            1.0,
+            1.0,
+            1.0,
+            5.0,
+            0.0,
+            0.0,
+            0.0,
+            4.0,
+            0.0,
+            3.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            8.0,
+            1.0,
+            20.0,
+            1.0,
+            92.0,
+            4.0,
+            1.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 175111
+        },
+        {
+          "sql": "SELECT p.id,p.source,p.started_ms,p.ended_ms,p.text,p.speaker_scope,\n      coalesce(p.speaker_label,''),coalesce(g.group_id,'') FROM precise_segments p\n      JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms LEFT JOIN precise_group_membership g\n      ON g.segment_id=p.id\n      WHERE p.id IN (SELECT value FROM json_each(?1)) AND t.state='complete' AND\n      ((t.target_kind='event' AND EXISTS(SELECT 1 FROM named_events e WHERE e.id=t.target_id\n        AND e.deleted_ms IS NULL AND t.target_version=printf('%d:%d:%d',e.source_mask,e.started_ms,e.ended_ms)))\n       OR (t.target_kind='range' AND EXISTS(SELECT 1 FROM manual_ranges m WHERE m.id=t.target_id\n        AND t.target_version=cast(m.revision AS TEXT))))",
+          "calls": 22,
+          "elapsed_ms": [
+            143.0,
+            128.0,
+            133.0,
+            136.0,
+            411.0,
+            131.0,
+            123.0,
+            127.0,
+            124.0,
+            123.0,
+            123.0,
+            123.0,
+            123.0,
+            123.0,
+            123.0,
+            128.0,
+            135.0,
+            149.0,
+            209.0,
+            255.0,
+            202.0,
+            131.0
+          ],
+          "scan_steps": 959948,
+          "vm_steps": 29241822
+        },
+        {
+          "sql": "SELECT current_segment_id,id||':'||state||':'||revision||':'||text FROM text_corrections WHERE current_segment_id IN(SELECT value FROM json_each(?1)) ORDER BY current_segment_id,id",
+          "calls": 22,
+          "elapsed_ms": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 18234
+        },
+        {
+          "sql": "SELECT current_segment_id,id||':'||person_id||':'||origin||':'||apply_scope||':'||state FROM speaker_bindings WHERE current_segment_id IN(SELECT value FROM json_each(?1)) ORDER BY current_segment_id,id",
+          "calls": 22,
+          "elapsed_ms": [
+            0.0,
+            2.0,
+            1.0,
+            0.0,
+            1.0,
+            5.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            4.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 19854
+        },
+        {
+          "sql": "SELECT p.segment_id,s.id||':'||s.person_id FROM voice_samples s JOIN\n          (SELECT id AS sample_id,segment_id FROM voice_samples WHERE segment_id IN(SELECT value FROM json_each(?1))\n           UNION SELECT sample_id,segment_id FROM voice_sample_parts WHERE segment_id IN(SELECT value FROM json_each(?1))) p\n          ON p.sample_id=s.id WHERE s.revoked_ms IS NULL ORDER BY p.segment_id,s.id",
+          "calls": 22,
+          "elapsed_ms": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            7.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scan_steps": 176,
+          "vm_steps": 31756
+        },
+        {
+          "sql": "SELECT i.speaker,p.id,i.person_id FROM precise_segments p\n         JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms\n         JOIN precise_identity_projection i ON i.segment_id=p.id\n         JOIN precise_segments seed ON seed.id=?1\n         JOIN transcript_tasks st ON st.id=seed.task_id AND seed.started_ms>=st.started_ms AND seed.ended_ms<=st.ended_ms\n         WHERE t.target_kind=st.target_kind AND t.target_id=st.target_id\n         AND t.target_version=st.target_version AND t.state='complete'\n         AND i.speaker IS NOT NULL ORDER BY p.started_ms,p.id",
+          "calls": 1,
+          "elapsed_ms": [
+            5083.0
+          ],
+          "scan_steps": 47174,
+          "vm_steps": 25350601
+        }
+      ]
+    }
+  ],
+  "after": [
+    {
+      "bytes": 15934,
+      "operation": "timeline",
+      "plans": [
+        {
+          "plan": [
+            "SCAN CONSTANT ROW",
+            "SCALAR SUBQUERY 1",
+            "MULTI-INDEX OR",
+            "INDEX 1",
+            "SEARCH audio_blocks USING INDEX audio_blocks_source_time (source=? AND started_ms<?)",
+            "INDEX 2",
+            "SEARCH audio_blocks USING INDEX audio_blocks_source_time (source=? AND started_ms<?)",
+            "SCALAR SUBQUERY 2",
+            "MULTI-INDEX OR",
+            "INDEX 1",
+            "SEARCH coarse_jobs USING COVERING INDEX coarse_jobs_failed_time (source=? AND started_ms<?)",
+            "INDEX 2",
+            "SEARCH coarse_jobs USING COVERING INDEX coarse_jobs_failed_time (source=? AND started_ms<?)"
+          ],
+          "sql": "SELECT (SELECT count(*) FROM audio_blocks WHERE started_ms<?2 AND ended_ms>?1\n          AND retention_decision!='all_data'\n          AND ((source='microphone' AND ?3&1!=0) OR(source='system' AND ?3&2!=0))\n          AND (analysis_state='failed' OR(analysis_state='pending' AND analysis_attempts>=3)))\n          + (SELECT count(*) FROM coarse_jobs WHERE started_ms<?2 AND ended_ms>?1 AND state='failed'\n          AND ((source='microphone' AND ?3&1!=0) OR(source='system' AND ?3&2!=0)))"
+        },
+        {
+          "plan": [
+            "CO-ROUTINE transcript_tasks",
+            "COMPOUND QUERY",
+            "LEFT-MOST SUBQUERY",
+            "SEARCH e USING INDEX sqlite_autoindex_named_events_1 (id=?)",
+            "SEARCH r USING INDEX sqlite_autoindex_event_asr_refs_1 (event_id=?)",
+            "SEARCH t USING INDEX sqlite_autoindex_cloud_tasks_1 (id=?)",
+            "UNION ALL",
+            "SCAN t",
+            "CORRELATED SCALAR SUBQUERY 4",
+            "SEARCH s USING COVERING INDEX sqlite_autoindex_event_asr_state_1 (event_id=?)",
+            "SCAN t",
+            "SEARCH p USING INDEX precise_segments_task_time (task_id=? AND started_ms>? AND started_ms<?)",
+            "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?)",
+            "SEARCH a USING INDEX sqlite_autoindex_local_speaker_assignments_1 (segment_id=?) LEFT-JOIN",
+            "SEARCH g USING INDEX sqlite_autoindex_speaker_groups_1 (speaker_scope=? AND speaker_label=?) LEFT-JOIN",
+            "SEARCH b USING INDEX speaker_bindings_current (current_segment_id=? AND state=?) LEFT-JOIN",
+            "SEARCH person USING INDEX sqlite_autoindex_people_1 (id=?) LEFT-JOIN",
+            "CORRELATED SCALAR SUBQUERY 8",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 9",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 10",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+            "CORRELATED SCALAR SUBQUERY 1",
+            "SEARCH c USING INDEX text_corrections_segment (current_segment_id=? AND state=?)",
+            "USE TEMP B-TREE FOR ORDER BY",
+            "CORRELATED SCALAR SUBQUERY 8",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 9",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 10",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+            "CORRELATED SCALAR SUBQUERY 8",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 9",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 10",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+            "CORRELATED SCALAR SUBQUERY 8",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 9",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 10",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+            "USE TEMP B-TREE FOR ORDER BY"
+          ],
+          "sql": "SELECT p.id,p.source,p.started_ms,p.ended_ms,p.text,\n             identity.speaker,p.speaker_label,\n             (SELECT c.text FROM text_corrections c WHERE c.current_segment_id=p.id\n              AND c.state='active' ORDER BY c.updated_ms DESC LIMIT 1),\n             identity.person_id,identity.person_name,identity.person_origin\n        FROM precise_segments p JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms\n        JOIN precise_identity_projection identity ON identity.segment_id=p.id\n        WHERE t.target_kind=?1 AND t.target_id=?2 AND t.target_version=?3 AND t.state='complete'\n          AND p.started_ms < ?5 AND p.ended_ms > ?4\n          ORDER BY p.started_ms,p.id LIMIT ?6 OFFSET ?7"
+        },
+        {
+          "plan": [
+            "SEARCH coarse_segments USING INDEX coarse_segments_time (started_ms<?)",
+            "USE TEMP B-TREE FOR LAST TERM OF ORDER BY"
+          ],
+          "sql": "SELECT id,source,started_ms,ended_ms,text FROM coarse_segments\n        WHERE started_ms < ?2 AND ended_ms > ?1 AND trim(text)!=''\n          AND source IN (CASE WHEN ?3&1!=0 THEN 'microphone' END, CASE WHEN ?3&2!=0 THEN 'system' END)\n        ORDER BY started_ms,id LIMIT ?4 OFFSET ?5"
+        }
+      ],
+      "query_ms": 882.981208,
+      "serialize_ms": 0.5095419999999999,
+      "statement_count": 117,
+      "queries": [
+        {
+          "sql": "SELECT id,started_ms,ended_ms,title,revision,source_mask,summary FROM named_events\n        WHERE deleted_ms IS NULL AND started_ms < ?2 AND ended_ms > ?1 ORDER BY started_ms",
+          "calls": 1,
+          "elapsed_ms": [
+            1.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 1312
+        },
+        {
+          "sql": "SELECT id,started_ms,ended_ms,source_mask,revision FROM manual_ranges m\n         WHERE started_ms<?2 AND ended_ms>?1 AND (\n           EXISTS(SELECT 1 FROM audio_blocks b WHERE b.media_path IS NOT NULL\n             AND b.started_ms<m.ended_ms AND b.ended_ms>m.started_ms\n             AND b.source IN (CASE WHEN m.source_mask&1!=0 THEN 'microphone' END,\n               CASE WHEN m.source_mask&2!=0 THEN 'system' END))\n           OR EXISTS(SELECT 1 FROM coarse_segments c WHERE c.started_ms<m.ended_ms\n             AND c.ended_ms>m.started_ms\n             AND ((c.source='microphone' AND m.source_mask&1!=0)\n               OR (c.source='system' AND m.source_mask&2!=0)))\n           OR EXISTS(SELECT 1 FROM precise_segments p JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms\n             WHERE t.target_kind='range' AND t.target_id=m.id AND t.state='complete'\n               AND t.target_version=cast(m.revision AS TEXT)\n               AND p.started_ms<m.ended_ms AND p.ended_ms>m.started_ms\n               AND ((p.source='microphone' AND m.source_mask&1!=0)\n                 OR (p.source='system' AND m.source_mask&2!=0))))\n         ORDER BY m.rowid",
+          "calls": 1,
+          "elapsed_ms": [
+            0.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 19
+        },
+        {
+          "sql": "SELECT min(started_ms),max(ended_ms) FROM (\n              SELECT started_ms,ended_ms FROM audio_blocks\n                WHERE source=?3 AND media_path IS NOT NULL AND started_ms < ?2 AND ended_ms > ?1\n              UNION ALL SELECT started_ms,ended_ms FROM coarse_segments\n                WHERE source=?3 AND started_ms < ?2 AND ended_ms > ?1)",
+          "calls": 2,
+          "elapsed_ms": [
+            6.0,
+            0.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 79969
+        },
+        {
+          "sql": "SELECT EXISTS(SELECT 1 FROM audio_blocks WHERE media_path IS NOT NULL\n\t\t AND started_ms<?2 AND ended_ms>?1 AND\n\t\t source IN (CASE WHEN ?3&1!=0 THEN 'microphone' END, CASE WHEN ?3&2!=0 THEN 'system' END))",
+          "calls": 8,
+          "elapsed_ms": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 400
+        },
+        {
+          "sql": "SELECT EXISTS(SELECT 1 FROM audio_blocks WHERE speech_active=1 AND retention_decision!='all_data'\n         AND started_ms<?2 AND ended_ms>?1 AND\n         source IN (CASE WHEN ?3&1!=0 THEN 'microphone' END, CASE WHEN ?3&2!=0 THEN 'system' END)\n         UNION ALL SELECT 1 FROM coarse_segments WHERE started_ms<?2 AND ended_ms>?1 AND\n         source IN (CASE WHEN ?3&1!=0 THEN 'microphone' END, CASE WHEN ?3&2!=0 THEN 'system' END))",
+          "calls": 8,
+          "elapsed_ms": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 520
+        },
+        {
+          "sql": "SELECT state,error_code FROM candidate_windows\n        WHERE started_ms < ?2 AND ended_ms > ?1\n        ORDER BY CASE WHEN state='failed' OR (state='pending' AND error_code IS NOT NULL)\n          THEN 0 ELSE 1 END, ended_ms DESC LIMIT 1",
+          "calls": 8,
+          "elapsed_ms": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 14141
+        },
+        {
+          "sql": "SELECT CASE WHEN state='complete'\n          AND NOT EXISTS(SELECT 1 FROM precise_segments p WHERE p.task_id=cloud_tasks.id)\n          THEN 'no_transcript' ELSE state END,started_ms,ended_ms,source FROM cloud_tasks\n        WHERE target_kind='range' AND started_ms < ?2 AND ended_ms > ?1\n          AND source IN (CASE WHEN ?3&1!=0 THEN 'microphone' END, CASE WHEN ?3&2!=0 THEN 'system' END)\n          AND state!='superseded' ORDER BY created_ms DESC LIMIT 1",
+          "calls": 8,
+          "elapsed_ms": [
+            9.0,
+            0.0,
+            1.0,
+            1.0,
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ],
+          "scan_steps": 15928,
+          "vm_steps": 48024
+        },
+        {
+          "sql": "SELECT (SELECT count(*) FROM audio_blocks WHERE started_ms<?2 AND ended_ms>?1\n          AND retention_decision!='all_data'\n          AND ((source='microphone' AND ?3&1!=0) OR(source='system' AND ?3&2!=0))\n          AND (analysis_state='failed' OR(analysis_state='pending' AND analysis_attempts>=3)))\n          + (SELECT count(*) FROM coarse_jobs WHERE started_ms<?2 AND ended_ms>?1 AND state='failed'\n          AND ((source='microphone' AND ?3&1!=0) OR(source='system' AND ?3&2!=0)))",
+          "calls": 15,
+          "elapsed_ms": [
+            64.0,
+            44.0,
+            46.0,
+            44.0,
+            44.0,
+            43.0,
+            43.0,
+            45.0,
+            41.0,
+            42.0,
+            43.0,
+            43.0,
+            43.0,
+            43.0,
+            45.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 6675070
+        },
+        {
+          "sql": "SELECT DISTINCT c.state,c.error_code FROM event_candidate_links l\n            JOIN candidate_windows c ON c.id=l.candidate_id WHERE l.event_id=?1",
+          "calls": 7,
+          "elapsed_ms": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 346
+        },
+        {
+          "sql": "SELECT EXISTS(SELECT 1 FROM event_asr_state WHERE event_id=?1 AND coalesce(planned_version,'')!=?2)",
+          "calls": 7,
+          "elapsed_ms": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 147
+        },
+        {
+          "sql": "SELECT EXISTS(SELECT 1 FROM named_events e JOIN media_gaps g\n           ON g.started_ms<e.ended_ms AND coalesce(g.ended_ms,e.ended_ms)>e.started_ms\n           AND ((g.source='microphone' AND e.source_mask&1!=0)\n             OR (g.source='system' AND e.source_mask&2!=0)) WHERE e.id=?1)\n         OR EXISTS(SELECT 1 FROM named_events e JOIN audio_blocks b\n           ON b.started_ms<e.ended_ms AND b.ended_ms>e.started_ms\n           AND ((b.source='microphone' AND e.source_mask&1!=0)\n             OR (b.source='system' AND e.source_mask&2!=0))\n           WHERE e.id=?1 AND b.speech_active=1 AND b.media_path IS NULL)\n         OR EXISTS(SELECT 1 FROM named_events e JOIN clear_ranges c\n           ON c.from_ms<e.ended_ms AND c.to_ms>e.started_ms\n           AND c.source_mask&e.source_mask!=0 AND c.mode='all_data'\n           AND c.committed_ms>=e.created_ms WHERE e.id=?1)",
+          "calls": 7,
+          "elapsed_ms": [
+            7.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            2.0,
+            1.0
+          ],
+          "scan_steps": 43631,
+          "vm_steps": 427779
+        },
+        {
+          "sql": "SELECT state,count(*) FROM transcript_tasks WHERE provider='asr'\n        AND target_kind='event' AND target_id=?1 AND target_version=?2\n        AND state!='superseded' GROUP BY state",
+          "calls": 7,
+          "elapsed_ms": [
+            5.0,
+            1.0,
+            1.0,
+            1.0,
+            2.0,
+            1.0,
+            2.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 191630
+        },
+        {
+          "sql": "SELECT t.state,t.source,t.started_ms,t.ended_ms,\n        EXISTS(SELECT 1 FROM precise_segments p WHERE p.task_id=t.id\n          AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms),\n        EXISTS(SELECT 1 FROM precise_segments p WHERE p.task_id=t.id\n          AND p.started_ms<t.ended_ms AND p.ended_ms>t.started_ms\n          AND (p.started_ms<t.started_ms OR p.ended_ms>t.ended_ms))\n        FROM transcript_tasks t WHERE t.provider='asr' AND t.target_kind=?1\n          AND t.target_id=?2 AND t.target_version=?3 AND t.state!='superseded'\n        ORDER BY t.started_ms,t.ended_ms,t.source",
+          "calls": 14,
+          "elapsed_ms": [
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            2.0,
+            1.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 470440
+        },
+        {
+          "sql": "SELECT p.id,p.source,p.started_ms,p.ended_ms,p.text,\n             identity.speaker,p.speaker_label,\n             (SELECT c.text FROM text_corrections c WHERE c.current_segment_id=p.id\n              AND c.state='active' ORDER BY c.updated_ms DESC LIMIT 1),\n             identity.person_id,identity.person_name,identity.person_origin\n        FROM precise_segments p JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms\n        JOIN precise_identity_projection identity ON identity.segment_id=p.id\n        WHERE t.target_kind=?1 AND t.target_id=?2 AND t.target_version=?3 AND t.state='complete'\n          AND p.started_ms < ?5 AND p.ended_ms > ?4\n          ORDER BY p.started_ms,p.id LIMIT ?6 OFFSET ?7",
+          "calls": 7,
+          "elapsed_ms": [
+            4.0,
+            11.0,
+            8.0,
+            1.0,
+            1.0,
+            1.0,
+            8.0
+          ],
+          "scan_steps": 13937,
+          "vm_steps": 294103
+        },
+        {
+          "sql": "SELECT DISTINCT anchor_ms FROM moments WHERE anchor_ms>=?1 AND anchor_ms<?2 ORDER BY anchor_ms",
+          "calls": 1,
+          "elapsed_ms": [
+            0.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 22
+        },
+        {
+          "sql": "SELECT p.id,p.source,p.started_ms,p.ended_ms,p.text,\n             identity.speaker,p.speaker_label,\n             (SELECT c.text FROM text_corrections c WHERE c.current_segment_id=p.id\n              AND c.state='active' ORDER BY c.updated_ms DESC LIMIT 1),\n             identity.person_id,identity.person_name,identity.person_origin\n        FROM precise_segments p JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms\n        JOIN precise_identity_projection identity ON identity.segment_id=p.id\n        JOIN manual_ranges m ON m.id=t.target_id\n        WHERE t.target_kind='range' AND t.state='complete' AND t.target_version=cast(m.revision AS TEXT)\n          AND (?6 IS NULL OR m.id=?6)\n          AND p.started_ms < ?2 AND p.ended_ms > ?1\n          AND ((p.source='microphone' AND ?3&1!=0) OR (p.source='system' AND ?3&2!=0))\n          ORDER BY p.started_ms,p.id LIMIT ?4 OFFSET ?5",
+          "calls": 8,
+          "elapsed_ms": [
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scan_steps": 15928,
+          "vm_steps": 79480
+        },
+        {
+          "sql": "SELECT id,source,started_ms,ended_ms,text FROM coarse_segments\n        WHERE started_ms < ?2 AND ended_ms > ?1 AND trim(text)!=''\n          AND source IN (CASE WHEN ?3&1!=0 THEN 'microphone' END, CASE WHEN ?3&2!=0 THEN 'system' END)\n        ORDER BY started_ms,id LIMIT ?4 OFFSET ?5",
+          "calls": 8,
+          "elapsed_ms": [
+            37.0,
+            7.0,
+            7.0,
+            7.0,
+            7.0,
+            7.0,
+            7.0,
+            8.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 889117
+        }
+      ]
+    },
+    {
+      "bytes": 68925,
+      "operation": "event_detail",
+      "plans": [
+        {
+          "plan": [
+            "SCAN CONSTANT ROW",
+            "SCALAR SUBQUERY 1",
+            "MULTI-INDEX OR",
+            "INDEX 1",
+            "SEARCH audio_blocks USING INDEX audio_blocks_source_time (source=? AND started_ms<?)",
+            "INDEX 2",
+            "SEARCH audio_blocks USING INDEX audio_blocks_source_time (source=? AND started_ms<?)",
+            "SCALAR SUBQUERY 2",
+            "MULTI-INDEX OR",
+            "INDEX 1",
+            "SEARCH coarse_jobs USING COVERING INDEX coarse_jobs_failed_time (source=? AND started_ms<?)",
+            "INDEX 2",
+            "SEARCH coarse_jobs USING COVERING INDEX coarse_jobs_failed_time (source=? AND started_ms<?)"
+          ],
+          "sql": "SELECT (SELECT count(*) FROM audio_blocks WHERE started_ms<?2 AND ended_ms>?1\n          AND retention_decision!='all_data'\n          AND ((source='microphone' AND ?3&1!=0) OR(source='system' AND ?3&2!=0))\n          AND (analysis_state='failed' OR(analysis_state='pending' AND analysis_attempts>=3)))\n          + (SELECT count(*) FROM coarse_jobs WHERE started_ms<?2 AND ended_ms>?1 AND state='failed'\n          AND ((source='microphone' AND ?3&1!=0) OR(source='system' AND ?3&2!=0)))"
+        },
+        {
+          "plan": [
+            "CO-ROUTINE transcript_tasks",
+            "COMPOUND QUERY",
+            "LEFT-MOST SUBQUERY",
+            "SEARCH e USING INDEX sqlite_autoindex_named_events_1 (id=?)",
+            "SEARCH r USING INDEX sqlite_autoindex_event_asr_refs_1 (event_id=?)",
+            "SEARCH t USING INDEX sqlite_autoindex_cloud_tasks_1 (id=?)",
+            "UNION ALL",
+            "SCAN t",
+            "CORRELATED SCALAR SUBQUERY 4",
+            "SEARCH s USING COVERING INDEX sqlite_autoindex_event_asr_state_1 (event_id=?)",
+            "SCAN t",
+            "SEARCH p USING INDEX precise_segments_task_time (task_id=? AND started_ms>? AND started_ms<?)",
+            "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?)",
+            "SEARCH a USING INDEX sqlite_autoindex_local_speaker_assignments_1 (segment_id=?) LEFT-JOIN",
+            "SEARCH g USING INDEX sqlite_autoindex_speaker_groups_1 (speaker_scope=? AND speaker_label=?) LEFT-JOIN",
+            "SEARCH b USING INDEX speaker_bindings_current (current_segment_id=? AND state=?) LEFT-JOIN",
+            "SEARCH person USING INDEX sqlite_autoindex_people_1 (id=?) LEFT-JOIN",
+            "CORRELATED SCALAR SUBQUERY 8",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 9",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 10",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+            "CORRELATED SCALAR SUBQUERY 1",
+            "SEARCH c USING INDEX text_corrections_segment (current_segment_id=? AND state=?)",
+            "USE TEMP B-TREE FOR ORDER BY",
+            "CORRELATED SCALAR SUBQUERY 8",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 9",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 10",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+            "CORRELATED SCALAR SUBQUERY 8",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 9",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 10",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+            "CORRELATED SCALAR SUBQUERY 8",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 9",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 10",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+            "USE TEMP B-TREE FOR ORDER BY"
+          ],
+          "sql": "SELECT p.id,p.source,p.started_ms,p.ended_ms,p.text,\n             identity.speaker,p.speaker_label,\n             (SELECT c.text FROM text_corrections c WHERE c.current_segment_id=p.id\n              AND c.state='active' ORDER BY c.updated_ms DESC LIMIT 1),\n             identity.person_id,identity.person_name,identity.person_origin\n        FROM precise_segments p JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms\n        JOIN precise_identity_projection identity ON identity.segment_id=p.id\n        WHERE t.target_kind=?1 AND t.target_id=?2 AND t.target_version=?3 AND t.state='complete'\n          AND p.started_ms < ?5 AND p.ended_ms > ?4\n          ORDER BY p.started_ms,p.id LIMIT ?6 OFFSET ?7"
+        },
+        {
+          "plan": [
+            "CO-ROUTINE transcript_tasks",
+            "COMPOUND QUERY",
+            "LEFT-MOST SUBQUERY",
+            "SCAN r",
+            "SEARCH e USING INDEX sqlite_autoindex_named_events_1 (id=?)",
+            "SEARCH t USING INDEX sqlite_autoindex_cloud_tasks_1 (id=?)",
+            "UNION ALL",
+            "SCAN t",
+            "CORRELATED SCALAR SUBQUERY 6",
+            "SEARCH s USING COVERING INDEX sqlite_autoindex_event_asr_state_1 (event_id=?)",
+            "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?)",
+            "LIST SUBQUERY 1",
+            "SCAN json_each VIRTUAL TABLE INDEX 1:",
+            "SEARCH t USING AUTOMATIC PARTIAL COVERING INDEX (state=? AND id=?)",
+            "CORRELATED SCALAR SUBQUERY 2",
+            "SEARCH e USING INDEX sqlite_autoindex_named_events_1 (id=?)",
+            "CORRELATED SCALAR SUBQUERY 3",
+            "SEARCH m USING INDEX sqlite_autoindex_manual_ranges_1 (id=?)",
+            "SEARCH a USING INDEX sqlite_autoindex_local_speaker_assignments_1 (segment_id=?) LEFT-JOIN",
+            "SEARCH g USING INDEX sqlite_autoindex_speaker_groups_1 (speaker_scope=? AND speaker_label=?) LEFT-JOIN"
+          ],
+          "sql": "SELECT p.id,p.source,p.started_ms,p.ended_ms,p.text,p.speaker_scope,\n      coalesce(p.speaker_label,''),coalesce(a.group_id,g.group_id,'') FROM precise_segments p\n      JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms\n      LEFT JOIN local_speaker_assignments a ON a.segment_id=p.id\n      LEFT JOIN speaker_groups g ON g.speaker_scope=p.speaker_scope AND g.speaker_label=p.speaker_label\n      WHERE p.id IN (SELECT value FROM json_each(?1)) AND t.state='complete' AND\n      ((t.target_kind='event' AND EXISTS(SELECT 1 FROM named_events e WHERE e.id=t.target_id\n        AND e.deleted_ms IS NULL AND t.target_version=printf('%d:%d:%d',e.source_mask,e.started_ms,e.ended_ms)))\n       OR (t.target_kind='range' AND EXISTS(SELECT 1 FROM manual_ranges m WHERE m.id=t.target_id\n        AND t.target_version=cast(m.revision AS TEXT))))"
+        }
+      ],
+      "query_ms": 228.874,
+      "serialize_ms": 1.755084,
+      "statement_count": 64,
+      "queries": [
+        {
+          "sql": "SELECT started_ms,ended_ms,title,revision,source_mask,summary FROM named_events\n         WHERE id=?1 AND deleted_ms IS NULL",
+          "calls": 1,
+          "elapsed_ms": [
+            0.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 19
+        },
+        {
+          "sql": "SELECT (SELECT count(*) FROM audio_blocks WHERE started_ms<?2 AND ended_ms>?1\n          AND retention_decision!='all_data'\n          AND ((source='microphone' AND ?3&1!=0) OR(source='system' AND ?3&2!=0))\n          AND (analysis_state='failed' OR(analysis_state='pending' AND analysis_attempts>=3)))\n          + (SELECT count(*) FROM coarse_jobs WHERE started_ms<?2 AND ended_ms>?1 AND state='failed'\n          AND ((source='microphone' AND ?3&1!=0) OR(source='system' AND ?3&2!=0)))",
+          "calls": 1,
+          "elapsed_ms": [
+            46.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 467601
+        },
+        {
+          "sql": "SELECT DISTINCT c.state,c.error_code FROM event_candidate_links l\n            JOIN candidate_windows c ON c.id=l.candidate_id WHERE l.event_id=?1",
+          "calls": 1,
+          "elapsed_ms": [
+            0.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 133
+        },
+        {
+          "sql": "SELECT EXISTS(SELECT 1 FROM event_asr_state WHERE event_id=?1 AND coalesce(planned_version,'')!=?2)",
+          "calls": 1,
+          "elapsed_ms": [
+            0.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 21
+        },
+        {
+          "sql": "SELECT EXISTS(SELECT 1 FROM named_events e JOIN media_gaps g\n           ON g.started_ms<e.ended_ms AND coalesce(g.ended_ms,e.ended_ms)>e.started_ms\n           AND ((g.source='microphone' AND e.source_mask&1!=0)\n             OR (g.source='system' AND e.source_mask&2!=0)) WHERE e.id=?1)\n         OR EXISTS(SELECT 1 FROM named_events e JOIN audio_blocks b\n           ON b.started_ms<e.ended_ms AND b.ended_ms>e.started_ms\n           AND ((b.source='microphone' AND e.source_mask&1!=0)\n             OR (b.source='system' AND e.source_mask&2!=0))\n           WHERE e.id=?1 AND b.speech_active=1 AND b.media_path IS NULL)\n         OR EXISTS(SELECT 1 FROM named_events e JOIN clear_ranges c\n           ON c.from_ms<e.ended_ms AND c.to_ms>e.started_ms\n           AND c.source_mask&e.source_mask!=0 AND c.mode='all_data'\n           AND c.committed_ms>=e.created_ms WHERE e.id=?1)",
+          "calls": 1,
+          "elapsed_ms": [
+            1.0
+          ],
+          "scan_steps": 6233,
+          "vm_steps": 59128
+        },
+        {
+          "sql": "SELECT state,count(*) FROM transcript_tasks WHERE provider='asr'\n        AND target_kind='event' AND target_id=?1 AND target_version=?2\n        AND state!='superseded' GROUP BY state",
+          "calls": 1,
+          "elapsed_ms": [
+            1.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 27822
+        },
+        {
+          "sql": "SELECT t.state,t.source,t.started_ms,t.ended_ms,\n        EXISTS(SELECT 1 FROM precise_segments p WHERE p.task_id=t.id\n          AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms),\n        EXISTS(SELECT 1 FROM precise_segments p WHERE p.task_id=t.id\n          AND p.started_ms<t.ended_ms AND p.ended_ms>t.started_ms\n          AND (p.started_ms<t.started_ms OR p.ended_ms>t.ended_ms))\n        FROM transcript_tasks t WHERE t.provider='asr' AND t.target_kind=?1\n          AND t.target_id=?2 AND t.target_version=?3 AND t.state!='superseded'\n        ORDER BY t.started_ms,t.ended_ms,t.source",
+          "calls": 2,
+          "elapsed_ms": [
+            2.0,
+            1.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 105842
+        },
+        {
+          "sql": "SELECT id,source,started_ms,ended_ms,text FROM coarse_segments\n        WHERE started_ms < ?2 AND ended_ms > ?1 AND trim(text)!=''\n          AND source IN (CASE WHEN ?3&1!=0 THEN 'microphone' END, CASE WHEN ?3&2!=0 THEN 'system' END)\n        ORDER BY started_ms,id LIMIT ?4 OFFSET ?5",
+          "calls": 1,
+          "elapsed_ms": [
+            8.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 115536
+        },
+        {
+          "sql": "SELECT p.id,p.source,p.started_ms,p.ended_ms,p.text,\n             identity.speaker,p.speaker_label,\n             (SELECT c.text FROM text_corrections c WHERE c.current_segment_id=p.id\n              AND c.state='active' ORDER BY c.updated_ms DESC LIMIT 1),\n             identity.person_id,identity.person_name,identity.person_origin\n        FROM precise_segments p JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms\n        JOIN precise_identity_projection identity ON identity.segment_id=p.id\n        WHERE t.target_kind=?1 AND t.target_id=?2 AND t.target_version=?3 AND t.state='complete'\n          AND p.started_ms < ?5 AND p.ended_ms > ?4\n          ORDER BY p.started_ms,p.id LIMIT ?6 OFFSET ?7",
+          "calls": 1,
+          "elapsed_ms": [
+            14.0
+          ],
+          "scan_steps": 1991,
+          "vm_steps": 251379
+        },
+        {
+          "sql": "SELECT p.id,p.source,p.started_ms,p.ended_ms,p.text,p.speaker_scope,\n      coalesce(p.speaker_label,''),coalesce(a.group_id,g.group_id,'') FROM precise_segments p\n      JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms\n      LEFT JOIN local_speaker_assignments a ON a.segment_id=p.id\n      LEFT JOIN speaker_groups g ON g.speaker_scope=p.speaker_scope AND g.speaker_label=p.speaker_label\n      WHERE p.id IN (SELECT value FROM json_each(?1)) AND t.state='complete' AND\n      ((t.target_kind='event' AND EXISTS(SELECT 1 FROM named_events e WHERE e.id=t.target_id\n        AND e.deleted_ms IS NULL AND t.target_version=printf('%d:%d:%d',e.source_mask,e.started_ms,e.ended_ms)))\n       OR (t.target_kind='range' AND EXISTS(SELECT 1 FROM manual_ranges m WHERE m.id=t.target_id\n        AND t.target_version=cast(m.revision AS TEXT))))",
+          "calls": 10,
+          "elapsed_ms": [
+            14.0,
+            12.0,
+            11.0,
+            12.0,
+            10.0,
+            9.0,
+            8.0,
+            11.0,
+            10.0,
+            12.0
+          ],
+          "scan_steps": 35400,
+          "vm_steps": 1727786
+        },
+        {
+          "sql": "SELECT current_segment_id,id||':'||state||':'||revision||':'||text FROM text_corrections WHERE current_segment_id IN(SELECT value FROM json_each(?1)) ORDER BY current_segment_id,id",
+          "calls": 10,
+          "elapsed_ms": [
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 14038
+        },
+        {
+          "sql": "SELECT current_segment_id,id||':'||person_id||':'||origin||':'||apply_scope||':'||state FROM speaker_bindings WHERE current_segment_id IN(SELECT value FROM json_each(?1)) ORDER BY current_segment_id,id",
+          "calls": 10,
+          "elapsed_ms": [
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 15628
+        },
+        {
+          "sql": "SELECT p.segment_id,s.id||':'||s.person_id FROM voice_samples s JOIN\n          (SELECT id AS sample_id,segment_id FROM voice_samples WHERE segment_id IN(SELECT value FROM json_each(?1))\n           UNION SELECT sample_id,segment_id FROM voice_sample_parts WHERE segment_id IN(SELECT value FROM json_each(?1))) p\n          ON p.sample_id=s.id WHERE s.revoked_ms IS NULL ORDER BY p.segment_id,s.id",
+          "calls": 10,
+          "elapsed_ms": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scan_steps": 80,
+          "vm_steps": 23778
+        },
+        {
+          "sql": "SELECT p.id FROM precise_segments p JOIN precise_group_membership g ON g.segment_id=p.id WHERE g.group_id=?1 AND p.id>?2 ORDER BY p.id LIMIT 256",
+          "calls": 14,
+          "elapsed_ms": [
+            2.0,
+            2.0,
+            2.0,
+            2.0,
+            2.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            2.0,
+            1.0,
+            1.0,
+            1.0,
+            0.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 138996
+        }
+      ]
+    },
+    {
+      "bytes": 2933,
+      "operation": "session_speakers",
+      "plans": [
+        {
+          "plan": [
+            "CO-ROUTINE transcript_tasks",
+            "COMPOUND QUERY",
+            "LEFT-MOST SUBQUERY",
+            "SCAN r",
+            "SEARCH e USING INDEX sqlite_autoindex_named_events_1 (id=?)",
+            "SEARCH t USING INDEX sqlite_autoindex_cloud_tasks_1 (id=?)",
+            "UNION ALL",
+            "SCAN t",
+            "CORRELATED SCALAR SUBQUERY 6",
+            "SEARCH s USING COVERING INDEX sqlite_autoindex_event_asr_state_1 (event_id=?)",
+            "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?)",
+            "LIST SUBQUERY 1",
+            "SCAN json_each VIRTUAL TABLE INDEX 1:",
+            "SEARCH t USING AUTOMATIC PARTIAL COVERING INDEX (state=? AND id=?)",
+            "CORRELATED SCALAR SUBQUERY 2",
+            "SEARCH e USING INDEX sqlite_autoindex_named_events_1 (id=?)",
+            "CORRELATED SCALAR SUBQUERY 3",
+            "SEARCH m USING INDEX sqlite_autoindex_manual_ranges_1 (id=?)",
+            "SEARCH a USING INDEX sqlite_autoindex_local_speaker_assignments_1 (segment_id=?) LEFT-JOIN",
+            "SEARCH g USING INDEX sqlite_autoindex_speaker_groups_1 (speaker_scope=? AND speaker_label=?) LEFT-JOIN"
+          ],
+          "sql": "SELECT p.id,p.source,p.started_ms,p.ended_ms,p.text,p.speaker_scope,\n      coalesce(p.speaker_label,''),coalesce(a.group_id,g.group_id,'') FROM precise_segments p\n      JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms\n      LEFT JOIN local_speaker_assignments a ON a.segment_id=p.id\n      LEFT JOIN speaker_groups g ON g.speaker_scope=p.speaker_scope AND g.speaker_label=p.speaker_label\n      WHERE p.id IN (SELECT value FROM json_each(?1)) AND t.state='complete' AND\n      ((t.target_kind='event' AND EXISTS(SELECT 1 FROM named_events e WHERE e.id=t.target_id\n        AND e.deleted_ms IS NULL AND t.target_version=printf('%d:%d:%d',e.source_mask,e.started_ms,e.ended_ms)))\n       OR (t.target_kind='range' AND EXISTS(SELECT 1 FROM manual_ranges m WHERE m.id=t.target_id\n        AND t.target_version=cast(m.revision AS TEXT))))"
+        },
+        {
+          "plan": [
+            "CO-ROUTINE transcript_tasks",
+            "COMPOUND QUERY",
+            "LEFT-MOST SUBQUERY",
+            "SEARCH e USING INDEX sqlite_autoindex_named_events_1 (id=?)",
+            "SEARCH r USING INDEX sqlite_autoindex_event_asr_refs_1 (event_id=?)",
+            "SEARCH t USING INDEX sqlite_autoindex_cloud_tasks_1 (id=?)",
+            "UNION ALL",
+            "SCAN t",
+            "CORRELATED SCALAR SUBQUERY 3",
+            "SEARCH s USING COVERING INDEX sqlite_autoindex_event_asr_state_1 (event_id=?)",
+            "SCAN t",
+            "SEARCH p USING INDEX precise_segments_task_time (task_id=? AND started_ms>?)",
+            "SEARCH p USING INDEX sqlite_autoindex_precise_segments_1 (id=?)",
+            "SEARCH a USING INDEX sqlite_autoindex_local_speaker_assignments_1 (segment_id=?) LEFT-JOIN",
+            "SEARCH g USING INDEX sqlite_autoindex_speaker_groups_1 (speaker_scope=? AND speaker_label=?) LEFT-JOIN",
+            "CORRELATED SCALAR SUBQUERY 7",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 8",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 9",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+            "SEARCH b USING INDEX speaker_bindings_current (current_segment_id=? AND state=?) LEFT-JOIN",
+            "CORRELATED SCALAR SUBQUERY 7",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 8",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 9",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+            "CORRELATED SCALAR SUBQUERY 7",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 8",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=? AND speaker_label=?)",
+            "CORRELATED SCALAR SUBQUERY 9",
+            "SEARCH x USING INDEX precise_segments_speaker (speaker_scope=?)",
+            "USE TEMP B-TREE FOR ORDER BY"
+          ],
+          "sql": "SELECT i.speaker,p.id,i.person_id FROM precise_segments p\n         JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms\n         JOIN precise_identity_projection i ON i.segment_id=p.id\n         WHERE t.target_kind=?1 AND t.target_id=?2\n         AND t.target_version=?3 AND t.state='complete'\n         AND i.speaker IS NOT NULL ORDER BY p.started_ms,p.id"
+        }
+      ],
+      "query_ms": 482.164125,
+      "serialize_ms": 0.08237499999999999,
+      "statement_count": 130,
+      "queries": [
+        {
+          "sql": "SELECT p.source,p.started_ms,p.ended_ms FROM precise_segments p\n         JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms\n         WHERE p.id=?1 AND t.state='complete' AND\n           ((t.target_kind='event' AND EXISTS (\n              SELECT 1 FROM named_events e WHERE e.id=t.target_id\n              AND e.deleted_ms IS NULL\n              AND t.target_version=printf('%d:%d:%d',e.source_mask,e.started_ms,e.ended_ms)))\n             OR (t.target_kind='range' AND EXISTS (\n              SELECT 1 FROM manual_ranges m WHERE m.id=t.target_id\n              AND t.target_version=cast(m.revision AS TEXT))))",
+          "calls": 1,
+          "elapsed_ms": [
+            3.0
+          ],
+          "scan_steps": 1538,
+          "vm_steps": 86053
+        },
+        {
+          "sql": "SELECT t.target_kind,t.target_id,t.target_version FROM precise_segments seed\n         JOIN transcript_tasks t ON t.id=seed.task_id\n         AND seed.started_ms>=t.started_ms AND seed.ended_ms<=t.ended_ms\n         WHERE seed.id=?1 AND t.state='complete' LIMIT 1",
+          "calls": 1,
+          "elapsed_ms": [
+            3.0
+          ],
+          "scan_steps": 1538,
+          "vm_steps": 86029
+        },
+        {
+          "sql": "SELECT p.id FROM precise_segments p JOIN precise_group_membership g ON g.segment_id=p.id WHERE g.group_id=?1 AND p.id>?2 ORDER BY p.id LIMIT 256",
+          "calls": 39,
+          "elapsed_ms": [
+            2.0,
+            2.0,
+            2.0,
+            2.0,
+            1.0,
+            0.0,
+            0.0,
+            1.0,
+            1.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            1.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 175111
+        },
+        {
+          "sql": "SELECT p.id,p.source,p.started_ms,p.ended_ms,p.text,p.speaker_scope,\n      coalesce(p.speaker_label,''),coalesce(a.group_id,g.group_id,'') FROM precise_segments p\n      JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms\n      LEFT JOIN local_speaker_assignments a ON a.segment_id=p.id\n      LEFT JOIN speaker_groups g ON g.speaker_scope=p.speaker_scope AND g.speaker_label=p.speaker_label\n      WHERE p.id IN (SELECT value FROM json_each(?1)) AND t.state='complete' AND\n      ((t.target_kind='event' AND EXISTS(SELECT 1 FROM named_events e WHERE e.id=t.target_id\n        AND e.deleted_ms IS NULL AND t.target_version=printf('%d:%d:%d',e.source_mask,e.started_ms,e.ended_ms)))\n       OR (t.target_kind='range' AND EXISTS(SELECT 1 FROM manual_ranges m WHERE m.id=t.target_id\n        AND t.target_version=cast(m.revision AS TEXT))))",
+          "calls": 22,
+          "elapsed_ms": [
+            11.0,
+            11.0,
+            12.0,
+            10.0,
+            9.0,
+            11.0,
+            9.0,
+            12.0,
+            8.0,
+            8.0,
+            8.0,
+            8.0,
+            8.0,
+            8.0,
+            8.0,
+            8.0,
+            8.0,
+            8.0,
+            8.0,
+            8.0,
+            11.0,
+            10.0
+          ],
+          "scan_steps": 77880,
+          "vm_steps": 3680958
+        },
+        {
+          "sql": "SELECT current_segment_id,id||':'||state||':'||revision||':'||text FROM text_corrections WHERE current_segment_id IN(SELECT value FROM json_each(?1)) ORDER BY current_segment_id,id",
+          "calls": 22,
+          "elapsed_ms": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 18234
+        },
+        {
+          "sql": "SELECT current_segment_id,id||':'||person_id||':'||origin||':'||apply_scope||':'||state FROM speaker_bindings WHERE current_segment_id IN(SELECT value FROM json_each(?1)) ORDER BY current_segment_id,id",
+          "calls": 22,
+          "elapsed_ms": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scan_steps": 0,
+          "vm_steps": 19854
+        },
+        {
+          "sql": "SELECT p.segment_id,s.id||':'||s.person_id FROM voice_samples s JOIN\n          (SELECT id AS sample_id,segment_id FROM voice_samples WHERE segment_id IN(SELECT value FROM json_each(?1))\n           UNION SELECT sample_id,segment_id FROM voice_sample_parts WHERE segment_id IN(SELECT value FROM json_each(?1))) p\n          ON p.sample_id=s.id WHERE s.revoked_ms IS NULL ORDER BY p.segment_id,s.id",
+          "calls": 22,
+          "elapsed_ms": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          "scan_steps": 176,
+          "vm_steps": 31756
+        },
+        {
+          "sql": "SELECT i.speaker,p.id,i.person_id FROM precise_segments p\n         JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms\n         JOIN precise_identity_projection i ON i.segment_id=p.id\n         WHERE t.target_kind=?1 AND t.target_id=?2\n         AND t.target_version=?3 AND t.state='complete'\n         AND i.speaker IS NOT NULL ORDER BY p.started_ms,p.id",
+          "calls": 1,
+          "elapsed_ms": [
+            476.0
+          ],
+          "scan_steps": 1991,
+          "vm_steps": 3245766
+        }
+      ]
+    }
+  ],
+  "notes": "Debug build; same closed snapshot. sqlite3 profile elapsed is inclusive of nested queries stepped while a result cursor is open: do not sum elapsed_ms as operation wall time. No literal bound values or transcript rows."
+}

@@ -14,6 +14,8 @@ use uuid::Uuid;
 #[cfg(test)]
 mod activity_tests;
 pub(crate) mod asr;
+#[cfg(test)]
+mod gui_read_tests;
 pub mod rebuild;
 mod summary;
 mod understanding;
@@ -197,6 +199,8 @@ pub fn init(db: &Connection) -> Result<(), String> {
             CHECK(ended_ms > started_ms)
          );
          CREATE INDEX IF NOT EXISTS precise_segments_time ON precise_segments(started_ms);
+         CREATE INDEX IF NOT EXISTS precise_segments_task_time
+           ON precise_segments(task_id,started_ms,ended_ms);
          CREATE INDEX IF NOT EXISTS precise_segments_speaker
            ON precise_segments(speaker_scope,speaker_label);
          CREATE TABLE IF NOT EXISTS manual_ranges (

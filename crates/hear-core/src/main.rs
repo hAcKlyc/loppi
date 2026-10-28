@@ -2463,10 +2463,23 @@ fn current_login_session() -> Result<i64, String> {
     Ok(i64::from(info.session))
 }
 
-fn ipc_failure(shared: &CoreState, id: Option<uuid::Uuid>, code: &str) {
+fn read_response(id: uuid::Uuid, result: Result<Response, String>) -> Response {
+    result.unwrap_or_else(|message| Response::Error {
+        id,
+        code: reads::error_code(&message).into(),
+        message,
+    })
+}
+
+fn ipc_failure(shared: &CoreState, id: Option<uuid::Uuid>, command: Option<&str>, code: &str) {
     let mut event = LogEvent::simple("ipc", LogLevel::Warn, "request_failed");
     event.error_code = Some(code.to_owned());
     event.correlation_id = id;
+    event.context = command.map(|command| hear_protocol::LogContext {
+        command: Some(command.into()),
+        cause: Some(code.into()),
+        ..Default::default()
+    });
     shared.logs.emit(
         ClientKind::Core,
         id.unwrap_or_else(uuid::Uuid::new_v4),
@@ -2492,24 +2505,45 @@ fn ipc_io_code(error: &std::io::Error, writing: bool) -> &'static str {
 }
 
 fn serve_one(stream: &mut UnixStream, shared: &Arc<CoreState>) -> Result<bool, String> {
-    let input = read_request(stream).inspect_err(|code| ipc_failure(shared, None, code))?;
+    let input = read_request(stream).inspect_err(|code| ipc_failure(shared, None, None, code))?;
     if input.is_empty() {
         return Ok(false);
     }
     let envelope: Envelope = serde_json::from_slice(&input).map_err(|_| {
-        ipc_failure(shared, None, "ipc_invalid_json");
+        ipc_failure(shared, None, None, "ipc_invalid_json");
         "ipc_invalid_json".to_owned()
     })?;
     let id = envelope.id;
-    let (body, quit) = handle_request(stream, shared, envelope).inspect_err(|_| {
-        ipc_failure(shared, Some(id), "ipc_execute_failed");
-    })?;
+    let command = envelope.request.name();
+    let client = envelope.client;
+    let started = Instant::now();
+    let (body, quit) = match handle_request(stream, shared, envelope) {
+        Ok(result) => result,
+        Err(error) => {
+            let mut event = LogEvent::simple("ipc", LogLevel::Warn, "request_failed");
+            event.error_code = Some("ipc_execute_failed".into());
+            event.correlation_id = Some(id);
+            event.duration_ms = Some(started.elapsed().as_millis() as u64);
+            event.context = Some(hear_protocol::LogContext {
+                command: Some(command.into()),
+                cause: Some(reads::failure_cause(&error).into()),
+                ..Default::default()
+            });
+            shared.logs.emit(client, id, event);
+            // A valid envelope always receives a correlated error, including
+            // failures that propagated with `?` before building a Response.
+            (
+                serde_json::to_vec(&read_response(id, Err(error))).map_err(|e| e.to_string())?,
+                false,
+            )
+        }
+    };
     stream
         .set_write_timeout(Some(Duration::from_secs(3)))
         .and_then(|()| stream.write_all(&body))
         .map_err(|error| {
             let code = ipc_io_code(&error, true);
-            ipc_failure(shared, Some(id), code);
+            ipc_failure(shared, Some(id), Some(command), code);
             code.to_owned()
         })?;
     Ok(quit)
@@ -2547,6 +2581,18 @@ fn handle_request(
         Request::Start { .. } | Request::Resume { .. }
     );
     let request_name = envelope.request.name();
+    if !matches!(
+        request_name,
+        "status" | "app_opened" | "logs" | "log" | "playback_valid"
+    ) {
+        let mut event = LogEvent::simple("ipc", LogLevel::Info, "request_received");
+        event.correlation_id = Some(envelope.id);
+        event.context = Some(hear_protocol::LogContext {
+            command: Some(request_name.into()),
+            ..Default::default()
+        });
+        shared.logs.emit(envelope.client, envelope.id, event);
+    }
     let stable_lifecycle = matches!(
         envelope.request,
         Request::Status | Request::Lifecycle { .. }
@@ -2821,67 +2867,54 @@ fn handle_request(
                 response
             }
             Request::Timeline { from_ms, to_ms } => {
-                let reader = shared.readers.snapshot()?;
-                match events::timeline(&reader, from_ms, to_ms) {
-                    Ok(mut items) => {
-                        let now = now_ms()?;
-                        let state = shared.service_state()?;
-                        let mut active = Vec::new();
-                        if matches!(state.capture_state, CaptureState::Recording) {
-                            if state.microphone_phase == hear_protocol::SourcePhase::Recording {
-                                active.push(AudioSource::Microphone);
-                            }
-                            if state.system_phase == hear_protocol::SourcePhase::Recording {
-                                active.push(AudioSource::System);
-                            }
+                let result = (|| {
+                    let reader = shared.readers.snapshot()?;
+                    let mut items = events::timeline(&reader, from_ms, to_ms)?;
+                    let now = now_ms()?;
+                    let state = shared.service_state()?;
+                    let mut active = Vec::new();
+                    if matches!(state.capture_state, CaptureState::Recording) {
+                        if state.microphone_phase == hear_protocol::SourcePhase::Recording {
+                            active.push(AudioSource::Microphone);
                         }
-                        events::mark_recording_items(&reader, &mut items, &active, now)?;
-                        Response::Timeline {
-                            id: envelope.id,
-                            items,
-                            gaps: events::timeline_gaps(&reader, from_ms, to_ms, now)?,
+                        if state.system_phase == hear_protocol::SourcePhase::Recording {
+                            active.push(AudioSource::System);
                         }
                     }
-                    Err(_) => Response::Error {
+                    events::mark_recording_items(&reader, &mut items, &active, now)?;
+                    Ok(Response::Timeline {
                         id: envelope.id,
-                        code: "invalid_time_range".to_owned(),
-                        message: "timeline range must be within one day".to_owned(),
-                    },
-                }
+                        items,
+                        gaps: events::timeline_gaps(&reader, from_ms, to_ms, now)?,
+                    })
+                })();
+                read_response(envelope.id, result)
             }
             Request::CalendarDays { boundaries } => {
-                let reader = shared.readers.snapshot()?;
-                match events::calendar_days(&reader, &boundaries, now_ms()?) {
-                    Ok(days) => Response::CalendarDays {
+                let result = shared.readers.snapshot().and_then(|db| {
+                    Ok(Response::CalendarDays {
                         id: envelope.id,
-                        days,
-                    },
-                    Err(error) => Response::Error {
-                        id: envelope.id,
-                        code: "invalid_calendar_range".into(),
-                        message: error,
-                    },
-                }
+                        days: events::calendar_days(&db, &boundaries, now_ms()?)?,
+                    })
+                });
+                read_response(envelope.id, result)
             }
             Request::EventDetail {
                 event_id,
                 offset,
                 limit,
             } => {
-                let reader = shared.readers.snapshot()?;
-                match reader.cached(("event", event_id, offset, limit), |db| {
-                    events::event_detail(db, event_id, offset, limit)
-                }) {
-                    Ok(event) => Response::Event {
-                        id: envelope.id,
-                        event,
-                    },
-                    Err(_) => Response::Error {
-                        id: envelope.id,
-                        code: "event_detail_unavailable".to_owned(),
-                        message: "event not found or transcript page invalid".to_owned(),
-                    },
-                }
+                let result = shared.readers.snapshot().and_then(|reader| {
+                    reader
+                        .cached(("event", event_id, offset, limit), |db| {
+                            events::event_detail(db, event_id, offset, limit)
+                        })
+                        .map(|event| Response::Event {
+                            id: envelope.id,
+                            event,
+                        })
+                });
+                read_response(envelope.id, result)
             }
             Request::RangeDetail {
                 started_ms,
@@ -2890,21 +2923,22 @@ fn handle_request(
                 offset,
                 limit,
             } => {
-                let reader = shared.readers.snapshot()?;
-                match reader.cached(
-                    ("range", started_ms, ended_ms, sources, offset, limit),
-                    |db| events::range_detail(db, started_ms, ended_ms, sources, offset, limit),
-                ) {
-                    Ok(event) => Response::Event {
-                        id: envelope.id,
-                        event,
-                    },
-                    Err(_) => Response::Error {
-                        id: envelope.id,
-                        code: "range_detail_unavailable".to_owned(),
-                        message: "invalid time range or transcript page".to_owned(),
-                    },
-                }
+                let result = shared.readers.snapshot().and_then(|reader| {
+                    reader
+                        .cached(
+                            ("range", started_ms, ended_ms, sources, offset, limit),
+                            |db| {
+                                events::range_detail(
+                                    db, started_ms, ended_ms, sources, offset, limit,
+                                )
+                            },
+                        )
+                        .map(|event| Response::Event {
+                            id: envelope.id,
+                            event,
+                        })
+                });
+                read_response(envelope.id, result)
             }
             Request::CreateEvent {
                 started_ms,
@@ -3175,18 +3209,15 @@ fn handle_request(
                 }
             }
             Request::SessionSpeakers { segment_id } => {
-                let reader = shared.readers.snapshot()?;
-                match knowledge::session_speakers(&reader, segment_id) {
-                    Ok(speakers) => Response::SessionSpeakers {
-                        id: envelope.id,
-                        speakers,
-                    },
-                    Err(message) => Response::Error {
-                        id: envelope.id,
-                        code: "speaker_invalid".into(),
-                        message,
-                    },
-                }
+                let result = shared.readers.snapshot().and_then(|db| {
+                    knowledge::session_speakers(&db, segment_id).map(|speakers| {
+                        Response::SessionSpeakers {
+                            id: envelope.id,
+                            speakers,
+                        }
+                    })
+                });
+                read_response(envelope.id, result)
             }
             Request::AssignLocalSpeaker {
                 segment_id,
@@ -3330,18 +3361,15 @@ fn handle_request(
                 offset,
                 limit,
             } => {
-                let reader = shared.readers.snapshot()?;
-                match moments::list(&reader, from_ms, to_ms, offset, limit) {
-                    Ok(moments) => Response::Moments {
-                        id: envelope.id,
-                        moments,
-                    },
-                    Err(message) => Response::Error {
-                        id: envelope.id,
-                        code: "moments_invalid".into(),
-                        message,
-                    },
-                }
+                let result = shared.readers.snapshot().and_then(|db| {
+                    moments::list(&db, from_ms, to_ms, offset, limit).map(|moments| {
+                        Response::Moments {
+                            id: envelope.id,
+                            moments,
+                        }
+                    })
+                });
+                read_response(envelope.id, result)
             }
             Request::AddMoment {
                 kind,
@@ -4141,24 +4169,52 @@ fn handle_request(
         },
         response => response,
     };
-    if !matches!(
-        request_name,
-        "status" | "app_opened" | "logs" | "log" | "playback_valid"
-    ) {
-        let mut received = LogEvent::simple("ipc", LogLevel::Info, "request_received");
-        received.correlation_id = Some(envelope.id);
-        shared.logs.emit(envelope.client, envelope.id, received);
-        let mut event = LogEvent::simple("ipc", LogLevel::Info, request_name);
-        event.revision = shared
-            .store
-            .try_lock()
-            .ok()
-            .and_then(|store| store.state().ok())
-            .map(|state| state.revision);
-        event.correlation_id = Some(envelope.id);
-        shared.logs.emit(ClientKind::Core, envelope.id, event);
-    }
+    let serialized_at = Instant::now();
     let body = serde_json::to_vec(&response).map_err(|error| error.to_string())?;
+    let serialize_us = serialized_at.elapsed().as_micros() as u64;
+    let failure = match &response {
+        Response::Error { code, message, .. } => {
+            Some((code.clone(), reads::failure_cause(message).to_owned()))
+        }
+        Response::Context { result, .. } if result["ok"] == false => Some((
+            result["error"]["code"]
+                .as_str()
+                .unwrap_or("query_failed")
+                .to_owned(),
+            result["error"]["cause"]
+                .as_str()
+                .unwrap_or("query_failed")
+                .to_owned(),
+        )),
+        _ => None,
+    };
+    if failure.is_some()
+        || !matches!(
+            request_name,
+            "status" | "app_opened" | "logs" | "log" | "playback_valid"
+        )
+    {
+        let mut event = LogEvent::simple(
+            "ipc",
+            if failure.is_some() {
+                LogLevel::Warn
+            } else {
+                LogLevel::Info
+            },
+            request_name,
+        );
+        event.error_code = failure.as_ref().map(|f| f.0.clone());
+        event.duration_ms = Some(request_started.elapsed().as_millis() as u64);
+        event.context = Some(hear_protocol::LogContext {
+            command: Some(request_name.into()),
+            cause: failure.map(|f| f.1),
+            output_bytes: Some(body.len()),
+            serialize_us: Some(serialize_us),
+            ..Default::default()
+        });
+        event.correlation_id = Some(envelope.id);
+        shared.logs.emit(envelope.client, envelope.id, event);
+    }
     shared
         .resources
         .request_histogram

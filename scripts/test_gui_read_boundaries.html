@@ -1,0 +1,35 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>GUI read boundaries</title>
+<div id="root"></div><button id="run">运行读取回归</button><output id="result"></output>
+<script type="module">
+import React from 'react';import {createRoot} from 'react-dom/client';import {flushSync} from 'react-dom';
+import {DetailDrawer} from '/src/DetailDrawer.tsx';import {core,userError} from '/src/api.ts';import '/src/App.css';
+const base={id:'fixture',manual_range_id:null,title:'读取回归',summary:null,started_ms:1000,ended_ms:100000,sources:'microphone',processing_state:'transcribed',coarse_segments:[],precise_segments:[]};
+const rows=Array.from({length:75},(_,i)=>({id:`row-${i}`,source:'microphone',started_ms:1000+i*1000,ended_ms:1900+i*1000,text:`文字 ${i+1}`,speaker:'speaker',revision:1,speaker_revision:1,person_name:null,person_id:null,corrected:false}));
+let failDetail=false,failSpeakers=false,release,hold=new Promise(r=>release=r),requests=[];
+window.isTauri=true;window.__TAURI_INTERNALS__={invoke:async(command,{request,requestId})=>{
+ requests.push({...request,requestId});
+ if(request.type==='timeline'||(request.type==='event_detail'&&failDetail))return {type:'error',id:requestId,code:'query_timeout',message:'interrupted'};
+ if(request.type==='event_detail')return {type:'event',id:requestId,event:{...base,precise_segments:rows.slice(request.offset,request.offset+request.limit)}};
+ if(request.type==='session_speakers'){await hold;return failSpeakers?{type:'error',id:requestId,code:'query_timeout',message:'interrupted'}:{type:'session_speakers',id:requestId,speakers:[]};}
+ if(request.type==='moments')return {type:'moments',id:requestId,moments:[]};
+ throw Error('unexpected request');
+}};
+const root=createRoot(document.getElementById('root')),q=s=>document.querySelector(s),text=()=>q('#root').textContent;
+const assert=(v,m)=>{if(!v)throw Error(m)};
+const until=async f=>{for(let i=0;i<300;i++){if(f())return;await new Promise(r=>setTimeout(r,10));}throw Error('等待超时')};
+function render(){flushSync(()=>root.render(React.createElement(DetailDrawer,{item:base,people:[],refreshToken:0,onClose:()=>{},onEdit:()=>{},onTools:()=>{},onQueue:()=>{},onDataAction:()=>{},onChanged:()=>{},onMessage:()=>{}})));}
+function reopen(){flushSync(()=>root.render(null));render();}
+q('#run').onclick=async()=>{try{
+ try{await core({type:'timeline',from_ms:0,to_ms:1000});throw Error('missing error')}catch(e){assert(userError(e)==='记录查询超时，请稍后重试','首页超时被误报成时间范围');}
+ render();await until(()=>q('.transcript-row'));assert(document.querySelectorAll('.transcript-row').length===30,'首屏未按需分页');
+ await until(()=>q('.notes-empty'));assert(!q('.detail-main .detail-skeleton'),'文字仍等待说话人列表');
+ failSpeakers=true;release();await until(()=>text().includes('说话人读取失败'));assert(q('.transcript-row')&&!text().includes('转录读取失败')&&!text().includes('事件已变化'),'说话人失败覆盖文字');
+ failSpeakers=false;q('.detail-main .detail-load-error button').click();await until(()=>!q('.detail-load-error'));
+ requests=[];q('.load-more').click();await until(()=>document.querySelectorAll('.transcript-row').length===60);
+ assert(requests.filter(r=>r.type==='event_detail').length===1&&requests.find(r=>r.type==='event_detail').offset===30,'下一页重复读取旧页');
+ failDetail=true;reopen();await until(()=>text().includes('转录读取失败'));assert(text().includes('记录查询超时')&&!text().includes('事件已变化'),'详情错误归因错误');
+ failDetail=false;q('.detail-main .detail-load-error button').click();await until(()=>q('.transcript-row'));assert(!text().includes('转录读取失败'),'重试未恢复');
+ assert(requests.every(r=>r.requestId),'请求无法关联日志');
+ q('#result').textContent='PASS：首页/详情超时归因、首批30条、说话人阻塞隔离及失败、增量分页、重试、关联ID';
+ }catch(e){q('#result').textContent='FAIL：'+e.message;}};
+</script></html>

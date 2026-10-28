@@ -1,0 +1,124 @@
+{
+  "old": [
+    {
+      "command": [
+        "timeline",
+        "1793116800000",
+        "1793203200000"
+      ],
+      "ms": 3046.51,
+      "exit": 2,
+      "bytes": 0,
+      "error": "hear: invalid_time_range: timeline range must be within one day\n"
+    },
+    {
+      "command": [
+        "context",
+        "list",
+        "--date",
+        "2026-10-28"
+      ],
+      "ms": 3178.21,
+      "exit": 4,
+      "bytes": 178,
+      "error": {
+        "code": "query_timeout",
+        "message": "interrupted",
+        "retry_after_ms": 500
+      }
+    },
+    {
+      "command": [
+        "context",
+        "read",
+        "--event",
+        "4b0b5314-0fad-4e0b-bdab-d7afbba4e3e7",
+        "--limit",
+        "50"
+      ],
+      "ms": 3067.68,
+      "exit": 4,
+      "bytes": 178,
+      "error": {
+        "code": "query_timeout",
+        "message": "interrupted",
+        "retry_after_ms": 500
+      }
+    },
+    {
+      "command": [
+        "context",
+        "read",
+        "--from",
+        "2026-10-28T12:00:00+08:00",
+        "--to",
+        "2026-10-28T15:00:00+08:00",
+        "--limit",
+        "50"
+      ],
+      "ms": 3038.12,
+      "exit": 4,
+      "bytes": 178,
+      "error": {
+        "code": "query_timeout",
+        "message": "interrupted",
+        "retry_after_ms": 500
+      }
+    }
+  ],
+  "candidate": [
+    {
+      "command": [
+        "timeline",
+        "1793116800000",
+        "1793203200000"
+      ],
+      "ms": 1447.87,
+      "exit": 0,
+      "bytes": 24799,
+      "error": null
+    },
+    {
+      "command": [
+        "context",
+        "list",
+        "--date",
+        "2026-10-28"
+      ],
+      "ms": 1239.37,
+      "exit": 0,
+      "bytes": 13411,
+      "error": null
+    },
+    {
+      "command": [
+        "context",
+        "read",
+        "--event",
+        "4b0b5314-0fad-4e0b-bdab-d7afbba4e3e7",
+        "--limit",
+        "50"
+      ],
+      "ms": 387.14,
+      "exit": 0,
+      "bytes": 17442,
+      "error": null
+    },
+    {
+      "command": [
+        "context",
+        "read",
+        "--from",
+        "2026-10-28T12:00:00+08:00",
+        "--to",
+        "2026-10-28T15:00:00+08:00",
+        "--limit",
+        "50"
+      ],
+      "ms": 300.71,
+      "exit": 0,
+      "bytes": 18376,
+      "error": null
+    }
+  ]
+}

@@ -43,7 +43,10 @@ pub fn init(db: &Connection) -> Result<(), String> {
     ")?;
     // All content/identity readers see the current event membership while the
     // network worker and billing continue to use the original physical task.
-    db.execute_batch("DROP VIEW IF EXISTS transcript_tasks;
+    db.execute_batch("CREATE INDEX IF NOT EXISTS audio_blocks_analysis_failed_time
+        ON audio_blocks(source,started_ms,ended_ms) WHERE retention_decision!='all_data'
+          AND (analysis_state='failed' OR(analysis_state='pending' AND analysis_attempts>=3));
+      DROP VIEW IF EXISTS transcript_tasks;
       CREATE VIEW transcript_tasks AS
       SELECT t.id,t.provider,'event' AS target_kind,e.id AS target_id,
         printf('%d:%d:%d',e.source_mask,e.started_ms,e.ended_ms) AS target_version,
