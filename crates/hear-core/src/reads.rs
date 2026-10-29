@@ -9,7 +9,9 @@ use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
-const READERS: usize = 2;
+// GUI 一次进入日期页会并发发起 timeline/calendar_days/moments/people/cloud_status，
+// 2 个只读连接会让排在后面的请求在 3 秒内拿不到租约，用户看到“记录读取繁忙”。
+const READERS: usize = 8;
 const CACHE_BYTES: usize = 4 * 1024 * 1024;
 
 /// Preserve the failure layer. A SQLite interruption is never invalid user input.
@@ -196,10 +198,9 @@ mod tests {
         assert_eq!(read(&snapshot).unwrap(), 1);
         drop(snapshot);
         assert_eq!(pool.snapshot().unwrap().cached("state", read).unwrap(), 2);
-        let first = pool.snapshot().unwrap();
-        let second = pool.snapshot().unwrap();
+        let held: Vec<_> = (0..READERS).map(|_| pool.snapshot().unwrap()).collect();
         assert!(pool.snapshot_for(Duration::from_millis(10)).is_err());
-        drop((first, second));
+        drop(held);
         let limited = pool.snapshot_for(Duration::from_millis(10)).unwrap();
         assert!(limited.query_row("WITH RECURSIVE n(x) AS (VALUES(0) UNION ALL SELECT x+1 FROM n WHERE x<100000000) SELECT sum(x) FROM n",[],|r|r.get::<_,i64>(0)).is_err());
         drop(limited);
