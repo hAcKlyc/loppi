@@ -727,6 +727,7 @@ export function DetailDrawer({
 			"pending_asr",
 			"transcribing",
 			"asr_failed",
+			"partial_asr_failed",
 			"no_transcript",
 			"partial_transcript",
 		].includes(detail.processing_state);

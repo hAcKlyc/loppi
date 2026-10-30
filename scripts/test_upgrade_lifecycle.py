@@ -51,7 +51,7 @@ def main():
     version = build['protocol_version']
 
     def drive(directory, *action, **overrides):
-        env = os.environ | {'HEAR_DATA_DIR': str(directory), 'HEAR_CORE_BIN': str(core)} | overrides
+        env = os.environ | {"HEAR_TEST_PARENT_PID": str(os.getpid()), 'HEAR_DATA_DIR': str(directory), 'HEAR_CORE_BIN': str(core)} | overrides
         return subprocess.run([driver, *action], env=env, capture_output=True, text=True, timeout=45)
 
     for old_version, binary in [(17, args.legacy17), (19, args.legacy19)]:
@@ -59,7 +59,7 @@ def main():
             for action in ['upgrade', 'quit']:
                 with tempfile.TemporaryDirectory(prefix='hear-upgrade-') as tmp:
                     directory = Path(tmp)
-                    process = subprocess.Popen([binary.resolve(), 'serve', mode], env=os.environ | {'HEAR_DATA_DIR': tmp}, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    process = subprocess.Popen([binary.resolve(), 'serve', mode], env=os.environ | {"HEAR_TEST_PARENT_PID": str(os.getpid()), 'HEAR_DATA_DIR': tmp}, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     try:
                         wait_status(directory, old_version)
                         before = rpc(directory, old_version, {'type':'pause', 'expected_revision':0})['state']

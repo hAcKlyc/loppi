@@ -18,7 +18,7 @@ CORE = Path(os.environ.get('HEAR_TEST_CORE', ROOT/'target/debug/hear-core'))
 def main():
     with tempfile.TemporaryDirectory(prefix='hear-diagnose-') as directory:
         data=Path(directory)
-        env=os.environ|{'HEAR_DATA_DIR':directory,'HEAR_CORE_BIN':str(CORE)}
+        env=os.environ|{'HEAR_TEST_PARENT_PID':str(os.getpid()),'HEAR_DATA_DIR':directory,'HEAR_CORE_BIN':str(CORE)}
         def command(*args, **kwargs):
             return subprocess.run([str(CLI),*args],env=env,text=True,capture_output=True,timeout=20,**kwargs)
         # No auto-start, even when the binary is available.
@@ -43,6 +43,16 @@ def main():
             assert not after['enabled_intent']
             # Exercise real IPC phase failures. Only the isolated Core is used;
             # no capture, provider request or private content is involved.
+            # Core and log worker share one process run identity and one started record.
+            for _ in range(40):
+                if (data/'diagnostics.json').exists():
+                    break
+                time.sleep(.05)
+            snapshot = json.loads((data/'diagnostics.json').read_text())
+            entries = [json.loads(line) for line in (data/'logs/hear.jsonl').read_text().splitlines()]
+            started_entries = [r for r in entries if r['component']=='core' and r['event']=='started']
+            assert len(started_entries)==1
+            assert started_entries[0]['run_id']==snapshot['run_id']
             version = report['report']['core_build']['protocol_version']
             def envelope(request):
                 identity = str(uuid.uuid4())
@@ -136,6 +146,7 @@ def main():
             for code, identity in [('ipc_execute_failed',execute_id),('ipc_write_disconnected',write_id)]:
                 assert failures[code]['request_id'] == identity
                 assert failures[code]['correlation_id'] == identity
+                assert failures[code]['level']=='warn'
             assert failures['ipc_execute_failed']['context']['command'] == 'usage_statistics'
             assert failures['ipc_write_disconnected']['context']['command'] == 'logs'
             for identity, expected_command, code, cause in checked:

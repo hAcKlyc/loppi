@@ -16,6 +16,18 @@ export function taskStatus(task: CloudTask): string {
 	const state = retrying ? "等待重试" : (states[task.state] ?? "状态待确认");
 	if ((!retrying && task.state !== "failed") || !task.error_code) return state;
 	const reason = task.error_code;
+	if (reason === "provider_http_402")
+		return `${state} · 云端余额不足，请充值后手动重试`;
+	if (
+		task.state === "failed" &&
+		(reason === "provider_transport" ||
+			reason === "provider_deadline" ||
+			reason === "provider_read_failed" ||
+			reason === "provider_read_timeout" ||
+			reason === "provider_http_429" ||
+			reason.startsWith("provider_http_5"))
+	)
+		return `${state} · 自动重试已停止，请检查网络或服务后手动重试`;
 	if (reason.startsWith("keychain_read_"))
 		return `${state} · 无法读取钥匙串密钥，请重新打开 hear；若仍失败，请在设置中重新保存密钥`;
 	if (reason === "credential_missing" || reason === "provider_not_configured")
@@ -31,7 +43,7 @@ export function taskStatus(task: CloudTask): string {
 		return `${state} · 识别时间与原声不匹配`;
 	if (reason === "provider_invalid_timing")
 		return `${state} · 识别时间超出录音范围`;
-	if (reason === "provider_invalid_utterance")
+	if (reason.startsWith("provider_invalid_utterance"))
 		return `${state} · 识别结果格式异常`;
 	if (reason === "invalid_fit_boundary_uncovered_speech")
 		return `${state} · 整理结果遗漏了语音片段`;
@@ -58,6 +70,7 @@ export function taskNeedsRecognition(task: CloudTask): boolean {
 		error !== "provider_unmapped_timing_audio_coverage" &&
 		(error === "provider_unmapped_timing" ||
 			error.startsWith("provider_unmapped_timing_") ||
+			error.startsWith("provider_invalid_utterance_") ||
 			[
 				"provider_invalid_timing",
 				"provider_invalid_utterance",

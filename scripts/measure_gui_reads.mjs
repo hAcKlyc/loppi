@@ -13,7 +13,7 @@ if(!coreArg||!snapshot||!output)throw Error('CORE_BIN SNAPSHOT OUTPUT required; 
 const core=resolve(coreArg),cli=process.env.HEAR_BENCH_CLI || join(dirname(core),'hear');
 const data=mkdtempSync(join(tmpdir(),'hear-gui-measure-'));
 copyFileSync(snapshot,join(data,'hear.sqlite'));
-const env={...process.env,HEAR_DATA_DIR:data,HEAR_CORE_BIN:core};
+const env={...process.env,HEAR_DATA_DIR:data,HEAR_CORE_BIN:core,HEAR_TEST_PARENT_PID:String(process.pid)};
 const build=JSON.parse(execFileSync(core,['--build-info'],{env}));
 const child=spawn(core,['serve','--handoff','query'],{env,stdio:'ignore'});
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));

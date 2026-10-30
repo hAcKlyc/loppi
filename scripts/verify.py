@@ -27,6 +27,7 @@ def main():
     for key in list(env):
         if key.startswith('HEAR_TEST_') or key in ['HEAR_DATA_DIR', 'HEAR_CORE_BIN']:
             del env[key]
+    env['HEAR_TEST_PARENT_PID'] = str(os.getpid())
     env['MACOSX_DEPLOYMENT_TARGET'] = '13.0'
     env['HEAR_BUILD_EPOCH'] = str(int(time.time()))
     checks = []
@@ -55,14 +56,21 @@ def main():
                 run('native-policy-build', ['clang', '-fobjc-arc', '-fblocks', '-mmacosx-version-min=13.0', 'scripts/test_native_entry.m', '-framework', 'Cocoa', '-framework', 'QuartzCore', '-o', binary])
                 run('native-policy', [binary])
                 binary = str(Path(directory)/'capture-errors')
-                run('native-capture-errors-build', ['clang', '-fobjc-arc', '-fblocks', '-mmacosx-version-min=13.0', 'scripts/test_native_capture_errors.m', '-framework', 'Foundation', '-framework', 'ScreenCaptureKit', '-framework', 'CoreMedia', '-framework', 'CoreGraphics', '-o', binary])
+                run('native-capture-errors-build', ['clang', '-fobjc-arc', '-fblocks', '-mmacosx-version-min=13.0', 'scripts/test_native_capture_errors.m', '-framework', 'Foundation', '-framework', 'AppKit', '-framework', 'ScreenCaptureKit', '-framework', 'CoreMedia', '-framework', 'CoreGraphics', '-o', binary])
                 run('native-capture-errors', [binary])
+                binary = str(Path(directory)/'playback')
+                run('native-playback-build', ['clang', '-fobjc-arc', '-fblocks', '-mmacosx-version-min=13.0', 'scripts/test_native_playback.m', '-framework', 'Foundation', '-framework', 'AVFoundation', '-o', binary])
+                run('native-playback', [binary])
+                binary = str(Path(directory)/'power-policy')
+                run('native-power-build', ['clang', '-fobjc-arc', '-fblocks', '-mmacosx-version-min=13.0', 'scripts/test_native_power.m', '-framework', 'Foundation', '-framework', 'IOKit', '-o', binary])
+                run('native-power', [binary])
         if args.suite in ['all', 'smoke']:
             run('frontend-build', ['npm', 'run', 'build'])
             run('binary-build', ['cargo', 'build', '--workspace', '--locked'])
             run('component-identities', [sys.executable, 'scripts/verify_build_identity.py', '--directory', 'target/debug'])
             run('isolated-core', [sys.executable, 'scripts/smoke_core.py'])
             run('isolated-diagnostics', [sys.executable, 'scripts/smoke_diagnostics.py'])
+            run('isolated-test-owner', [sys.executable, 'scripts/smoke_test_owner.py'])
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as error:
         print(f'verification failed: {error}', file=sys.stderr)
         result = 1

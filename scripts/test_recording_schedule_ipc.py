@@ -19,7 +19,7 @@ CORE = Path(os.environ.get('HEAR_TEST_CORE', ROOT / 'target/debug/hear-core'))
 
 def main():
     with tempfile.TemporaryDirectory(prefix='hear-schedule-ipc-') as directory:
-        env = os.environ | {'HEAR_DATA_DIR': directory, 'HEAR_CORE_BIN': str(CORE)}
+        env = os.environ | {"HEAR_TEST_PARENT_PID": str(os.getpid()), 'HEAR_DATA_DIR': directory, 'HEAR_CORE_BIN': str(CORE)}
         path = Path(directory)
 
         def cli(*args):
@@ -29,7 +29,7 @@ def main():
             with socket.socket(socket.AF_UNIX) as sock:
                 sock.settimeout(5)
                 sock.connect(str(path / 'core.sock'))
-                sock.sendall(json.dumps({'version': 18, 'id': str(uuid.uuid4()),
+                sock.sendall(json.dumps({'version': json.loads(subprocess.check_output([str(CORE),'--build-info']))['protocol_version'], 'id': str(uuid.uuid4()),
                                          'client': client, 'request': body}).encode())
                 sock.shutdown(socket.SHUT_WR)
                 return json.loads(sock.makefile().read())

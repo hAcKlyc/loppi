@@ -514,7 +514,7 @@ fn composite_pcm(
         .iter()
         .map(|(a, b)| events::voice_manifest(db, &work.source, *a, *b).unwrap())
         .collect::<Vec<_>>();
-    events::voice_input_16k(directory, &manifests, true).unwrap()
+    events::voice_input_16k(directory, &manifests, true, &mut Default::default()).unwrap()
 }
 
 #[test]

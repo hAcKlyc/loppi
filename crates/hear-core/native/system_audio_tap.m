@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <unistd.h>
+#import "audio_exclusions.h"
 
 // Resolve the 14.2 functions only on a supported OS. A direct Mach-O import
 // would make the macOS 13 ScreenCaptureKit fallback fail before main runs.
@@ -31,6 +32,35 @@ extern void *hear_legacy_system_audio_start(void *, HearAudioCallback, int *, in
 extern int hear_legacy_system_audio_error(void *);
 extern int hear_legacy_system_audio_stop(void *);
 extern int64_t hear_legacy_system_audio_probe(uint32_t, uint64_t *);
+extern uint64_t hear_legacy_system_audio_exclusion_generation(void *);
+
+static NSArray<NSNumber *> *hear_tap_exclusions(uint64_t *identity, uint64_t *playback) {
+  AudioObjectPropertyAddress address={kAudioHardwarePropertyProcessObjectList,kAudioObjectPropertyScopeGlobal,kAudioObjectPropertyElementMain};
+  UInt32 size=0;
+  if (AudioObjectGetPropertyDataSize(kAudioObjectSystemObject,&address,0,NULL,&size)!=noErr || size>65536) return nil;
+  AudioObjectID *ids=calloc(1,MAX(size,1));
+  if (!ids) return nil;
+  if (AudioObjectGetPropertyData(kAudioObjectSystemObject,&address,0,NULL,&size,ids)!=noErr) { free(ids); return nil; }
+  NSArray<NSNumber *> *gui=hear_gui_pids();
+  NSMutableSet<NSNumber *> *found=[NSMutableSet set];
+  NSMutableArray<NSNumber *> *excluded=[NSMutableArray array];
+  for (UInt32 i=0;i<size/sizeof(AudioObjectID);i++) {
+    pid_t pid=0; UInt32 bytes=sizeof(pid); address.mSelector=kAudioProcessPropertyPID;
+    if (AudioObjectGetPropertyData(ids[i],&address,0,NULL,&bytes,&pid)!=noErr) continue;
+    BOOL isGUI=[gui containsObject:@(pid)];
+    CFStringRef bundle=NULL; bytes=sizeof(bundle); address.mSelector=kAudioProcessPropertyBundleID;
+    AudioObjectGetPropertyData(ids[i],&address,0,NULL,&bytes,&bundle);
+    NSString *name=(__bridge NSString *)bundle;
+    if (isGUI || [name isEqual:@"app.hear.desktop"] || [name isEqual:@"app.hear.core"]) [excluded addObject:@(ids[i])];
+    if (isGUI) [found addObject:@(pid)];
+    if (bundle) CFRelease(bundle);
+  }
+  free(ids);
+  [excluded sortUsingSelector:@selector(compare:)];
+  *identity=hear_exclusion_hash(excluded);
+  *playback=found.count==gui.count ? hear_exclusion_hash(gui) : 0;
+  return excluded;
+}
 
 typedef struct {
   AudioObjectID tap;
@@ -43,6 +73,10 @@ typedef struct {
   atomic_uint_fast64_t last_frame_ns;
   atomic_int format_error;
   bool started;
+  CFTypeRef description;
+  uint64_t exclusion_identity;
+  uint64_t playback_generation;
+  uint64_t exclusion_checked_ns;
 } HearTapSession;
 
 typedef struct {
@@ -109,6 +143,7 @@ static int hear_tap_stop(HearTapSession *session) {
     if (!destroy_tap || destroy_tap(session->tap) != noErr) result = -4;
     session->tap = kAudioObjectUnknown;
   }
+  if (session->description) CFRelease(session->description);
   free(session);
   return result;
 }
@@ -139,14 +174,17 @@ static void *hear_tap_start(void *context, HearAudioCallback callback, int *stag
   @autoreleasepool {
     NSDictionary *configuration = nil;
     CATapDescription *description = nil;
+    NSArray<NSNumber *> *exclusions = nil;
     HearCreateTap create_tap = hear_create_tap_function();
     HearDestroyTap destroy_tap = hear_destroy_tap_function();
     if (!create_tap || !destroy_tap) {
       if (stage) *stage = 20;
       goto fail;
     }
+    exclusions=hear_tap_exclusions(&session->exclusion_identity,&session->playback_generation);
+    if (!exclusions) { if (stage) *stage=21; goto fail; }
     description = [[NSClassFromString(@"CATapDescription") alloc]
-        initMonoGlobalTapButExcludeProcesses:@[]];
+        initMonoGlobalTapButExcludeProcesses:exclusions];
     if (!description) {
       if (stage) *stage = 20;
       goto fail;
@@ -154,15 +192,7 @@ static void *hear_tap_start(void *context, HearAudioCallback callback, int *stag
     description.name = @"hear system audio";
     description.private = YES;
     description.muteBehavior = CATapUnmuted;
-    NSOperatingSystemVersion version = [[NSProcessInfo processInfo] operatingSystemVersion];
-    if (version.majorVersion >= 26) {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunguarded-availability-new"
-      // Bundle exclusions survive GUI launches after the login item starts.
-      description.bundleIDs = @[@"app.hear.desktop", @"app.hear.core"];
-      description.processRestoreEnabled = YES;
-#pragma clang diagnostic pop
-    }
+    session->description=CFRetain((__bridge CFTypeRef)description);
     if (create_tap(description, &session->tap) != noErr) {
       if (stage) *stage = 22;
       goto fail;
@@ -237,6 +267,23 @@ static int hear_tap_error(void *handle) {
   HearTapSession *session = handle;
   if (!session) return -1;
   if (atomic_load(&session->format_error)) return 1;
+  uint64_t now=monotonic_ns();
+  if (now-session->exclusion_checked_ns>=250000000ULL) {
+    session->exclusion_checked_ns=now;
+    @autoreleasepool {
+      uint64_t identity=0,playback=0;
+      NSArray<NSNumber *> *excluded=hear_tap_exclusions(&identity,&playback);
+      if (!excluded) return 4;
+      if (identity!=session->exclusion_identity) {
+        CATapDescription *description=(__bridge CATapDescription *)session->description;
+        description.processes=excluded;
+        AudioObjectPropertyAddress address={kAudioTapPropertyDescription,kAudioObjectPropertyScopeGlobal,kAudioObjectPropertyElementMain};
+        if (AudioObjectSetPropertyData(session->tap,&address,0,NULL,sizeof(description),&description)!=noErr) return 4;
+        session->exclusion_identity=identity;
+      }
+      session->playback_generation=playback;
+    }
+  }
   uint64_t elapsed = monotonic_ns() - atomic_load(&session->last_frame_ns);
   if (elapsed <= 10000000000ULL) return 0;
   AudioObjectPropertyAddress address = {
@@ -252,10 +299,16 @@ static int hear_tap_error(void *handle) {
 
 int hear_system_audio_tap_available(void) {
   NSOperatingSystemVersion version = [[NSProcessInfo processInfo] operatingSystemVersion];
-  // Earlier Tap releases only accept currently connected audio process IDs.
-  // They cannot exclude a GUI that launches after the login item. macOS 26
-  // adds persistent bundle-ID exclusions, which protect hear's own playback.
-  return version.majorVersion >= 26;
+  return (version.majorVersion>14 || (version.majorVersion==14 && version.minorVersion>=2))
+      && hear_create_tap_function() && hear_destroy_tap_function();
+}
+
+uint64_t hear_playback_exclusion_generation(void) { @autoreleasepool { return hear_gui_generation(); } }
+uint64_t hear_system_audio_exclusion_generation(void *handle) {
+  HearSystemSession *outer=handle;
+  if (!outer) return 0;
+  return outer->uses_tap ? ((HearTapSession *)outer->session)->playback_generation
+      : hear_legacy_system_audio_exclusion_generation(outer->session);
 }
 
 void *hear_system_audio_start(void *context, HearAudioCallback callback, int *stage,

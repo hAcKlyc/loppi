@@ -6,6 +6,7 @@
 #include <stdatomic.h>
 #include <stdint.h>
 #include <math.h>
+#import "audio_exclusions.h"
 
 typedef void (*HearAudioCallback)(void *context, const float *samples,
                                   uint32_t frames, uint32_t rate, uint32_t channels, uint64_t sample_start_ns);
@@ -83,6 +84,8 @@ typedef void (*HearAudioCallback)(void *context, const float *samples,
 @property (strong) SCStream *stream;
 @property (strong) HearSystemOutput *output;
 @property (strong) dispatch_queue_t queue;
+@property uint64_t exclusionGeneration;
+@property NSTimeInterval exclusionChecked;
 @end
 @implementation HearSystemSession
 @end
@@ -126,9 +129,11 @@ void *hear_legacy_system_audio_start(void *context, HearAudioCallback callback, 
     return NULL;
   }
   NSMutableArray<SCRunningApplication *> *excluded = [NSMutableArray array];
+  NSMutableArray<NSNumber *> *excludedPids = [NSMutableArray array];
   for (SCRunningApplication *application in content.applications) {
     if ([application.bundleIdentifier isEqualToString:@"app.hear.desktop"]) {
       [excluded addObject:application];
+      [excludedPids addObject:@(application.processID)];
     }
   }
   SCContentFilter *filter = [[SCContentFilter alloc] initWithDisplay:content.displays.firstObject
@@ -145,6 +150,7 @@ void *hear_legacy_system_audio_start(void *context, HearAudioCallback callback, 
   config.showsCursor = NO;
 
   HearSystemSession *session = [[HearSystemSession alloc] init];
+  session.exclusionGeneration=hear_exclusion_hash([excludedPids sortedArrayUsingSelector:@selector(compare:)]);
   session.output = [[HearSystemOutput alloc] init];
   session.output->callback = callback;
   session.output->callback_context = context;
@@ -191,7 +197,19 @@ void *hear_legacy_system_audio_start(void *context, HearAudioCallback callback, 
 int hear_legacy_system_audio_error(void *handle) {
   if (!handle) return -1;
   HearSystemSession *session = (__bridge HearSystemSession *)handle;
-  return atomic_load(&session.output->stopped_with_error);
+  int error=atomic_load(&session.output->stopped_with_error);
+  if (error) return error;
+  NSTimeInterval now=NSProcessInfo.processInfo.systemUptime;
+  if (now-session.exclusionChecked>=.25) {
+    session.exclusionChecked=now;
+    // macOS 13's filter snapshots running applications. Rebuild the existing
+    // source once when the GUI identity changes, before allowing its playback.
+    if (hear_gui_generation()!=session.exclusionGeneration) return 6;
+  }
+  return 0;
+}
+uint64_t hear_legacy_system_audio_exclusion_generation(void *handle) {
+  return handle ? ((__bridge HearSystemSession *)handle).exclusionGeneration : 0;
 }
 
 int hear_legacy_system_audio_stop(void *handle) {

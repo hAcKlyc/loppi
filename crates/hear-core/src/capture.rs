@@ -24,6 +24,9 @@ pub struct Metrics {
     callback_max_ns: AtomicU64,
     callback_deadline_misses: AtomicU64,
     input_rate: AtomicU64,
+    native_error_kind: AtomicU64,
+    native_notices: AtomicU64,
+    exclusion_generation: AtomicU64,
 }
 #[derive(serde::Serialize, serde::Deserialize, Clone, Default)]
 pub struct MetricsView {
@@ -40,6 +43,12 @@ pub struct MetricsView {
     pub callback_max_ns: u64,
     pub callback_deadline_misses: u64,
     pub input_rate: u64,
+    #[serde(default)]
+    pub native_error_kind: u64,
+    #[serde(default)]
+    pub native_notices: u64,
+    #[serde(default)]
+    pub exclusion_generation: u64,
 }
 impl Metrics {
     fn new() -> Self {
@@ -57,6 +66,9 @@ impl Metrics {
             callback_max_ns: AtomicU64::new(0),
             callback_deadline_misses: AtomicU64::new(0),
             input_rate: AtomicU64::new(0),
+            native_error_kind: AtomicU64::new(0),
+            native_notices: AtomicU64::new(0),
+            exclusion_generation: AtomicU64::new(0),
         }
     }
     fn now(&self) -> u64 {
@@ -69,6 +81,21 @@ impl Metrics {
             .position(|v| elapsed.as_millis() <= *v)
             .unwrap_or(7);
         self.seal_ms[bucket].fetch_add(1, Ordering::Relaxed);
+    }
+    pub fn native_error(&self, kind: u64, fatal: bool) {
+        if fatal {
+            self.native_error_kind.store(kind, Ordering::Relaxed);
+        }
+        if !fatal {
+            self.native_notices.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+    pub fn native_error_kind(&self) -> u64 {
+        self.native_error_kind.load(Ordering::Relaxed)
+    }
+    pub fn exclusion_generation(&self, generation: u64) {
+        self.exclusion_generation
+            .store(generation, Ordering::Release);
     }
     pub fn view(&self) -> MetricsView {
         let now = self.now();
@@ -91,6 +118,9 @@ impl Metrics {
             callback_max_ns: self.callback_max_ns.load(Ordering::Relaxed),
             callback_deadline_misses: self.callback_deadline_misses.load(Ordering::Relaxed),
             input_rate: self.input_rate.load(Ordering::Relaxed),
+            native_error_kind: self.native_error_kind(),
+            native_notices: self.native_notices.load(Ordering::Relaxed),
+            exclusion_generation: self.exclusion_generation.load(Ordering::Acquire),
         }
     }
 }
@@ -169,6 +199,9 @@ pub fn channel(rate: u32, channels: usize) -> Result<(AudioSender, AudioReceiver
 }
 
 impl AudioSender {
+    pub fn metrics(&self) -> Arc<Metrics> {
+        Arc::clone(&self.metrics)
+    }
     /// No allocation, locks, waiting, logging, or filesystem work in callbacks.
     /// A full queue rejects this callback atomically, never overwrites audio.
     pub fn enqueue<T: Copy>(

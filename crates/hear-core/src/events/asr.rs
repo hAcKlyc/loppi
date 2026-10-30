@@ -55,7 +55,10 @@ pub fn init(db: &Connection) -> Result<(), String> {
       FROM event_asr_refs r JOIN named_events e ON e.id=r.event_id JOIN cloud_tasks t ON t.id=r.task_id
       WHERE e.deleted_ms IS NULL AND t.state!='superseded' AND r.started_ms<e.ended_ms AND r.ended_ms>e.started_ms
         AND ((t.source='microphone' AND e.source_mask&1!=0) OR(t.source='system' AND e.source_mask&2!=0))
-      UNION ALL SELECT t.* FROM cloud_tasks t WHERE t.target_kind!='event' OR NOT EXISTS
+      UNION ALL SELECT t.id,t.provider,t.target_kind,t.target_id,t.target_version,
+        t.model_id,t.processor_version,t.started_ms,t.ended_ms,t.source,t.manual,t.state,
+        t.attempts,t.submit_attempts,t.next_attempt_ms,t.remote_id,t.error_code,t.created_ms,t.updated_ms
+      FROM cloud_tasks t WHERE t.target_kind!='event' OR NOT EXISTS
         (SELECT 1 FROM event_asr_state s WHERE s.event_id=t.target_id);")
         .map_err(|e|e.to_string())
 }
@@ -84,6 +87,7 @@ pub fn rejected_result(error: &str) -> bool {
     }
     error == "provider_unmapped_timing"
         || error.starts_with("provider_unmapped_timing_")
+        || error.starts_with("provider_invalid_utterance_")
         || matches!(
             error,
             "provider_invalid_timing"
@@ -224,12 +228,12 @@ pub fn local_analysis_failures(
     mask: i64,
 ) -> Result<u32, String> {
     db.query_row(
-        "SELECT (SELECT count(*) FROM audio_blocks WHERE started_ms<?2 AND ended_ms>?1
+        "SELECT (SELECT count(*) FROM audio_blocks INDEXED BY audio_blocks_analysis_failed_time WHERE started_ms<?2 AND ended_ms>?1
           AND retention_decision!='all_data'
-          AND ((source='microphone' AND ?3&1!=0) OR(source='system' AND ?3&2!=0))
+          AND source IN (CASE WHEN ?3&1!=0 THEN 'microphone' END,CASE WHEN ?3&2!=0 THEN 'system' END)
           AND (analysis_state='failed' OR(analysis_state='pending' AND analysis_attempts>=3)))
-          + (SELECT count(*) FROM coarse_jobs WHERE started_ms<?2 AND ended_ms>?1 AND state='failed'
-          AND ((source='microphone' AND ?3&1!=0) OR(source='system' AND ?3&2!=0)))",
+          + (SELECT count(*) FROM coarse_jobs INDEXED BY coarse_jobs_failed_time WHERE started_ms<?2 AND ended_ms>?1 AND state='failed'
+          AND source IN (CASE WHEN ?3&1!=0 THEN 'microphone' END,CASE WHEN ?3&2!=0 THEN 'system' END))",
         params![start, end, mask],
         |r| r.get(0),
     )

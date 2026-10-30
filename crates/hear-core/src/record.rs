@@ -75,10 +75,12 @@ impl Device {
 
     fn error(&self) -> Option<String> {
         match self {
-            Self::Microphone(device) => device
-                .stream_failed
-                .load(Ordering::Relaxed)
-                .then(|| "microphone_stream_failed".into()),
+            Self::Microphone(device) => device.stream_failed.load(Ordering::Relaxed).then(|| {
+                format!(
+                    "microphone_stream_failed_kind_{}",
+                    device.receiver.metrics().native_error_kind()
+                )
+            }),
             Self::System(device, _) => device.error(),
         }
     }

@@ -31,7 +31,7 @@ for start in range(0,len(raw),240000*4):
 reports={};baseline=None
 for case in ['uninterrupted','delayed_close','delayed_crash']:
  with tempfile.TemporaryDirectory(prefix='myagents-verify-hear-delayed-') as tmp:
-  data=Path(tmp);env=os.environ|{'HEAR_DATA_DIR':tmp,'HEAR_CORE_BIN':str(core),'HEAR_MODEL_ROOT':str(models)};locks=[];p=None;err=(data/'stderr').open('w')
+  data=Path(tmp);env=os.environ|{'HEAR_TEST_PARENT_PID':str(os.getpid()),'HEAR_DATA_DIR':tmp,'HEAR_CORE_BIN':str(core),'HEAR_MODEL_ROOT':str(models)};locks=[];p=None;err=(data/'stderr').open('w')
   def command(*args):return json.loads(subprocess.check_output([str(cli),*args],env=env,text=True,timeout=15))
   def boot():
    p=subprocess.Popen([str(core),'serve','--on-demand'],env=env,stdout=subprocess.DEVNULL,stderr=err,start_new_session=True)

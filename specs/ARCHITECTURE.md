@@ -105,13 +105,15 @@ VAD 先事务提交 `coarse_jobs` 的来源/session/16 kHz 样本区间与 `spee
 
 8 GiB 档后台软/严重水位为 768/1024 MiB，≥16 GiB 为 1024/1536 MiB；粗转预留峰值 640 MiB、声纹 256 MiB，两者在低内存档不同时计算。粗转观测超过 768 MiB、声纹超过 384 MiB 或严重压力时，核心通过可取消 RPC 终止并回收该 worker，持久延期不消耗错误次数。输入时长仍独立限制。粗转/声纹空闲 30 秒释放，VAD 空闲 60 秒释放；不周期重启 core。后台水位是采样驱动的工程预算，并非 OS 强制内存上限。
 
+声纹轻量匹配在非 Critical 模式继续；推理仍须通过预算，Constrained/Recovering 以受限速率推进，VAD 长期繁忙时每分钟最多给声纹一个机会，不绕过内存上限。普通输入拒绝不回收健康 worker，只有 RPC/模型故障或取消才回收。
+
 正常情况下两条云 provider 各自一个准入槽，压力下共享一次重任务机会；导出有独立预留和有界等待。VAD 积压时优先人声判断。粗转双来源交替，三个最新机会后保留一个最老机会；历史任务不会一直压在队尾。GUI/WebView、完整回调队列指标和组合态长时测量仍由最终读取/观测批次补齐，不将当前后台预算扩大为全应用内存承诺。
 
 ## 4. 采集与生命周期
 
-麦克风和电脑声音各有来源开关、录制 session、封块与缺口。麦克风桥接在 [`microphone.rs`](../crates/hear-core/src/microphone.rs)；电脑声音在 [`system_audio.rs`](../crates/hear-core/src/system_audio.rs) 及原生实现。当前工作树在满足系统版本和授权预检条件时有 Core Audio Tap 路径，其他情况沿用 ScreenCaptureKit，音频采集和探测都注册 Audio 与 Screen 输出；Screen 回调只消费交付，不保留像素；**Tap 的最终安装版关屏、真实空闲睡眠及较低系统版本验收仍开放**。`src-tauri/tauri.conf.json` 当前声明最低 macOS 13.0，不能据此认为所有路径已在 13–25 实测通过。
+麦克风和电脑声音各有来源开关、录制 session、封块与缺口。麦克风桥接在 [`microphone.rs`](../crates/hear-core/src/microphone.rs)；电脑声音在 [`system_audio.rs`](../crates/hear-core/src/system_audio.rs) 及原生实现。macOS 14.2 及以上在授权预检通过后使用 Core Audio Tap，实时更新公开进程排除列表；其他情况沿用 ScreenCaptureKit，音频采集和探测都注册 Audio 与 Screen 输出，Screen 回调只消费交付、不保留像素。GUI 统一用原生 AVAudioPlayer 输出，复用 ContinuousPlayback 的双块预读/清理/真实时间控制；音频不经过 WebKit GPU。开始播放前，Core 通过来源 Progress 确认当前 GUI 已排除。旧 SCK 快照遇 GUI 身份变化沿用来源监督重建，准备期间回放保持静音。`src-tauri/tauri.conf.json` 当前声明最低 macOS 13.0，不能据此认为所有路径已在 13–25 实测通过。
 
-`capture_supervisor` 每路独立启动/停止并处理睡眠和异常退出。录制意图、手动暂停、容量暂停、来源开关、系统许可、模型准备及本次登录的完全退出各有独立含义。来源异常后使用有上限退避，恢复前保持真实缺口；另一来源可继续。容量边界暂停新增采集并提醒，释放空间后由用户手动恢复。[采集监督](../crates/hear-core/src/main.rs)、[封块写入](../crates/hear-core/src/record.rs)。
+`capture_supervisor` 每路独立启动/停止并处理睡眠和异常退出。公开 IOKit 睡眠/完成唤醒事实控制暂停期间的重试；早期 Wake/DarkWake 不等于设备可用，单纯灭屏不暂停采集。睡眠前真实缺口与 machine_sleep 区间分开，均接受既有 journal 尾部校正。录制意图、手动暂停、容量暂停、来源开关、系统许可、模型准备及本次登录的完全退出各有独立含义。来源异常后使用有上限退避，恢复前保持真实缺口；另一来源可继续。容量边界暂停新增采集并提醒，释放空间后由用户手动恢复。[采集监督](../crates/hear-core/src/main.rs)、[封块写入](../crates/hear-core/src/record.rs)。
 
 每日定时录制由 Core 的 [`schedule.rs`](../crates/hear-core/src/schedule.rs) 管理：单例 `recording_schedule` 存开关、两个当地分钟、处理游标、时区与暂停原因。原生日历 helper 只换算时间；`capture_supervisor` 在决定来源启停前，于同一个 Store 写事务中补最近一次遗漏动作并持久化游标。目标已满足也消费边界，不重启 session。手动控制先结算到期动作再应用用户意图；保存新配置只重建未来起点，关闭规则不改变录制。日历按系统时区处理 DST，时区变化仅重建未来边界，时间回拨不回放游标之前的动作。
 
@@ -127,9 +129,11 @@ VAD 先事务提交 `coarse_jobs` 的来源/session/16 kHz 样本区间与 `spee
 
 每个 journal 的单发布者在目录 inode 排他锁下修改名称；核心仅在枚举最多 128 个名称时尝试共享锁，忙则让出，读取媒体、数据库和推理均在释放目录锁后执行。来源写线程最多等 2 秒，回调不接触该锁。这样获得已发布记录的前缀，不能先分析后来块再补入此前块。journal 未排空时，分析领取必须有相邻块（含数字静音/已清理元数据）、归属同一来源 session 的真实缺口，或匹配代次的清理边界；会话关闭或墙钟已过去 8 秒不能单独证明流结束。media_gaps.source_session_id 表示原始采集归属，与生命周期补尾的 tail_session_id 含义分开，部分清理后两者仍保留。
 
-云请求复用进程内 `ureq::Agent` 连接池，凭据仍逐请求附加。一次任务共享 60 秒预算，每次网络请求只获剩余时间（含响应体）；底层系统 DNS、Keychain 和不可取消文件 IO 是平台例外，预算耗尽后不再发起新请求。响应读取/截止失败作为瞬态错误保留原远端请求 ID，退避后先查询原请求。内部 Failure 只携带脱敏代码与 Retry-After 的秒数/HTTP-date 延迟，429（以及带该头的 503）把 provider 冷却下界写回原 cloud_queues，重启仍生效、不改 paused。二次退避附有任务 ID 派生的 0–20% 抖动；每四次领取中三次保留人工优先（其中一次最新优先）、一次按最旧待办，持续人工工作不会饿死历史自动任务。[云客户端](../crates/hear-core/src/cloud.rs)。
+云请求复用进程内 `ureq::Agent` 连接池，凭据仍逐请求附加。LLM 使用 SSE 读取进展，单任务共享 180 秒总预算；ASR 共享 60 秒预算，每次网络请求只获剩余时间（含响应体）；底层系统 DNS、Keychain 和不可取消文件 IO 是平台例外，预算耗尽后不再发起新请求。响应读取/截止失败作为瞬态错误保留原远端请求 ID，退避后先查询原请求。内部 Failure 只携带脱敏代码与 Retry-After 的秒数/HTTP-date 延迟，429（以及带该头的 503）把 provider 冷却下界写回原 cloud_queues，重启仍生效、不改 paused。二次退避附有任务 ID 派生的 0–20% 抖动；每四次领取中三次保留人工优先（其中一次最新优先）、一次按最旧待办，持续人工工作不会饿死历史自动任务。[云客户端](../crates/hear-core/src/cloud.rs)。
 
 Keychain 访问依赖运行进程与磁盘 bundle 的签名身份一致。发行构建脚本在编译前拒绝覆盖当前正在运行的构建目录 App；日常运行使用独立的 `/Applications/hear.app` 安装副本。后台读取仍禁止授权弹窗，不复制密钥或放宽 ACL。Core 重启及成功重新保存某 provider 凭据时，复用现有 cloud_tasks 唤醒对应凭据错误的 pending/submitted 任务；保留任务/远端请求 ID、provider 冷却与用户暂停，不重跑已完成或其他失败任务。凭据阻塞及普通重试作为现有任务事实的投影展示，不与“正在记录”互相覆盖。
+
+cloud_queues.blocked_reason 独立表达 402 账号阻塞，用户显式继续/重试或成功重新配置才解除；不会自动重放失败历史，配置可用性与用户 paused 不被冒充。cloud_tasks.retry_failures 只为有限供应商重试预算记账，凭据等待不消耗该预算；总 attempts 仍用于诊断/退避，手动重试重置两者并保留已付费请求身份。transcript_tasks 明列其内容投影列，不使用执行表的 SELECT *。
 
 ## 5. 外发、修订与清理边界
 
@@ -145,7 +149,7 @@ Keychain 访问依赖运行进程与磁盘 bundle 的签名身份一致。发行
 
 读取使用固定两个只读连接，每次请求持有一个短 WAL 快照，获取与 SQL 共用 3 秒预算；progress handler 在 SQLite 执行中取消超时查询，退出即回滚释放快照。每连接最多缓存一页、4 MiB，按该连接的 data_version 失效，压力下清空；缓存不是修订权威。详情修订按 256 行批量取得纠错/人物/声纹依据，组修订分页计算，沿用原摘要字节格式，旧页面 revision 仍有效。短词走时间索引，长词先探测最多 4096 个 FTS postings：常见词按时间流式校验 FTS，稀有词用 FTS 直接定位，最终可见性/去重/分页语义相同。音频范围读取通过带媒体路径／语音活动条件的 source + ended_ms 部分索引定位相交块，避免先扫描来源全部历史；来源掩码以 CASE/IN 集合表达，规避 SQLite 的 OR 分支选回旧 started_ms 索引。
 
-GUI 上下文刷新合并在途请求，仅前台聚焦时周期刷新。连续播放由 [`src/playback.ts`](../src/playback.ts) 管理单一 AudioContext：一个网络/解码请求、至多当前和下一段两个 5 秒缓冲，按音频时钟接续，UI 计时只更新绝对时刻。切位置、来源、关闭或本页发起清理立即停止并淘汰旧代次，迟到结果不能发声；下一块预取失败时保留已排程的当前音频，到边界再报告读取错误；整段无媒体仍按原规则跳到下一可用时刻。跨客户端清理通过既有 ingestion 清理 generation 检测：chunk 附可选 generation，播放期间以最多一个在途 playback_valid 只读请求检查相交清理（约每 300ms 加 IPC 延迟），命中即停止并释放缓冲。校验失败安全停止；无 generation 的旧 core 响应保持单块播放，不预取。不会把清理与实时发声虚构为零延迟跨进程原子操作。交互入口不变。
+GUI 上下文刷新合并在途请求，仅前台聚焦时周期刷新。连续播放由 [`src/playback.ts`](../src/playback.ts) 通过 PlaybackAudio/NativeAudio facade 管理单一原生渲染会话：一个网络/解码请求、至多当前和下一段两个 5 秒缓冲，按音频时钟接续，UI 计时只更新绝对时刻。切位置、来源、关闭或本页发起清理立即停止并淘汰旧代次，迟到结果不能发声；下一块预取失败时保留已排程的当前音频，到边界再报告读取错误；整段无媒体仍按原规则跳到下一可用时刻。跨客户端清理通过既有 ingestion 清理 generation 检测：chunk 附可选 generation，播放期间以最多一个在途 playback_valid 只读请求检查相交清理（约每 300ms 加 IPC 延迟），命中即停止并释放缓冲。校验失败安全停止；无 generation 的旧 core 响应保持单块播放，不预取。不会把清理与实时发声虚构为零延迟跨进程原子操作。交互入口不变。
 
 ## 6. 构建与分发形态
 
@@ -179,7 +183,7 @@ GUI 上下文刷新合并在途请求，仅前台聚焦时周期刷新。连续�
 升级迁移增加索引、派生表和可空列，不改模型或阈值。追加式 schema 不等于任意二进制降级安全：旧 core 不认识新 journal、粗转待办和保留语义。需要回退时先停止所有组件，保留一致的数据库及媒体备份，再恢复匹配版本的整套备份；不得让旧 core 直接处理正在使用的新数据目录。
 
 
-诊断遵循相同 owner 边界：协议 18 的 `Diagnose` 使用 Core 的只读快照与日志 worker，生成脱敏、有界的临时报表，不新增持久状态或调度入口。构建身份、日志字段、覆盖口径、统一验证和安装门禁见[诊断与开发验证](tech_docs/diagnostics-and-verification.md)。
+诊断遵循相同 owner 边界：当前协议的 `Diagnose` 使用 Core 的只读快照与日志 worker，生成脱敏、有界的临时报表，不新增持久状态或调度入口。构建身份、日志字段、覆盖口径、统一验证和安装门禁见[诊断与开发验证](tech_docs/diagnostics-and-verification.md)。
 
 ## 单页首次设置（2026-10-20）
 

@@ -48,6 +48,24 @@ pub fn native() -> Native {
     unsafe { hear_resource_snapshot(&mut out) };
     out
 }
+#[repr(C)]
+#[derive(Default, Clone, Copy, serde::Serialize)]
+pub struct Power {
+    pub available: u32,
+    pub sleeping: u32,
+    pub generation: u64,
+    pub sleep_ms: i64,
+}
+pub fn power() -> Power {
+    unsafe extern "C" {
+        fn hear_power_snapshot(out: *mut Power);
+    }
+    let mut out = Power::default();
+    unsafe {
+        hear_power_snapshot(&mut out);
+    }
+    out
+}
 pub fn footprint(pid: u32) -> u64 {
     unsafe { hear_process_footprint(pid as i32) }
 }
@@ -82,6 +100,9 @@ pub struct Backlog {
     pub coarse_seconds: u64,
     pub oldest_vad_ms: u64,
     pub oldest_coarse_ms: u64,
+    pub voice_pending: u64,
+    pub oldest_voice_ms: u64,
+    pub voice_last_success_ms: u64,
     pub disk_free: u64,
     pub store_wait_ms: u64,
 }
@@ -193,11 +214,47 @@ impl Governor {
     }
     pub fn diagnostics(&self) -> serde_json::Value {
         let s = self.state.lock().unwrap();
+        let voice_deferred = if s.mode == Mode::Critical {
+            Some("critical")
+        } else if !s.heavy_eligible(1) {
+            Some("vad_priority")
+        } else if s.busy[1] != 0 {
+            Some("running")
+        } else if s.total.saturating_add(
+            Work::Voice
+                .peak()
+                .saturating_sub(s.models[1].map(|m| m.1).unwrap_or(0)),
+        ) > s.soft
+        {
+            Some("memory_budget")
+        } else {
+            None
+        };
         serde_json::json!({"scope":"core_and_direct_children", "mode":format!("{:?}",s.mode),
             "footprint_bytes":s.total,"peak_footprint_bytes":s.peak,"soft_bytes":s.soft,"hard_bytes":s.hard,
             "request_histogram_ms":self.request_histogram.counts(),"transitions":s.transitions,"request_max_ms":s.latency_ms,"capture_lag_ms":s.capture_lag_ms,
             "reserved_bytes":s.busy,"model_pids":s.models.map(|v|v.map(|m|m.0)),
-            "os":s.os,"backlog_lower_bound":s.backlog,"capture":s.captures})
+            "os":s.os,"voice_deferred_reason":voice_deferred,"backlog_lower_bound":s.backlog,"capture":s.captures})
+    }
+    pub fn capture_metrics(
+        &self,
+        source: &str,
+        session: uuid::Uuid,
+    ) -> Option<crate::capture::MetricsView> {
+        self.state.lock().unwrap().captures[usize::from(source == "system")]
+            .as_ref()
+            .filter(|v| v.session == session)
+            .and_then(|v| v.metrics.clone())
+    }
+    pub fn playback_excluded(&self, generation: u64) -> bool {
+        self.state.lock().unwrap().captures[1]
+            .as_ref()
+            .is_some_and(|v| {
+                v.active
+                    && v.metrics
+                        .as_ref()
+                        .is_some_and(|m| m.exclusion_generation == generation && generation != 0)
+            })
     }
     pub fn capture_stopped(&self, source: &str) {
         self.capture[usize::from(source == "system")].store(0, Ordering::Release);
@@ -290,7 +347,7 @@ impl Governor {
             return None;
         }
         // On small machines the two heavy models cannot compute concurrently.
-        if s.soft <= 768 * MIB && i < 2 && s.busy[1 - i] != 0 {
+        if (s.soft <= 768 * MIB || s.mode != Mode::Normal) && i < 2 && s.busy[1 - i] != 0 {
             return None;
         }
         let resident = if i < 2 {
@@ -361,7 +418,9 @@ impl Governor {
     pub fn unload(&self, work: Work) -> bool {
         let s = self.state.lock().unwrap();
         let i = work as usize;
-        if s.mode != Mode::Normal {
+        if s.mode == Mode::Critical
+            || (s.mode != Mode::Normal && s.total > s.soft && s.busy[i] == 0)
+        {
             return true;
         }
         i < 2
@@ -398,8 +457,8 @@ impl State {
     fn heavy_eligible(&self, index: usize) -> bool {
         self.mode != Mode::Critical
             && (index == 0
-                || (self.mode == Mode::Normal
-                    && !(self.backlog.vad_seconds > 60 && self.backlog.oldest_vad_ms > 60_000)))
+                || !(self.backlog.vad_seconds > 60 && self.backlog.oldest_vad_ms > 60_000)
+                || self.last_admission[index].elapsed() >= Duration::from_secs(60))
     }
     fn advance(&mut self, now: Instant, pressure: bool, critical: bool) {
         if critical {
@@ -544,10 +603,48 @@ mod tests {
         state.mode = Mode::Normal;
         state.backlog.vad_seconds = 61;
         state.backlog.oldest_vad_ms = 61000;
+        state.last_admission[1] = Instant::now();
         drop(state);
         assert!(governor.try_admit(Work::Voice).is_none());
         assert!(governor.try_admit(Work::Coarse).is_some());
     }
+    #[test]
+    fn voice_makes_bounded_progress_in_safe_degraded_modes_and_yields_to_critical() {
+        let g = Governor::new();
+        for mode in [Mode::Normal, Mode::Constrained, Mode::Recovering] {
+            {
+                let mut s = g.state.lock().unwrap();
+                s.mode = mode;
+                s.total = 64 * MIB;
+                s.last_admission[1] = Instant::now() - Duration::from_secs(61);
+                s.backlog.vad_seconds = 120;
+                s.backlog.oldest_vad_ms = 120_000;
+            }
+            let permit = g
+                .try_admit(Work::Voice)
+                .expect("aged voice work gets a bounded opportunity");
+            assert!(!g.unload(Work::Voice));
+            drop(permit);
+            assert!(
+                g.try_admit(Work::Voice).is_none(),
+                "VAD retains priority between opportunities"
+            );
+        }
+        g.state.lock().unwrap().mode = Mode::Critical;
+        assert!(g.try_admit(Work::Voice).is_none());
+        assert!(g.unload(Work::Voice));
+        {
+            let mut s = g.state.lock().unwrap();
+            s.mode = Mode::Constrained;
+            s.total = s.soft;
+            s.last_admission[1] = Instant::now() - Duration::from_secs(61);
+        }
+        assert!(
+            g.try_admit(Work::Voice).is_none(),
+            "age cannot bypass the memory budget"
+        );
+    }
+
     #[test]
     fn waiting_model_gets_compute_boundary_and_ineligible_work_cannot_block() {
         let g = Governor::new();

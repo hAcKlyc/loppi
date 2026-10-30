@@ -16,7 +16,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
-pub const PROTOCOL_VERSION: u32 = 22;
+pub const PROTOCOL_VERSION: u32 = 23;
 const MAX_RESPONSE_BYTES: u64 = 48 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -564,6 +564,8 @@ pub struct CloudQueueState {
     pub provider: CloudProvider,
     pub configured: bool,
     pub paused: bool,
+    #[serde(default)]
+    pub blocked_reason: Option<String>,
     pub pending: u64,
     pub processing: u64,
     pub failed: u64,
@@ -1000,6 +1002,8 @@ pub struct ServiceState {
     pub paused_intent: bool,
     pub storage_paused: bool,
     #[serde(default)]
+    pub storage_recoverable: bool,
+    #[serde(default)]
     pub audio_used_bytes: u64,
     #[serde(default)]
     pub audio_limit_bytes: u64,
@@ -1099,6 +1103,7 @@ fn send_with_policy(
             Duration::from_secs(seconds as u64 + 70)
         }
         Request::ConfigureCloud { .. } => Duration::from_secs(90),
+        Request::PlaybackChunk { .. } => Duration::from_secs(10),
         Request::ExecuteCleanup { .. } | Request::ExportRange { .. } => Duration::from_secs(180),
         _ => Duration::from_secs(5),
     };

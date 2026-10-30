@@ -39,7 +39,7 @@ def main():
             path.chmod(0o555 if path.is_dir() else 0o444)
         model_root.chmod(0o555)
         data = directory / 'data'
-        env = os.environ | {'HEAR_DATA_DIR': str(data), 'HEAR_MODEL_ROOT': '/invalid-development-cache'}
+        env = os.environ | {"HEAR_TEST_PARENT_PID": str(os.getpid()), 'HEAR_DATA_DIR': str(data), 'HEAR_MODEL_ROOT': '/invalid-development-cache'}
         process = subprocess.Popen(
             [str(helper / 'Contents/MacOS/hear-core'), 'serve', '--on-demand'],
             cwd='/', env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,

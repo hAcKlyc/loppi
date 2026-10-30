@@ -73,6 +73,8 @@ function gapReason(reason: string): string {
 			return "录音中断";
 		case "sleep_or_clock_gap":
 			return "休眠或时钟变化";
+		case "machine_sleep":
+			return "电脑休眠";
 		default:
 			return "未记录";
 	}
@@ -211,6 +213,7 @@ export function TimelineView({
 				"fit_credentials_unavailable",
 				"analysis_failed",
 				"asr_failed",
+				"partial_asr_failed",
 			].includes(item.processing_state) ||
 			moments.some(
 				(moment) =>
@@ -496,6 +499,7 @@ export function TimelineView({
 								"fit_credentials_unavailable",
 								"fit_retrying",
 								"asr_failed",
+								"partial_asr_failed",
 								"analysis_failed",
 							].includes(processingState);
 							const sourceLabel =

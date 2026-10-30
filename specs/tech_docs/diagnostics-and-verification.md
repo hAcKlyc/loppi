@@ -2,7 +2,7 @@
 
 ## 状态与所有权
 
-Core 仍是唯一业务状态 owner。`hear diagnose` 通过协议 18 的只读请求，使用 `reads::Pool` 的 3 秒查询快照。SQL 只选择 ID、状态、时间、数量、模型/策略标识和错误码，之后释放快照再读取轮转日志；两者有不同观察时间，报告不承诺跨文件原子快照。它不复制数据库、录音、文字、标题、截图、供应商正文或凭据，也不提交后台任务。
+Core 仍是唯一业务状态 owner。`hear diagnose` 通过当前版本配套协议的只读请求，使用 `reads::Pool` 的 3 秒查询快照。SQL 只选择 ID、状态、时间、数量、模型/策略标识和错误码，之后释放快照再读取轮转日志；两者有不同观察时间，报告不承诺跨文件原子快照。它不复制数据库、录音、文字、标题、截图、供应商正文或凭据，也不提交后台任务。
 
 报告是临时投影，不参与调度、重试或 UI 状态裁决。无需维护新的状态库、日志服务器或故障恢复框架。CLI 在 Core 未运行时直接失败，不能为了诊断悄悄启动处理服务。协议版本不匹配时应使用与安装包配套的 CLI。
 
@@ -65,7 +65,7 @@ python3 scripts/verify.py --suite test
 python3 scripts/verify.py --suite smoke
 ```
 
-macOS、Node 24、当前稳定 Rust、Xcode 26.0.1 或更新版本（含 macOS 26 SDK）是前提；现有 Audio Tap 代码引用该 SDK 的字段，部署最低版本仍为 macOS 13。GitHub Actions 采用相同入口与 [macos-15 runner](https://github.com/actions/runner-images/blob/main/images/macos/macos-15-arm64-Readme.md)。CI 通过 `DEVELOPER_DIR` 选择 runner 已安装的 Xcode 26.0.1，避免默认 Xcode 16.4 头文件缺字段。测试依赖由 package-lock/Cargo.lock 固定，React 交互测试不再依赖开发者 `/tmp` 下手动安装的 jsdom。
+macOS、Node 24、当前稳定 Rust、Xcode 26.0.1 或更新版本（含 macOS 26 SDK）是前提；发行工具链保持该 SDK 基线，Audio Tap 通过公开的 14.2 API 动态解析，部署最低版本仍为 macOS 13。GitHub Actions 采用相同入口与 [macos-15 runner](https://github.com/actions/runner-images/blob/main/images/macos/macos-15-arm64-Readme.md)。CI 通过 `DEVELOPER_DIR` 选择 runner 已安装的 Xcode 26.0.1，避免默认 Xcode 16.4 头文件缺字段。测试依赖由 package-lock/Cargo.lock 固定，React 交互测试不再依赖开发者 `/tmp` 下手动安装的 jsdom。
 
 2026-10-22 验证发现一个既有入口问题：unittest discovery 会导入手动 `scripts/test_model_preparation.py` 并把 `discover` 当作模型目录，导致默认 `all` 返回失败。该手动入口不属于本次修复；普通 Python 模块的 6 项测试、native entry policy 和 `--suite smoke` 已独立补验通过，完整结果见本次 devplan。不能把这些结果写成默认 `all` 已通过。
 
@@ -121,3 +121,16 @@ python3 scripts/smoke_recognizer.py --worker target/debug/hear-worker --models /
 一次 worker 连续处理 0、1、32、1056、2080、3200、16000 样本及短/长交替；另验证初始化和已加载状态的真实父进程退出。Rust 子进程回归验证 watchdog 不调用 atexit。默认门禁的 native capture errors 用受控 SCK discovery 回调验证 NSError/无来源传播，不获取权限或启动采集。
 
 `diagnostic_tests::snapshot_local_failures_do_not_block_event_asr` 需要冻结 `HEAR_TEST_DB`、逗号分隔的 `HEAR_TEST_EVENTS` 和只读媒体根 `HEAR_TEST_MEDIA`。它仅在临时副本运行生产 planner，断言生成的输入非空、媒体存在、重复规划幂等，原有音频/本地失败/文字/云任务所有列不变；不会启动云端队列或发送音频。实际证据见 [10/27 调查与修复](../research/2026-10-28-local-failure-isolation.md)。
+
+
+## 0.1.13 两机可靠性诊断与验收
+
+Core 在建立日志线程前生成唯一 run_id；LogWorker/UniLogs 共用它，started 只保留带构建身份的一条。resources 模式变化与公开 IOKit 睡眠/完成唤醒写脱敏事件，diagnostics.json 保留当前 power 事实。采集失败事件增加当前容量阈值/可用磁盘、丢帧和排队时长；替换快照不会替代这些故障历史。声纹 backlog 同时包含观察和入库待办的有界下界；oldest_voice_ms 是所抽待办的原音频年龄，voice_last_success_ms 是 ready 观察的最近成功时刻，voice_deferred_reason 表示当前资源准入条件，不冒充故障发生时原因。音质拒绝记录当前解码片段的 RMS 百万分值、削波 ppm 和样本数，不含音频或人物信息。
+
+HTTP 402 在既有 cloud_queues.blocked_reason 表达账号阻塞，独立于用户 paused/configured；明确继续、有效目标的手动重试、成功保存已验证的新配置才解除。解除队列不批量重跑失败历史。供应商重试由既有 cloud_tasks.retry_failures 保留预算，凭据等待不消耗；网络失败最多 8 次，整份整理输出无效最多 3 次，显式重试重置预算且保留原付费请求身份。LLM 使用有界 SSE 流，忽略思考正文，收到完整终止和结束原因后才进入原发布流程；180 秒总时限、45 秒空闲读取及 8MB 响应上限仍生效。故障日志区分 headers/body 阶段与耗时。普通 status/app_opened 客户端在写回时主动断开只记 request_cancelled info；其它执行和写回故障仍保留。
+
+离线 runner 显式传 HEAR_TEST_PARENT_PID 并使用独立 HEAR_DATA_DIR，Core 用 kqueue 绑定运行者生命周期；该模式禁止读取/写入 Keychain 与访问正式供应商端点。正式 Login 没有此环境，不改变后台驻留。默认 verify 设置此绑定；手动 runner 同样绑定自身。真实模型和录制验收使用合成数据/隔离副本，付费历史回放仍不自动运行。
+
+前端回归包含真实 App 的同日在途合并、变更时立即失效及串行新快照；原生输出的会话/epoch、旧关闭与取消，以及原有连续播放清理/边界回归。原生 AVAudioPlayer 硬件时钟验证只使用合成静音，不录音、不调用云；无声音设备环境不能据此声称完成真实设备验收。电源消息注入验证 CanSleep/WillSleep 立即确认、不阻止系统休眠、早期 Wake 不恢复、完成 Wake 才恢复。
+
+冻结库的读取基准只复制数据库并移除凭据引用/停用云队列；报告存摘要哈希、数量、时延和构建身份，禁止写出记录正文。范围与最终证据见本轮 devplan 与两机问题合集。

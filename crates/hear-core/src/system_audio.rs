@@ -144,10 +144,12 @@ pub struct SystemAudio {
     using_legacy: bool,
     can_upgrade: bool,
     pub dropped: Arc<AtomicU64>,
+    metrics: Arc<crate::capture::Metrics>,
 }
 
 impl SystemAudio {
     pub fn start(sender: AudioSender) -> Result<Self, String> {
+        let metrics = sender.metrics();
         unsafe extern "C" {
             fn hear_system_audio_start(
                 context: *mut c_void,
@@ -243,12 +245,14 @@ impl SystemAudio {
             using_legacy: !use_tap,
             can_upgrade: tap_available,
             dropped,
+            metrics,
         })
     }
 
     pub fn error(&self) -> Option<String> {
         unsafe extern "C" {
             fn hear_system_audio_error(handle: *mut c_void) -> i32;
+            fn hear_system_audio_exclusion_generation(handle: *mut c_void) -> u64;
         }
         // A successful foreground permission probe switches the running
         // legacy source to the Tap at the next capture supervisor retry.
@@ -259,8 +263,17 @@ impl SystemAudio {
             return Some("system_audio_tap_upgrade".into());
         }
         let code = unsafe { hear_system_audio_error(self.handle) };
+        self.metrics
+            .exclusion_generation(unsafe { hear_system_audio_exclusion_generation(self.handle) });
         (code != 0).then(|| format!("system audio native error {code}"))
     }
+}
+
+pub fn playback_exclusion_generation() -> u64 {
+    unsafe extern "C" {
+        fn hear_playback_exclusion_generation() -> u64;
+    }
+    unsafe { hear_playback_exclusion_generation() }
 }
 
 impl Drop for SystemAudio {

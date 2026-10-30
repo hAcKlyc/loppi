@@ -1,3 +1,9 @@
+import {
+	NativeAudio,
+	type PlaybackAudio,
+	type PlaybackNode,
+} from "./native-audio.ts";
+
 export type Chunk = {
 	wav_base64: string;
 	has_audio: boolean;
@@ -5,7 +11,7 @@ export type Chunk = {
 	generation?: number | null;
 };
 type Scheduled = {
-	node: AudioBufferSourceNode;
+	node: PlaybackNode;
 	at: number;
 	until: number;
 	when: number;
@@ -14,7 +20,7 @@ type Scheduled = {
 /** A single request in flight and at most two five-second decoded buffers.
  * Playback uses the audio clock; UI timers never determine a sample boundary. */
 export class ContinuousPlayback {
-	private context: AudioContext | null = null;
+	private context: PlaybackAudio | null = null;
 	private nodes: Scheduled[] = [];
 	private epoch = 0;
 	private active = false;
@@ -39,7 +45,7 @@ export class ContinuousPlayback {
 	private position: (at: number) => void;
 	private done: () => void;
 	private error: (cause: unknown) => void;
-	private createContext: () => AudioContext;
+	private createContext: () => PlaybackAudio;
 	private validate: (
 		from: number,
 		to: number,
@@ -52,7 +58,7 @@ export class ContinuousPlayback {
 		position: (at: number) => void,
 		done: () => void,
 		error: (cause: unknown) => void,
-		createContext = () => new AudioContext({ sampleRate: 48_000 }),
+		createContext: () => PlaybackAudio = () => new NativeAudio(),
 		validate: (
 			from: number,
 			to: number,
@@ -195,9 +201,7 @@ export class ContinuousPlayback {
 				}
 				if (response.wav_base64.length > 1_500_000)
 					throw new Error("playback_unavailable: oversized chunk");
-				const binary = atob(response.wav_base64);
-				const bytes = Uint8Array.from(binary, (value) => value.charCodeAt(0));
-				const buffer = await context.decodeAudioData(bytes.buffer);
+				const buffer = await context.decodeWav(response.wav_base64);
 				if (!this.active || epoch !== this.epoch) return;
 				await this.check();
 				if (!this.active || epoch !== this.epoch) return;
@@ -219,15 +223,34 @@ export class ContinuousPlayback {
 				const scheduled = { node, at, until, when };
 				this.nodes.push(scheduled);
 				this.next = until;
-				node.onended = () => {
+				node.onended = (success = true, cancelled = false) => {
 					if (epoch !== this.epoch || !this.active) return;
+					if (cancelled) {
+						this.stop();
+						this.done();
+						return;
+					}
+					if (!success) {
+						this.fail(epoch, new Error("playback_unavailable"));
+						return;
+					}
 					this.nodes = this.nodes.filter((item) => item !== scheduled);
 					node.disconnect();
 					node.buffer = null;
 					this.position(until);
 					this.pump();
 				};
-				node.start(when);
+				try {
+					scheduled.when = await node.start(when);
+				} catch (cause) {
+					this.nodes = this.nodes.filter((item) => item !== scheduled);
+					node.buffer = null;
+					throw cause;
+				}
+				if (epoch !== this.epoch || !this.active) {
+					node.stop();
+					return;
+				}
 				// An older core does not supply cleanup generations. Preserve its
 				// original one-chunk behavior instead of caching unrevokeable audio.
 				if (this.generation === null) break;

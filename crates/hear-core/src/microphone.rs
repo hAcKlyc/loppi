@@ -47,8 +47,13 @@ impl Microphone {
         let stream_failed = Arc::new(AtomicBool::new(false));
         let dropped = Arc::clone(&dropped_packets);
         let failed = Arc::clone(&stream_failed);
-        let on_error = move |_error| {
-            failed.store(true, Ordering::Relaxed);
+        let metrics = receiver.metrics();
+        let on_error = move |error: cpal::Error| {
+            let (kind, fatal) = stream_error(error.kind());
+            metrics.native_error(kind, fatal);
+            if fatal {
+                failed.store(true, Ordering::Release);
+            }
         };
         let stream = match supported.sample_format() {
             SampleFormat::F32 => device.build_input_stream(
@@ -146,6 +151,47 @@ impl Microphone {
             peak,
             dropped_packets: microphone.dropped_packets.load(Ordering::Relaxed),
         })
+    }
+}
+
+// CPAL explicitly reports route changes and denied realtime promotion as
+// nonfatal notices. A lost device, xrun or invalidated stream still ends this
+// source so its missing samples become a real gap rather than invented audio.
+fn stream_error(kind: cpal::ErrorKind) -> (u64, bool) {
+    use cpal::ErrorKind::*;
+    let code = match kind {
+        DeviceChanged => 1,
+        RealtimeDenied => 2,
+        DeviceBusy => 3,
+        DeviceNotAvailable => 4,
+        HostUnavailable => 5,
+        InvalidInput => 6,
+        PermissionDenied => 7,
+        ResourceExhausted => 8,
+        StreamInvalidated => 9,
+        UnsupportedConfig => 10,
+        UnsupportedOperation => 11,
+        Xrun => 12,
+        BackendError => 13,
+        _ => 14,
+    };
+    (code, !matches!(kind, DeviceChanged | RealtimeDenied))
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn route_and_promotion_notices_do_not_destroy_a_running_stream() {
+        assert!(!super::stream_error(cpal::ErrorKind::DeviceChanged).1);
+        assert!(!super::stream_error(cpal::ErrorKind::RealtimeDenied).1);
+        for kind in [
+            cpal::ErrorKind::Xrun,
+            cpal::ErrorKind::DeviceNotAvailable,
+            cpal::ErrorKind::StreamInvalidated,
+            cpal::ErrorKind::BackendError,
+        ] {
+            assert!(super::stream_error(kind).1);
+        }
     }
 }
 

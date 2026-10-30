@@ -26,6 +26,8 @@ const errorLabels: Record<string, string> = {
 	source_disabled: "这个声音来源尚未开启",
 	source_busy: "声音来源正在切换，请稍后再试",
 	playback_unavailable: "原声读取失败，请检查素材或稍后重试",
+	playback_exclusion_unavailable:
+		"回放保护尚未就绪，请稍后重试，或先暂停电脑声音录制",
 	event_detail_unavailable: "事件已变化，请返回时间线重新选择",
 	range_detail_unavailable: "这段素材已变化，请重新选择",
 	cleanup_preview_invalid: "清理预览已过期，请重新查看影响范围",
@@ -53,6 +55,7 @@ export function userError(error: unknown): string {
 	const message = error instanceof Error ? error.message : String(error);
 	const code = /^([a-z_0-9]+):/.exec(message)?.[1];
 	if (code === "provider_http_401") return "API Key 无效或已失效";
+	if (code === "provider_http_402") return "云端账号余额不足，请充值后重试";
 	if (code === "provider_http_403") return "API Key 无权使用这项服务";
 	if (code === "provider_http_429") return "云端服务请求过多，请稍后重试";
 	if (code?.startsWith("provider_http_"))
@@ -112,6 +115,8 @@ export function processingLabel(
 			return "精转中";
 		case "asr_failed":
 			return "精转失败";
+		case "partial_asr_failed":
+			return "部分精转失败 · 已完成文字保留";
 		case "transcribed":
 			return "精转完成";
 		case "partial_transcript":
@@ -161,6 +166,7 @@ export interface ServiceState {
 	enabled_intent: boolean;
 	paused_intent: boolean;
 	storage_paused: boolean;
+	storage_recoverable?: boolean;
 	audio_used_bytes: number;
 	audio_limit_bytes: number;
 	disk_free_bytes: number;
@@ -319,6 +325,7 @@ export interface CloudQueue {
 	provider: CloudProvider;
 	configured: boolean;
 	paused: boolean;
+	blocked_reason?: string | null;
 	pending: number;
 	processing: number;
 	failed: number;
