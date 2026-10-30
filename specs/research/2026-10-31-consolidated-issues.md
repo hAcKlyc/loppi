@@ -272,7 +272,7 @@ B两次ipc_write_failed，没有损坏或崩溃证据；保留正常取消与真
 - [x] 所有必要回归及最终组合态验证通过。
 - [x] requirements/adversarial/architecture独立审查完成。
 - [x] Codex Computer Use及相关OS技术验收完成（上述平台边界保留）。
-- [ ] 0.1.13同源Universal2签名公证、安装与运行身份验证。
+- [x] 0.1.13同源Universal2签名公证、安装与运行身份验证。
 
 ## 候选修复与验收结果
 
@@ -312,3 +312,7 @@ C11补上损坏/截断媒体输入：回收判断已从错误文字移到真正�
 C08发行前并发补修：旧账号失败的落库必须与其凭据处于同一个既有outbound gate内，否则新配置验证/显式恢复可能被旧错误重新阻塞。新增失败回归确认后，在请求错误边界提交原有任务+账号事务，外层只记录结果；重复终态错误不再写账号阻塞，也不覆盖已经submitted的显式ASR重试。未增加凭据快照或持久代次。旧未分发发行包已废弃，窄范围新审查与最终重建后才安装。
 
 C08窄补修最终审查：需求/对抗/架构全部PASS，最终完整21项通过（Core376项通过、20项显式ignored）。旧候选未安装，最终发行重新构建。审查记录见account-race-review-contract.md与account-race-review-results.md。
+
+## 正式交付
+
+0.1.13已发布并更新到本机，四组件clean来源56f6802、协议23、同epoch1793388482；Universal2包经Apple公证、装订及Gatekeeper验收。GitHub发行：https://github.com/hAcKlyc/hear/releases/tag/v0.1.13。实际运行Core和GUI版本、模型准备及历史界面通过，六类受保护内容与升级前一致。原08:00–23:00计划保留。完整交付记录见2026-10-31-release-0.1.13.md，原0.1.12应用/数据库/媒体已备份。账户充值与上述未取得的物理平台证据仍单列为外部条件，未自动关闭issues。

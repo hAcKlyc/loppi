@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: implemented
 created: 2026-10-31
 updated: 2026-10-31
 ---
@@ -56,8 +56,8 @@ updated: 2026-10-31
 - [x] 对应回归、冻结库验证和完整离线门禁。
 - [x] cross-review、裁决、定向复核、架构 PASS。
 - [x] Codex Computer Use 与本机 OS/模型/采集验收。
-- [ ] 提升版本、提交、签名公证 release、安装升级与最终运行验证。
-- [ ] 更新合并登记与最终台账并形成交付记录。
+- [x] 提升版本、提交、签名公证 release、安装升级与最终运行验证。
+- [x] 更新合并登记与最终台账并形成交付记录。
 
 ### 当前批次 Review 基线
 
@@ -101,3 +101,6 @@ updated: 2026-10-31
 - 发行前新增C08竞态已用失败回归确认：HTTP402从process_cloud_task释放outbound gate后，旧错误可能晚于新配置/显式恢复落库。暂停旧2b740c0发行（已提交Apple公证但未安装/分发，产物标记obsolete），不把它当正式交付。后续小批次基线2b740c0，仅修main/events账号状态顺序：在已有gate内原子记录402，外层不重复回写，终态重复失败不再阻塞新配置。没有新锁、版本、凭据快照或状态owner；按新窄契约重新三路审查。原2b740c0的GitHub CI全21项通过，含macos15 runner实际原生输出测试；这不扩大物理采集平台实测声明。
 
 - C08后续窄批次三路fresh-context审查全部PASS，无阻塞或必要证据缺口；新失败回归先红后绿、四项账号回归及最终完整21项通过（Core376 passed/20 ignored）。在现有outbound gate内记录账号事实，common handler跳过第二次402状态写，events只对真正变更的任务写阻塞，保留显式ASR重试和原付费ID。准备提交并从该clean来源重建正式包。
+
+- 最终交付完成：生产提交2b740c0与56f6802，发行源码为clean 56f6802331c92562f296fae9df27b8b0cb331fb3，v0.1.13，协议23，四组件epoch1793388482一致。Universal2/最低macOS13、模型和Unicode只读路径烟测通过；Apple公证dd6c02af-7fec-4833-9024-85381a494f3a Accepted，装订及DMG/app Gatekeeper通过。正式DMG SHA256 a1d7a693bce7053b5c05e15702414f2691fc727a62a02d2b88436b7824c8a49a，GitHub发行已发布https://github.com/hAcKlyc/hear/releases/tag/v0.1.13，三附件完整且远端digest与本机一致。
+- 已原子交换安装/Applications/hear.app；Codex Computer Use关于面板显示0.1.13，原声授权准备成功，历史日期正常打开。运行Core PID52631确认为上述clean构建，模型/声纹ready、Normal，当前run唯一started且验收窗口无warn/error。原08:00–23:00规则、计划暂停、10GiB上限与revision78保留，下一次10/31 08:00开始；未手动提前录制。保护的事件/精转/人工纠错/绑定/人物/现场记录六表与升级前逐行哈希相同，DB quick_check=ok。备份位于/Users/ethan/Library/Application Support/hear-update-backups/20261031-to-0.1.13，含0.1.12app、一致DB和媒体。最终记录specs/research/2026-10-31-release-0.1.13.md；其后文档提交仅留存已完成的交付事实，发行来源仍以v0.1.13/manifest为准。
