@@ -2931,13 +2931,6 @@ pub fn task_failed_with_retry(
         )
         .map_err(|e| e.to_string())?;
     let retry_failures = retry_failures.saturating_add(i64::from(!credential_wait));
-    if error == "provider_http_402" {
-        db.execute(
-            "UPDATE cloud_queues SET blocked_reason='provider_http_402' WHERE provider=?1",
-            [provider_name(task.provider)],
-        )
-        .map_err(|e| e.to_string())?;
-    }
     let transient = error == "provider_deadline"
         || error == "provider_transport"
         || error == "provider_read_failed"
@@ -2999,6 +2992,13 @@ pub fn task_failed_with_retry(
             ],
         )
         .map_err(|e| e.to_string())?;
+    if updated > 0 && error == "provider_http_402" {
+        db.execute(
+            "UPDATE cloud_queues SET blocked_reason='provider_http_402' WHERE provider=?1",
+            [provider_name(task.provider)],
+        )
+        .map_err(|e| e.to_string())?;
+    }
     if updated > 0 && task.provider == CloudProvider::Llm {
         db.execute(
             "UPDATE candidate_windows SET state=?2,error_code=?3 WHERE id=?1
@@ -6089,6 +6089,38 @@ mod tests {
             .unwrap();
         assert_eq!(retried.id, task.id);
         assert_eq!(retried.attempts, 0);
+    }
+
+    #[test]
+    fn replayed_account_failure_cannot_reblock_after_explicit_recovery() {
+        for configure in [false, true] {
+            let (db, task) = summary_fixture();
+            task_failed(&db, &task, "provider_http_402", 100_001).unwrap();
+            if configure {
+                set_configured_with_credential(
+                    &db,
+                    CloudProvider::Llm,
+                    "deepseek-flash",
+                    &format!("deepseek:{}", Uuid::new_v4()),
+                )
+                .unwrap();
+            } else {
+                set_paused(&db, CloudProvider::Llm, false).unwrap();
+            }
+            // The request's account failure was committed under its outbound
+            // gate. A later common failure handler must be an idempotent replay.
+            task_failed(&db, &task, "provider_http_402", 100_002).unwrap();
+            assert!(queue_states(&db).unwrap()[0].blocked_reason.is_none());
+            assert_eq!(
+                db.query_row::<i64, _, _>(
+                    "SELECT retry_failures FROM cloud_tasks WHERE id=?1",
+                    [task.id.to_string()],
+                    |r| r.get(0)
+                )
+                .unwrap(),
+                1
+            );
+        }
     }
 
     #[test]

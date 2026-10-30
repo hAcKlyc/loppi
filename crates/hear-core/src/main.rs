@@ -1244,6 +1244,12 @@ fn cloud_loop(
         event.context = Some(context);
         shared.logs.emit(ClientKind::Worker, task_id, event);
         if let Err(error) = outcome {
+            // Account failures were committed while their credential gate was
+            // held. Reapplying one here could race an explicit ASR retry, whose
+            // new state is already submitted, or a replacement configuration.
+            if error.code == "provider_http_402" {
+                continue;
+            }
             if let Ok(store) = shared.store.lock() {
                 let _ = events::task_failed_with_retry(
                     &store.db,
@@ -1587,7 +1593,8 @@ fn process_cloud_task(
                 };
                 let key = active_cloud_credential(shared, task.provider)?;
                 let meter = usage::Recorder::task(shared, task.provider, task.id)?;
-                let output = cloud::describe_image(&key, &task.model_id, &png, deadline, &meter)?;
+                let output = cloud::describe_image(&key, &task.model_id, &png, deadline, &meter)
+                    .map_err(|error| record_account_failure(shared, task, error))?;
                 let mut store = shared.store.lock().map_err(|e| e.to_string())?;
                 moments::publish_image(&mut store.db, task, output, now_ms()?)?;
                 return Ok(());
@@ -1611,7 +1618,8 @@ fn process_cloud_task(
                 &input,
                 deadline,
                 &meter,
-            )?;
+            )
+            .map_err(|error| record_account_failure(shared, task, error))?;
             drop(outbound);
             let _event_gate = shared.asr_outbound.lock().map_err(|e| e.to_string())?;
             let count = {
@@ -1646,7 +1654,8 @@ fn process_cloud_task(
                 }
                 let key = active_cloud_credential(shared, task.provider)?;
                 let meter = usage::Recorder::task(shared, task.provider, task.id)?;
-                cloud::query_audio(&key, task.remote_id, deadline, &meter)?
+                cloud::query_audio(&key, task.remote_id, deadline, &meter)
+                    .map_err(|error| record_account_failure(shared, task, error))?
             };
             match query {
                 cloud::AsrQuery::Complete(utterances) => {
@@ -1733,13 +1742,45 @@ fn process_cloud_task(
                         audio_duration,
                         deadline,
                         &meter,
-                    )?;
+                    )
+                    .map_err(|error| record_account_failure(shared, task, error))?;
                     let store = shared.store.lock().map_err(|e| e.to_string())?;
                     events::asr_wait(&store.db, task, now_ms()?).map_err(Into::into)
                 }
             }
         }
     }
+}
+
+// Call only while holding this provider's outbound gate. Configuration swaps
+// and retires Keychain references under the same gate.
+fn record_account_failure(
+    shared: &CoreState,
+    task: &events::CloudTask,
+    mut error: cloud::Failure,
+) -> cloud::Failure {
+    if error.code == "provider_http_402" {
+        // Commit the account fact before releasing the credential's gate. A
+        // newly verified configuration can then clear it without a late old
+        // response blocking the replacement account. The outer task handler
+        // logs this outcome without applying a second account transition.
+        let saved = shared.store.lock().map_err(|_| ()).and_then(|store| {
+            events::task_failed_with_retry(
+                &store.db,
+                task,
+                &error.code,
+                error.retry_after_ms,
+                now_ms().unwrap_or(task.updated_ms),
+            )
+            .map_err(|_| ())
+        });
+        if saved.is_err() {
+            // A storage failure must not later apply this old account fact
+            // outside the gate. The common handler still records the failure.
+            error.code = "cloud_failure_persist_failed".into();
+        }
+    }
+    error
 }
 
 // Call only while holding this provider's outbound gate. Configuration swaps

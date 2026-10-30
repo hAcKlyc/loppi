@@ -97,3 +97,7 @@ updated: 2026-10-31
 - C07定向复查CLOSED：Store原生电源观察先处理无slot的已打开尾缺口，六项定向gap/retry/sleep/journal回归通过。C11真实成功→坏头/截断拒绝→实际模型终止/重试→正常成功通过，输入拒绝PID保持，真实RPC故障换新PID。最终完整离线21项再次通过（Core375 passed/20 ignored）。C16活动语音/积压计量已补，等待需求定向复查和最终架构裁决。
 
 - 最终独立审查完成：requirements定向复查R1/C11、E1/C16均CLOSED，adversarial定向复查A1/C07 CLOSED，全新architecture对最终完整生产差异给出PASS，无新增架构阻塞。唯一旧AudioContext文档句已按要求改为NativeAudio facade。补验隐藏主窗口后31秒回放，7块继续读取至结束，从Finder重开主窗后显示终点和可再次播放。开始clean commit发行阶段；签名公证/最终安装身份仍待实际产物完成后记录。
+
+- 发行前新增C08竞态已用失败回归确认：HTTP402从process_cloud_task释放outbound gate后，旧错误可能晚于新配置/显式恢复落库。暂停旧2b740c0发行（已提交Apple公证但未安装/分发，产物标记obsolete），不把它当正式交付。后续小批次基线2b740c0，仅修main/events账号状态顺序：在已有gate内原子记录402，外层不重复回写，终态重复失败不再阻塞新配置。没有新锁、版本、凭据快照或状态owner；按新窄契约重新三路审查。原2b740c0的GitHub CI全21项通过，含macos15 runner实际原生输出测试；这不扩大物理采集平台实测声明。
+
+- C08后续窄批次三路fresh-context审查全部PASS，无阻塞或必要证据缺口；新失败回归先红后绿、四项账号回归及最终完整21项通过（Core376 passed/20 ignored）。在现有outbound gate内记录账号事实，common handler跳过第二次402状态写，events只对真正变更的任务写阻塞，保留显式ASR重试和原付费ID。准备提交并从该clean来源重建正式包。
