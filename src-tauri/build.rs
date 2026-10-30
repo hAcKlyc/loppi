@@ -2,10 +2,12 @@ fn main() {
     println!("cargo:rerun-if-changed=native/agent.m");
     println!("cargo:rerun-if-changed=native/privacy.m");
     println!("cargo:rerun-if-changed=native/entry.m");
+    println!("cargo:rerun-if-changed=native/playback.m");
     cc::Build::new()
         .file("native/agent.m")
         .file("native/privacy.m")
         .file("native/entry.m")
+        .file("native/playback.m")
         .flag("-fblocks")
         .flag("-mmacosx-version-min=13.0")
         .flag("-fobjc-arc")

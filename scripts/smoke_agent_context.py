@@ -20,7 +20,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="hear-agent-smoke-") as temporary:
         root = Path(temporary)
         data = root / "data"
-        env = os.environ | {"HEAR_DATA_DIR": str(data), "HEAR_CORE_BIN": str(CORE)}
+        env = os.environ | {"HEAR_TEST_PARENT_PID": str(os.getpid()), "HEAR_DATA_DIR": str(data), "HEAR_CORE_BIN": str(CORE)}
 
         def cli(*args, code=0):
             p = subprocess.run([str(CLI), *args], env=env, capture_output=True, text=True, timeout=10)

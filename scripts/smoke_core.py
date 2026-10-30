@@ -20,7 +20,7 @@ def main() -> None:
     if not CLI.is_file() or not CORE.is_file():
         raise SystemExit("build hear-core and hear-cli before running this smoke test")
     with tempfile.TemporaryDirectory(prefix="hear-smoke-") as directory:
-        environment = os.environ | {
+        environment = os.environ | {"HEAR_TEST_PARENT_PID": str(os.getpid()),
             "HEAR_DATA_DIR": directory,
             "HEAR_CORE_BIN": str(CORE),
         }
@@ -100,7 +100,7 @@ def main() -> None:
 
     with tempfile.TemporaryDirectory(prefix="hear-no-logs-") as directory:
         Path(directory, "logs").write_text("blocking directory creation")
-        environment = os.environ | {
+        environment = os.environ | {"HEAR_TEST_PARENT_PID": str(os.getpid()),
             "HEAR_DATA_DIR": directory,
             "HEAR_CORE_BIN": str(CORE),
         }
@@ -122,7 +122,7 @@ def main() -> None:
         logs = Path(directory, "logs")
         logs.mkdir()
         os.mkfifo(logs / "hear.jsonl")
-        environment = os.environ | {
+        environment = os.environ | {"HEAR_TEST_PARENT_PID": str(os.getpid()),
             "HEAR_DATA_DIR": directory,
             "HEAR_CORE_BIN": str(CORE),
         }
@@ -138,7 +138,7 @@ def main() -> None:
             subprocess.check_output((str(CLI), "quit"), env=environment)
 
     with tempfile.TemporaryDirectory(prefix="hear-login-handoff-") as directory:
-        environment = os.environ | {
+        environment = os.environ | {"HEAR_TEST_PARENT_PID": str(os.getpid()),
             "HEAR_DATA_DIR": directory,
             "HEAR_CORE_BIN": str(CORE),
         }

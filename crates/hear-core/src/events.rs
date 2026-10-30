@@ -228,6 +228,16 @@ pub fn init(db: &Connection) -> Result<(), String> {
     )?;
     crate::storage::migrate(
         db,
+        "cloud_account_block_v1",
+        "ALTER TABLE cloud_queues ADD COLUMN blocked_reason TEXT;",
+    )?;
+    crate::storage::migrate(
+        db,
+        "cloud_retry_budget_v1",
+        "ALTER TABLE cloud_tasks ADD COLUMN retry_failures INTEGER NOT NULL DEFAULT 0;",
+    )?;
+    crate::storage::migrate(
+        db,
         "event_summary_v1",
         "ALTER TABLE named_events ADD COLUMN summary TEXT;",
     )?;
@@ -284,7 +294,7 @@ pub fn set_configured_with_credential(
     reference: &str,
 ) -> Result<(), String> {
     db.execute(
-        "UPDATE cloud_queues SET configured = 1, model = ?2 WHERE provider = ?1",
+        "UPDATE cloud_queues SET configured = 1, model = ?2,blocked_reason=NULL WHERE provider = ?1",
         params![provider_name(provider), model],
     )
     .map_err(|error| error.to_string())?;
@@ -319,7 +329,7 @@ pub fn credential_reference(
 
 pub fn set_paused(db: &Connection, provider: CloudProvider, paused: bool) -> Result<(), String> {
     db.execute(
-        "UPDATE cloud_queues SET paused = ?2 WHERE provider = ?1",
+        "UPDATE cloud_queues SET paused = ?2,blocked_reason=CASE WHEN ?2=0 THEN NULL ELSE blocked_reason END WHERE provider = ?1",
         params![provider_name(provider), paused],
     )
     .map_err(|error| error.to_string())?;
@@ -339,12 +349,12 @@ pub fn model(db: &Connection, provider: CloudProvider) -> Result<Option<String>,
 pub fn queue_states(db: &Connection) -> Result<Vec<CloudQueueState>, String> {
     let mut result = Vec::new();
     for provider in [CloudProvider::Llm, CloudProvider::Asr] {
-        let (configured, paused): (bool, bool) = db
+        let (configured, paused, blocked_reason): (bool, bool, Option<String>) = db
             .query_row(
-                "SELECT q.configured=1 AND c.account IS NOT NULL,q.paused FROM cloud_queues q
+                "SELECT q.configured=1 AND c.account IS NOT NULL,q.paused,q.blocked_reason FROM cloud_queues q
                  LEFT JOIN cloud_credential_refs c USING(provider) WHERE q.provider = ?1",
                 params![provider_name(provider)],
-                |row| Ok((row.get(0)?, row.get(1)?)),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .map_err(|error| error.to_string())?;
         let count = |state: &str| -> Result<u64, String> {
@@ -360,6 +370,7 @@ pub fn queue_states(db: &Connection) -> Result<Vec<CloudQueueState>, String> {
             provider,
             configured,
             paused,
+            blocked_reason,
             pending: count("pending")?,
             processing: count("processing")? + count("submitted")?,
             failed: count("failed")?,
@@ -1499,25 +1510,41 @@ pub fn calendar_days(db: &Connection, boundaries: &[i64], now: i64) -> Result<Ve
     {
         return Err("invalid calendar boundaries".into());
     }
-    let mut query = db.prepare("SELECT EXISTS(
-        SELECT 1 FROM audio_blocks WHERE media_path IS NOT NULL AND started_ms<?2 AND ended_ms>?1
-        UNION ALL SELECT 1 FROM coarse_segments WHERE started_ms<?2 AND ended_ms>?1
-        UNION ALL SELECT 1 FROM named_events WHERE deleted_ms IS NULL AND started_ms<?2 AND ended_ms>?1
-        UNION ALL SELECT 1 FROM moments WHERE anchor_ms>=?1 AND anchor_ms<?2
-    )").map_err(|e| e.to_string())?;
-    let mut days = Vec::new();
-    for pair in boundaries.windows(2) {
-        if pair[0] > now {
-            continue;
+    // Stream the month once. Per-day EXISTS used to repeat the same historical
+    // scans up to 31 times, especially for empty days before the first recording.
+    let start = boundaries[0];
+    let end = *boundaries.last().unwrap();
+    let mut present = [false; 31];
+    let mut mark = |start: i64, end: i64| {
+        for (index, pair) in boundaries.windows(2).enumerate() {
+            if pair[0] <= now && start < pair[1] && end > pair[0] {
+                present[index] = true;
+            }
         }
-        let has_material: bool = query
-            .query_row(params![pair[0], pair[1]], |row| row.get(0))
-            .map_err(|e| e.to_string())?;
-        if has_material || !visible_manual_ranges(db, pair[0], pair[1])?.is_empty() {
-            days.push(pair[0]);
-        }
+    };
+    let mut query = db.prepare("SELECT started_ms,ended_ms,0 FROM audio_blocks
+        WHERE source IN ('microphone','system') AND media_path IS NOT NULL AND started_ms<?2 AND ended_ms>?1
+        UNION ALL SELECT started_ms,ended_ms,0 FROM coarse_segments WHERE started_ms<?2 AND ended_ms>?1
+        UNION ALL SELECT started_ms,ended_ms,0 FROM named_events WHERE deleted_ms IS NULL AND started_ms<?2 AND ended_ms>?1
+        UNION ALL SELECT anchor_ms,anchor_ms,1 FROM moments WHERE anchor_ms>=?1 AND anchor_ms<?2"
+    ).map_err(|e| e.to_string())?;
+    let mut rows = query
+        .query(params![start, end])
+        .map_err(|e| e.to_string())?;
+    while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+        let first: i64 = row.get(0).map_err(|e| e.to_string())?;
+        let last: i64 = row.get(1).map_err(|e| e.to_string())?;
+        let point: bool = row.get(2).map_err(|e| e.to_string())?;
+        mark(first, if point { last.saturating_add(1) } else { last });
     }
-    Ok(days)
+    for (_, first, last, _, _) in visible_manual_ranges(db, start, end)? {
+        mark(first, last);
+    }
+    Ok(boundaries[..boundaries.len() - 1]
+        .iter()
+        .enumerate()
+        .filter_map(|(index, day)| present[index].then_some(*day))
+        .collect())
 }
 
 /// An open source session's confirmed tail must actually belong to the item.
@@ -2342,7 +2369,13 @@ fn event_state(db: &Connection, id: &str, version: &str) -> Result<String, Strin
         .to_owned());
     }
     if states.iter().any(|(s, _)| s == "failed") {
-        return Ok("asr_failed".to_owned());
+        let progress = transcription_progress(db, "event", id, version, false)?.unwrap();
+        return Ok(if progress.complete > progress.empty {
+            "partial_asr_failed"
+        } else {
+            "asr_failed"
+        }
+        .to_owned());
     }
     if states.iter().all(|(s, _)| s == "complete") {
         let progress = transcription_progress(db, "event", id, version, false)?.unwrap();
@@ -2389,7 +2422,14 @@ fn manual_range_state(db: &Connection, id: &str, revision: i64) -> Result<String
         return Ok("audio_unavailable".to_owned());
     }
     if states.iter().any(|state| state == "failed") {
-        return Ok("asr_failed".to_owned());
+        let progress =
+            transcription_progress(db, "range", id, &revision.to_string(), false)?.unwrap();
+        return Ok(if progress.complete > progress.empty {
+            "partial_asr_failed"
+        } else {
+            "asr_failed"
+        }
+        .to_owned());
     }
     if states.iter().all(|state| state == "complete") {
         let progress =
@@ -2585,7 +2625,7 @@ pub fn take_task_fair(
     let tx = db.transaction().map_err(|e| e.to_string())?;
     let enabled: bool = tx
         .query_row(
-            "SELECT q.configured=1 AND q.paused=0 AND q.cooldown_ms<=?2 AND c.account IS NOT NULL
+            "SELECT q.configured=1 AND q.paused=0 AND q.blocked_reason IS NULL AND q.cooldown_ms<=?2 AND c.account IS NOT NULL
              FROM cloud_queues q LEFT JOIN cloud_credential_refs c USING(provider) WHERE q.provider=?1",
             params![provider_name(provider), now],
             |row| row.get(0),
@@ -2759,6 +2799,12 @@ pub fn retry_task(db: &Connection, id: Uuid, now: i64) -> Result<(), String> {
 }
 
 pub fn retry_task_in(tx: &Transaction<'_>, id: Uuid, now: i64) -> Result<(), String> {
+    // A historical failed row can outlive its event/range. Validate the same
+    // current membership as the worker before changing account or retry state.
+    let task = cloud_task_by_id(tx, id)?;
+    if !task_current(tx, &task)? {
+        return Err("task is no longer current".into());
+    }
     let row: Option<(String, Option<String>, String, i64)> = tx
         .query_row(
             "SELECT provider,error_code,state,submit_attempts FROM cloud_tasks WHERE id=?1 AND
@@ -2772,6 +2818,13 @@ pub fn retry_task_in(tx: &Transaction<'_>, id: Uuid, now: i64) -> Result<(), Str
     let Some((provider, error, state, submit_attempts)) = row else {
         return Err("task is not retryable".to_owned());
     };
+    if error.as_deref() == Some("provider_http_402") {
+        tx.execute(
+            "UPDATE cloud_queues SET blocked_reason=NULL WHERE provider=?1",
+            [&provider],
+        )
+        .map_err(|e| e.to_string())?;
+    }
     if provider == "asr" && state == "failed" && error.as_deref().is_some_and(asr::rejected_result)
     {
         return asr::replan_failed(tx, id, now);
@@ -2789,7 +2842,7 @@ pub fn retry_task_in(tx: &Transaction<'_>, id: Uuid, now: i64) -> Result<(), Str
         None
     };
     let count=tx.execute("UPDATE cloud_tasks SET state=CASE WHEN provider='asr' THEN 'submitted' ELSE 'pending' END,
-        next_attempt_ms=?2,error_code=NULL,updated_ms=?2,
+        next_attempt_ms=?2,error_code=NULL,updated_ms=?2,attempts=0,retry_failures=0,
         remote_id=coalesce(?3,remote_id),
         submit_attempts=CASE WHEN ?3 IS NOT NULL THEN 0 ELSE submit_attempts END
         WHERE id=?1 AND (state='failed' OR (state='complete' AND provider='asr' AND
@@ -2808,6 +2861,19 @@ pub fn retry_task_in(tx: &Transaction<'_>, id: Uuid, now: i64) -> Result<(), Str
         .map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+fn cloud_task_by_id(db: &Connection, id: Uuid) -> Result<CloudTask, String> {
+    db.query_row("SELECT provider,target_kind,target_id,target_version,model_id,started_ms,ended_ms,source,remote_id,attempts,submit_attempts,updated_ms FROM cloud_tasks WHERE id=?1", [id.to_string()], |r| {
+        Ok(CloudTask {
+            id, provider: if r.get::<_,String>(0)? == "llm" { CloudProvider::Llm } else { CloudProvider::Asr },
+            target_kind: r.get(1)?, target_id: r.get(2)?, target_version: r.get(3)?, model_id: r.get(4)?,
+            start: r.get(5)?, end: r.get(6)?, source: r.get(7)?,
+            remote_id: Uuid::parse_str(r.get::<_,Option<String>>(8)?.as_deref().unwrap_or(&id.to_string()))
+                .map_err(|error| rusqlite::Error::FromSqlConversionFailure(8, rusqlite::types::Type::Text, Box::new(error)))?,
+            attempts: r.get(9)?, submit_attempts: r.get(10)?, updated_ms: r.get(11)?,
+        })
+    }).map_err(|e| e.to_string())
 }
 
 pub fn defer_paused(db: &mut Connection, task: &CloudTask, now: i64) -> Result<(), String> {
@@ -2854,6 +2920,17 @@ pub fn task_failed_with_retry(
     let tx = db.unchecked_transaction().map_err(|e| e.to_string())?;
     let db = &tx;
     let attempts = task.attempts + 1;
+    let credential_wait = credential_error(error) || error == "provider_not_configured";
+    // Waiting for a local credential is not a failed provider attempt. Keep
+    // total attempts for diagnostics/backoff and a separate bounded retry fact.
+    let retry_failures: i64 = db
+        .query_row(
+            "SELECT retry_failures FROM cloud_tasks WHERE id=?1",
+            [task.id.to_string()],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    let retry_failures = retry_failures.saturating_add(i64::from(!credential_wait));
     let transient = error == "provider_deadline"
         || error == "provider_transport"
         || error == "provider_read_failed"
@@ -2875,9 +2952,9 @@ pub fn task_failed_with_retry(
             || error == "invalid_fit_schema"
             || error.starts_with("invalid_fit_boundary_"));
     let retry = if invalid_fit_output {
-        attempts < 3
+        retry_failures < 3
     } else {
-        transient
+        transient && (credential_wait || retry_failures < 8)
     };
     let scale = attempts.min(10);
     let base_delay = (30_000_i64 * scale * scale).min(10 * 60 * 1000);
@@ -2894,7 +2971,7 @@ pub fn task_failed_with_retry(
     let updated = db
         .execute(
             "UPDATE cloud_tasks SET state=?2,attempts=?3,next_attempt_ms=?4,
-        error_code=?5,updated_ms=CASE WHEN provider='asr' THEN updated_ms ELSE ?6 END
+        error_code=?5,retry_failures=?7,updated_ms=CASE WHEN provider='asr' THEN updated_ms ELSE ?6 END
         WHERE id=?1 AND state IN ('processing','submitted')",
             params![
                 task.id.to_string(),
@@ -2911,9 +2988,17 @@ pub fn task_failed_with_retry(
                 next,
                 error,
                 now
+                ,retry_failures
             ],
         )
         .map_err(|e| e.to_string())?;
+    if updated > 0 && error == "provider_http_402" {
+        db.execute(
+            "UPDATE cloud_queues SET blocked_reason='provider_http_402' WHERE provider=?1",
+            [provider_name(task.provider)],
+        )
+        .map_err(|e| e.to_string())?;
+    }
     if updated > 0 && task.provider == CloudProvider::Llm {
         db.execute(
             "UPDATE candidate_windows SET state=?2,error_code=?3 WHERE id=?1
@@ -3803,6 +3888,7 @@ pub fn voice_pcm_16k(
     directory: &Path,
     task: &CloudTask,
     parts: &[AudioPart],
+    context: &mut hear_protocol::LogContext,
 ) -> Result<Vec<f32>, String> {
     let wav = assemble_wav(directory, task, parts)?;
     let samples: Vec<f32> = wav
@@ -3814,6 +3900,9 @@ pub fn voice_pcm_16k(
     let power =
         samples.iter().map(|value| value * value).sum::<f32>() / samples.len().max(1) as f32;
     let clipped = samples.iter().filter(|value| value.abs() > 0.98).count();
+    context.rms_millionths = Some((power.sqrt() * 1_000_000.0) as u64);
+    context.clipped_ppm = Some((clipped * 1_000_000 / samples.len().max(1)) as u64);
+    context.sample_frames = Some(samples.len() as u64);
     if power.sqrt() < 0.005 || clipped * 20 > samples.len() {
         return Err("speaker audio level unsuitable".to_owned());
     }
@@ -3825,10 +3914,11 @@ pub fn voice_input_16k(
     directory: &Path,
     manifests: &[(CloudTask, Vec<AudioPart>)],
     composite: bool,
+    context: &mut hear_protocol::LogContext,
 ) -> Result<Vec<f32>, String> {
     let mut pcm = Vec::new();
     for (task, parts) in manifests {
-        let piece = voice_pcm_16k(directory, task, parts)?;
+        let piece = voice_pcm_16k(directory, task, parts, context)?;
         if composite && piece.iter().filter(|v| v.abs() >= 0.98).count() * 100 > piece.len() {
             return Err("speaker audio level unsuitable".into());
         }
@@ -5959,6 +6049,257 @@ mod tests {
     }
 
     #[test]
+    fn account_block_survives_restart_and_explicit_resume_does_not_replay_failed_work() {
+        let (mut db, task) = summary_fixture();
+        task_failed(&db, &task, "provider_http_402", 100_001).unwrap();
+        assert_eq!(
+            queue_states(&db).unwrap()[0].blocked_reason.as_deref(),
+            Some("provider_http_402")
+        );
+        init(&db).unwrap();
+        assert!(
+            configured(&db).unwrap_or(false) == false
+                || model(&db, CloudProvider::Llm).unwrap().is_some()
+        );
+        assert!(
+            take_task(&mut db, CloudProvider::Llm, 200_000)
+                .unwrap()
+                .is_none()
+        );
+        set_paused(&db, CloudProvider::Llm, true).unwrap();
+        set_paused(&db, CloudProvider::Llm, false).unwrap();
+        assert!(queue_states(&db).unwrap()[0].blocked_reason.is_none());
+        assert_eq!(
+            db.query_row::<String, _, _>(
+                "SELECT state FROM cloud_tasks WHERE id=?1",
+                [task.id.to_string()],
+                |r| r.get(0)
+            )
+            .unwrap(),
+            "failed"
+        );
+        assert!(
+            take_task(&mut db, CloudProvider::Llm, 200_001)
+                .unwrap()
+                .is_none()
+        );
+        retry_task(&db, task.id, 200_002).unwrap();
+        let retried = take_task(&mut db, CloudProvider::Llm, 200_003)
+            .unwrap()
+            .unwrap();
+        assert_eq!(retried.id, task.id);
+        assert_eq!(retried.attempts, 0);
+    }
+
+    #[test]
+    fn replayed_account_failure_cannot_reblock_after_explicit_recovery() {
+        for configure in [false, true] {
+            let (db, task) = summary_fixture();
+            task_failed(&db, &task, "provider_http_402", 100_001).unwrap();
+            if configure {
+                set_configured_with_credential(
+                    &db,
+                    CloudProvider::Llm,
+                    "deepseek-flash",
+                    &format!("deepseek:{}", Uuid::new_v4()),
+                )
+                .unwrap();
+            } else {
+                set_paused(&db, CloudProvider::Llm, false).unwrap();
+            }
+            // The request's account failure was committed under its outbound
+            // gate. A later common failure handler must be an idempotent replay.
+            task_failed(&db, &task, "provider_http_402", 100_002).unwrap();
+            assert!(queue_states(&db).unwrap()[0].blocked_reason.is_none());
+            assert_eq!(
+                db.query_row::<i64, _, _>(
+                    "SELECT retry_failures FROM cloud_tasks WHERE id=?1",
+                    [task.id.to_string()],
+                    |r| r.get(0)
+                )
+                .unwrap(),
+                1
+            );
+        }
+    }
+
+    #[test]
+    fn persistent_network_failures_stop_at_budget_and_manual_retry_keeps_paid_identity() {
+        let (db, mut task) = summary_fixture();
+        for attempt in 0..8 {
+            db.execute(
+                "UPDATE cloud_tasks SET state='processing' WHERE id=?1",
+                [task.id.to_string()],
+            )
+            .unwrap();
+            task.attempts = attempt;
+            task_failed(&db, &task, "provider_read_timeout", 100_001 + attempt).unwrap();
+            let state = db
+                .query_row::<String, _, _>(
+                    "SELECT state FROM cloud_tasks WHERE id=?1",
+                    [task.id.to_string()],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(state, if attempt < 7 { "pending" } else { "failed" });
+        }
+        retry_task(&db, task.id, 200_000).unwrap();
+        assert_eq!(
+            db.query_row::<i64, _, _>(
+                "SELECT attempts FROM cloud_tasks WHERE id=?1",
+                [task.id.to_string()],
+                |r| r.get(0)
+            )
+            .unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn stale_account_failure_cannot_unblock_the_provider_or_retry_a_replaced_target() {
+        let (db, task) = summary_fixture();
+        task_failed(&db, &task, "provider_http_402", 100_001).unwrap();
+        db.execute(
+            "UPDATE candidate_windows SET input_hash='newer-version' WHERE id=?1",
+            [&task.target_id],
+        )
+        .unwrap();
+        assert!(retry_task(&db, task.id, 200_000).is_err());
+        assert_eq!(
+            queue_states(&db).unwrap()[0].blocked_reason.as_deref(),
+            Some("provider_http_402")
+        );
+        set_configured_with_credential(
+            &db,
+            CloudProvider::Llm,
+            "deepseek-flash",
+            "new-test-reference",
+        )
+        .unwrap();
+        assert!(queue_states(&db).unwrap()[0].blocked_reason.is_none());
+    }
+
+    #[test]
+    fn credential_wait_does_not_spend_the_provider_retry_budget() {
+        let (db, mut task) = summary_fixture();
+        for attempt in 0..10 {
+            db.execute(
+                "UPDATE cloud_tasks SET state='processing' WHERE id=?1",
+                [task.id.to_string()],
+            )
+            .unwrap();
+            task.attempts = attempt;
+            task_failed(&db, &task, "credential_missing", 100_001 + attempt).unwrap();
+        }
+        assert_eq!(
+            db.query_row::<i64, _, _>(
+                "SELECT retry_failures FROM cloud_tasks WHERE id=?1",
+                [task.id.to_string()],
+                |r| r.get(0)
+            )
+            .unwrap(),
+            0
+        );
+        db.execute(
+            "UPDATE cloud_tasks SET state='processing' WHERE id=?1",
+            [task.id.to_string()],
+        )
+        .unwrap();
+        task_failed(&db, &task, "provider_read_timeout", 200_000).unwrap();
+        assert_eq!(
+            db.query_row::<String, _, _>(
+                "SELECT state FROM cloud_tasks WHERE id=?1",
+                [task.id.to_string()],
+                |r| r.get(0)
+            )
+            .unwrap(),
+            "pending"
+        );
+    }
+
+    #[test]
+    fn twenty_millisecond_missing_tail_is_real_missing_audio() {
+        let db = db();
+        media(&db, "tail", 1000, 4980);
+        assert!(utterance_has_retained_audio(&db, "microphone", 1000, 4980, false).unwrap());
+        assert!(!utterance_has_retained_audio(&db, "microphone", 1000, 5000, false).unwrap());
+        assert_eq!(
+            voice_manifest(&db, "microphone", 1000, 5000).unwrap_err(),
+            "speaker audio unavailable"
+        );
+    }
+
+    #[test]
+    fn local_failure_counts_use_failed_subset_and_preserve_source_and_overlap() {
+        let db = db();
+        for (id, source, state, attempts, retention, start, end) in [
+            (
+                "failed-mic",
+                "microphone",
+                "failed",
+                1,
+                "retain",
+                1_000,
+                3_000,
+            ),
+            (
+                "exhausted-sys",
+                "system",
+                "pending",
+                3,
+                "retain",
+                2_000,
+                4_000,
+            ),
+            (
+                "retryable",
+                "microphone",
+                "pending",
+                2,
+                "retain",
+                2_000,
+                4_000,
+            ),
+            (
+                "cleared",
+                "microphone",
+                "failed",
+                3,
+                "all_data",
+                2_000,
+                4_000,
+            ),
+            ("touching", "system", "failed", 1, "retain", 4_000, 5_000),
+        ] {
+            media(&db, id, start, end);
+            db.execute("UPDATE audio_blocks SET source=?2,analysis_state=?3,analysis_attempts=?4,retention_decision=?5 WHERE id=?1",
+                params![id,source,state,attempts,retention]).unwrap();
+        }
+        db.execute("INSERT INTO coarse_jobs(id,block_id,session_id,source,start_sample,end_sample,started_ms,ended_ms,state)
+            VALUES('coarse-failed','block','s','system',0,100,1500,3500,'failed')", []).unwrap();
+        assert_eq!(
+            asr::local_analysis_failures(&db, 2_500, 4_000, 1).unwrap(),
+            1
+        );
+        assert_eq!(
+            asr::local_analysis_failures(&db, 2_500, 4_000, 2).unwrap(),
+            2
+        );
+        assert_eq!(
+            asr::local_analysis_failures(&db, 2_500, 4_000, 3).unwrap(),
+            3
+        );
+        assert_eq!(
+            asr::local_analysis_failures(&db, 2_500, 4_000, 0).unwrap(),
+            0
+        );
+        assert_eq!(
+            asr::local_analysis_failures(&db, 5_000, 6_000, 3).unwrap(),
+            0
+        );
+    }
+
+    #[test]
     fn calendar_days_include_cross_day_material_and_notes_but_not_gaps_or_cleared_ranges() {
         let db = db();
         let day = 86_400_000;
@@ -6298,6 +6639,20 @@ mod tests {
         let second = take_task(&mut db, CloudProvider::Asr, 200_003)
             .unwrap()
             .unwrap();
+        task_failed(&db, &second, "provider_invalid_utterance_text", 200_004).unwrap();
+        let partial = event_detail(&db, id, 0, 100).unwrap();
+        assert_eq!(partial.processing_state, "partial_asr_failed");
+        assert_eq!(partial.precise_segments.len(), 1);
+        assert_eq!(partial.precise_segments[0].text, "第一句");
+        assert_eq!(
+            timeline(&db, 0, 1_000_000)
+                .unwrap()
+                .iter()
+                .find(|item| item.id == Some(id))
+                .unwrap()
+                .processing_state,
+            "partial_asr_failed"
+        );
         publish_asr(&mut db, &second, &[], 200_004).unwrap();
         assert_eq!(
             event_detail(&db, id, 0, 100).unwrap().processing_state,

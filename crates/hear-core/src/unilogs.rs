@@ -19,7 +19,7 @@ pub struct UniLogs {
 }
 
 impl UniLogs {
-    pub fn open(data_directory: &Path) -> Result<Self, String> {
+    pub fn open(data_directory: &Path, run_id: Uuid) -> Result<Self, String> {
         let directory = data_directory.join("logs");
         fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
         fs::set_permissions(&directory, fs::Permissions::from_mode(0o700))
@@ -28,7 +28,7 @@ impl UniLogs {
         Ok(Self {
             directory,
             file,
-            run_id: Uuid::new_v4(),
+            run_id,
             started: Instant::now(),
             vad_counts: [0; 3],
             summary_since: Instant::now(),
@@ -286,7 +286,7 @@ mod tests {
     #[test]
     fn log_filter_and_validation_exclude_free_text() {
         let directory = tempfile::tempdir().unwrap();
-        let mut logs = UniLogs::open(directory.path()).unwrap();
+        let mut logs = UniLogs::open(directory.path(), Uuid::new_v4()).unwrap();
         let id = Uuid::new_v4();
         logs.emit(
             ClientKind::Cli,
@@ -313,7 +313,7 @@ mod tests {
     #[test]
     fn correlation_connects_gui_and_core_without_personal_content() {
         let directory = tempfile::tempdir().unwrap();
-        let mut logs = UniLogs::open(directory.path()).unwrap();
+        let mut logs = UniLogs::open(directory.path(), Uuid::new_v4()).unwrap();
         let id = Uuid::new_v4();
         let mut gui = LogEvent::simple("gui", LogLevel::Info, "opened");
         gui.correlation_id = Some(id);
@@ -343,7 +343,7 @@ mod tests {
     #[test]
     fn summaries_do_not_hide_failures_and_filters_report_truncation() {
         let directory = tempfile::tempdir().unwrap();
-        let mut logs = UniLogs::open(directory.path()).unwrap();
+        let mut logs = UniLogs::open(directory.path(), Uuid::new_v4()).unwrap();
         let job = Uuid::new_v4();
         for _ in 0..700 {
             logs.emit(
@@ -403,7 +403,7 @@ mod tests {
     #[test]
     fn old_logs_parse_but_private_or_malformed_lines_are_not_exported() {
         let directory = tempfile::tempdir().unwrap();
-        let logs = UniLogs::open(directory.path()).unwrap();
+        let logs = UniLogs::open(directory.path(), Uuid::new_v4()).unwrap();
         let id = Uuid::new_v4();
         let good = serde_json::json!({"timestamp_ms":42,"run_id":id,"elapsed_ms":0,"client":"core","request_id":id,"component":"speech","level":"warn","event":"coarse_failed","error_code":"failed"});
         let mut private = good.clone();

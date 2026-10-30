@@ -13,9 +13,11 @@ test('ASR mapping and response errors are distinguished from transport failures'
   invalid_fit_boundary_overlap: '整理结果时间范围异常',
   invalid_fit_boundary_uncovered_speech: '整理结果遗漏了语音片段',
   provider_status_45000092: '云端未找到识别任务，可重试',
-  provider_http_429: '服务繁忙，请稍后重试',
-  provider_transport: '云端服务异常',
-  provider_http_503: '云端服务异常',
+  provider_http_429: '自动重试已停止，请检查网络或服务后手动重试',
+  provider_transport: '自动重试已停止，请检查网络或服务后手动重试',
+  provider_http_503: '自动重试已停止，请检查网络或服务后手动重试',
+  provider_http_402: '云端余额不足，请充值后手动重试',
+  provider_invalid_utterance_text: '识别结果格式异常',
   credential_missing: '请检查云端配置',
   audio_unavailable: '原声不可用',
  };
@@ -35,13 +37,14 @@ test('queued retries expose credential and transport failures instead of looking
   assert.match(taskStatus({state,error_code:'keychain_read_-25308'}), /重新打开 hear/);
  }
  assert.equal(taskStatus({state:'pending',error_code:'provider_transport'}),'等待重试 · 云端服务异常');
+ assert.equal(taskStatus({state:'pending',error_code:'provider_http_429'}),'等待重试 · 服务繁忙，请稍后重试');
  assert.equal(taskStatus({state:'pending',error_code:null}),'等待处理');
  assert.equal(taskStatus({state:'submitted',error_code:null}),'等待识别结果');
 });
 
 test('only rejected ASR results offer an explicit paid recognition', async () => {
  const { taskNeedsRecognition } = await import('../src/cloud-task-status.ts');
- const invalid=['provider_unmapped_timing','provider_unmapped_timing_word_in_separator','provider_invalid_timing','provider_invalid_utterance','provider_missing_utterances'];
+ const invalid=['provider_unmapped_timing','provider_unmapped_timing_word_in_separator','provider_invalid_timing','provider_invalid_utterance','provider_invalid_utterance_text','provider_missing_utterances'];
  for(const error_code of invalid) {
   assert.equal(taskNeedsRecognition({provider:'asr',state:'failed',error_code}),true);
   assert.equal(taskNeedsRecognition({provider:'llm',state:'failed',error_code}),false);
@@ -86,5 +89,6 @@ test('completed partial results distinguish empty audio and cropped text, with l
   assert.equal(processingLabel('partial_transcript',{empty:0,boundary_clipped:true}),'精转完成 · 边界处文字待核对');
   assert.equal(processingLabel('partial_transcript',{empty:2,boundary_clipped:true}),'精转完成 · 2 段无文字 · 边界处文字待核对');
   assert.equal(processingLabel('transcribing',{empty:2,boundary_clipped:false}),'精转中');
+  assert.equal(processingLabel('partial_asr_failed'),'部分精转失败 · 已完成文字保留');
  } finally {await server.close();}
 });

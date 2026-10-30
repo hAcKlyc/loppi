@@ -5,8 +5,8 @@ const settle = () => new Promise(resolve => setImmediate(resolve));
 function audio() {
  const nodes=[];
  const context={currentTime:0,destination:{},resume:async()=>{},suspend:async()=>{},close:async()=>{},
- decodeAudioData:async()=>({duration:5,sampleRate:48000,numberOfChannels:1}),
- createBufferSource(){const node={buffer:null,onended:null,when:null,stopped:false,connect(){},disconnect(){},start(t){this.when=t;},stop(){this.stopped=true;}};nodes.push(node);return node;}};
+ decodeWav:async()=>({duration:5,sampleRate:48000,numberOfChannels:1}),
+ createBufferSource(){const node={buffer:null,onended:null,when:null,stopped:false,connect(){},disconnect(){},start(t){this.when=t;return t;},stop(){this.stopped=true;}};nodes.push(node);return node;}};
  return {nodes,context,end(index){const n=nodes[index];context.currentTime=n.when+5;n.onended?.();}};
 }
 const chunk={wav_base64:'AA==',has_audio:true,next_audio_ms:null,generation:0};
@@ -82,4 +82,11 @@ test('late validity responses cannot cancel a new seek/source or resurrect close
  assert.equal(done,0);assert.equal(calls,2);assert.equal(a.nodes.length,0);
  resolve(true);await settle();await settle();assert.equal(a.nodes.length,1);
  player.dispose();assert.ok(a.nodes[0].stopped);
+});
+test('native scheduling failure on the first buffer fails immediately and releases it',async()=>{
+ const a=audio();const errors=[];let done=0;
+ const create=a.context.createBufferSource;
+ a.context.createBufferSource=()=>{const node=create();node.start=async()=>{throw Error('playback_device');};return node;};
+ const player=new ContinuousPlayback(async()=>chunk,()=>{},()=>done++,e=>errors.push(e),()=>a.context);
+ try {player.start(0,5000,'microphone');await settle();assert.equal(done,1);assert.equal(errors.length,1);assert.equal(a.nodes[0].buffer,null);}finally{player.dispose();}
 });

@@ -67,6 +67,10 @@ pub fn error_code(error: &str) -> String {
     }
     for (prefix, code) in [
         (
+            "microphone_stream_failed_kind_",
+            "microphone_stream_failed_kind",
+        ),
+        (
             "system audio capture failed at stage ",
             "system_audio_start_stage",
         ),

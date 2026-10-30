@@ -163,6 +163,7 @@ fn run() -> Result<(), String> {
     } else {
         LaunchMode::Login
     };
+    watch_test_owner()?;
 
     let directory = data_dir()?;
     fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
@@ -196,7 +197,7 @@ fn run() -> Result<(), String> {
         store.close_open_gaps(AudioSource::System)?;
     }
     let run_id = uuid::Uuid::new_v4();
-    let logs = LogWorker::start(directory.clone());
+    let logs = LogWorker::start(directory.clone(), run_id);
     let model_assets = model_pack::Assets::discover()?;
     let models = Arc::new(Mutex::new(ModelState {
         phase: ModelPhase::Checking,
@@ -205,11 +206,6 @@ fn run() -> Result<(), String> {
         speaker_error: None,
         speaker_phase: ModelPhase::Checking,
     }));
-    logs.emit(
-        ClientKind::Core,
-        uuid::Uuid::new_v4(),
-        LogEvent::simple("core", LogLevel::Info, "started"),
-    );
     let shared = Arc::new(CoreState {
         readers: reads::Pool::open(&directory.join("hear.sqlite"))?,
         store: Mutex::new(store),
@@ -514,8 +510,13 @@ fn ingestion_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
 // A cursor lets failed unlinks yield to later work, then retry next sweep.
 fn maintenance_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
     let mut after = String::new();
+    let mut last_optimize = Instant::now();
     while !stop.load(Ordering::Acquire) {
         if let Ok(mut store) = shared.store.lock() {
+            if last_optimize.elapsed() >= Duration::from_secs(3600) {
+                let _ = store.db.execute_batch("PRAGMA optimize;");
+                last_optimize = Instant::now();
+            }
             if let Ok(tx) = store.db.transaction() {
                 if retention::settle_unreachable(&tx).is_ok() {
                     let _ = tx.commit();
@@ -572,6 +573,8 @@ fn maintenance_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
 fn resource_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
     let mut blocked_since = None;
     let mut storage_metrics = serde_json::Value::Null;
+    let mut last_mode = shared.resources.mode();
+    let mut last_power = resources::power();
     while !stop.load(Ordering::Acquire) {
         let mut backlog = resources::Backlog {
             disk_free: fs2::available_space(&shared.directory).unwrap_or(0),
@@ -599,6 +602,14 @@ fn resource_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
               (SELECT started_ms,ended_ms FROM coarse_jobs WHERE state='pending' ORDER BY started_ms,id LIMIT 1024)",[now],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,i64>(1)?))) {
                 backlog.coarse_seconds=seconds.max(0) as u64;backlog.oldest_coarse_ms=now.saturating_sub(oldest).max(0) as u64;
             }
+            if let Ok((count, oldest)) = store.db.query_row("SELECT count(*),coalesce(min(started_ms),?1) FROM (
+                SELECT started_ms FROM (SELECT started_ms FROM voice_observations WHERE state='pending' ORDER BY updated_ms LIMIT 512)
+                UNION ALL SELECT started_ms FROM (SELECT started_ms FROM voice_enrollments WHERE state='pending' ORDER BY available_ms LIMIT 512))", [now],
+                |r| Ok((r.get::<_,i64>(0)?, r.get::<_,i64>(1)?))) {
+                backlog.voice_pending = count.max(0) as u64;
+                backlog.oldest_voice_ms = now.saturating_sub(oldest).max(0) as u64;
+            }
+            backlog.voice_last_success_ms = store.db.query_row("SELECT coalesce(max(updated_ms),0) FROM voice_observations WHERE state='ready'", [], |r| r.get::<_,i64>(0)).unwrap_or(0).max(0) as u64;
         } else {
             backlog.store_wait_ms = blocked_since
                 .get_or_insert_with(Instant::now)
@@ -606,11 +617,45 @@ fn resource_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
                 .as_millis() as u64;
         }
         shared.resources.sample(backlog);
+        let power = resources::power();
+        if power.generation != last_power.generation {
+            let mut event = LogEvent::simple("capture", LogLevel::Info, "power_changed");
+            event.context = Some(hear_protocol::LogContext {
+                cause: Some(
+                    if power.sleeping != 0 {
+                        "machine_sleep"
+                    } else {
+                        "full_wake"
+                    }
+                    .into(),
+                ),
+                start_ms: (power.sleep_ms > 0).then_some(power.sleep_ms),
+                ..Default::default()
+            });
+            shared
+                .logs
+                .emit(ClientKind::Core, uuid::Uuid::new_v4(), event);
+            last_power = power;
+        }
+        let mode = shared.resources.mode();
+        if mode != last_mode {
+            let mut event = LogEvent::simple("resources", LogLevel::Info, "mode_changed");
+            event.context = Some(hear_protocol::LogContext {
+                cause: Some(format!("{mode:?}").to_ascii_lowercase()),
+                footprint_bytes: shared.resources.diagnostics()["footprint_bytes"].as_u64(),
+                count: Some(backlog.voice_pending),
+                ..Default::default()
+            });
+            shared
+                .logs
+                .emit(ClientKind::Core, uuid::Uuid::new_v4(), event);
+            last_mode = mode;
+        }
         if shared.resources.mode() != resources::Mode::Normal {
             shared.readers.shrink();
         }
         let diagnostics = serde_json::json!({"schema":2,"build":hear_protocol::build_info("core"),"run_id":shared.run_id,"pid":std::process::id(),"observed_ms":now,
-            "resources":shared.resources.diagnostics(),"storage":storage_metrics,
+            "resources":shared.resources.diagnostics(),"storage":storage_metrics,"power":power,
             "wal_bytes":fs::metadata(shared.directory.join("hear.sqlite-wal")).map(|m|m.len()).ok()});
         // A bounded, replace-only diagnostic snapshot; it is not durable
         // business state and contains no audio, text, people or credentials.
@@ -1115,8 +1160,13 @@ fn cloud_loop(
             && last_refresh.elapsed() >= Duration::from_secs(15)
         {
             if let Ok(mut store) = shared.store.lock() {
-                if let Err(error) = events::refresh_candidates(&mut store.db, now, false) {
-                    eprintln!("hear-core event candidate refresh failed: {error}");
+                if events::refresh_candidates(&mut store.db, now, false).is_err() {
+                    let mut event =
+                        LogEvent::simple("events", LogLevel::Warn, "candidate_refresh_failed");
+                    event.error_code = Some("candidate_refresh_failed".into());
+                    shared
+                        .logs
+                        .emit(ClientKind::Core, uuid::Uuid::new_v4(), event);
                 }
             }
             last_refresh = Instant::now();
@@ -1194,6 +1244,12 @@ fn cloud_loop(
         event.context = Some(context);
         shared.logs.emit(ClientKind::Worker, task_id, event);
         if let Err(error) = outcome {
+            // Account failures were committed while their credential gate was
+            // held. Reapplying one here could race an explicit ASR retry, whose
+            // new state is already submitted, or a replacement configuration.
+            if error.code == "provider_http_402" {
+                continue;
+            }
             if let Ok(store) = shared.store.lock() {
                 let _ = events::task_failed_with_retry(
                     &store.db,
@@ -1242,7 +1298,7 @@ fn voice_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
         }) {
             worker = None;
         }
-        if shared.resources.mode() != resources::Mode::Normal {
+        if shared.resources.mode() == resources::Mode::Critical {
             shared.resources.no_work(resources::Work::Voice);
             matcher.clear();
             thread::sleep(Duration::from_millis(500));
@@ -1357,15 +1413,40 @@ fn voice_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
                             })
                             .collect::<Result<Vec<_>, String>>()
                     });
+                let mut voice_context = hear_protocol::LogContext {
+                    source: Some(if work.source == "microphone" {
+                        AudioSource::Microphone
+                    } else {
+                        AudioSource::System
+                    }),
+                    start_ms: Some(work.start),
+                    end_ms: Some(work.end),
+                    ..Default::default()
+                };
                 let result: Result<(Vec<f32>, Option<knowledge::VoiceQuality>), String> = manifest
                     .and_then(|manifests| {
                         events::voice_input_16k(
                             &shared.directory,
                             &manifests,
                             work.enrollment.is_some(),
+                            &mut voice_context,
                         )
                     })
+                    .map_err(|error| {
+                        // Preparation never invoked the model. A decode or
+                        // manifest failure means this input is unavailable,
+                        // regardless of a decoder's free-form wording.
+                        if voice_error_code(&error) == "audio_quality" {
+                            "speaker audio level unsuitable".to_owned()
+                        } else {
+                            "speaker audio unavailable".to_owned()
+                        }
+                    })
                     .and_then(|pcm| {
+                        let quality = knowledge::enrollment_quality(&pcm);
+                        if work.enrollment.is_some() && quality.is_none() {
+                            return Err("speaker audio level unsuitable".into());
+                        }
                         if worker.is_none() {
                             let exe = std::env::current_exe().map_err(|e| e.to_string())?;
                             worker = Some(
@@ -1377,28 +1458,27 @@ fn voice_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
                                 .managed(&shared.resources, resources::Work::Voice),
                             );
                         }
-                        let quality = knowledge::enrollment_quality(&pcm);
-                        if work.enrollment.is_some() && quality.is_none() {
-                            return Err("speaker audio level unsuitable".into());
+                        let response = worker.as_mut().unwrap().request(
+                            "microphone",
+                            "voice",
+                            0,
+                            &pcm,
+                            true,
+                            Duration::from_secs(30),
+                            &|| {
+                                stop.load(Ordering::Acquire)
+                                    || shared.resources.cancel(resources::Work::Voice)
+                            },
+                        );
+                        // Only a failed model/protocol operation retires a
+                        // healthy resident. Input failures bypass this branch.
+                        if response.is_err() {
+                            worker = None;
                         }
-                        worker
-                            .as_mut()
-                            .unwrap()
-                            .request(
-                                "microphone",
-                                "voice",
-                                0,
-                                &pcm,
-                                true,
-                                Duration::from_secs(30),
-                                &|| {
-                                    stop.load(Ordering::Acquire)
-                                        || shared.resources.cancel(resources::Work::Voice)
-                                },
-                            )
-                            .map(|vector| (vector, quality))
+                        response.map(|vector| (vector, quality))
                     });
                 let mut event = LogEvent::simple("identity", LogLevel::Info, "voice_processed");
+                event.context = Some(voice_context);
                 event.job_id = Some(work.segment_id);
                 match result {
                     Ok((vector, quality)) => {
@@ -1424,7 +1504,6 @@ fn voice_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
                         }
                     }
                     Err(error) => {
-                        worker = None;
                         let code = voice_error_code(&error);
                         if let Ok(store) = shared.store.lock() {
                             let _ = knowledge::fail_voice(&store.db, work.segment_id, code, now);
@@ -1456,7 +1535,12 @@ fn process_cloud_task(
     task: &events::CloudTask,
     now: i64,
 ) -> Result<(), cloud::Failure> {
-    let deadline = Instant::now() + Duration::from_secs(60);
+    let deadline = Instant::now()
+        + Duration::from_secs(if task.provider == hear_protocol::CloudProvider::Llm {
+            180
+        } else {
+            60
+        });
     let (current, model) = shared
         .store
         .lock()
@@ -1509,7 +1593,8 @@ fn process_cloud_task(
                 };
                 let key = active_cloud_credential(shared, task.provider)?;
                 let meter = usage::Recorder::task(shared, task.provider, task.id)?;
-                let output = cloud::describe_image(&key, &task.model_id, &png, deadline, &meter)?;
+                let output = cloud::describe_image(&key, &task.model_id, &png, deadline, &meter)
+                    .map_err(|error| record_account_failure(shared, task, error))?;
                 let mut store = shared.store.lock().map_err(|e| e.to_string())?;
                 moments::publish_image(&mut store.db, task, output, now_ms()?)?;
                 return Ok(());
@@ -1533,7 +1618,8 @@ fn process_cloud_task(
                 &input,
                 deadline,
                 &meter,
-            )?;
+            )
+            .map_err(|error| record_account_failure(shared, task, error))?;
             drop(outbound);
             let _event_gate = shared.asr_outbound.lock().map_err(|e| e.to_string())?;
             let count = {
@@ -1568,7 +1654,8 @@ fn process_cloud_task(
                 }
                 let key = active_cloud_credential(shared, task.provider)?;
                 let meter = usage::Recorder::task(shared, task.provider, task.id)?;
-                cloud::query_audio(&key, task.remote_id, deadline, &meter)?
+                cloud::query_audio(&key, task.remote_id, deadline, &meter)
+                    .map_err(|error| record_account_failure(shared, task, error))?
             };
             match query {
                 cloud::AsrQuery::Complete(utterances) => {
@@ -1655,13 +1742,45 @@ fn process_cloud_task(
                         audio_duration,
                         deadline,
                         &meter,
-                    )?;
+                    )
+                    .map_err(|error| record_account_failure(shared, task, error))?;
                     let store = shared.store.lock().map_err(|e| e.to_string())?;
                     events::asr_wait(&store.db, task, now_ms()?).map_err(Into::into)
                 }
             }
         }
     }
+}
+
+// Call only while holding this provider's outbound gate. Configuration swaps
+// and retires Keychain references under the same gate.
+fn record_account_failure(
+    shared: &CoreState,
+    task: &events::CloudTask,
+    mut error: cloud::Failure,
+) -> cloud::Failure {
+    if error.code == "provider_http_402" {
+        // Commit the account fact before releasing the credential's gate. A
+        // newly verified configuration can then clear it without a late old
+        // response blocking the replacement account. The outer task handler
+        // logs this outcome without applying a second account transition.
+        let saved = shared.store.lock().map_err(|_| ()).and_then(|store| {
+            events::task_failed_with_retry(
+                &store.db,
+                task,
+                &error.code,
+                error.retry_after_ms,
+                now_ms().unwrap_or(task.updated_ms),
+            )
+            .map_err(|_| ())
+        });
+        if saved.is_err() {
+            // A storage failure must not later apply this old account fact
+            // outside the gate. The common handler still records the failure.
+            error.code = "cloud_failure_persist_failed".into();
+        }
+    }
+    error
 }
 
 // Call only while holding this provider's outbound gate. Configuration swaps
@@ -1838,6 +1957,10 @@ fn start_source(shared: &Arc<CoreState>, source: AudioSource) -> SourceSlot {
             },
         );
         event.capture_span_id = Some(session_id);
+        let capture_metrics = source_shared
+            .resources
+            .capture_metrics(source_name(source), session_id);
+        let capacity = source_shared.store.lock().ok().and_then(|s| s.state().ok());
         event.context = Some(hear_protocol::LogContext {
             source: Some(source),
             main_display_asleep: system_audio::main_display_asleep(),
@@ -1846,6 +1969,11 @@ fn start_source(shared: &Arc<CoreState>, source: AudioSource) -> SourceSlot {
                 .as_ref()
                 .err()
                 .and_then(|error| source_process::clock_delta_ms(error)),
+            dropped_frames: capture_metrics.as_ref().map(|m| m.dropped_frames),
+            queued_ms: capture_metrics.as_ref().map(|m| m.queued_ms),
+            used_bytes: capacity.as_ref().map(|s| s.audio_used_bytes),
+            limit_bytes: capacity.as_ref().map(|s| s.audio_limit_bytes),
+            free_bytes: fs2::available_space(&source_shared.directory).ok(),
             ..Default::default()
         });
         if let Err(error) = &result {
@@ -1891,16 +2019,25 @@ fn capture_supervisor(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
     let mut system_was_wanted = false;
     let mut previous_wall = SystemTime::now();
     let mut previous_monotonic = Instant::now();
+    let mut previous_power = resources::power();
     while !stop.load(Ordering::Acquire) {
         let wall = SystemTime::now();
         let monotonic = Instant::now();
-        let slept = wall
+        let clock_gap = wall
             .duration_since(previous_wall)
             .ok()
             .zip(Some(monotonic.duration_since(previous_monotonic)))
             .is_some_and(|(wall_elapsed, monotonic_elapsed)| {
                 wall_elapsed > monotonic_elapsed + Duration::from_secs(2)
             });
+        let power = resources::power();
+        let suspended = power.available != 0 && power.sleeping != 0;
+        let slept = if power.available != 0 {
+            power.generation != previous_power.generation
+        } else {
+            clock_gap
+        };
+        previous_power = power;
         previous_wall = wall;
         previous_monotonic = monotonic;
 
@@ -1913,6 +2050,12 @@ fn capture_supervisor(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
                     && store.settle_schedule().unwrap_or(false)
                 {
                     shared.allow_capture.store(true, Ordering::Release);
+                }
+                if slept && power.available != 0 && power.sleep_ms > 0 {
+                    // A helper may already have failed and left its slot
+                    // before sleep. Its durable tail gap still owns this
+                    // boundary, even while that source is only in backoff.
+                    store.record_open_sleep_gaps(power.sleep_ms)?;
                 }
                 Ok((store.state()?, events::configured(&store.db)?))
             });
@@ -1956,12 +2099,12 @@ fn capture_supervisor(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
             if slept {
                 reset_capture_retry(retry_at, retry_delay);
             }
-            let should_stop = slept || !wanted;
+            let should_stop = suspended || slept || !wanted;
             if let Some(current) = slot.as_mut() {
                 if should_stop {
                     current.stop.store(true, Ordering::Release);
                 }
-                current.slept |= slept;
+                current.slept |= suspended || slept;
             }
             // A stopping HAL source must not delay control of the other source.
             let finished = slot
@@ -1973,8 +2116,11 @@ fn capture_supervisor(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
                 let _ = current.join.join();
                 if current.slept {
                     if let Ok(mut store) = shared.store.lock() {
-                        let _ = store
-                            .record_gap_after_session(current.session_id, "sleep_or_clock_gap");
+                        let _ = if power.available != 0 && power.sleep_ms > 0 {
+                            store.record_sleep_gap(current.session_id, power.sleep_ms)
+                        } else {
+                            store.record_gap_after_session(current.session_id, "sleep_or_clock_gap")
+                        };
                     }
                 }
                 if ended_unexpectedly {
@@ -2006,6 +2152,7 @@ fn capture_supervisor(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
             if wanted
                 && slot.is_none()
                 && !slept
+                && !suspended
                 && Instant::now() >= *retry_at
                 && busy
                     .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
@@ -2089,6 +2236,27 @@ struct CaptureRuntime {
 }
 
 impl CoreState {
+    fn prepare_gui_playback(&self) -> Result<(), String> {
+        let deadline = Instant::now() + Duration::from_secs(6);
+        loop {
+            let active = self
+                .capture
+                .lock()
+                .map_err(|e| e.to_string())?
+                .system_active;
+            if !active && !self.system_busy.load(Ordering::Acquire) {
+                return Ok(());
+            }
+            let generation = system_audio::playback_exclusion_generation();
+            if self.resources.playback_excluded(generation) {
+                return Ok(());
+            }
+            if Instant::now() >= deadline {
+                return Err("playback_exclusion_unavailable".into());
+            }
+            thread::sleep(Duration::from_millis(50));
+        }
+    }
     fn outbound_gate(&self, provider: hear_protocol::CloudProvider) -> &Mutex<()> {
         match provider {
             hear_protocol::CloudProvider::Llm => &self.llm_outbound,
@@ -2101,6 +2269,12 @@ impl CoreState {
         let cloud_ready = events::configured(&store.db)?;
         drop(store);
         state.disk_free_bytes = fs2::available_space(&self.directory).unwrap_or(0);
+        state.storage_recoverable = state.storage_paused
+            && storage_has_capacity(
+                state.audio_used_bytes,
+                state.audio_limit_bytes,
+                state.disk_free_bytes,
+            );
         state.storage_warning = !state.storage_paused
             && (state.audio_used_bytes >= state.audio_limit_bytes.saturating_mul(85) / 100
                 || state.disk_free_bytes <= 2 * 1_073_741_824);
@@ -2206,12 +2380,12 @@ struct LogWorker {
 }
 
 impl LogWorker {
-    fn start(directory: std::path::PathBuf) -> Self {
+    fn start(directory: std::path::PathBuf, run_id: uuid::Uuid) -> Self {
         let (sender, receiver) = mpsc::sync_channel(1024);
         let dropped = Arc::new(AtomicU64::new(0));
         let pending_drops = Arc::clone(&dropped);
         thread::spawn(move || {
-            let mut logs = match unilogs::UniLogs::open(&directory) {
+            let mut logs = match unilogs::UniLogs::open(&directory, run_id) {
                 Ok(logs) => Some(logs),
                 Err(error) => {
                     eprintln!("hear-core unilogs unavailable: {error}");
@@ -2472,7 +2646,29 @@ fn read_response(id: uuid::Uuid, result: Result<Response, String>) -> Response {
 }
 
 fn ipc_failure(shared: &CoreState, id: Option<uuid::Uuid>, command: Option<&str>, code: &str) {
-    let mut event = LogEvent::simple("ipc", LogLevel::Warn, "request_failed");
+    shared.logs.emit(
+        ClientKind::Core,
+        id.unwrap_or_else(uuid::Uuid::new_v4),
+        ipc_failure_event(id, command, code),
+    );
+}
+
+fn ipc_failure_event(id: Option<uuid::Uuid>, command: Option<&str>, code: &str) -> LogEvent {
+    let cancelled =
+        matches!(command, Some("app_opened" | "status")) && code == "ipc_write_disconnected";
+    let mut event = LogEvent::simple(
+        "ipc",
+        if cancelled {
+            LogLevel::Info
+        } else {
+            LogLevel::Warn
+        },
+        if cancelled {
+            "request_cancelled"
+        } else {
+            "request_failed"
+        },
+    );
     event.error_code = Some(code.to_owned());
     event.correlation_id = id;
     event.context = command.map(|command| hear_protocol::LogContext {
@@ -2480,11 +2676,7 @@ fn ipc_failure(shared: &CoreState, id: Option<uuid::Uuid>, command: Option<&str>
         cause: Some(code.into()),
         ..Default::default()
     });
-    shared.logs.emit(
-        ClientKind::Core,
-        id.unwrap_or_else(uuid::Uuid::new_v4),
-        event,
-    );
+    event
 }
 
 fn ipc_io_code(error: &std::io::Error, writing: bool) -> &'static str {
@@ -3468,8 +3660,14 @@ fn handle_request(
                 to_ms,
                 sources,
             } => {
-                let _gate = shared.cleanup_gate.lock().map_err(|e| e.to_string())?;
-                let result = shared.readers.snapshot().and_then(|db| {
+                let prepared = if matches!(envelope.client, ClientKind::Gui) {
+                    shared.prepare_gui_playback()
+                } else {
+                    Ok(())
+                };
+                let result = prepared.and_then(|()| {
+                    let _gate = shared.cleanup_gate.lock().map_err(|e| e.to_string())?;
+                    let db = shared.readers.snapshot()?;
                     let chunk = playback::chunk(&db, &shared.directory, from_ms, to_ms, sources)?;
                     Ok((chunk, playback::generation(&db)?))
                 });
@@ -3487,7 +3685,11 @@ fn handle_request(
                     }
                     Err(message) => Response::Error {
                         id: envelope.id,
-                        code: "playback_unavailable".into(),
+                        code: if message == "playback_exclusion_unavailable" {
+                            message.clone()
+                        } else {
+                            "playback_unavailable".into()
+                        },
                         message,
                     },
                 }
@@ -4258,6 +4460,60 @@ fn now_ms() -> Result<i64, String> {
     i64::try_from(duration.as_millis()).map_err(|error| error.to_string())
 }
 
+// Opt-in only. A test runner owns its disposable Core even when a CLI starts
+// it indirectly. kqueue binds to that process lifetime, avoiding PID reuse and
+// leaving ordinary Login ownership entirely unchanged.
+fn watch_test_owner() -> Result<(), String> {
+    let Some(owner) = std::env::var_os("HEAR_TEST_PARENT_PID") else {
+        return Ok(());
+    };
+    let owner: i32 = owner
+        .to_str()
+        .and_then(|v| v.parse().ok())
+        .filter(|v| *v > 1 && *v != std::process::id() as i32)
+        .ok_or("invalid test owner pid")?;
+    if std::env::var_os("HEAR_DATA_DIR").is_none() {
+        return Err("test owner requires explicit disposable data directory".into());
+    }
+    let queue = unsafe { libc::kqueue() };
+    if queue < 0 {
+        return Err("test owner watch unavailable".into());
+    }
+    let change = libc::kevent {
+        ident: owner as usize,
+        filter: libc::EVFILT_PROC,
+        flags: libc::EV_ADD | libc::EV_ENABLE | libc::EV_ONESHOT,
+        fflags: libc::NOTE_EXIT,
+        data: 0,
+        udata: std::ptr::null_mut(),
+    };
+    if unsafe { libc::kevent(queue, &change, 1, std::ptr::null_mut(), 0, std::ptr::null()) } != 0 {
+        unsafe {
+            libc::close(queue);
+        }
+        return Err("test owner watch registration failed".into());
+    }
+    thread::spawn(move || {
+        let mut event: libc::kevent = unsafe { std::mem::zeroed() };
+        loop {
+            let result = unsafe {
+                libc::kevent(queue, std::ptr::null(), 0, &mut event, 1, std::ptr::null())
+            };
+            if result < 0
+                && std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted
+            {
+                continue;
+            }
+            // A blocked native/model thread must not keep a disposable Core
+            // alive after its owner; avoid racing C++ atexit destructors.
+            unsafe {
+                libc::_exit(70);
+            }
+        }
+    });
+    Ok(())
+}
+
 fn mutation_error_code(error: &str, fallback: &str) -> String {
     if error.starts_with("revision_conflict:") {
         "revision_conflict".into()
@@ -4399,6 +4655,10 @@ impl Store {
         )?;
         schedule::init(&db)?;
         archive::init(&db)?;
+        // SQLite 3.46+ bounds analysis internally. Check all tables on opening
+        // this long-lived writer, after migrations have created their indexes.
+        db.execute_batch("PRAGMA optimize=0x10002;")
+            .map_err(|e| e.to_string())?;
         Ok(Self {
             db,
             transaction_ms: Default::default(),
@@ -4637,6 +4897,42 @@ impl Store {
         tx.commit().map_err(|e| e.to_string())
     }
 
+    fn record_open_sleep_gaps(&mut self, sleep_ms: i64) -> Result<(), String> {
+        let sessions = self
+            .db
+            .prepare(
+                "SELECT DISTINCT tail_session_id FROM media_gaps
+            WHERE ended_ms IS NULL AND tail_session_id IS NOT NULL
+            AND reason NOT IN ('manual_pause','schedule_pause','storage_limit','source_disabled')",
+            )
+            .map_err(|error| error.to_string())?
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|error| error.to_string())?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|error| error.to_string())?;
+        for id in sessions {
+            self.record_sleep_gap(
+                uuid::Uuid::parse_str(&id).map_err(|error| error.to_string())?,
+                sleep_ms,
+            )?;
+        }
+        Ok(())
+    }
+
+    fn record_sleep_gap(&mut self, session_id: uuid::Uuid, sleep_ms: i64) -> Result<(), String> {
+        let tx = self.db.transaction().map_err(|e| e.to_string())?;
+        let id = session_id.to_string();
+        ingestion::record_tail_gap(&tx, &id, "source_failure")?;
+        // Preserve a real failure preceding sleep. Late journal import still
+        // shortens both pieces through their existing tail_session_id owner.
+        tx.execute("INSERT INTO media_gaps(id,source,started_ms,ended_ms,reason,tail_session_id)
+            SELECT lower(hex(randomblob(16))),source,?2,ended_ms,'machine_sleep',tail_session_id
+            FROM media_gaps WHERE tail_session_id=?1 AND started_ms<?2 AND coalesce(ended_ms,?2+1)>?2", params![id,sleep_ms]).map_err(|e| e.to_string())?;
+        tx.execute("UPDATE media_gaps SET ended_ms=?2 WHERE tail_session_id=?1 AND started_ms<?2 AND coalesce(ended_ms,?2+1)>?2",params![id,sleep_ms]).map_err(|e| e.to_string())?;
+        tx.execute("UPDATE media_gaps SET reason='machine_sleep' WHERE tail_session_id=?1 AND started_ms>=?2",params![id,sleep_ms]).map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())
+    }
+
     fn close_open_gaps(&mut self, source: AudioSource) -> Result<(), String> {
         let at = now_ms()?;
         self.db
@@ -4751,7 +5047,11 @@ impl Store {
             )
             .map_err(|error| error.to_string())?;
         let free = fs2::available_space(directory).map_err(|error| error.to_string())?;
-        Ok(used < limit && free > 1_073_741_824)
+        Ok(storage_has_capacity(
+            used.max(0) as u64,
+            limit.max(0) as u64,
+            free,
+        ))
     }
 
     fn pause_storage(&mut self) -> Result<(), String> {
@@ -5257,6 +5557,10 @@ fn prior_mutation_response(
     }
 }
 
+fn storage_has_capacity(used: u64, limit: u64, free: u64) -> bool {
+    used < limit && free > 1_073_741_824
+}
+
 fn read_state(db: &Connection) -> Result<ServiceState, String> {
     let recording_schedule = schedule::view(db)?;
     db.query_row(
@@ -5273,6 +5577,7 @@ fn read_state(db: &Connection) -> Result<ServiceState, String> {
                 enabled_intent: row.get(1)?,
                 paused_intent: row.get(2)?,
                 storage_paused: row.get(5)?,
+                storage_recoverable: false,
                 audio_used_bytes: row.get::<_, i64>(6)?.max(0) as u64,
                 audio_limit_bytes: row.get::<_, i64>(7)?.max(0) as u64,
                 disk_free_bytes: 0,
@@ -5365,7 +5670,7 @@ mod tests {
         assert_eq!((context.start_ms, context.end_ms), (Some(1000), Some(2000)));
         assert_eq!(context.source, Some(AudioSource::Microphone));
         let directory = tempfile::tempdir().unwrap();
-        let mut logs = unilogs::UniLogs::open(directory.path()).unwrap();
+        let mut logs = unilogs::UniLogs::open(directory.path(), uuid::Uuid::new_v4()).unwrap();
         let now = now_ms().unwrap();
         logs.emit(ClientKind::Worker, Uuid::new_v4(), event);
         let filter = hear_protocol::DiagnosticFilter {
@@ -5519,6 +5824,128 @@ mod tests {
     }
 
     #[test]
+    fn recovered_capacity_stays_manual() {
+        assert!(storage_has_capacity(99, 100, 1_073_741_825));
+        assert!(!storage_has_capacity(100, 100, 1_073_741_825));
+        assert!(!storage_has_capacity(99, 100, 1_073_741_824));
+        let mut store = Store::new(Connection::open_in_memory().unwrap()).unwrap();
+        store.pause_storage().unwrap();
+        let reopened = Store::new(store.db).unwrap();
+        assert!(reopened.state().unwrap().storage_paused);
+    }
+
+    #[test]
+    fn sleep_gap_does_not_relabel_the_preceding_capture_failure() {
+        let mut store = Store::new(Connection::open_in_memory().unwrap()).unwrap();
+        let id = uuid::Uuid::new_v4();
+        store
+            .db
+            .execute(
+                "INSERT INTO recording_sessions VALUES(?1,'microphone',1000,2000,9000,'failed')",
+                [id.to_string()],
+            )
+            .unwrap();
+        store.record_sleep_gap(id, 5000).unwrap();
+        let rows = store
+            .db
+            .prepare("SELECT started_ms,ended_ms,reason FROM media_gaps ORDER BY started_ms")
+            .unwrap()
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, Option<i64>>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
+            })
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(
+            rows,
+            vec![
+                (2000, Some(5000), "source_failure".into()),
+                (5000, None, "machine_sleep".into())
+            ]
+        );
+    }
+
+    #[test]
+    fn sleep_during_source_backoff_splits_the_durable_gap_without_a_slot() {
+        let mut store = Store::new(Connection::open_in_memory().unwrap()).unwrap();
+        let failed = Uuid::new_v4();
+        store
+            .db
+            .execute(
+                "INSERT INTO recording_sessions(id,source,started_ms,last_confirmed_ms,ended_ms,state) VALUES(?1,'microphone',1000,2000,NULL,'open')",
+                [failed.to_string()],
+            )
+            .unwrap();
+        store.end_recording_session(failed, false).unwrap();
+        // The supervisor has already joined the failed helper and discarded
+        // its slot. A power transition must act on its durable gap anyway.
+        let slot: Option<SourceSlot> = None;
+        let mut retry_delay = Duration::from_secs(30);
+        let mut retry_at = Instant::now() + retry_delay;
+        assert!(slot.is_none());
+        reset_capture_retry(&mut retry_at, &mut retry_delay);
+        store.record_open_sleep_gaps(5000).unwrap();
+        // Completed wake may deliver the boundary again. It remains idempotent
+        // through the old session owner, rather than inventing a new gap owner.
+        store.record_open_sleep_gaps(5000).unwrap();
+        let rows = store.db.prepare("SELECT started_ms,ended_ms,reason,tail_session_id FROM media_gaps ORDER BY started_ms").unwrap().query_map([], |r| Ok((r.get::<_,i64>(0)?,r.get::<_,Option<i64>>(1)?,r.get::<_,String>(2)?,r.get::<_,String>(3)?))).unwrap().collect::<rusqlite::Result<Vec<_>>>().unwrap();
+        assert_eq!(
+            rows,
+            vec![
+                (
+                    2000,
+                    Some(5000),
+                    "source_failure".into(),
+                    failed.to_string()
+                ),
+                (5000, None, "machine_sleep".into(), failed.to_string())
+            ]
+        );
+        assert_eq!(retry_delay, Duration::ZERO);
+        let recovered = Uuid::new_v4();
+        store
+            .start_recording_session(
+                recovered,
+                AudioSource::Microphone,
+                Uuid::new_v4(),
+                record::ClockAnchor::now().unwrap(),
+            )
+            .unwrap();
+        let ended: i64 = store
+            .db
+            .query_row(
+                "SELECT ended_ms FROM media_gaps WHERE reason='machine_sleep'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let restarted: i64 = store
+            .db
+            .query_row(
+                "SELECT started_ms FROM recording_sessions WHERE id=?1",
+                [recovered.to_string()],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(ended, restarted);
+        assert_eq!(
+            store
+                .db
+                .query_row::<i64, _, _>(
+                    "SELECT ended_ms FROM media_gaps WHERE reason='source_failure'",
+                    [],
+                    |r| r.get(0)
+                )
+                .unwrap(),
+            5000
+        );
+    }
+
+    #[test]
     fn speaker_input_quality_is_not_reported_as_missing_audio() {
         assert_eq!(
             voice_error_code("speaker audio range unsuitable"),
@@ -5563,7 +5990,9 @@ mod tests {
         )
         .unwrap();
         let (task, parts) = events::voice_manifest(&db, "microphone", 0, 3_000).unwrap();
-        let missing = events::voice_pcm_16k(directory.path(), &task, &parts).unwrap_err();
+        let missing =
+            events::voice_pcm_16k(directory.path(), &task, &parts, &mut Default::default())
+                .unwrap_err();
         assert_eq!(voice_error_code(&missing), "audio_unavailable");
 
         let media_directory = directory.path().join("media/microphone");
@@ -5571,7 +6000,8 @@ mod tests {
         let mut block = media::OpusBlock::create(&media_directory, id).unwrap();
         block.push(&vec![0.0; 144_000]).unwrap();
         block.seal().unwrap();
-        let quiet = events::voice_pcm_16k(directory.path(), &task, &parts).unwrap_err();
+        let quiet = events::voice_pcm_16k(directory.path(), &task, &parts, &mut Default::default())
+            .unwrap_err();
         assert_eq!(voice_error_code(&quiet), "audio_quality");
     }
 
@@ -5752,6 +6182,41 @@ mod tests {
             capture_retry_delay(delay, record::RATE as u64 * 60),
             Duration::from_secs(2)
         );
+    }
+
+    #[test]
+    fn abandoned_observations_do_not_hide_mutation_or_timeout_failures() {
+        let id = Uuid::new_v4();
+        for command in ["status", "app_opened", "resume", "timeline"] {
+            for error in [
+                "ipc_write_disconnected",
+                "ipc_write_timeout",
+                "ipc_execute_failed",
+            ] {
+                let event = ipc_failure_event(Some(id), Some(command), error);
+                let cancelled =
+                    matches!(command, "status" | "app_opened") && error == "ipc_write_disconnected";
+                assert_eq!(
+                    event.level,
+                    if cancelled {
+                        LogLevel::Info
+                    } else {
+                        LogLevel::Warn
+                    }
+                );
+                assert_eq!(
+                    event.event,
+                    if cancelled {
+                        "request_cancelled"
+                    } else {
+                        "request_failed"
+                    }
+                );
+                assert_eq!(event.correlation_id, Some(id));
+                assert_eq!(event.error_code.as_deref(), Some(error));
+                assert!(crate::unilogs::valid_event(&event));
+            }
+        }
     }
 
     #[test]

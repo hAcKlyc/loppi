@@ -114,3 +114,7 @@ test('confirming an accepted control still in flight retains its ID until its re
   assert.equal(main.isUncertain('control'),false);
  } finally { clearMocks(); }
 });
+test('recovered capacity keeps recording paused and offers the host resume control', () => {
+ const view=captureStatusView(snapshot('sleeping', {storage_paused:true,storage_recoverable:true,microphone_recording:false,system_recording:false}, {control:'resume'}));
+ assert.equal(view.label,'已暂停'); assert.equal(view.subtitle,'空间已恢复，可继续记录'); assert.equal(view.action,'resume');
+});

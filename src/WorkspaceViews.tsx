@@ -243,25 +243,29 @@ export function QueueView({
 										</h2>
 										<p>
 											{queue.configured
-												? queue.paused
-													? "已暂停"
-													: "运行中"
+												? queue.blocked_reason === "provider_http_402"
+													? "余额不足，充值后继续；失败项需手动重试"
+													: queue.paused
+														? "已暂停"
+														: "运行中"
 												: "尚未配置"}
 										</p>
 									</div>
 									<button
 										type="button"
-										className={`switch ${!queue.paused && queue.configured ? "on" : ""}`}
-										aria-label={`${queue.paused ? "继续" : "暂停"}${queue.provider === "llm" ? "事件与图片理解" : "精确转录"}`}
+										className={`switch ${!queue.paused && !queue.blocked_reason && queue.configured ? "on" : ""}`}
+										aria-label={`${queue.paused || queue.blocked_reason ? "继续" : "暂停"}${queue.provider === "llm" ? "事件与图片理解" : "精确转录"}`}
 										disabled={busy || !queue.configured}
 										onClick={() =>
 											void onMutate(
 												{
 													type: "set_cloud_paused",
 													provider: queue.provider,
-													paused: !queue.paused,
+													paused: !queue.paused && !queue.blocked_reason,
 												},
-												queue.paused ? "队列已继续" : "队列已暂停",
+												queue.paused || queue.blocked_reason
+													? "队列已继续"
+													: "队列已暂停",
 											)
 										}
 									/>

@@ -9,7 +9,7 @@ use security_framework::passwords::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::io::Read;
+use std::io::{BufRead, BufReader, Read};
 use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
@@ -21,6 +21,9 @@ const DEEPSEEK_URL: &str = "https://api.deepseek.com/chat/completions";
 const VOLC_SUBMIT: &str = "https://openspeech.bytedance.com/api/v3/auc/bigmodel/submit";
 const VOLC_QUERY: &str = "https://openspeech.bytedance.com/api/v3/auc/bigmodel/query";
 const VOLC_RESOURCE: &str = "volc.seedasr.auc";
+fn offline_test() -> bool {
+    std::env::var_os("HEAR_TEST_PARENT_PID").is_some()
+}
 
 fn account(provider: CloudProvider) -> &'static str {
     match provider {
@@ -42,6 +45,9 @@ fn valid_reference(provider: CloudProvider, reference: &str) -> bool {
 }
 
 pub fn credential(provider: CloudProvider, reference: &str) -> Result<Option<String>, String> {
+    if offline_test() {
+        return Err("test_offline".into());
+    }
     if !valid_reference(provider, reference) {
         return Err("cloud credential reference is invalid".to_owned());
     }
@@ -89,6 +95,9 @@ pub fn check_credentials(database: &std::path::Path) -> Result<Value, String> {
 }
 
 pub fn save_credential(provider: CloudProvider, secret: &str) -> Result<String, String> {
+    if offline_test() {
+        return Err("test_offline".into());
+    }
     if secret.len() < 8 || secret.len() > 4096 || secret.chars().any(char::is_control) {
         return Err("invalid cloud credential format".to_owned());
     }
@@ -102,6 +111,9 @@ pub fn save_credential(provider: CloudProvider, secret: &str) -> Result<String, 
 }
 
 pub fn delete_credential(reference: &str) -> Result<(), String> {
+    if offline_test() {
+        return Err("test_offline".into());
+    }
     let _guard = keychain_access()
         .lock()
         .map_err(|_| "keychain_delete_lock".to_owned())?;
@@ -178,8 +190,95 @@ fn checked_response(
     }
 }
 
+#[cfg(test)]
 fn json_response(response: Result<ureq::Response, ureq::Error>) -> Result<Value, Failure> {
-    parse_body(checked_response(response)?).map_err(Into::into)
+    let response = checked_response(response).map_err(|mut e| {
+        e.context.cause = Some("response_headers".into());
+        e
+    })?;
+    parse_body(response).map_err(|code| {
+        let mut failure = Failure::from(code);
+        failure.context.cause = Some("response_body".into());
+        failure
+    })
+}
+
+// Streaming lets thinking responses make observable progress without discarding
+// a paid request at the old 60s boundary. The request still has an absolute
+// deadline, an idle-read timeout, and a bounded total response. Reasoning is
+// consumed but never retained, published or logged.
+fn streamed_chat(response: Result<ureq::Response, ureq::Error>) -> Result<Value, Failure> {
+    let response = checked_response(response).map_err(|mut e| {
+        e.context.cause = Some("response_headers".into());
+        e
+    })?;
+    let mut reader = BufReader::new(response.into_reader().take(8_000_001));
+    let mut bytes = 0;
+    let mut line = String::new();
+    let mut data = String::new();
+    let mut content = String::new();
+    let mut finish = Value::Null;
+    let mut usage = Value::Null;
+    loop {
+        line.clear();
+        let count = reader.read_line(&mut line).map_err(|e| {
+            let mut failure = Failure::from(
+                if matches!(
+                    e.kind(),
+                    std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+                ) {
+                    "provider_read_timeout".to_owned()
+                } else {
+                    "provider_read_failed".to_owned()
+                },
+            );
+            failure.context.cause = Some("response_body".into());
+            failure
+        })?;
+        bytes += count;
+        if bytes > 8_000_000 {
+            return Err("provider_response_too_large".to_owned().into());
+        }
+        if count == 0 {
+            return Err("provider_incomplete_output".to_owned().into());
+        }
+        if line.trim().is_empty() {
+            if data.is_empty() {
+                continue;
+            }
+            if data.trim() == "[DONE]" {
+                if finish.is_null() {
+                    return Err("provider_incomplete_output".to_owned().into());
+                }
+                return Ok(
+                    json!({"choices":[{"message":{"content":content},"finish_reason":finish}],"usage":usage}),
+                );
+            }
+            let chunk: Value =
+                serde_json::from_str(&data).map_err(|_| "provider_invalid_json".to_owned())?;
+            if let Some(delta) = chunk
+                .pointer("/choices/0/delta/content")
+                .and_then(Value::as_str)
+            {
+                content.push_str(delta);
+            }
+            if let Some(reason) = chunk
+                .pointer("/choices/0/finish_reason")
+                .filter(|v| !v.is_null())
+            {
+                finish = reason.clone();
+            }
+            if let Some(value) = chunk.get("usage").filter(|v| !v.is_null()) {
+                usage = value.clone();
+            }
+            data.clear();
+        } else if let Some(value) = line.strip_prefix("data:") {
+            if !data.is_empty() {
+                data.push('\n');
+            }
+            data.push_str(value.trim_start().trim_end_matches(['\r', '\n']));
+        }
+    }
 }
 
 fn parse_body(response: ureq::Response) -> Result<Value, String> {
@@ -287,6 +386,8 @@ fn chat_content(
         "model": model,
         "thinking": {"type": if thinking { "enabled" } else { "disabled" }},
         "response_format": {"type":"json_object"},
+        "stream": true,
+        "stream_options": {"include_usage":true},
         "messages": [
             {"role":"system","content":system},
             {"role":"user","content":user}
@@ -308,17 +409,26 @@ fn chat_content(
     }
     let timeout = remaining(deadline)?;
     let usage_id = meter.begin(model, None, None)?;
+    if offline_test() && endpoint == DEEPSEEK_URL {
+        return Err("test_offline".to_owned().into());
+    }
+    let headers_started = Instant::now();
+    let response = agent()
+        .post(endpoint)
+        .timeout(timeout)
+        .set("Authorization", &format!("Bearer {key}"))
+        .set("Content-Type", "application/json")
+        .send_string(&body.to_string());
+    let headers_ms = headers_started.elapsed().as_millis() as u64;
+    let body_started = Instant::now();
     let response = metered_result(
         meter,
         &usage_id,
-        json_response(
-            agent()
-                .post(endpoint)
-                .timeout(timeout)
-                .set("Authorization", &format!("Bearer {key}"))
-                .set("Content-Type", "application/json")
-                .send_string(&body.to_string()),
-        ),
+        streamed_chat(response).map_err(|mut error| {
+            error.context.headers_ms = Some(headers_ms);
+            error.context.body_ms = Some(body_started.elapsed().as_millis() as u64);
+            error
+        }),
     )?;
     parse_metered_chat_content(meter, &usage_id, &response)
 }
@@ -459,6 +569,9 @@ fn volc_request(
     body: Value,
     deadline: Instant,
 ) -> Result<(String, String, Value), Failure> {
+    if offline_test() {
+        return Err("test_offline".to_owned().into());
+    }
     let response = agent()
         .post(url)
         .timeout(remaining(deadline)?)
@@ -607,9 +720,12 @@ pub(crate) fn parse_asr_result(response: &Value) -> Result<Vec<AsrUtterance>, St
         let text = item
             .get("text")
             .and_then(Value::as_str)
-            .ok_or_else(|| "provider_invalid_utterance".to_owned())?;
-        if start_ms < 0 || end_ms <= start_ms || text.len() > 20_000 {
-            return Err("provider_invalid_utterance".to_owned());
+            .ok_or_else(|| "provider_invalid_utterance_text".to_owned())?;
+        if start_ms < 0 || end_ms <= start_ms {
+            return Err("provider_invalid_utterance_range".to_owned());
+        }
+        if text.len() > 20_000 {
+            return Err("provider_invalid_utterance_length".to_owned());
         }
         let speaker = item.pointer("/additions/speaker").and_then(|v| {
             v.as_str()
@@ -912,7 +1028,12 @@ mod tests {
             assert_eq!(request["response_format"]["type"], "json_object");
             assert_eq!(request["thinking"]["type"], "disabled");
             assert!(request.get("reasoning_effort").is_none());
-            let response=json!({"choices":[{"finish_reason":"stop","message":{"content":json!({"summary":"测试图摘要","transcript":"# Hello\n\n完整转录"}).to_string()}}],"usage":{"prompt_tokens":20,"completion_tokens":10}}).to_string();
+            assert_eq!(request["stream"], true);
+            let response = format!(
+                "data: {}\n\ndata: {}\n\ndata: [DONE]\n\n",
+                json!({"choices":[{"finish_reason":"stop","delta":{"content":json!({"summary":"测试图摘要","transcript":"# Hello\n\n完整转录"}).to_string()}}]}),
+                json!({"choices":[],"usage":{"prompt_tokens":20,"completion_tokens":10}})
+            );
             write!(stream,"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",response.len(),response).unwrap();
         });
         struct TestMeter {
@@ -1137,6 +1258,95 @@ mod tests {
     }
 
     #[test]
+    fn streaming_discards_reasoning_requires_completion_and_preserves_usage() {
+        let content = json!({"ok":true}).to_string();
+        let stream = format!(
+            ": keep-alive\n\ndata: {}\n\ndata: {}\n\ndata: {}\n\ndata: [DONE]\n\n",
+            json!({"choices":[{"delta":{"reasoning_content":"private reasoning"}}]}),
+            json!({"choices":[{"delta":{"content":content},"finish_reason":"stop"}]}),
+            json!({"choices":[],"usage":{"prompt_tokens":20,"completion_tokens":10}})
+        );
+        let response = streamed_chat(Ok(ureq::Response::new(200, "OK", &stream).unwrap())).unwrap();
+        assert_eq!(parse_chat_content(&response).unwrap(), json!({"ok":true}));
+        assert_eq!(response["usage"]["prompt_tokens"], 20);
+        assert!(!response.to_string().contains("private reasoning"));
+        let truncated = stream.replace("data: [DONE]\n\n", "");
+        assert_eq!(
+            streamed_chat(Ok(ureq::Response::new(200, "OK", &truncated).unwrap()))
+                .unwrap_err()
+                .code,
+            "provider_incomplete_output"
+        );
+        assert_eq!(
+            streamed_chat(Ok(
+                ureq::Response::new(200, "OK", "data: [DONE]\n\n").unwrap()
+            ))
+            .unwrap_err()
+            .code,
+            "provider_incomplete_output"
+        );
+    }
+
+    #[test]
+    fn streamed_requests_bound_slow_headers_body_disconnect_and_no_response() {
+        use std::io::Write;
+        use std::net::TcpListener;
+        for mode in ["headers", "body", "disconnect", "silent"] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let address = listener.local_addr().unwrap();
+            let server = std::thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut request = [0; 4096];
+                let _ = stream.read(&mut request);
+                if mode == "headers" || mode == "silent" {
+                    std::thread::sleep(Duration::from_millis(300));
+                    if mode == "headers" {
+                        let _ = stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n");
+                    }
+                    return;
+                }
+                stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: 10000\r\nConnection: close\r\n\r\n").unwrap();
+                let _ =
+                    stream.write_all(b"data: {\"choices\":[{\"delta\":{\"content\":\"{\"}}]}\n\n");
+                if mode == "body" {
+                    // Bytes continue arriving inside the idle timeout. The
+                    // total request budget must still end this stream.
+                    for _ in 0..100 {
+                        std::thread::sleep(Duration::from_millis(10));
+                        if stream.write_all(b": keep-alive\n\n").is_err() {
+                            break;
+                        }
+                    }
+                }
+            });
+            let began = Instant::now();
+            let error = streamed_chat(
+                agent()
+                    .post(&format!("http://{address}"))
+                    .timeout(Duration::from_millis(100))
+                    .send_string("{}"),
+            )
+            .unwrap_err();
+            assert!(
+                matches!(
+                    error.code.as_str(),
+                    "provider_read_timeout"
+                        | "provider_transport"
+                        | "provider_incomplete_output"
+                        | "provider_read_failed"
+                ),
+                "{mode}: {}",
+                error.code
+            );
+            assert!(began.elapsed() < Duration::from_secs(2), "{mode}");
+            if mode != "disconnect" {
+                assert!(began.elapsed() >= Duration::from_millis(80), "{mode}");
+            }
+            server.join().unwrap();
+        }
+    }
+
+    #[test]
     fn slow_response_body_obeys_request_budget_and_retry_metadata_survives_http_error() {
         use std::io::Write;
         use std::net::TcpListener;
@@ -1289,7 +1499,7 @@ mod tests {
         }
         assert_eq!(
             parse_asr_result(&json!({"result":{"utterances":utterances}})).unwrap_err(),
-            "provider_invalid_utterance"
+            "provider_invalid_utterance_range"
         );
     }
 
@@ -1298,7 +1508,7 @@ mod tests {
         for (start, end) in [(-1, 300), (300, 300), (400, 300)] {
             assert_eq!(
                 parse_asr_result(&result(start, end, "无效", Value::Null)).unwrap_err(),
-                "provider_invalid_utterance"
+                "provider_invalid_utterance_range"
             );
         }
     }

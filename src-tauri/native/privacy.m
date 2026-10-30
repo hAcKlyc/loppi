@@ -32,7 +32,8 @@ int hear_request_screen_authorization(void) {
 }
 
 int hear_tap_required(void) {
-  return [[NSProcessInfo processInfo] operatingSystemVersion].majorVersion >= 26;
+  NSOperatingSystemVersion version=[[NSProcessInfo processInfo] operatingSystemVersion];
+  return version.majorVersion>14 || (version.majorVersion==14 && version.minorVersion>=2);
 }
 
 int hear_microphone_available(void) {

@@ -213,6 +213,13 @@ fn presentation(s: Option<&ServiceState>) -> (Appearance, Option<String>, Option
         };
     }
     if s.storage_paused {
+        if s.storage_recoverable {
+            return (
+                Appearance::Sleeping,
+                Some("空间已恢复，录音仍暂停，点击继续".into()),
+                Some(if s.enabled_intent { "resume" } else { "start" }.into()),
+            );
+        }
         return (
             Appearance::Interrupted,
             Some("音频空间已满，请清理后继续".into()),
@@ -314,8 +321,26 @@ impl EntryRuntime {
                 Response::Error { code, message, .. } => Err(format!("{code}: {message}")),
                 _ => Err("unexpected status response".into()),
             });
-        let snapshot = self.inner.lock().unwrap().observe(result);
-        let _ = app.emit("hear-entry-snapshot", snapshot);
+        let (snapshot, changed) = {
+            let mut inner = self.inner.lock().unwrap();
+            let previous = inner.snapshot.clone();
+            let snapshot = inner.observe(result);
+            let changed = previous.appearance != snapshot.appearance
+                || previous.detail != snapshot.detail
+                || previous.control != snapshot.control
+                || previous.error != snapshot.error
+                || previous.state.as_ref().map(|s| s.revision)
+                    != snapshot.state.as_ref().map(|s| s.revision);
+            (snapshot, changed)
+        };
+        // Hidden WebViews recover the current snapshot on foreground. The
+        // always-visible entry only needs semantic capture/control changes;
+        // changing disk byte counts must not wake its renderer every five seconds.
+        for (label, window) in app.webview_windows() {
+            if window.is_visible().unwrap_or(false) && (label == "main" || changed) {
+                let _ = app.emit_to(&label, "hear-entry-snapshot", &snapshot);
+            }
+        }
     }
     pub fn start(self: &Arc<Self>, app: tauri::AppHandle) {
         let runtime = Arc::clone(self);
@@ -988,6 +1013,12 @@ mod tests {
         assert_eq!(presentation(Some(&s)).0, Appearance::Sleeping);
         s.storage_paused = true;
         assert_eq!(presentation(Some(&s)).0, Appearance::Interrupted);
+        s.storage_recoverable = true;
+        assert_eq!(presentation(Some(&s)).0, Appearance::Sleeping);
+        assert_eq!(presentation(Some(&s)).2.as_deref(), Some("resume"));
+        s.microphone_phase = Phase::Stopping;
+        assert_eq!(presentation(Some(&s)).0, Appearance::Waiting);
+        assert_eq!(presentation(Some(&s)).2, None);
         assert_eq!(presentation(None).0, Appearance::Waiting);
     }
     #[test]

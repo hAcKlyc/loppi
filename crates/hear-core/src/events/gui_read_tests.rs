@@ -49,18 +49,50 @@ fn gui_read_profile() {
             std::ptr::null_mut(),
         );
     }
-    let start = 1793116800000;
-    let end = 1793203200000;
-    let id = Uuid::parse_str("4b0b5314-0fad-4e0b-bdab-d7afbba4e3e7").unwrap();
+    let start = std::env::var("HEAR_PROFILE_START_MS")
+        .map(|v| v.parse().unwrap())
+        .unwrap_or(1793289600000_i64);
+    let end = start + 86_400_000;
+    let id: Option<String> = db.query_row(
+        "SELECT id FROM named_events WHERE deleted_ms IS NULL AND started_ms<?2 AND ended_ms>?1 ORDER BY started_ms LIMIT 1",
+        params![start, end], |r| r.get(0),
+    ).optional().unwrap();
     let mut results = Vec::new();
     let mut detail = None;
-    for op in ["timeline", "event_detail", "session_speakers"] {
+    for op in [
+        "calendar_days",
+        "timeline",
+        "event_detail",
+        "session_speakers",
+    ] {
+        if op == "event_detail" && id.is_none() {
+            continue;
+        }
+        if op == "session_speakers"
+            && detail
+                .as_ref()
+                .is_none_or(|d: &hear_protocol::TimelineItem| d.precise_segments.is_empty())
+        {
+            continue;
+        }
         QUERIES.with(|q| q.borrow_mut().clear());
         let begun = Instant::now();
         let value = match op {
+            "calendar_days" => serde_json::to_value(
+                calendar_days(
+                    db,
+                    &(0..=31)
+                        .map(|day| end - (31 - day) * 86_400_000)
+                        .collect::<Vec<_>>(),
+                    end,
+                )
+                .unwrap(),
+            )
+            .unwrap(),
             "timeline" => serde_json::to_value(timeline(db, start, end).unwrap()).unwrap(),
             "event_detail" => {
-                let item = event_detail(db, id, 0, 100).unwrap();
+                let item = event_detail(db, Uuid::parse_str(id.as_ref().unwrap()).unwrap(), 0, 100)
+                    .unwrap();
                 detail = Some(item.clone());
                 serde_json::to_value(item).unwrap()
             }
@@ -109,4 +141,44 @@ fn gui_read_profile() {
         serde_json::to_vec_pretty(&results).unwrap(),
     )
     .unwrap();
+}
+
+#[test]
+#[ignore = "offline numeric quality audit; HEAR_REVIEW_SNAPSHOT, HEAR_REVIEW_MEDIA and HEAR_GUI_PROFILE required"]
+fn voice_quality_profile() {
+    let db = Connection::open_with_flags(
+        std::env::var("HEAR_REVIEW_SNAPSHOT").unwrap(),
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )
+    .unwrap();
+    let directory = std::path::PathBuf::from(std::env::var("HEAR_REVIEW_MEDIA").unwrap());
+    let mut statement = db.prepare("SELECT segment_id,source,started_ms,ended_ms,error_code FROM (SELECT segment_id,source,started_ms,ended_ms,error_code,row_number() OVER(PARTITION BY error_code ORDER BY started_ms) AS ordinal FROM voice_observations WHERE state='unavailable' AND error_code IN ('audio_quality','audio_unavailable') AND started_ms>=1793289600000 AND started_ms<1793376000000) WHERE ordinal<=64 ORDER BY error_code,started_ms").unwrap();
+    let rows = statement
+        .query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, i64>(2)?,
+                r.get::<_, i64>(3)?,
+                r.get::<_, String>(4)?,
+            ))
+        })
+        .unwrap();
+    let mut output = Vec::new();
+    for row in rows {
+        let (id, source, start, end, original) = row.unwrap();
+        let mut stats = hear_protocol::LogContext::default();
+        let result = voice_manifest(&db, &source, start, end)
+            .and_then(|(task, parts)| voice_pcm_16k(&directory, &task, &parts, &mut stats));
+        output.push(json!({"id":id,"source":source,"duration_ms":end-start,"original":original,"current_error":result.err().map(|e|crate::voice_error_code(&e)),"rms_millionths":stats.rms_millionths,"clipped_ppm":stats.clipped_ppm,"sample_frames":stats.sample_frames}));
+    }
+    std::fs::write(
+        std::env::var("HEAR_GUI_PROFILE").unwrap(),
+        serde_json::to_vec_pretty(&output).unwrap(),
+    )
+    .unwrap();
+    println!(
+        "numeric voice audit: {} bounded inputs, no inference/cloud/private text",
+        output.len()
+    );
 }

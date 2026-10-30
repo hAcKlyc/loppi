@@ -1,9 +1,56 @@
 #import <Foundation/Foundation.h>
 #import <IOKit/ps/IOPowerSources.h>
 #import <IOKit/ps/IOPSKeys.h>
+#import <IOKit/pwr_mgt/IOPMLib.h>
+#import <IOKit/IOMessage.h>
 #include <libproc.h>
 #include <stdatomic.h>
 #include <stdint.h>
+#include <time.h>
+
+typedef struct {
+  uint32_t available, sleeping;
+  uint64_t generation;
+  int64_t sleep_ms;
+} HearPower;
+static io_connect_t powerConnection;
+static IONotificationPortRef powerPort;
+static io_object_t powerNotifier;
+static dispatch_queue_t powerQueue;
+static atomic_uint powerSleeping;
+static atomic_uint_fast64_t powerGeneration;
+static atomic_int_fast64_t powerSleepMs;
+static void power_changed(void *context, io_service_t service, natural_t message, void *argument) {
+  (void)context; (void)service;
+  if (message == kIOMessageSystemWillSleep) {
+    struct timespec now;
+    clock_gettime(CLOCK_REALTIME, &now);
+    atomic_store(&powerSleepMs, (int64_t)now.tv_sec * 1000 + now.tv_nsec / 1000000);
+    atomic_store(&powerSleeping, 1);
+    atomic_fetch_add(&powerGeneration, 1);
+  } else if (message == kIOMessageSystemHasPoweredOn) {
+    // Legacy application notifications wait for full wake. An early wake or
+    // DarkWake is not evidence that microphone/output hardware is available.
+    atomic_store(&powerSleeping, 0);
+    atomic_fetch_add(&powerGeneration, 1);
+  }
+  if (message == kIOMessageCanSystemSleep || message == kIOMessageSystemWillSleep)
+    IOAllowPowerChange(powerConnection, (intptr_t)argument);
+}
+void hear_power_snapshot(HearPower *out) {
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{
+    powerConnection = IORegisterForSystemPower(NULL, &powerPort, power_changed, &powerNotifier);
+    if (powerConnection && powerPort) {
+      powerQueue = dispatch_queue_create("app.hear.power", DISPATCH_QUEUE_SERIAL);
+      IONotificationPortSetDispatchQueue(powerPort, powerQueue);
+    }
+  });
+  out->available = powerConnection && powerPort;
+  out->sleeping = atomic_load(&powerSleeping);
+  out->generation = atomic_load(&powerGeneration);
+  out->sleep_ms = atomic_load(&powerSleepMs);
+}
 
 static _Atomic unsigned pressure = 0;
 static dispatch_source_t pressureSource;

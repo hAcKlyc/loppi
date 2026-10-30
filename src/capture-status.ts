@@ -66,6 +66,15 @@ export function captureStatusView(
 		};
 	}
 	if (snapshot.appearance === "sleeping") {
+		if (state.storage_paused && state.storage_recoverable) {
+			return {
+				tone: "paused",
+				label: "已暂停",
+				subtitle: "空间已恢复，可继续记录",
+				detail,
+				action: control,
+			};
+		}
 		return {
 			tone: "paused",
 			label: state.paused_intent

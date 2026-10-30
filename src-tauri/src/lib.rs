@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 use tauri::Manager;
 mod entry;
 mod onboarding;
+mod playback_output;
 use entry::{
     EntryRuntime, entry_action, entry_drag, entry_focus, entry_layout, entry_mode, entry_snapshot,
 };
@@ -410,7 +411,8 @@ pub fn run() {
             entry_layout,
             entry_focus,
             entry_drag,
-            entry_action
+            entry_action,
+            playback_output::playback_output
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
@@ -419,6 +421,7 @@ pub fn run() {
             // delivers Exit directly, without ExitRequested. Always drain here
             // too. quit_gui_core is idempotent and never starts a missing Core.
             tauri::RunEvent::Exit => {
+                playback_output::shutdown();
                 app.state::<Arc<EntryRuntime>>().stop();
                 if let Err(error) = hear_protocol::quit_gui_core() {
                     eprintln!("Hear native exit incomplete: {error}");

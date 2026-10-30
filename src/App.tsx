@@ -199,7 +199,7 @@ function App() {
 		setDate(next);
 	}, []);
 
-	const refreshTimeline = useCallback(
+	const readTimeline = useCallback(
 		async (showLoading = false) => {
 			// An old focus/poll callback must not claim a newer navigation request.
 			if (dayBounds(date)[0] !== selectedDay.current) return;
@@ -312,6 +312,41 @@ function App() {
 			}
 		},
 		[date, selectDate],
+	);
+
+	const timelineInFlight = useRef<{
+		day: number;
+		dirty: boolean;
+		promise: Promise<void>;
+	} | null>(null);
+	const refreshTimeline = useCallback(
+		(showLoading = false, invalidate = false): Promise<void> => {
+			const day = dayBounds(date)[0];
+			if (day !== selectedDay.current) return Promise.resolve();
+			// Mutations invalidate the response immediately, then request one fresh
+			// read after the in-flight snapshot. Focus/poll callers simply join it.
+			if (invalidate) ++timelineRequest.current;
+			const active = timelineInFlight.current;
+			if (active?.day === day) {
+				active.dirty ||= invalidate;
+				return active.promise;
+			}
+			const flight = { day, dirty: false, promise: Promise.resolve() };
+			timelineInFlight.current = flight;
+			flight.promise = (async () => {
+				try {
+					do {
+						flight.dirty = false;
+						await readTimeline(showLoading);
+					} while (flight.dirty && selectedDay.current === day);
+				} finally {
+					if (timelineInFlight.current === flight)
+						timelineInFlight.current = null;
+				}
+			})();
+			return flight.promise;
+		},
+		[date, readTimeline],
 	);
 
 	const contextInFlight = useRef<Promise<void> | null>(null);
@@ -479,7 +514,7 @@ function App() {
 		setItems((current) =>
 			current.map((item) => ({ ...item, recording_sources: [] })),
 		);
-		void refreshTimeline();
+		void refreshTimeline(false, true);
 	}, [refreshTimeline, recordingObservation]);
 	useEffect(() => {
 		if (page === "queue") void refreshTasks();
@@ -524,7 +559,7 @@ function App() {
 		void Promise.all([
 			listen("hear-moment-changed", () => {
 				setMomentVersion((value) => value + 1);
-				void refreshTimeline();
+				void refreshTimeline(false, true);
 			}),
 			listen<{ anchor_ms: number }>("hear-open-comment", (event) => {
 				setCommentAnchor(event.payload.anchor_ms);
@@ -556,14 +591,18 @@ function App() {
 		try {
 			await core(request);
 			message(success);
-			await Promise.all([refreshStatus(), refreshTimeline(), refreshContext()]);
+			await Promise.all([
+				refreshStatus(),
+				refreshTimeline(false, true),
+				refreshContext(),
+			]);
 			return true;
 		} catch (cause) {
 			if (isEventStale(cause)) {
 				setForm(null);
 				setTool(null);
 				setSelection(null);
-				await refreshTimeline();
+				await refreshTimeline(false, true);
 			}
 			setDialogError(errorText(cause));
 			message(errorText(cause));
@@ -701,7 +740,7 @@ function App() {
 					: { type: "add_moment", kind, anchor_ms: anchor, text: text ?? null },
 			);
 			setMomentVersion((value) => value + 1);
-			await refreshTimeline();
+			await refreshTimeline(false, true);
 			message(
 				kind === "mark"
 					? "已标记重点"
@@ -888,7 +927,7 @@ function App() {
 						loading={loading && !timelineReady}
 						ready={timelineReady}
 						loadError={timelineError}
-						onRetry={() => void refreshTimeline()}
+						onRetry={() => void refreshTimeline(false, true)}
 						hideCoarse={hideCoarse}
 						onHideCoarse={setHideCoarse}
 						onDate={selectDate}
@@ -942,7 +981,7 @@ function App() {
 						busy={busy}
 						onStatus={refreshStatus}
 						onContext={refreshContext}
-						onTimeline={refreshTimeline}
+						onTimeline={() => refreshTimeline(false, true)}
 						onMutate={mutate}
 						onMessage={message}
 					/>
@@ -972,7 +1011,7 @@ function App() {
 					}}
 					onChanged={(rangeId) => {
 						if (rangeId) manualSelection.current = rangeId;
-						void refreshTimeline();
+						void refreshTimeline(false, true);
 						void refreshContext();
 					}}
 					onMessage={message}
