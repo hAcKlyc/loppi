@@ -30,3 +30,10 @@ Windows[紧凑原始运行报告](native-repair-evidence.json)已通过公开CLI
 旧dirty安装器在“录制中覆盖→再启动→录制中卸载”一次报错，GUI/Core后来正常退出。原失败进程在后续读取已不在，未发送终止；原因未复现/未知。旧/当前CLI×直接/nsExec×空闲/真实双录制八项，以及真实临时卸载副本两项全部返回0、GUI正常退出，原安装文件哈希不变。不能据此发明根因或把早启动竞态混作该失败的已证实原因；最终完整新包仍须重复原顺序。
 
 尚待mandatory：最终干净源码的真实Windows offline/static/lint、完整NSIS与默认/Unicode安装/录制中升级/默认卸载及资料保留；最终模型负向、组件身份、资源闭包和实际图标；解锁桌面截图/OCR/HWND排除及物理托盘/悬浮/启动操作；同源码三份包、Mac签名公证、准确标签/Release及上传SHA/大小核对。锁屏失败、WebView内部图、mock、dirty候选、小型NSIS与最终事实分别记录。全部关闭前台账保持in-progress，不发布。
+
+
+## 实际Windows完整门禁的Python工具收敛
+
+73f53d4完整Windows检查通过typecheck/lint/Rust check/全部Rust/Node/rabbit后，Python discovery发现两处顶层fcntl导入和一处Mac合成路径随宿主Path改写。分类required evidence gap；仅将OS依赖移到Mac操作函数，并用PurePosixPath固定Mac样例；不改产品源、不跳过既有断言。Mac9项通过；实际Windows运行9项、1个原有Mac native adapter跳过，其余8项通过。原始stdout及边界见[报告](python-portability-evidence.json)。
+
+两位需求/故障定向复核PASS，分别独立跑9项及拒绝fcntl导入模拟，均9通过0跳过；原架构审查者定向PASS，AST确认操作函数逻辑和13项样例断言保持。原最终架构结论继续适用，不机械重开全量。该修复提交后统一新SHA重建三端正式包；73f的两份Mac公证包仅是中间验证，不混为最终产物。

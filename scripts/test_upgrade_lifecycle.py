@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-"""Loppi GUI/Core ownership, handoff and exit, using disposable data only."""
+"""macOS GUI/Core ownership, handoff and exit, using disposable data only."""
 import argparse
 import concurrent.futures
-import fcntl
 import json
 import os
 from pathlib import Path
@@ -40,6 +39,9 @@ def wait_status(directory, version):
 
 
 def main():
+    # This opt-in macOS socket smoke is not part of portable unit discovery.
+    import fcntl
+
     parser = argparse.ArgumentParser()
     parser.add_argument('--core', type=Path, default=Path('target/debug/loppi-core'))
     parser.add_argument('--driver', type=Path, default=Path('target/debug/examples/gui_lifecycle'))

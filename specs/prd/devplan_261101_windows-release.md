@@ -82,3 +82,13 @@ scope: "完成 loppi Windows 支持、真实 Windows 安装验收，并将同版
 
 - 2026-11-01：最终需求/故障定向复核及fresh architecture全部源码PASS，135文件冻结哈希一致，三者均独立核对批准ICO无像素差异。root本轮fmt/diff/typecheck/lint通过。Windows紧凑原始报告11853字节SHA bea14082…814已公开CLI回传、解压核对并落盘；十项旧Hook对照全部0，原dirty失败仍如实记录“未复现/原因未知”，不无限扩张机制，最终新包重复原序列验收。单文件lease已交回，root现全量源码owner。
 - 本次提交仅是经三路审查的内部干净构建checkpoint，非原子交付完成。接下来用同一SHA实际构建三端包；全部mandatory关前不implemented、不改main/tag或Release附件。原Mac签名包/原标签备份保留。
+
+
+### 最终离线门禁的测试工具修复
+
+- 事实：73f53d4干净Windows已通过typecheck/lint/Rust check及全部Rust/Node/rabbit；Python discovery暴露`restore_debug_session.py`、`test_upgrade_lifecycle.py`顶层导入fcntl失败，以及Mac采样合成路径被Windows Path改写导致归属断言失败。
+- 裁决：required evidence gap，属于已承诺两端开发门禁；不是产品采集/存储代码缺陷。最小修复仅将Mac操作专用fcntl导入归到执行该操作的函数，把Mac虚构路径明确写PurePosixPath；不跳过原有纯函数断言、不放宽验证规则、不移植Mac诊断工具到Windows。
+- 修复范围：scripts/restore_debug_session.py、scripts/test_upgrade_lifecycle.py、scripts/test_resource_sampler.py及本台账/审查记录；base73f53d4cd4988875e00e05e271041de01b86e5e8。现有业务/原生检查不失效；定向重跑两端全部Python发现及模块导入。两路定向复核与原final architecture定向复核后提交新checkpoint，正式三平台包统一使用新SHA。
+- 73f53d4的Mac两薄包均已签名、公证、装订、Gatekeeper和身份/模型验证通过，作为中间构建证据保留；不将它们混入最终不同源码的三端Release。因统一来源契约，新测试源码提交后重新构建全部正式包。
+
+- 三处工具修复经需求/故障/架构定向复核全部PASS，AST确认原Mac操作和13项样例断言保持；Mac9/9通过，真实Windows9项运行中1项原有Mac native adapter跳过，其余8项通过，无新增skip。报告已落盘；新内部checkpoint仅改变开发测试工具与事实记录，不改变产品源码，正式包继续按统一新SHA重建。

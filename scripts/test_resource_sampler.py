@@ -1,7 +1,7 @@
 import csv
 import tempfile
 import unittest
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from unittest.mock import patch
 import sample_macos_resources as sampler
 import report_macos_resources as report
@@ -13,11 +13,11 @@ class Sampling(unittest.TestCase):
         entries = "10\t1\ta\t/test/loppi.app/Contents/MacOS/loppi-desktop\n20\t1\tb\t/test/loppi.app/Contents/MacOS/loppi-core\n21\t20\tc\t/test/loppi.app/Contents/MacOS/loppi-core\n30\t1\td\t/System/com.apple.WebKit.WebContent\n31\t1\te\t/System/com.apple.WebKit.WebContent\n"
         cache = {}
         with patch.object(sampler, "command", return_value=entries), patch.object(sampler, "coalition", side_effect=lambda pid: "ours" if pid in (10,30) else "foreign"):
-            _, roles, unknown = sampler.inventory(Path('/test/loppi.app'), cache)
+            _, roles, unknown = sampler.inventory(PurePosixPath('/test/loppi.app'), cache)
         self.assertFalse(unknown)
         self.assertEqual(roles, {10:'loppi-desktop',20:'loppi-core',21:'loppi-capture',30:'loppi-webview'})
         with patch.object(sampler, "command", return_value=entries.replace('30\t1\td', '30\t1\treused')), patch.object(sampler, "coalition", return_value='foreign'):
-            _, roles, _ = sampler.inventory(Path('/test/loppi.app'), cache)
+            _, roles, _ = sampler.inventory(PurePosixPath('/test/loppi.app'), cache)
         self.assertNotIn(30, roles)
         self.assertNotIn((30,'d'), cache)
 
