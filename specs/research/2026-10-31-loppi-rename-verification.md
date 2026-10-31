@@ -4,7 +4,7 @@
 
 ## 结论与范围
 
-整仓更名、三视角源代码审查及签名候选的真实系统验收已通过；待实现提交后从干净源码生成最终发行包。新产品只使用 loppi 身份、目录、凭据、工具、变量及导出格式，不保留 hear 的兼容、迁移或回退。移除历史生命周期协议 17–19 适配，保留同目录唯一 Core、正常构建交接、降级保护和完整退出。
+整仓更名、三视角独立审查、真实系统验收及干净源码最终发行包全部通过，PRD 已完成。新产品只使用 loppi 身份、目录、凭据、工具、变量及导出格式，不保留 hear 的兼容、迁移或回退。移除历史生命周期协议 17–19 适配，保留同目录唯一 Core、正常构建交接、降级保护和完整退出。
 
 仓库远端仍为 `hAcKlyc/hear`，现有 GitHub 链接保留真实地址。历史记录仅修复移动源码的链接，保留原事实。模型词表、下载清单、哈希和第三方许可未改变。本机项目目录名称未变。
 
@@ -47,10 +47,23 @@
 
 ## 证据重建与边界
 
-自动验证命令见上表；签名发行入口为 `node scripts/build.mjs release --target universal-apple-darwin`，不得用脏源码候选冒充最终发行。临时结构化记录位于 `/tmp/loppi-final-verify.json`、`/tmp/loppi-{native-export,sck-exclusion,exit-fix-tap-restart,exit-fix-credentials,exit-fix-native-quit,login-native-quit,login-recovery,login-disabled,acceptance-final-state}.json`。这些临时文件不是长期接口，本报告保留必要数值与结论。
+自动验证命令见上表；签名发行入口为 `node scripts/build.mjs release --target universal-apple-darwin`，不得用脏源码候选冒充最终发行。临时结构化记录位于 `/tmp/loppi-final-verify.json`、`/tmp/loppi-{native-export,sck-exclusion,exit-fix-tap-restart,exit-fix-credentials,exit-fix-native-quit,login-native-quit,login-recovery,login-disabled,acceptance-final-state}.json`。这些临时文件不是长期接口，本报告保留必要数值与结论。最终发行元数据和四组件身份文件与 DMG 一起保存在发行目录。
 
 Intel 和 macOS 13 验证范围是交叉编译、slices 与部署目标检查，未声称在这些机器上完成真机采集。外部仓库/域名/许可证、安装替换和公开发布均不属于本次执行。
 
 ## 发行收尾
 
-独立 reviewer 已确认最终证据、统一验证通过。实现提交后从该提交的干净源码生成发行包，记录源码身份、校验和及收尾提交。
+实现提交：`5e74a47fee6b9b746c0253e4b9df16ce85d2636c`。从该提交的独立干净工作树执行正式 release；未移动、提交或遮蔽另一会话的未跟踪设计草稿。全部发行文件已复制回原仓库。构建工作树 `/Users/ethan/.codex/worktrees/loppi-release/hear` 由应用视为主检出，归档操作因此未执行；保留该工作树，不强制移除受保护检出。此限制不影响源码、产物或验收结果。
+
+| 最终产物事实 | 值 |
+| --- | --- |
+| 版本 / 目标 | 0.1.14 / Universal2（arm64 + x86_64），最低 macOS 13 |
+| 四组件 | GUI、CLI、Core、worker 均为上述源码提交，`dirty=false`，协议 24，构建 epoch `1793447023` |
+| DMG | `build/releases/0.1.14/macos-universal2/loppi_0.1.14_macos-universal2.dmg`，202150536 字节 |
+| SHA256 | `e1c762094b8e72babcfdf34da16886d4cc986782a6a302fd6ab6c0fa4d29f5e9` |
+| Apple 公证 | Accepted，`b38a8c4d-c847-4590-89b1-a3a7adde3896` |
+| 最终检查 | Developer ID 签名、装订/票据、DMG 与 app Gatekeeper、挂载逐文件比对、单份模型哈希及挂载包离线模型准备全部通过 |
+| 凭据复验 | 干净源码签名 Core 两项均 readable，无网络请求或交互 |
+| 元数据 | 同目录 `release-info.json`、`component-identities.json`、`SHA256SUMS` |
+
+收尾提交只更新 PRD 完成状态及本报告；它不改变发行源码或二进制。新登录项已关闭/注销，验收 GUI/Core 已退出；录制、云处理保持暂停。没有安装替换、Git push 或外部公开发布动作。
