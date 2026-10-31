@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "components": {
+    "gui": {
+      "component": "gui",
+      "version": "0.1.18",
+      "protocol_version": 24,
+      "git_sha": "4969899afd8d2e9d4dc632d568ef33a843cc56bc",
+      "dirty": false,
+      "built_at_epoch": 1793470839
+    },
+    "cli": {
+      "component": "cli",
+      "version": "0.1.18",
+      "protocol_version": 24,
+      "git_sha": "4969899afd8d2e9d4dc632d568ef33a843cc56bc",
+      "dirty": false,
+      "built_at_epoch": 1793470839
+    },
+    "core": {
+      "component": "core",
+      "version": "0.1.18",
+      "protocol_version": 24,
+      "git_sha": "4969899afd8d2e9d4dc632d568ef33a843cc56bc",
+      "dirty": false,
+      "built_at_epoch": 1793470839
+    },
+    "worker": {
+      "component": "worker",
+      "version": "0.1.18",
+      "protocol_version": 24,
+      "git_sha": "4969899afd8d2e9d4dc632d568ef33a843cc56bc",
+      "dirty": false,
+      "built_at_epoch": 1793470839
+    }
+  }
+}

@@ -10,3 +10,5 @@
 - Original ICON byte fingerprints and shared palette/wordmark remain covered by canonical-asset tests. Existing .17 native entry geometry/interaction proof remains applicable to unchanged entry code.
 
 Phase1 repair: narrow evidence/assets were replaced using the existing explicit-size visual iframe; all clock evidence now records actual innerWidth/innerHeight and image dimensions are verified. Both real pointer calendar triggers close on second click, Escape restores the real trigger, and the narrow popover fits. Host detection now queries actual hardware, with translated Node regression passing; worker reports use the actual runtime architecture. Final repaired dev two-package build completed under Intel Node/Rosetta; both actual mounted-DMG checks passed, ARM native and Intel translated reports correct.
+
+Post-commit gates CLOSED: clean-source default release both signed/notarized/stapled/Gatekeeper PASS, actual DMG model/content checks PASS; final ARM installed,8identities verified, native date/time/calendar pointer behaviors PASS and current capture/preferences restored/equal. See delivery.*.

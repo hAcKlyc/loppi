@@ -1,0 +1,68 @@
+{
+  "version": "0.1.18",
+  "source": "4969899afd8d2e9d4dc632d568ef33a843cc56bc",
+  "release_packages": [
+    {
+      "path": "build/releases/0.1.18/macos-arm64/loppi_0.1.18_macos-arm64.dmg",
+      "sha256": "fefebbc299edbff55c492637c912d253edeb8605e5d187a10aa4580f8cf166c4",
+      "bytes": 182554810,
+      "runtime_execution": "native"
+    },
+    {
+      "path": "build/releases/0.1.18/macos-x86_64/loppi_0.1.18_macos-x86_64.dmg",
+      "sha256": "8143a315c3181a18da3ae8a6a49a9b825ba02455d5d5f6193014e4f63ff0a0ab",
+      "bytes": 185362995,
+      "runtime_execution": "rosetta"
+    }
+  ],
+  "signature_notarization_staple_gatekeeper": "both PASS; actual final DMG content/model checks PASS",
+  "installed": "/Applications/loppi.app",
+  "installed_target": "aarch64-apple-darwin",
+  "compiled_identity_match": true,
+  "preferences_equal": true,
+  "capture_after": {
+    "enabled_intent": true,
+    "paused_intent": false,
+    "microphone_enabled": true,
+    "system_enabled": true,
+    "capture_state": "recording",
+    "microphone_recording": true,
+    "system_recording": true,
+    "audio_limit_bytes": 10737418240,
+    "schedule": {
+      "enabled": false,
+      "start_minute": 480,
+      "stop_minute": 1380,
+      "paused_by_schedule": false,
+      "error": null
+    }
+  },
+  "processing_after": [
+    {
+      "provider": "llm",
+      "configured": true,
+      "paused": true
+    },
+    {
+      "provider": "asr",
+      "configured": true,
+      "paused": true
+    }
+  ],
+  "entry_mode": "top",
+  "native_checks": [
+    "previous day to2026-10-31, recorded content retained, current time absent",
+    "next returns2026-11-01, future disabled, focus date",
+    "date-title real pointer opens and second click closes recorded-day calendar",
+    "pure02:34 above red line and recording state visible"
+  ],
+  "intent_restore": "Normal Quit ends enabled intent; continued recording once in new GUI to restore measured before-state. Final complete preference snapshots equal.",
+  "icon_sha256": "26a29addba67cfb6d527bdbb7a69b9ceb07b84f1a3042a31c930cc387494f920",
+  "backup": "build/backups/loppi-0.1.17-replaced.app",
+  "private_native_screenshot": "/Users/ethan/.codex/visualizations/2026/10/31/01a191bb-2496-74b3-a35c-33d87122b6f6/loppi-0.1.18/main.jpg",
+  "limits": [
+    "Intel runtime checked under Rosetta, no Intel hardware acceptance",
+    "minimumOS13 runtime not separately tested",
+    "no public upload/release"
+  ]
+}
