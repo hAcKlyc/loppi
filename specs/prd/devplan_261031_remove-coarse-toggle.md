@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: implemented
 created: 2026-10-31
 updated: 2026-10-31
 ---
@@ -24,7 +24,7 @@ updated: 2026-10-31
 ### 清单
 - [x] 删除按钮与可变交互链，更新夹具/说明。
 - [x] 原显示策略回归、静态/构建与浏览器验收。
-- [ ] 三路审查、提交推送dev。
+- [x] 三路审查、提交推送dev。
 
 ### Review基线
 70490272ee9621d69a3994e71c907ce45d9aebe3；scope为本批显式diff，其他本机资料与旧devplan结论为历史记录。不扩大到新的列表产品策略。
@@ -38,3 +38,4 @@ updated: 2026-10-31
 - Computer Use：1120/760宽度六种状态共12组均无切换按钮，保留新建事件；录制中2卡、暂停/历史/状态不可用1卡，概览始终3项，无横向溢出。局部整理浏览器回归PASS；完整App合成场景新建表单打开/取消正常。
 - 证据：build/dev-remove-coarse-toggle/下static.log、build.log、tests.log、browser-matrix.json、partial-fit.txt、app-after-cancel.txt及截图；仅合成数据，无OS集成变更。
 - fixed candidate tree 86d72b2092a824fb70c204da7f4c2f075a830e4c：fresh requirements/adversarial均PASS，无阻塞项或必需证据缺口；主Agent核实接受、无需修复。adversarial独立重跑时间线12/12通过；随后fresh architecture完整diff审查PASS，无新增机制、复杂度降低。评审期间代码未变。
+- 交付commit c707c72758a518590488c800378944100fa0de5b 已推送origin/dev；最终组合态再次typecheck/lint通过。单批次完整需求已闭环，无待验收mandatory项，无新增中间机制。main、版本0.1.14与正式App保持；本条收尾仅更新交付台账。远端CI原账户阻断未处理，也不计为通过。
