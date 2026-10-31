@@ -1,0 +1,2058 @@
+{
+  "checked_date": "2026-10-24",
+  "note": "Metadata only. Repository totals can contain duplicate formats and are not install sizes. No weights downloaded.",
+  "models": [
+    {
+      "requested_id": "Qwen/Qwen3-ASR-0.6B",
+      "id": "Qwen/Qwen3-ASR-0.6B",
+      "url": "https://huggingface.co/api/models/Qwen/Qwen3-ASR-0.6B?blobs=true",
+      "sha": "5eb144179a02acc5e5ba31e748d22b0cf3e303b0",
+      "created_at": "2026-01-28T03:15:39.000Z",
+      "last_modified": "2026-01-30T03:00:21.000Z",
+      "license": "apache-2.0",
+      "languages": null,
+      "safetensors": {
+        "parameters": {
+          "BF16": 938008576
+        },
+        "total": 938008576
+      },
+      "downloads": 851200,
+      "files": [
+        {
+          "name": ".gitattributes",
+          "bytes": 1519,
+          "sha256": null
+        },
+        {
+          "name": "README.md",
+          "bytes": 57456,
+          "sha256": null
+        },
+        {
+          "name": "chat_template.json",
+          "bytes": 1161,
+          "sha256": null
+        },
+        {
+          "name": "config.json",
+          "bytes": 6193,
+          "sha256": null
+        },
+        {
+          "name": "generation_config.json",
+          "bytes": 142,
+          "sha256": null
+        },
+        {
+          "name": "merges.txt",
+          "bytes": 1671853,
+          "sha256": null
+        },
+        {
+          "name": "model.safetensors",
+          "bytes": 1876091704,
+          "sha256": "79d6cbd4c98c7bbffe9db2edac07f56cd6637d0d5944b27f6c2b8353840323ea"
+        },
+        {
+          "name": "preprocessor_config.json",
+          "bytes": 330,
+          "sha256": null
+        },
+        {
+          "name": "tokenizer_config.json",
+          "bytes": 12487,
+          "sha256": null
+        },
+        {
+          "name": "vocab.json",
+          "bytes": 2776833,
+          "sha256": null
+        }
+      ]
+    },
+    {
+      "requested_id": "Qwen/Qwen3-ASR-1.7B",
+      "id": "Qwen/Qwen3-ASR-1.7B",
+      "url": "https://huggingface.co/api/models/Qwen/Qwen3-ASR-1.7B?blobs=true",
+      "sha": "7278e1e70fe206f11671096ffdd38061171dd6e5",
+      "created_at": "2026-01-28T03:22:40.000Z",
+      "last_modified": "2026-01-30T03:00:12.000Z",
+      "license": "apache-2.0",
+      "languages": null,
+      "safetensors": {
+        "parameters": {
+          "BF16": 2349217408
+        },
+        "total": 2349217408
+      },
+      "downloads": 1270806,
+      "files": [
+        {
+          "name": ".gitattributes",
+          "bytes": 1519,
+          "sha256": null
+        },
+        {
+          "name": "README.md",
+          "bytes": 57456,
+          "sha256": null
+        },
+        {
+          "name": "chat_template.json",
+          "bytes": 1161,
+          "sha256": null
+        },
+        {
+          "name": "config.json",
+          "bytes": 6194,
+          "sha256": null
+        },
+        {
+          "name": "generation_config.json",
+          "bytes": 142,
+          "sha256": null
+        },
+        {
+          "name": "merges.txt",
+          "bytes": 1671853,
+          "sha256": null
+        },
+        {
+          "name": "model-00001-of-00002.safetensors",
+          "bytes": 4220320824,
+          "sha256": "a4cd1f1a04d90b757dc7f7dd26254e69a013b19e80efe590a83c6a3bde8608d6"
+        },
+        {
+          "name": "model-00002-of-00002.safetensors",
+          "bytes": 478200688,
+          "sha256": "6e0b9d9e09e2e0238e7ef3cc8a484ab387e91b90f1900bedf88bc92d7929ccfc"
+        },
+        {
+          "name": "model.safetensors.index.json",
+          "bytes": 64821,
+          "sha256": null
+        },
+        {
+          "name": "preprocessor_config.json",
+          "bytes": 330,
+          "sha256": null
+        },
+        {
+          "name": "tokenizer_config.json",
+          "bytes": 12487,
+          "sha256": null
+        },
+        {
+          "name": "vocab.json",
+          "bytes": 2776833,
+          "sha256": null
+        }
+      ]
+    },
+    {
+      "requested_id": "FunAudioLLM/Fun-ASR-Nano-2512",
+      "id": "FunAudioLLM/Fun-ASR-Nano-2512",
+      "url": "https://huggingface.co/api/models/FunAudioLLM/Fun-ASR-Nano-2512?blobs=true",
+      "sha": "272c57b82523ada6fd87095e955f8e29100979ab",
+      "created_at": "2025-12-15T03:45:57.000Z",
+      "last_modified": "2026-06-20T10:39:41.000Z",
+      "license": "apache-2.0",
+      "languages": [
+        "zh",
+        "en",
+        "ja",
+        "ko",
+        "yue",
+        "vi",
+        "id",
+        "th",
+        "ms",
+        "tl",
+        "ar",
+        "hi",
+        "multilingual"
+      ],
+      "safetensors": null,
+      "downloads": 3194,
+      "files": [
+        {
+          "name": ".gitattributes",
+          "bytes": 2161,
+          "sha256": null
+        },
+        {
+          "name": "Qwen3-0.6B/config.json",
+          "bytes": 726,
+          "sha256": "660db3b73d788119c04535e48cf9be5f55bc3100841a718637ae695b442f27dd"
+        },
+        {
+          "name": "Qwen3-0.6B/generation_config.json",
+          "bytes": 239,
+          "sha256": "2325da0f15bb848e018c5ae071b7943332e9f871d6b60e2ed22ca97d4cb993d2"
+        },
+        {
+          "name": "Qwen3-0.6B/merges.txt",
+          "bytes": 1671853,
+          "sha256": null
+        },
+        {
+          "name": "Qwen3-0.6B/tokenizer.json",
+          "bytes": 11422654,
+          "sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4"
+        },
+        {
+          "name": "Qwen3-0.6B/tokenizer_config.json",
+          "bytes": 9732,
+          "sha256": "d5d09f07b48c3086c508b30d1c9114bd1189145b74e982a265350c923acd8101"
+        },
+        {
+          "name": "Qwen3-0.6B/vocab.json",
+          "bytes": 2776833,
+          "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910"
+        },
+        {
+          "name": "README.md",
+          "bytes": 14586,
+          "sha256": null
+        },
+        {
+          "name": "README_zh.md",
+          "bytes": 12216,
+          "sha256": null
+        },
+        {
+          "name": "config.yaml",
+          "bytes": 3140,
+          "sha256": null
+        },
+        {
+          "name": "configuration.json",
+          "bytes": 398,
+          "sha256": "b64a3a55d35bcbe2cf4d31f2d3ef25a423d3ba2ebff203298c27fa055f3c7612"
+        },
+        {
+          "name": "example/en.mp3",
+          "bytes": 57441,
+          "sha256": null
+        },
+        {
+          "name": "example/ja.mp3",
+          "bytes": 57837,
+          "sha256": null
+        },
+        {
+          "name": "example/ko.mp3",
+          "bytes": 27909,
+          "sha256": null
+        },
+        {
+          "name": "example/yue.mp3",
+          "bytes": 31246,
+          "sha256": null
+        },
+        {
+          "name": "example/zh.mp3",
+          "bytes": 44973,
+          "sha256": null
+        },
+        {
+          "name": "images/compare_en.png",
+          "bytes": 214080,
+          "sha256": "9c30014920ba46df9dca1030acdc4ca15311e75b3b26e5a00ea6ae80a019c451"
+        },
+        {
+          "name": "images/compare_zh.png",
+          "bytes": 162178,
+          "sha256": "8c56704ba4aed9756884251e3a499e44784b4dac2bb5252afe118e37498ea728"
+        },
+        {
+          "name": "images/funasr-v2.png",
+          "bytes": 611140,
+          "sha256": "c73a21e7b32e1bea400ac88ae354d2415493aa45b72c8d5bf4ee67143facd97b"
+        },
+        {
+          "name": "model.pt",
+          "bytes": 1971149431,
+          "sha256": "55ae0d2fee369f0f11cce0795f6927934ad17cf11b278a7e56a51272074160bb"
+        },
+        {
+          "name": "multilingual.tiktoken",
+          "bytes": 907395,
+          "sha256": null
+        }
+      ]
+    },
+    {
+      "requested_id": "FunAudioLLM/Fun-ASR-Nano-2512-GGUF",
+      "id": "FunAudioLLM/Fun-ASR-Nano-2512-GGUF",
+      "url": "https://huggingface.co/api/models/FunAudioLLM/Fun-ASR-Nano-2512-GGUF?blobs=true",
+      "sha": "ce72677f84900f0dc57f498ace253bfb3c9155b6",
+      "created_at": "2026-07-29T17:33:50.000Z",
+      "last_modified": "2026-07-29T17:35:39.000Z",
+      "license": "other",
+      "languages": null,
+      "safetensors": null,
+      "downloads": 61162,
+      "files": [
+        {
+          "name": ".gitattributes",
+          "bytes": 1646,
+          "sha256": null
+        },
+        {
+          "name": "MANIFEST.json",
+          "bytes": 585,
+          "sha256": null
+        },
+        {
+          "name": "README.md",
+          "bytes": 2296,
+          "sha256": null
+        },
+        {
+          "name": "fun-asr-nano-2512-f16.gguf",
+          "bytes": 1675708832,
+          "sha256": "3d906c3ccfed07efef88ff53d6cc94b788b9d2edf1492a5679d041b43e98c5be"
+        },
+        {
+          "name": "fun-asr-nano-2512-q8_0.gguf",
+          "bytes": 1045334432,
+          "sha256": "4d727357574b079b7f43336b2930f39da086ca02f5d8d50872090b4c1c3d5e0a"
+        }
+      ]
+    },
+    {
+      "requested_id": "inclusionAI/Ming-3.0-asr-tiny",
+      "id": "inclusionAI/Ming-3.0-asr-tiny",
+      "url": "https://huggingface.co/api/models/inclusionAI/Ming-3.0-asr-tiny?blobs=true",
+      "sha": "ac95e7b1678c08ea6f4a2581a051e432ed63e9b7",
+      "created_at": "2026-10-14T09:27:09.000Z",
+      "last_modified": "2026-10-21T13:45:57.000Z",
+      "license": "mit",
+      "languages": [
+        "zh",
+        "en"
+      ],
+      "safetensors": {
+        "parameters": {
+          "F32": 3072,
+          "BF16": 8865797920
+        },
+        "total": 8865800992
+      },
+      "downloads": 564,
+      "files": [
+        {
+          "name": ".gitattributes",
+          "bytes": 2106,
+          "sha256": null
+        },
+        {
+          "name": "CITATION.cff",
+          "bytes": 329,
+          "sha256": null
+        },
+        {
+          "name": "LICENSE",
+          "bytes": 1068,
+          "sha256": null
+        },
+        {
+          "name": "LICENSE-APACHE-2.0",
+          "bytes": 11357,
+          "sha256": null
+        },
+        {
+          "name": "Ming-3.0-asr-tiny-TDS2026.pdf",
+          "bytes": 389867,
+          "sha256": "941855a1be1baf144b0e8f3421ace3b21fc16e1bcfe3ff77f04915454a9f7ef7"
+        },
+        {
+          "name": "README.md",
+          "bytes": 7458,
+          "sha256": null
+        },
+        {
+          "name": "README.zh.md",
+          "bytes": 6917,
+          "sha256": null
+        },
+        {
+          "name": "WHISPER_LICENSE",
+          "bytes": 1063,
+          "sha256": null
+        },
+        {
+          "name": "asr_request.py",
+          "bytes": 1528,
+          "sha256": null
+        },
+        {
+          "name": "audio_spec.py",
+          "bytes": 5181,
+          "sha256": null
+        },
+        {
+          "name": "chat_format.py",
+          "bytes": 33423,
+          "sha256": null
+        },
+        {
+          "name": "chat_template.jinja",
+          "bytes": 2155,
+          "sha256": null
+        },
+        {
+          "name": "config.json",
+          "bytes": 2351,
+          "sha256": null
+        },
+        {
+          "name": "configuration_ming_v3_asr.py",
+          "bytes": 10421,
+          "sha256": null
+        },
+        {
+          "name": "examples/transcribe.py",
+          "bytes": 3837,
+          "sha256": null
+        },
+        {
+          "name": "feature_extraction_ming_v3_asr.py",
+          "bytes": 9258,
+          "sha256": null
+        },
+        {
+          "name": "figures/asr.png",
+          "bytes": 1238390,
+          "sha256": "624d98d65546e12b1763eb157690e51e388f3db6de05ec1980ea457f4122e56d"
+        },
+        {
+          "name": "figures/bailing-logo.png",
+          "bytes": 77640,
+          "sha256": null
+        },
+        {
+          "name": "figures/contextasr.png",
+          "bytes": 922811,
+          "sha256": "6924bd1057aa68ef194912995c92d8ca998ef68b15ec55053f5b168da087cd32"
+        },
+        {
+          "name": "figures/model.jpg",
+          "bytes": 317059,
+          "sha256": "55a45a2358cb39f250eea875c45070103edc78af6bad771ef8f7f904ab46975f"
+        },
+        {
+          "name": "figures/开源asr.png",
+          "bytes": 1009837,
+          "sha256": "e05cf1897bd7eb80d64146613e18f3fb83e1e46f763443f42525ee3eddddd795"
+        },
+        {
+          "name": "figures/自建asr.png",
+          "bytes": 1229265,
+          "sha256": "31ade60fefc3a90aab51439be9d52518775710f262a5a7e5371e89ff56667a40"
+        },
+        {
+          "name": "generation_config.json",
+          "bytes": 77,
+          "sha256": null
+        },
+        {
+          "name": "model-00001-of-00002.safetensors",
+          "bytes": 10709697720,
+          "sha256": "3c3aeb85649b6f64a032d069a2321826191d36fe1413191bddd01835b1570d45"
+        },
+        {
+          "name": "model-00002-of-00002.safetensors",
+          "bytes": 7023162728,
+          "sha256": "a274b5c624f396a3a2547cbc7cf28aeb33890b61141457b45ac1af85ac6e7c55"
+        },
+        {
+          "name": "model.safetensors.index.json",
+          "bytes": 908935,
+          "sha256": null
+        },
+        {
+          "name": "modeling_ming_v3_asr.py",
+          "bytes": 87010,
+          "sha256": null
+        },
+        {
+          "name": "modeling_ming_v3_asr_encoder.py",
+          "bytes": 3308,
+          "sha256": null
+        },
+        {
+          "name": "modeling_whisper_encoder.py",
+          "bytes": 5542,
+          "sha256": null
+        },
+        {
+          "name": "preprocessor_config.json",
+          "bytes": 670,
+          "sha256": null
+        },
+        {
+          "name": "processing_ming_v3_asr.py",
+          "bytes": 10693,
+          "sha256": null
+        },
+        {
+          "name": "requirements.txt",
+          "bytes": 274,
+          "sha256": null
+        },
+        {
+          "name": "special_tokens_map.json",
+          "bytes": 879,
+          "sha256": null
+        },
+        {
+          "name": "tokenization_bailing.py",
+          "bytes": 45620,
+          "sha256": null
+        },
+        {
+          "name": "tokenizer.json",
+          "bytes": 12210708,
+          "sha256": "e4f5fe09e7484071da5fa93cfb82f7db15c0ebf9b6ee9821599c5a997563ee96"
+        },
+        {
+          "name": "tokenizer_config.json",
+          "bytes": 56651,
+          "sha256": null
+        }
+      ]
+    },
+    {
+      "requested_id": "XiaomiMiMo/MiMo-V2.5-ASR",
+      "id": "XiaomiMiMo/MiMo-V2.5-ASR",
+      "url": "https://huggingface.co/api/models/XiaomiMiMo/MiMo-V2.5-ASR?blobs=true",
+      "sha": "98641d537df521ac6df05f74090475694d9510b7",
+      "created_at": "2026-04-23T06:30:09.000Z",
+      "last_modified": "2026-04-24T03:45:28.000Z",
+      "license": "mit",
+      "languages": [
+        "zh",
+        "en",
+        "yue"
+      ],
+      "safetensors": {
+        "parameters": {
+          "F32": 8018587648
+        },
+        "total": 7622619136
+      },
+      "downloads": 2712,
+      "files": [
+        {
+          "name": ".gitattributes",
+          "bytes": 1753,
+          "sha256": null
+        },
+        {
+          "name": "README.md",
+          "bytes": 8022,
+          "sha256": null
+        },
+        {
+          "name": "added_tokens.json",
+          "bytes": 788,
+          "sha256": null
+        },
+        {
+          "name": "assets/MiMo_ASR_Demo.png",
+          "bytes": 73207,
+          "sha256": "d4e1433c408a52a626214463ebd449b403128072064615b82cc207cf03f813e8"
+        },
+        {
+          "name": "assets/MiMo_ASR_Results.png",
+          "bytes": 449363,
+          "sha256": "2c3f5148a5040f323e96158703ad44f6854bff72bbad7a656b8a526a6404972c"
+        },
+        {
+          "name": "assets/XiaomiMIMO.png",
+          "bytes": 289565,
+          "sha256": "89cf9afd532aa29697d65880b1f0dcb4f3286289eb3e8d697c46f32545cf1444"
+        },
+        {
+          "name": "chat_template.jinja",
+          "bytes": 8467,
+          "sha256": null
+        },
+        {
+          "name": "config.json",
+          "bytes": 2787,
+          "sha256": null
+        },
+        {
+          "name": "generation_config.json",
+          "bytes": 77,
+          "sha256": null
+        },
+        {
+          "name": "merges.txt",
+          "bytes": 1671853,
+          "sha256": null
+        },
+        {
+          "name": "model-00001-of-00007.safetensors",
+          "bytes": 4959966216,
+          "sha256": "8e424db00a4258cf62b626d4bab42627d619d537d9ae975bae54591b1bbb25ae"
+        },
+        {
+          "name": "model-00002-of-00007.safetensors",
+          "bytes": 4962272576,
+          "sha256": "d83ee8aab141033fdb77a4d52d1bcd839247007198159f71f6b61db809e9987e"
+        },
+        {
+          "name": "model-00003-of-00007.safetensors",
+          "bytes": 4962272648,
+          "sha256": "409d6d66d78ab50bddfa02af7108a1486c8018fb00231f62a4ea14c594a57a24"
+        },
+        {
+          "name": "model-00004-of-00007.safetensors",
+          "bytes": 4962272648,
+          "sha256": "d8bb46073f13a61b39249787668f69222ab5e76fecd1240604ecff1e5b0251b9"
+        },
+        {
+          "name": "model-00005-of-00007.safetensors",
+          "bytes": 4962272648,
+          "sha256": "d8aa4249ee58a1762187a589f2fb0053cc9d2833ef3beb5cefc75075d227dfca"
+        },
+        {
+          "name": "model-00006-of-00007.safetensors",
+          "bytes": 3196344216,
+          "sha256": "cecc940b16d122e807859cf919deceb2d3a9ac1668b27b876252e20293117b0c"
+        },
+        {
+          "name": "model-00007-of-00007.safetensors",
+          "bytes": 4069034792,
+          "sha256": "bf197fef74fa019c2567e6b4d054a0335fd15234ddd7c9b891a303a7102e031b"
+        },
+        {
+          "name": "model.safetensors.index.json",
+          "bytes": 62265,
+          "sha256": null
+        },
+        {
+          "name": "special_tokens_map.json",
+          "bytes": 616,
+          "sha256": null
+        },
+        {
+          "name": "tokenizer.json",
+          "bytes": 11423383,
+          "sha256": "d91a78cce6441fd6855038f6764fc5f811ae949d9b89f43ac326cddfe91c66db"
+        },
+        {
+          "name": "tokenizer_config.json",
+          "bytes": 6092,
+          "sha256": null
+        },
+        {
+          "name": "vocab.json",
+          "bytes": 2776833,
+          "sha256": null
+        }
+      ]
+    },
+    {
+      "requested_id": "ibm-granite/granite-speech-5.0-2b",
+      "id": "ibm-granite/granite-speech-5.0-2b",
+      "url": "https://huggingface.co/api/models/ibm-granite/granite-speech-5.0-2b?blobs=true",
+      "sha": "c075cf19e041a2e4d16c5ee24763e5b037d8f479",
+      "created_at": "2026-10-07T16:10:49.000Z",
+      "last_modified": "2026-10-23T11:27:40.000Z",
+      "license": "apache-2.0",
+      "languages": [
+        "multilingual",
+        "en",
+        "fr",
+        "de",
+        "es",
+        "pt",
+        "ja"
+      ],
+      "safetensors": {
+        "parameters": {
+          "BF16": 2313207132
+        },
+        "total": 2313207132
+      },
+      "downloads": 2377,
+      "files": [
+        {
+          "name": ".gitattributes",
+          "bytes": 2046,
+          "sha256": null
+        },
+        {
+          "name": "README.md",
+          "bytes": 24532,
+          "sha256": null
+        },
+        {
+          "name": "added_tokens.json",
+          "bytes": 26,
+          "sha256": null
+        },
+        {
+          "name": "assets/granite-5.0-2b-vs-open-english.png",
+          "bytes": 234183,
+          "sha256": "04b703ae111ccf0d1b39fceb69ed83f9b7222ea41a3043ad82baa81034b4a847"
+        },
+        {
+          "name": "assets/granite-speech-5.0-2b-bleu-en-x.png",
+          "bytes": 122177,
+          "sha256": "2184f024f2612af60fe1fe673aa05e5f58181ac179de757bca3fa546a0511993"
+        },
+        {
+          "name": "assets/granite-speech-5.0-2b-bleu-x-en.png",
+          "bytes": 123452,
+          "sha256": "149f2957b834a03cb96a1bcd69d41c3e111b2778985001263fe908fb0e88203a"
+        },
+        {
+          "name": "assets/granite-speech-5.0-2b-ffasr-wer.png",
+          "bytes": 260751,
+          "sha256": "948ff7d440a02556605a2c630ecc8b06f6b6ea2d9e9ab01d162c8294d9a8ba40"
+        },
+        {
+          "name": "assets/granite-speech-5.0-2b-kwb-f1.png",
+          "bytes": 218171,
+          "sha256": "d206b0733beb5124daf5801865a2453d04d29edbdead1b76b6652705b3c45394"
+        },
+        {
+          "name": "assets/granite-speech-5.0-2b-wer-cv.png",
+          "bytes": 132191,
+          "sha256": "1f173e6e7df42e0858adc8b541cebf6424b597d4f6785b6b1261941a812869b7"
+        },
+        {
+          "name": "chat_template.jinja",
+          "bytes": 193,
+          "sha256": null
+        },
+        {
+          "name": "config.json",
+          "bytes": 2281,
+          "sha256": null
+        },
+        {
+          "name": "generation_config.json",
+          "bytes": 147,
+          "sha256": null
+        },
+        {
+          "name": "merges.txt",
+          "bytes": 916646,
+          "sha256": null
+        },
+        {
+          "name": "model.safetensors",
+          "bytes": 4626528224,
+          "sha256": "4151269881d2dd825d45ca75d6552b2a20e6e39d0934ed84c4db826af8bf6d88"
+        },
+        {
+          "name": "model.sig",
+          "bytes": 10397,
+          "sha256": null
+        },
+        {
+          "name": "multilingual_sample.wav",
+          "bytes": 1596240,
+          "sha256": "91d243650809c1274141ec20ff23045315eaf27567694002ea3ef390048b7058"
+        },
+        {
+          "name": "out_llm.safetensors",
+          "bytes": 411447460,
+          "sha256": "a6b638a913b2dcf835dfbc621d9780d2557ac635a5c4718d1ffe64d39beb8ada"
+        },
+        {
+          "name": "preprocessor_config.json",
+          "bytes": 336,
+          "sha256": null
+        },
+        {
+          "name": "processor_config.json",
+          "bytes": 80,
+          "sha256": null
+        },
+        {
+          "name": "special_tokens_map.json",
+          "bytes": 579,
+          "sha256": null
+        },
+        {
+          "name": "tokenizer.json",
+          "bytes": 7153607,
+          "sha256": null
+        },
+        {
+          "name": "tokenizer_config.json",
+          "bytes": 17882,
+          "sha256": null
+        },
+        {
+          "name": "vocab.json",
+          "bytes": 1612704,
+          "sha256": null
+        }
+      ]
+    },
+    {
+      "requested_id": "ibm-granite/granite-speech-5.0-470m-turboctc",
+      "id": "ibm-granite/granite-speech-5.0-470m-turboctc",
+      "url": "https://huggingface.co/api/models/ibm-granite/granite-speech-5.0-470m-turboctc?blobs=true",
+      "sha": "1dd23f46f6d4e6eae2531982ba2e33220086dd97",
+      "created_at": "2026-08-04T14:07:13.000Z",
+      "last_modified": "2026-10-21T21:30:36.000Z",
+      "license": "apache-2.0",
+      "languages": [
+        "multilingual",
+        "en",
+        "fr",
+        "de",
+        "es",
+        "pt",
+        "it",
+        "ja"
+      ],
+      "safetensors": {
+        "parameters": {
+          "F32": 131072,
+          "BF16": 472862720
+        },
+        "total": 472993792
+      },
+      "downloads": 59494,
+      "files": [
+        {
+          "name": ".gitattributes",
+          "bytes": 1936,
+          "sha256": null
+        },
+        {
+          "name": "README.md",
+          "bytes": 9889,
+          "sha256": null
+        },
+        {
+          "name": "assets/conformer_blocks.png",
+          "bytes": 153970,
+          "sha256": "297e132365ad251b61de5ebcc69b5c98e5ab735b065ec70364d52c416d43cead"
+        },
+        {
+          "name": "assets/granite-speech-5.0-470m-turboctc-cer-ja.png",
+          "bytes": 107527,
+          "sha256": "afe36b89bd136a0296a8ee64d70b4797c3051b7bc38d553bff865a279902a32e"
+        },
+        {
+          "name": "assets/granite-speech-5.0-470m-turboctc-pareto-rtfx.png",
+          "bytes": 362561,
+          "sha256": "b596dc143bff536d33940303bc5485a375da128484f955c4e98db24ee9ae356a"
+        },
+        {
+          "name": "assets/granite-speech-5.0-470m-turboctc-wer-en.png",
+          "bytes": 162615,
+          "sha256": "9db705cd28f53a0f4955424450b8e65fedb82190c0fa123086959c1f7c598522"
+        },
+        {
+          "name": "assets/granite-speech-5.0-470m-turboctc-wer-ml.png",
+          "bytes": 521698,
+          "sha256": "a8394af67113daa6bf952d69dfc21c42ddee60c4cc4620b88afb5ab647780b07"
+        },
+        {
+          "name": "config.json",
+          "bytes": 921,
+          "sha256": null
+        },
+        {
+          "name": "generation_config.json",
+          "bytes": 153,
+          "sha256": null
+        },
+        {
+          "name": "model.safetensors",
+          "bytes": 946311576,
+          "sha256": "5b569c3744c42a9172ac976881539926b66176d03fbaaa3c51b5d2960067f6fc"
+        },
+        {
+          "name": "model.sig",
+          "bytes": 8365,
+          "sha256": null
+        },
+        {
+          "name": "processor_config.json",
+          "bytes": 430,
+          "sha256": null
+        },
+        {
+          "name": "tokenizer.json",
+          "bytes": 1699784,
+          "sha256": null
+        },
+        {
+          "name": "tokenizer_config.json",
+          "bytes": 223,
+          "sha256": null
+        }
+      ]
+    },
+    {
+      "requested_id": "nvidia/nemotron-3.5-asr-streaming-0.6b",
+      "id": "nvidia/nemotron-3.5-asr-streaming-0.6b",
+      "url": "https://huggingface.co/api/models/nvidia/nemotron-3.5-asr-streaming-0.6b?blobs=true",
+      "sha": "ea30d66debe3740a08b573244286791d423d6b3e",
+      "created_at": "2026-05-15T21:52:25.000Z",
+      "last_modified": "2026-09-10T16:49:07.000Z",
+      "license": "other",
+      "languages": [
+        "en",
+        "es",
+        "de",
+        "fr",
+        "it",
+        "ar",
+        "ja",
+        "ko",
+        "pt",
+        "ru",
+        "hi",
+        "zh",
+        "vi",
+        "he",
+        "nl",
+        "cs",
+        "da",
+        "pl",
+        "no",
+        "sv",
+        "th",
+        "tr",
+        "bg",
+        "el",
+        "et",
+        "fi",
+        "hr",
+        "hu",
+        "lt",
+        "lv",
+        "ro",
+        "sk",
+        "uk",
+        "mt",
+        "sl"
+      ],
+      "safetensors": {
+        "parameters": {
+          "F32": 637997088
+        },
+        "total": 637997088
+      },
+      "downloads": 1139887,
+      "files": [
+        {
+          "name": ".gitattributes",
+          "bytes": 1647,
+          "sha256": null
+        },
+        {
+          "name": "README.md",
+          "bytes": 54239,
+          "sha256": null
+        },
+        {
+          "name": "arch_slide10.png",
+          "bytes": 87843,
+          "sha256": "2be5d8ccfcd8232c6fc57ffacda125221382ef181ec239e1b6fdd78cf0c1c020"
+        },
+        {
+          "name": "avg_wer_summary.png",
+          "bytes": 65515,
+          "sha256": "9a5474f81b64e0ce844c5907f073f7fab56a353d21db9196cd11aba22f787060"
+        },
+        {
+          "name": "bias.md",
+          "bytes": 2104,
+          "sha256": null
+        },
+        {
+          "name": "config.json",
+          "bytes": 1376,
+          "sha256": null
+        },
+        {
+          "name": "explainability.md",
+          "bytes": 2388,
+          "sha256": null
+        },
+        {
+          "name": "fleurs_langid_vs_auto.png",
+          "bytes": 83849,
+          "sha256": "56c360a710c99cbf70c04006ec1f842b3796b72f5093178d438b2140049b3626"
+        },
+        {
+          "name": "fleurs_wer_vs_chunk_size.png",
+          "bytes": 92234,
+          "sha256": "9b340101e45a7ba6268f1b9c90037d9c2cf00c2c1768272bd3bdcaffd9b231ff"
+        },
+        {
+          "name": "generation_config.json",
+          "bytes": 193,
+          "sha256": null
+        },
+        {
+          "name": "latency_vs_parallel.png",
+          "bytes": 139167,
+          "sha256": "3e5636204786c68914f69c3f3158b4e698774b6e0dbd9120dbd996947e396638"
+        },
+        {
+          "name": "model.safetensors",
+          "bytes": 2552062944,
+          "sha256": "9eebdd6590289cb3030f310858f3df93256600a800a3e8200c5993d5f967e174"
+        },
+        {
+          "name": "model_architecture.png",
+          "bytes": 150586,
+          "sha256": "3146643d1a7c8dd424adcb221a5dabbda6951da1ef3937f7d15b29e46e5fa272"
+        },
+        {
+          "name": "model_overview.png",
+          "bytes": 114032,
+          "sha256": "075554d371b33de450cb7a13fa9886c3689855d4930b37edc1ecb954b01f33c5"
+        },
+        {
+          "name": "nemotron-3.5-asr-streaming-0.6b.nemo",
+          "bytes": 2368284501,
+          "sha256": "210214ed94039bf6bfbb9a047c7fa289628db75b103e2bf6381fa78285436a74"
+        },
+        {
+          "name": "nemotron-3.5-asr-streaming-0.6b.q8_0.gguf",
+          "bytes": 742090464,
+          "sha256": "3fc991d3badad7277c11030a7519832cddaf2057aafed6d4b25147e953a070b1"
+        },
+        {
+          "name": "privacy.md",
+          "bytes": 2097,
+          "sha256": null
+        },
+        {
+          "name": "processor_config.json",
+          "bytes": 2519,
+          "sha256": null
+        },
+        {
+          "name": "safety.md",
+          "bytes": 737,
+          "sha256": null
+        },
+        {
+          "name": "throughput_vs_chunk.png",
+          "bytes": 69454,
+          "sha256": "276b2f4e3dca6f5550f4215c8180ab244bc998401d65b54ce40400d228fee5da"
+        },
+        {
+          "name": "tokenizer.json",
+          "bytes": 752051,
+          "sha256": null
+        },
+        {
+          "name": "tokenizer_config.json",
+          "bytes": 881,
+          "sha256": null
+        }
+      ]
+    },
+    {
+      "requested_id": "nvidia/parakeet-tdt-0.6b-v3",
+      "id": "nvidia/parakeet-tdt-0.6b-v3",
+      "url": "https://huggingface.co/api/models/nvidia/parakeet-tdt-0.6b-v3?blobs=true",
+      "sha": "541d1f99c6b0c3cd0b11a95167540bb8edefd82b",
+      "created_at": "2025-08-04T13:34:09.000Z",
+      "last_modified": "2026-08-05T21:46:17.000Z",
+      "license": "cc-by-4.0",
+      "languages": [
+        "en",
+        "es",
+        "fr",
+        "de",
+        "bg",
+        "hr",
+        "cs",
+        "da",
+        "nl",
+        "et",
+        "fi",
+        "el",
+        "hu",
+        "it",
+        "lv",
+        "lt",
+        "mt",
+        "pl",
+        "pt",
+        "ro",
+        "sk",
+        "sl",
+        "sv",
+        "ru",
+        "uk"
+      ],
+      "safetensors": {
+        "parameters": {
+          "F32": 627057286
+        },
+        "total": 627057286
+      },
+      "downloads": 583059,
+      "files": [
+        {
+          "name": ".eval_results/open_asr_leaderboard.yaml",
+          "bytes": 2130,
+          "sha256": null
+        },
+        {
+          "name": ".gitattributes",
+          "bytes": 1722,
+          "sha256": null
+        },
+        {
+          "name": "README.md",
+          "bytes": 42888,
+          "sha256": null
+        },
+        {
+          "name": "config.json",
+          "bytes": 1153,
+          "sha256": null
+        },
+        {
+          "name": "generation_config.json",
+          "bytes": 289,
+          "sha256": null
+        },
+        {
+          "name": "model.safetensors",
+          "bytes": 2508311120,
+          "sha256": "3a2026366188c8c68598edbbff92f8d11590a08e0ae2e6775544e7b07d6a5e11"
+        },
+        {
+          "name": "parakeet-tdt-0.6b-v3.nemo",
+          "bytes": 2509332480,
+          "sha256": "3cbdc85877e668ca7b82d0d56770eb1fac76691f55d6b97545e8d61ca588d10d"
+        },
+        {
+          "name": "parakeet-tdt-0.6b-v3.q8_0.gguf",
+          "bytes": 713975456,
+          "sha256": "e3880d0aaaaf2c308ea2c35016b2b895c423eb3fda924c1b463d1c19b7f4d32e"
+        },
+        {
+          "name": "plots/asr.png",
+          "bytes": 114075,
+          "sha256": "43df117825ce8148acce53c1c35cb54e9ecd111b835b171ff903b380429ee105"
+        },
+        {
+          "name": "processor_config.json",
+          "bytes": 392,
+          "sha256": null
+        },
+        {
+          "name": "tokenizer.json",
+          "bytes": 1159960,
+          "sha256": null
+        },
+        {
+          "name": "tokenizer_config.json",
+          "bytes": 290,
+          "sha256": null
+        }
+      ]
+    },
+    {
+      "requested_id": "CohereLabs/cohere-transcribe-03-2026",
+      "id": "CohereLabs/cohere-transcribe-03-2026",
+      "url": "https://huggingface.co/api/models/CohereLabs/cohere-transcribe-03-2026?blobs=true",
+      "sha": "d552dadc2922ba6f6c1f994f8db904d52dcaf942",
+      "created_at": "2026-03-24T10:35:54.000Z",
+      "last_modified": "2026-10-07T11:55:35.000Z",
+      "license": "apache-2.0",
+      "languages": [
+        "ar",
+        "de",
+        "el",
+        "en",
+        "es",
+        "fr",
+        "it",
+        "ja",
+        "ko",
+        "nl",
+        "pl",
+        "pt",
+        "vi",
+        "zh"
+      ],
+      "safetensors": {
+        "parameters": {
+          "BF16": 2065804048
+        },
+        "total": 2065804048
+      },
+      "downloads": 105797,
+      "files": [
+        {
+          "name": ".eval_results/open_asr_leaderboard.yaml",
+          "bytes": 2129,
+          "sha256": null
+        },
+        {
+          "name": ".gitattributes",
+          "bytes": 1610,
+          "sha256": null
+        },
+        {
+          "name": "README.md",
+          "bytes": 21485,
+          "sha256": null
+        },
+        {
+          "name": "assets/260326_TranscribeLaunch_Plot1.png",
+          "bytes": 121147,
+          "sha256": "8a3ef775f04eb47e30288d661314d2c8280eff5f85591629c5ad985f2a6ca07c"
+        },
+        {
+          "name": "assets/HF_model_card_per-language-avg-plot.png",
+          "bytes": 150823,
+          "sha256": "f844247f90a164d085b1ef49d3acb940297b9039d24ff9818594736cdfc6ff24"
+        },
+        {
+          "name": "config.json",
+          "bytes": 3998,
+          "sha256": null
+        },
+        {
+          "name": "configuration_cohere_asr.py",
+          "bytes": 1795,
+          "sha256": null
+        },
+        {
+          "name": "demo/voxpopuli_test_en_demo.wav",
+          "bytes": 174124,
+          "sha256": "d52af604ec92ada2d05ef8d93ec63ab9309a39ef1f494a8f2da68522b5e3fa0b"
+        },
+        {
+          "name": "generation_config.json",
+          "bytes": 234,
+          "sha256": null
+        },
+        {
+          "name": "model.safetensors",
+          "bytes": 4131862976,
+          "sha256": "987bd3e141c7bfdb5a78f5db11397ee7737308357e6cc0a3f36a4979b158137a"
+        },
+        {
+          "name": "modeling_cohere_asr.py",
+          "bytes": 64648,
+          "sha256": null
+        },
+        {
+          "name": "preprocessor_config.json",
+          "bytes": 420,
+          "sha256": null
+        },
+        {
+          "name": "processing_cohere_asr.py",
+          "bytes": 20572,
+          "sha256": null
+        },
+        {
+          "name": "processor_config.json",
+          "bytes": 131,
+          "sha256": null
+        },
+        {
+          "name": "special_tokens_map.json",
+          "bytes": 4091,
+          "sha256": null
+        },
+        {
+          "name": "tokenization_cohere_asr.py",
+          "bytes": 6623,
+          "sha256": null
+        },
+        {
+          "name": "tokenizer.json",
+          "bytes": 1816694,
+          "sha256": null
+        },
+        {
+          "name": "tokenizer.model",
+          "bytes": 492827,
+          "sha256": "6d21e6a83b2d0d3e1241a7817e4bef8eb63bcb7cfe4a2675af9a35ff3bbf0e14"
+        },
+        {
+          "name": "tokenizer_config.json",
+          "bytes": 48138,
+          "sha256": null
+        }
+      ]
+    },
+    {
+      "requested_id": "Audio8/Audio8-ASR-0.1B",
+      "id": "Edge0/Audio8-ASR-0.1B",
+      "url": "https://huggingface.co/api/models/Audio8/Audio8-ASR-0.1B?blobs=true",
+      "sha": "8487da63d581fa4fc9b5c60444cb57c3a523d7aa",
+      "created_at": "2026-07-10T06:57:05.000Z",
+      "last_modified": "2026-07-15T08:45:02.000Z",
+      "license": "cc-by-nc-4.0",
+      "languages": [
+        "en",
+        "zh",
+        "fr",
+        "ja",
+        "yue",
+        "de",
+        "ko"
+      ],
+      "safetensors": {
+        "parameters": {
+          "BF16": 323990528
+        },
+        "total": 323990528
+      },
+      "downloads": 28679,
+      "files": [
+        {
+          "name": ".eval_results/open_asr_leaderboard.yaml",
+          "bytes": 2189,
+          "sha256": null
+        },
+        {
+          "name": ".gitattributes",
+          "bytes": 184,
+          "sha256": null
+        },
+        {
+          "name": ".gitignore",
+          "bytes": 96,
+          "sha256": null
+        },
+        {
+          "name": "LICENSE",
+          "bytes": 19347,
+          "sha256": null
+        },
+        {
+          "name": "README.md",
+          "bytes": 8422,
+          "sha256": null
+        },
+        {
+          "name": "added_tokens.json",
+          "bytes": 238,
+          "sha256": null
+        },
+        {
+          "name": "assets/audio8-teaser-aurora-redesign-final.mp4",
+          "bytes": 78134787,
+          "sha256": "8e6a62ea8cdd397e1563586e8fb2ba8e0f75eb2d081f9ce2d31973c252d8bf18"
+        },
+        {
+          "name": "chat_template.jinja",
+          "bytes": 327,
+          "sha256": null
+        },
+        {
+          "name": "config.json",
+          "bytes": 6163,
+          "sha256": null
+        },
+        {
+          "name": "configuration_arkasr.py",
+          "bytes": 3011,
+          "sha256": null
+        },
+        {
+          "name": "examples/requirements.txt",
+          "bytes": 63,
+          "sha256": null
+        },
+        {
+          "name": "examples/transcribe.py",
+          "bytes": 2158,
+          "sha256": null
+        },
+        {
+          "name": "examples/transcribe_hotword.py",
+          "bytes": 4517,
+          "sha256": null
+        },
+        {
+          "name": "generation_config.json",
+          "bytes": 147,
+          "sha256": null
+        },
+        {
+          "name": "hotword/__init__.py",
+          "bytes": 361,
+          "sha256": null
+        },
+        {
+          "name": "hotword/hotword_trie.py",
+          "bytes": 5411,
+          "sha256": null
+        },
+        {
+          "name": "merges.txt",
+          "bytes": 1671853,
+          "sha256": null
+        },
+        {
+          "name": "model.safetensors",
+          "bytes": 648031000,
+          "sha256": "971d17f64ef5f193fca567fa3e9dc063c4eede97faabb11c0c6abf0b92b23ca4"
+        },
+        {
+          "name": "modeling_arkasr.py",
+          "bytes": 13866,
+          "sha256": null
+        },
+        {
+          "name": "preprocessor_config.json",
+          "bytes": 434,
+          "sha256": null
+        },
+        {
+          "name": "processing_arkasr.py",
+          "bytes": 19030,
+          "sha256": null
+        },
+        {
+          "name": "processor_config.json",
+          "bytes": 201,
+          "sha256": null
+        },
+        {
+          "name": "qwen3_asr_audio_config.py",
+          "bytes": 20164,
+          "sha256": null
+        },
+        {
+          "name": "qwen3_asr_audio_model.py",
+          "bytes": 11258,
+          "sha256": null
+        },
+        {
+          "name": "special_tokens_map.json",
+          "bytes": 434,
+          "sha256": null
+        },
+        {
+          "name": "tokenizer.json",
+          "bytes": 11419524,
+          "sha256": "64ecaabc85a9272a8099f8aa7c097ce3a4c65a79bafbfd1450add736938ae45b"
+        },
+        {
+          "name": "tokenizer_config.json",
+          "bytes": 2234,
+          "sha256": null
+        },
+        {
+          "name": "vocab.json",
+          "bytes": 2776833,
+          "sha256": null
+        }
+      ]
+    },
+    {
+      "requested_id": "Edge0/ARK-ASR-0.6B",
+      "id": "Edge0/ARK-ASR-0.6B",
+      "url": "https://huggingface.co/api/models/Edge0/ARK-ASR-0.6B?blobs=true",
+      "sha": "45776b56d58cdfb2e2eb632f7e110f38684633e0",
+      "created_at": "2026-05-25T04:33:04.000Z",
+      "last_modified": "2026-06-27T14:50:28.000Z",
+      "license": "apache-2.0",
+      "languages": [
+        "zh",
+        "en",
+        "de",
+        "ja",
+        "fr",
+        "ko",
+        "es",
+        "pl",
+        "it",
+        "ro",
+        "hu",
+        "cs",
+        "nl",
+        "fi",
+        "hr",
+        "sk",
+        "sl",
+        "et",
+        "lt"
+      ],
+      "safetensors": {
+        "parameters": {
+          "BF16": 1299463168
+        },
+        "total": 1299463168
+      },
+      "downloads": 540,
+      "files": [
+        {
+          "name": ".eval_results/open_asr_leaderboard.yaml",
+          "bytes": 2128,
+          "sha256": null
+        },
+        {
+          "name": ".gitattributes",
+          "bytes": 1639,
+          "sha256": null
+        },
+        {
+          "name": "README.md",
+          "bytes": 8082,
+          "sha256": null
+        },
+        {
+          "name": "added_tokens.json",
+          "bytes": 469580,
+          "sha256": null
+        },
+        {
+          "name": "chat_template.jinja",
+          "bytes": 334,
+          "sha256": null
+        },
+        {
+          "name": "config.json",
+          "bytes": 2828,
+          "sha256": null
+        },
+        {
+          "name": "configuration_arkasr.py",
+          "bytes": 1619,
+          "sha256": null
+        },
+        {
+          "name": "figures/ark_asr_architecture.png",
+          "bytes": 1140902,
+          "sha256": "a31af4173acf07f4ab5984820eb796362a82aa942d4fa133ebe201192e7737b8"
+        },
+        {
+          "name": "generation_config.json",
+          "bytes": 131,
+          "sha256": null
+        },
+        {
+          "name": "merges.txt",
+          "bytes": 1671853,
+          "sha256": null
+        },
+        {
+          "name": "model.safetensors",
+          "bytes": 2599020680,
+          "sha256": "57a86ce1c2f2c2d6ebb7ad9642c9e951a5109625122b48c9180126a28787673d"
+        },
+        {
+          "name": "modeling_arkasr.py",
+          "bytes": 9402,
+          "sha256": null
+        },
+        {
+          "name": "modeling_audio.py",
+          "bytes": 11834,
+          "sha256": null
+        },
+        {
+          "name": "preprocessor_config.json",
+          "bytes": 434,
+          "sha256": null
+        },
+        {
+          "name": "processing_arkasr.py",
+          "bytes": 19160,
+          "sha256": null
+        },
+        {
+          "name": "processor_config.json",
+          "bytes": 201,
+          "sha256": null
+        },
+        {
+          "name": "special_tokens_map.json",
+          "bytes": 434,
+          "sha256": null
+        },
+        {
+          "name": "tokenizer.json",
+          "bytes": 13894630,
+          "sha256": "ff07bfc6cf4ed2365e9ae107e5118c89170363624f2036c85a27904d368efd87"
+        },
+        {
+          "name": "tokenizer_config.json",
+          "bytes": 2354311,
+          "sha256": null
+        },
+        {
+          "name": "vocab.json",
+          "bytes": 2776833,
+          "sha256": null
+        }
+      ]
+    },
+    {
+      "requested_id": "zai-org/GLM-ASR-Nano-2512",
+      "id": "zai-org/GLM-ASR-Nano-2512",
+      "url": "https://huggingface.co/api/models/zai-org/GLM-ASR-Nano-2512?blobs=true",
+      "sha": "61ba4e0b3309b6656edea3e93e419f7bd5c61957",
+      "created_at": "2025-12-09T09:07:41.000Z",
+      "last_modified": "2026-04-07T12:55:32.000Z",
+      "license": "mit",
+      "languages": [
+        "en",
+        "zh"
+      ],
+      "safetensors": {
+        "parameters": {
+          "BF16": 2257843200
+        },
+        "total": 2257843200
+      },
+      "downloads": 36158,
+      "files": [
+        {
+          "name": ".eval_results/open_asr_leaderboard.yaml",
+          "bytes": 2129,
+          "sha256": null
+        },
+        {
+          "name": ".gitattributes",
+          "bytes": 1519,
+          "sha256": null
+        },
+        {
+          "name": "README.md",
+          "bytes": 4767,
+          "sha256": null
+        },
+        {
+          "name": "chat_template.jinja",
+          "bytes": 851,
+          "sha256": null
+        },
+        {
+          "name": "config.json",
+          "bytes": 1448,
+          "sha256": null
+        },
+        {
+          "name": "generation_config.json",
+          "bytes": 151,
+          "sha256": null
+        },
+        {
+          "name": "model.safetensors",
+          "bytes": 4515776712,
+          "sha256": "b8af83ccf6b34dfc7921cedcc46d4a6dc6aaffa661b8f71b44e3a2ff60a90a91"
+        },
+        {
+          "name": "processor_config.json",
+          "bytes": 537,
+          "sha256": null
+        },
+        {
+          "name": "tokenizer.json",
+          "bytes": 6834995,
+          "sha256": null
+        },
+        {
+          "name": "tokenizer_config.json",
+          "bytes": 817,
+          "sha256": null
+        }
+      ]
+    },
+    {
+      "requested_id": "GilgameshWind/X-ASR-zh-en",
+      "id": "GilgameshWind/X-ASR-zh-en",
+      "url": "https://huggingface.co/api/models/GilgameshWind/X-ASR-zh-en?blobs=true",
+      "sha": "689ff18c584d29910da37b6fe904db0c1489c9d1",
+      "created_at": "2026-05-18T10:57:47.000Z",
+      "last_modified": "2026-07-29T06:39:03.000Z",
+      "license": "apache-2.0",
+      "languages": [
+        "zh",
+        "en"
+      ],
+      "safetensors": null,
+      "downloads": 92,
+      "files": [
+        {
+          "name": ".gitattributes",
+          "bytes": 1888,
+          "sha256": null
+        },
+        {
+          "name": "README.md",
+          "bytes": 21816,
+          "sha256": null
+        },
+        {
+          "name": "applications/vibe-xasr/README.md",
+          "bytes": 1172,
+          "sha256": null
+        },
+        {
+          "name": "applications/vibe-xasr/VibeXASR-1.1.2-macos-universal.dmg",
+          "bytes": 584214158,
+          "sha256": "f6a910ab15e45d3173168c8fc873d8ebf898e1eb14cfcb0eddf6ed3ead942f37"
+        },
+        {
+          "name": "applications/vibe-xasr/download_manifest.json",
+          "bytes": 791,
+          "sha256": null
+        },
+        {
+          "name": "config.json",
+          "bytes": 379,
+          "sha256": null
+        },
+        {
+          "name": "demo/demo.mov",
+          "bytes": 198812127,
+          "sha256": "48c2e2ef5dff3e8ca3da9af7d54924fc103d829a615978c5f77ecfd8bb6fdf78"
+        },
+        {
+          "name": "deployment/.DS_Store",
+          "bytes": 10244,
+          "sha256": null
+        },
+        {
+          "name": "deployment/README.md",
+          "bytes": 20736,
+          "sha256": null
+        },
+        {
+          "name": "deployment/infer_and_client/README.md",
+          "bytes": 7549,
+          "sha256": null
+        },
+        {
+          "name": "deployment/infer_and_client/sherpa_streaming_client.py",
+          "bytes": 2468,
+          "sha256": null
+        },
+        {
+          "name": "deployment/infer_and_client/sherpa_streaming_infer.py",
+          "bytes": 5825,
+          "sha256": null
+        },
+        {
+          "name": "deployment/infer_and_client/sherpa_streaming_server.py",
+          "bytes": 8685,
+          "sha256": null
+        },
+        {
+          "name": "deployment/models/.DS_Store",
+          "bytes": 18436,
+          "sha256": null
+        },
+        {
+          "name": "deployment/models/chunk-160ms-model/decoder-160ms.onnx",
+          "bytes": 11309084,
+          "sha256": "3658368d274a5d5fd39a7ac20c46bed0ad9cfea1f0feddef30d5d89797c1f499"
+        },
+        {
+          "name": "deployment/models/chunk-160ms-model/encoder-160ms.onnx",
+          "bytes": 592967053,
+          "sha256": "821a1dfb9027915ca014080abfa658346be0e2d0bf8b2027f0b6dd29fffe0c4b"
+        },
+        {
+          "name": "deployment/models/chunk-160ms-model/joiner-160ms.onnx",
+          "bytes": 10260467,
+          "sha256": "03781c98165a2385024c9cecdd2b6b13310d81db23a62c7da420782c2915cf81"
+        },
+        {
+          "name": "deployment/models/chunk-160ms-model/tokens.txt",
+          "bytes": 58806,
+          "sha256": null
+        },
+        {
+          "name": "deployment/models/chunk-1920ms-model/decoder-1920ms.onnx",
+          "bytes": 11309084,
+          "sha256": "3658368d274a5d5fd39a7ac20c46bed0ad9cfea1f0feddef30d5d89797c1f499"
+        },
+        {
+          "name": "deployment/models/chunk-1920ms-model/encoder-1920ms.onnx",
+          "bytes": 592958528,
+          "sha256": "4b631cb46ae8d9210e84887d71970bc149eddd49b7bc59a32dba57bc229c9bc5"
+        },
+        {
+          "name": "deployment/models/chunk-1920ms-model/joiner-1920ms.onnx",
+          "bytes": 10260467,
+          "sha256": "03781c98165a2385024c9cecdd2b6b13310d81db23a62c7da420782c2915cf81"
+        },
+        {
+          "name": "deployment/models/chunk-1920ms-model/tokens.txt",
+          "bytes": 58806,
+          "sha256": null
+        },
+        {
+          "name": "deployment/models/chunk-480ms-model/decoder-480ms.onnx",
+          "bytes": 11309084,
+          "sha256": "3658368d274a5d5fd39a7ac20c46bed0ad9cfea1f0feddef30d5d89797c1f499"
+        },
+        {
+          "name": "deployment/models/chunk-480ms-model/encoder-480ms.onnx",
+          "bytes": 592968361,
+          "sha256": "0c3454033d249081df124ddcd7adaf3deca07d0b999b26f2ee5d2475d37abc74"
+        },
+        {
+          "name": "deployment/models/chunk-480ms-model/joiner-480ms.onnx",
+          "bytes": 10260467,
+          "sha256": "03781c98165a2385024c9cecdd2b6b13310d81db23a62c7da420782c2915cf81"
+        },
+        {
+          "name": "deployment/models/chunk-480ms-model/tokens.txt",
+          "bytes": 58806,
+          "sha256": null
+        },
+        {
+          "name": "deployment/models/chunk-960ms-model/decoder-960ms.onnx",
+          "bytes": 11309084,
+          "sha256": "3658368d274a5d5fd39a7ac20c46bed0ad9cfea1f0feddef30d5d89797c1f499"
+        },
+        {
+          "name": "deployment/models/chunk-960ms-model/encoder-960ms.onnx",
+          "bytes": 592966960,
+          "sha256": "dd9484b7c34c951495f3420f26f9f2ab706e748bc087cd14dfe0b90d3156264f"
+        },
+        {
+          "name": "deployment/models/chunk-960ms-model/joiner-960ms.onnx",
+          "bytes": 10260467,
+          "sha256": "03781c98165a2385024c9cecdd2b6b13310d81db23a62c7da420782c2915cf81"
+        },
+        {
+          "name": "deployment/models/chunk-960ms-model/tokens.txt",
+          "bytes": 58806,
+          "sha256": null
+        },
+        {
+          "name": "figure/demo-preview.png",
+          "bytes": 717791,
+          "sha256": "175473864c5999e0f9b3bb386e5e135bb40bbe3945e060b556ec5a282c6fb85a"
+        },
+        {
+          "name": "figure/institutions/fudan.png",
+          "bytes": 7036,
+          "sha256": null
+        },
+        {
+          "name": "figure/institutions/hust.png",
+          "bytes": 26962,
+          "sha256": null
+        },
+        {
+          "name": "figure/institutions/sii.png",
+          "bytes": 17218,
+          "sha256": null
+        },
+        {
+          "name": "figure/institutions/sii.svg",
+          "bytes": 100464,
+          "sha256": null
+        },
+        {
+          "name": "figure/institutions/sjtu.png",
+          "bytes": 236508,
+          "sha256": "322bc34a4f63e89cc316b7face121be71e6aca0c0df8692c2a34419c707c7070"
+        },
+        {
+          "name": "figure/zipformer.png",
+          "bytes": 65356,
+          "sha256": null
+        },
+        {
+          "name": "streaming_exp/pretrained.pt",
+          "bytes": 2555882878,
+          "sha256": "09aac588b3bc5a1c0f07cd2f4abcb823f7e5d572533257c944d564b4ef5a73e4"
+        }
+      ]
+    },
+    {
+      "requested_id": "moonshine-ai/moonshine-tiny-zh",
+      "id": "moonshine-ai/moonshine-tiny-zh",
+      "url": "https://huggingface.co/api/models/moonshine-ai/moonshine-tiny-zh?blobs=true",
+      "sha": "3306270959bfe7dd4c1c02a7bd6885933e5d1a9d",
+      "created_at": "2025-09-01T17:22:40.000Z",
+      "last_modified": "2025-09-04T13:26:03.000Z",
+      "license": "other",
+      "languages": [
+        "zh"
+      ],
+      "safetensors": {
+        "parameters": {
+          "F32": 27092736
+        },
+        "total": 27092736
+      },
+      "downloads": 414,
+      "files": [
+        {
+          "name": ".gitattributes",
+          "bytes": 1519,
+          "sha256": null
+        },
+        {
+          "name": "LICENSE.txt",
+          "bytes": 11577,
+          "sha256": null
+        },
+        {
+          "name": "README.md",
+          "bytes": 7671,
+          "sha256": null
+        },
+        {
+          "name": "config.json",
+          "bytes": 892,
+          "sha256": null
+        },
+        {
+          "name": "generation_config.json",
+          "bytes": 184,
+          "sha256": null
+        },
+        {
+          "name": "model.safetensors",
+          "bytes": 108389160,
+          "sha256": "85f9a824af026c4592f835300dabdb861f75c962e7e42de4c8905ba170ab2d08"
+        },
+        {
+          "name": "preprocessor_config.json",
+          "bytes": 215,
+          "sha256": null
+        },
+        {
+          "name": "tokenizer.json",
+          "bytes": 3761751,
+          "sha256": null
+        }
+      ]
+    },
+    {
+      "requested_id": "DataoceanAI/dolphin-small",
+      "id": "DataoceanAI/dolphin-small",
+      "url": "https://huggingface.co/api/models/DataoceanAI/dolphin-small?blobs=true",
+      "sha": "1df1f4f848fa1ad4bfe1fbdd1603ae45b5afb2ae",
+      "created_at": "2026-05-13T07:27:52.000Z",
+      "last_modified": "2026-05-13T07:59:03.000Z",
+      "license": "apache-2.0",
+      "languages": "multilingual",
+      "safetensors": null,
+      "downloads": 95,
+      "files": [
+        {
+          "name": ".gitattributes",
+          "bytes": 1519,
+          "sha256": null
+        },
+        {
+          "name": "README.md",
+          "bytes": 4634,
+          "sha256": null
+        },
+        {
+          "name": "bpe.model",
+          "bytes": 854022,
+          "sha256": "4b9102181ef1a2a3c42ce8fbca8a545ea4a55bce47ba7a5222951ab5bb21bb3c"
+        },
+        {
+          "name": "config.yaml",
+          "bytes": 361652,
+          "sha256": null
+        },
+        {
+          "name": "feats_stats.npz",
+          "bytes": 1402,
+          "sha256": "5a37d00c07d595dbc2479b31be42b3c75de422469a947ce4b7bda193c3b1de7f"
+        },
+        {
+          "name": "small.pt",
+          "bytes": 1489609208,
+          "sha256": "4a0c6c636657121ec2a2b656e97e45b29a8b29c92fa3998006e02ab146d8ac51"
+        },
+        {
+          "name": "train.yaml",
+          "bytes": 2337,
+          "sha256": null
+        },
+        {
+          "name": "units.txt",
+          "bytes": 504662,
+          "sha256": null
+        }
+      ]
+    },
+    {
+      "requested_id": "DataoceanAI/dolphin-cn-dialect-small",
+      "url": "https://huggingface.co/api/models/DataoceanAI/dolphin-cn-dialect-small?blobs=true",
+      "error": "HTTP Error 401: Unauthorized"
+    },
+    {
+      "requested_id": "DataoceanAI/dolphin-cn-dialect-base",
+      "id": "DataoceanAI/dolphin-cn-dialect-base",
+      "url": "https://huggingface.co/api/models/DataoceanAI/dolphin-cn-dialect-base?blobs=true",
+      "sha": "09874bc1e3120d3b92415cf56a3160f119a6c5f7",
+      "created_at": "2026-05-13T07:29:14.000Z",
+      "last_modified": "2026-05-13T07:55:24.000Z",
+      "license": "apache-2.0",
+      "languages": [
+        "zh"
+      ],
+      "safetensors": null,
+      "downloads": 0,
+      "files": [
+        {
+          "name": ".gitattributes",
+          "bytes": 1652,
+          "sha256": null
+        },
+        {
+          "name": "Dolphin-CN-Dialect.png",
+          "bytes": 523855,
+          "sha256": "d3be711351ad48bac444210e782bc074e1b3d0910a5c895defa9745af0dcfb8f"
+        },
+        {
+          "name": "README.md",
+          "bytes": 6859,
+          "sha256": null
+        },
+        {
+          "name": "base.cn.pt",
+          "bytes": 447175723,
+          "sha256": "6c7a746c225f0f406053c9ebbdced7b79cfb91051d8060da3f1a26aa7913648b"
+        },
+        {
+          "name": "global_cmvn",
+          "bytes": 2215,
+          "sha256": null
+        },
+        {
+          "name": "train.yaml",
+          "bytes": 2149,
+          "sha256": null
+        },
+        {
+          "name": "units.txt",
+          "bytes": 204074,
+          "sha256": null
+        }
+      ]
+    }
+  ]
+}

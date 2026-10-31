@@ -258,6 +258,17 @@
 	left: 5px;
 	right: 5px;
 }
+.entry-floating .menu-feedback {
+	bottom: 68px;
+	z-index: 2;
+}
+.entry-floating[data-menu-down="true"] .entry-feedback {
+	top: 76px;
+	bottom: auto;
+}
+.entry-floating[data-menu-down="true"] .menu-feedback {
+	top: 68px;
+}
 .entry-top:has(.notch-surface:not([data-view="collapsed"])) .entry-feedback {
 	top: auto;
 	bottom: 6px;
@@ -266,13 +277,9 @@
 	padding: 4px 8px;
 	font-size: var(--type-micro);
 }
-.entry-floating .menu-feedback {
-	bottom: 68px;
-	z-index: 2;
-}
 .rabbit-menu {
 	position: absolute;
-	top: 8px;
+	top: var(--entry-menu-y, 8px);
 	left: 8px;
 	right: 8px;
 	height: 167px;
@@ -302,8 +309,8 @@
 }
 .floating-detail {
 	position: absolute;
-	left: 8px;
-	bottom: 18px;
+	left: var(--entry-detail-x);
+	top: var(--entry-detail-y);
 	width: 23px;
 	height: 23px;
 	border-radius: 8px;
@@ -328,8 +335,9 @@
 	z-index: 1;
 }
 .entry-floating .entry-rabbit {
-	right: 8px;
-	bottom: 8px;
+	left: var(--entry-rabbit-x);
+	top: var(--entry-rabbit-y);
+	cursor: grab;
 }
 
 .notch-surface[data-view="collapsed"] {

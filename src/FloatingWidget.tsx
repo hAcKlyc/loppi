@@ -1,6 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { userError } from "./api";
 import {
@@ -82,6 +81,7 @@ export function FloatingWidget() {
 		rabbit_y: 2,
 		top_band: 32,
 		top_shift: 296,
+		menu_y: 8,
 	});
 	const [draft, setDraft] = useState("");
 	const draftRef = useRef("");
@@ -109,8 +109,7 @@ export function FloatingWidget() {
 	const commentFocusIntent = useRef<number | "new" | null>(null);
 	const inhibit = useRef(false);
 	const dragging = useRef(false);
-	const pointer = useRef<{ x: number; y: number } | null>(null);
-	const suppressClick = useRef(false);
+	const rabbitButton = useRef<HTMLButtonElement>(null);
 	const collapseTimer = useRef<number | undefined>(undefined);
 	const layoutQueue = useRef(Promise.resolve());
 	const generation = useRef(0);
@@ -217,6 +216,7 @@ export function FloatingWidget() {
 				value: number;
 				generation: number;
 				geometry?: EntryGeometry;
+				error?: string | null;
 			}>("hear-entry-native", ({ payload }) => {
 				if (disposed) return;
 				if (payload.kind === 1) {
@@ -231,13 +231,12 @@ export function FloatingWidget() {
 				} else if (payload.kind === 7) {
 					inhibit.current = false;
 				} else if (payload.kind === 5) {
-					dragging.current = false;
-					pointer.current = null;
-					void invoke("entry_drag", { dragging: false }).catch((error) =>
-						showFeedback(userError(error)),
-					);
+					dragging.current = !!payload.value;
+					if (payload.value) collapse(false, true);
+					if (payload.error) showFeedback(userError(payload.error));
 					if (payload.geometry) setGeometry(payload.geometry);
-				} else if (payload.kind === 6) setNativeVisible(!!payload.value);
+				} else if (payload.kind === 10) rabbitButton.current?.click();
+				else if (payload.kind === 6) setNativeVisible(!!payload.value);
 				else if (
 					payload.kind === 8 &&
 					payload.generation === generation.current &&
@@ -443,15 +442,24 @@ export function FloatingWidget() {
 			role="toolbar"
 			aria-label="hear 常驻入口"
 			className={`entry-root ${isTop ? "entry-top" : "entry-floating"}`}
+			data-menu-down={geometry.menu_y > 8}
 			style={
 				{
 					"--entry-band": `${geometry.band}px`,
-					...topRabbitMotion(
-						geometry.top_band,
-						geometry.top_shift,
-						hasFeedback,
-					),
-				} as React.CSSProperties
+					...(isTop
+						? topRabbitMotion(
+								geometry.top_band,
+								geometry.top_shift,
+								hasFeedback,
+							)
+						: {
+								"--entry-rabbit-x": `${geometry.rabbit_x}px`,
+								"--entry-rabbit-y": `${geometry.rabbit_y}px`,
+								"--entry-menu-y": `${geometry.menu_y}px`,
+								"--entry-detail-x": `${geometry.rabbit_x < 34 ? geometry.width - 31 : 8}px`,
+								"--entry-detail-y": `${geometry.rabbit_y + 19}px`,
+							}),
+				} as React.CSSProperties & Record<`--${string}`, string>
 			}
 			onFocusCapture={() => {
 				focusInside.current = true;
@@ -628,6 +636,7 @@ export function FloatingWidget() {
 					<button
 						type="button"
 						className="entry-rabbit"
+						ref={rabbitButton}
 						style={{
 							width: rabbitSize,
 							height: rabbitSize,
@@ -638,37 +647,9 @@ export function FloatingWidget() {
 							pointerInside.current = true;
 							openPanel();
 						}}
-						onPointerDown={(event) => {
-							if (!isTop) {
-								pointer.current = { x: event.screenX, y: event.screenY };
-								suppressClick.current = false;
-							}
-						}}
-						onPointerMove={(event) => {
-							if (
-								isTop ||
-								!pointer.current ||
-								dragging.current ||
-								Math.hypot(
-									event.screenX - pointer.current.x,
-									event.screenY - pointer.current.y,
-								) < 7
-							)
-								return;
-							dragging.current = true;
-							suppressClick.current = true;
-							pointer.current = null;
-							void invoke("entry_drag", { dragging: true })
-								.then(() => getCurrentWindow().startDragging())
-								.catch((error) => showFeedback(userError(error)));
-						}}
-						onPointerUp={() => {
-							pointer.current = null;
-						}}
 						onClick={() => {
 							if (isTop) openPanel(true);
-							else if (suppressClick.current) suppressClick.current = false;
-							else void perform("mark");
+							else if (!dragging.current) void perform("mark");
 						}}
 					>
 						{rabbit}

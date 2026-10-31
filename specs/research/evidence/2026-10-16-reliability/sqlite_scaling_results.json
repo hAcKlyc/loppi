@@ -1,0 +1,471 @@
+{
+  "python": "3.14.7",
+  "sqlite": "3.53.4",
+  "machine": "arm64",
+  "os": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "method": "synthetic disk DB; WAL; warm repeated reads; no media files; all retained; original queries; no ANALYZE; timings are not app latency",
+  "sizes": [
+    {
+      "rows": 34560,
+      "before": {
+        "usage_sum": {
+          "median_ms": 1.04,
+          "min_ms": 1.0272,
+          "max_ms": 1.3073,
+          "repeats": 9,
+          "plan": [
+            "SCAN audio_blocks"
+          ]
+        },
+        "orphan_path_absent": {
+          "median_ms": 1.2835,
+          "min_ms": 1.2315,
+          "max_ms": 1.5195,
+          "repeats": 9,
+          "plan": [
+            "SCAN CONSTANT ROW",
+            "SCALAR SUBQUERY 1",
+            "SCAN audio_blocks"
+          ]
+        },
+        "orphan_path_last": {
+          "median_ms": 1.2741,
+          "min_ms": 1.2452,
+          "max_ms": 1.4534,
+          "repeats": 9,
+          "plan": [
+            "SCAN CONSTANT ROW",
+            "SCALAR SUBQUERY 1",
+            "SCAN audio_blocks"
+          ]
+        },
+        "session_replay": {
+          "median_ms": 3.4927,
+          "min_ms": 3.3983,
+          "max_ms": 3.645,
+          "repeats": 9,
+          "plan": [
+            "SCAN audio_blocks",
+            "USE TEMP B-TREE FOR ORDER BY"
+          ]
+        },
+        "pending_empty": {
+          "median_ms": 1.2765,
+          "min_ms": 1.2602,
+          "max_ms": 1.3325,
+          "repeats": 9,
+          "plan": [
+            "SCAN b",
+            "SEARCH s USING INDEX sqlite_autoindex_recording_sessions_1 (id=?)",
+            "CORRELATED SCALAR SUBQUERY 3",
+            "SCAN later",
+            "CORRELATED SCALAR SUBQUERY 1",
+            "SCAN later",
+            "CORRELATED SCALAR SUBQUERY 2",
+            "SCAN adjacent",
+            "USE TEMP B-TREE FOR ORDER BY"
+          ]
+        },
+        "pending_one_at_end": {
+          "median_ms": 2.7085,
+          "min_ms": 2.6686,
+          "max_ms": 2.7873,
+          "repeats": 9,
+          "plan": [
+            "SCAN b",
+            "SEARCH s USING INDEX sqlite_autoindex_recording_sessions_1 (id=?)",
+            "CORRELATED SCALAR SUBQUERY 3",
+            "SCAN later",
+            "CORRELATED SCALAR SUBQUERY 1",
+            "SCAN later",
+            "CORRELATED SCALAR SUBQUERY 2",
+            "SCAN adjacent",
+            "USE TEMP B-TREE FOR ORDER BY"
+          ]
+        }
+      },
+      "after_prototype": {
+        "orphan_path_absent": {
+          "median_ms": 0.0015,
+          "min_ms": 0.0013,
+          "max_ms": 0.0039,
+          "repeats": 9,
+          "plan": [
+            "SCAN CONSTANT ROW",
+            "SCALAR SUBQUERY 1",
+            "SEARCH audio_blocks USING COVERING INDEX audit_media_path (media_path=?)"
+          ]
+        },
+        "orphan_path_last": {
+          "median_ms": 0.0015,
+          "min_ms": 0.0012,
+          "max_ms": 0.0049,
+          "repeats": 9,
+          "plan": [
+            "SCAN CONSTANT ROW",
+            "SCALAR SUBQUERY 1",
+            "SEARCH audio_blocks USING COVERING INDEX audit_media_path (media_path=?)"
+          ]
+        },
+        "session_replay": {
+          "median_ms": 0.0047,
+          "min_ms": 0.0046,
+          "max_ms": 0.0057,
+          "repeats": 9,
+          "plan": [
+            "SEARCH audio_blocks USING INDEX audit_session_samples (session_id=? AND sample_start<?)"
+          ]
+        },
+        "usage_counter_read": {
+          "median_ms": 0.0011,
+          "min_ms": 0.0011,
+          "max_ms": 0.0036,
+          "repeats": 9,
+          "plan": [
+            "SEARCH audit_usage USING INTEGER PRIMARY KEY (rowid=?)"
+          ]
+        },
+        "pending_one_at_end": {
+          "median_ms": 0.0025,
+          "min_ms": 0.0024,
+          "max_ms": 0.0035,
+          "repeats": 9,
+          "plan": [
+            "SCAN b USING INDEX audit_pending",
+            "SEARCH s USING INDEX sqlite_autoindex_recording_sessions_1 (id=?)",
+            "CORRELATED SCALAR SUBQUERY 3",
+            "SEARCH later USING COVERING INDEX audit_session_samples (session_id=? AND sample_start>?)",
+            "CORRELATED SCALAR SUBQUERY 1",
+            "SEARCH later USING COVERING INDEX audit_session_samples (session_id=? AND sample_start>?)",
+            "CORRELATED SCALAR SUBQUERY 2",
+            "SEARCH adjacent USING INDEX audit_session_samples (session_id=? AND sample_start=?)"
+          ]
+        },
+        "pending_empty": {
+          "median_ms": 0.0019,
+          "min_ms": 0.0019,
+          "max_ms": 0.0023,
+          "repeats": 9,
+          "plan": [
+            "SCAN b USING INDEX audit_pending",
+            "SEARCH s USING INDEX sqlite_autoindex_recording_sessions_1 (id=?)",
+            "CORRELATED SCALAR SUBQUERY 3",
+            "SEARCH later USING COVERING INDEX audit_session_samples (session_id=? AND sample_start>?)",
+            "CORRELATED SCALAR SUBQUERY 1",
+            "SEARCH later USING COVERING INDEX audit_session_samples (session_id=? AND sample_start>?)",
+            "CORRELATED SCALAR SUBQUERY 2",
+            "SEARCH adjacent USING INDEX audit_session_samples (session_id=? AND sample_start=?)"
+          ]
+        }
+      }
+    },
+    {
+      "rows": 100000,
+      "before": {
+        "usage_sum": {
+          "median_ms": 3.2385,
+          "min_ms": 3.1287,
+          "max_ms": 3.3576,
+          "repeats": 9,
+          "plan": [
+            "SCAN audio_blocks"
+          ]
+        },
+        "orphan_path_absent": {
+          "median_ms": 3.9262,
+          "min_ms": 3.7618,
+          "max_ms": 4.4128,
+          "repeats": 9,
+          "plan": [
+            "SCAN CONSTANT ROW",
+            "SCALAR SUBQUERY 1",
+            "SCAN audio_blocks"
+          ]
+        },
+        "orphan_path_last": {
+          "median_ms": 3.7675,
+          "min_ms": 3.695,
+          "max_ms": 3.8659,
+          "repeats": 9,
+          "plan": [
+            "SCAN CONSTANT ROW",
+            "SCALAR SUBQUERY 1",
+            "SCAN audio_blocks"
+          ]
+        },
+        "session_replay": {
+          "median_ms": 5.2432,
+          "min_ms": 5.0685,
+          "max_ms": 5.4336,
+          "repeats": 9,
+          "plan": [
+            "SCAN audio_blocks",
+            "USE TEMP B-TREE FOR ORDER BY"
+          ]
+        },
+        "pending_empty": {
+          "median_ms": 3.9115,
+          "min_ms": 3.717,
+          "max_ms": 4.0646,
+          "repeats": 9,
+          "plan": [
+            "SCAN b",
+            "SEARCH s USING INDEX sqlite_autoindex_recording_sessions_1 (id=?)",
+            "CORRELATED SCALAR SUBQUERY 3",
+            "SCAN later",
+            "CORRELATED SCALAR SUBQUERY 1",
+            "SCAN later",
+            "CORRELATED SCALAR SUBQUERY 2",
+            "SCAN adjacent",
+            "USE TEMP B-TREE FOR ORDER BY"
+          ]
+        },
+        "pending_one_at_end": {
+          "median_ms": 7.734,
+          "min_ms": 7.5797,
+          "max_ms": 8.6163,
+          "repeats": 9,
+          "plan": [
+            "SCAN b",
+            "SEARCH s USING INDEX sqlite_autoindex_recording_sessions_1 (id=?)",
+            "CORRELATED SCALAR SUBQUERY 3",
+            "SCAN later",
+            "CORRELATED SCALAR SUBQUERY 1",
+            "SCAN later",
+            "CORRELATED SCALAR SUBQUERY 2",
+            "SCAN adjacent",
+            "USE TEMP B-TREE FOR ORDER BY"
+          ]
+        }
+      },
+      "after_prototype": {
+        "orphan_path_absent": {
+          "median_ms": 0.0013,
+          "min_ms": 0.0012,
+          "max_ms": 0.002,
+          "repeats": 9,
+          "plan": [
+            "SCAN CONSTANT ROW",
+            "SCALAR SUBQUERY 1",
+            "SEARCH audio_blocks USING COVERING INDEX audit_media_path (media_path=?)"
+          ]
+        },
+        "orphan_path_last": {
+          "median_ms": 0.0013,
+          "min_ms": 0.0012,
+          "max_ms": 0.0016,
+          "repeats": 9,
+          "plan": [
+            "SCAN CONSTANT ROW",
+            "SCALAR SUBQUERY 1",
+            "SEARCH audio_blocks USING COVERING INDEX audit_media_path (media_path=?)"
+          ]
+        },
+        "session_replay": {
+          "median_ms": 0.0047,
+          "min_ms": 0.0046,
+          "max_ms": 0.0056,
+          "repeats": 9,
+          "plan": [
+            "SEARCH audio_blocks USING INDEX audit_session_samples (session_id=? AND sample_start<?)"
+          ]
+        },
+        "usage_counter_read": {
+          "median_ms": 0.0011,
+          "min_ms": 0.001,
+          "max_ms": 0.0014,
+          "repeats": 9,
+          "plan": [
+            "SEARCH audit_usage USING INTEGER PRIMARY KEY (rowid=?)"
+          ]
+        },
+        "pending_one_at_end": {
+          "median_ms": 0.0027,
+          "min_ms": 0.0024,
+          "max_ms": 0.0033,
+          "repeats": 9,
+          "plan": [
+            "SCAN b USING INDEX audit_pending",
+            "SEARCH s USING INDEX sqlite_autoindex_recording_sessions_1 (id=?)",
+            "CORRELATED SCALAR SUBQUERY 3",
+            "SEARCH later USING COVERING INDEX audit_session_samples (session_id=? AND sample_start>?)",
+            "CORRELATED SCALAR SUBQUERY 1",
+            "SEARCH later USING COVERING INDEX audit_session_samples (session_id=? AND sample_start>?)",
+            "CORRELATED SCALAR SUBQUERY 2",
+            "SEARCH adjacent USING INDEX audit_session_samples (session_id=? AND sample_start=?)"
+          ]
+        },
+        "pending_empty": {
+          "median_ms": 0.0015,
+          "min_ms": 0.0015,
+          "max_ms": 0.0018,
+          "repeats": 9,
+          "plan": [
+            "SCAN b USING INDEX audit_pending",
+            "SEARCH s USING INDEX sqlite_autoindex_recording_sessions_1 (id=?)",
+            "CORRELATED SCALAR SUBQUERY 3",
+            "SEARCH later USING COVERING INDEX audit_session_samples (session_id=? AND sample_start>?)",
+            "CORRELATED SCALAR SUBQUERY 1",
+            "SEARCH later USING COVERING INDEX audit_session_samples (session_id=? AND sample_start>?)",
+            "CORRELATED SCALAR SUBQUERY 2",
+            "SEARCH adjacent USING INDEX audit_session_samples (session_id=? AND sample_start=?)"
+          ]
+        }
+      }
+    },
+    {
+      "rows": 1000000,
+      "before": {
+        "usage_sum": {
+          "median_ms": 36.3411,
+          "min_ms": 35.9706,
+          "max_ms": 37.2723,
+          "repeats": 9,
+          "plan": [
+            "SCAN audio_blocks"
+          ]
+        },
+        "orphan_path_absent": {
+          "median_ms": 43.1288,
+          "min_ms": 42.1335,
+          "max_ms": 46.6414,
+          "repeats": 9,
+          "plan": [
+            "SCAN CONSTANT ROW",
+            "SCALAR SUBQUERY 1",
+            "SCAN audio_blocks"
+          ]
+        },
+        "orphan_path_last": {
+          "median_ms": 42.5955,
+          "min_ms": 42.0225,
+          "max_ms": 43.6976,
+          "repeats": 9,
+          "plan": [
+            "SCAN CONSTANT ROW",
+            "SCALAR SUBQUERY 1",
+            "SCAN audio_blocks"
+          ]
+        },
+        "session_replay": {
+          "median_ms": 36.4691,
+          "min_ms": 36.0818,
+          "max_ms": 37.4757,
+          "repeats": 9,
+          "plan": [
+            "SCAN audio_blocks",
+            "USE TEMP B-TREE FOR ORDER BY"
+          ]
+        },
+        "pending_empty": {
+          "median_ms": 41.5024,
+          "min_ms": 41.3501,
+          "max_ms": 43.1825,
+          "repeats": 9,
+          "plan": [
+            "SCAN b",
+            "SEARCH s USING INDEX sqlite_autoindex_recording_sessions_1 (id=?)",
+            "CORRELATED SCALAR SUBQUERY 3",
+            "SCAN later",
+            "CORRELATED SCALAR SUBQUERY 1",
+            "SCAN later",
+            "CORRELATED SCALAR SUBQUERY 2",
+            "SCAN adjacent",
+            "USE TEMP B-TREE FOR ORDER BY"
+          ]
+        },
+        "pending_one_at_end": {
+          "median_ms": 81.5026,
+          "min_ms": 79.6249,
+          "max_ms": 82.3413,
+          "repeats": 9,
+          "plan": [
+            "SCAN b",
+            "SEARCH s USING INDEX sqlite_autoindex_recording_sessions_1 (id=?)",
+            "CORRELATED SCALAR SUBQUERY 3",
+            "SCAN later",
+            "CORRELATED SCALAR SUBQUERY 1",
+            "SCAN later",
+            "CORRELATED SCALAR SUBQUERY 2",
+            "SCAN adjacent",
+            "USE TEMP B-TREE FOR ORDER BY"
+          ]
+        }
+      },
+      "after_prototype": {
+        "orphan_path_absent": {
+          "median_ms": 0.0013,
+          "min_ms": 0.0012,
+          "max_ms": 0.0027,
+          "repeats": 9,
+          "plan": [
+            "SCAN CONSTANT ROW",
+            "SCALAR SUBQUERY 1",
+            "SEARCH audio_blocks USING COVERING INDEX audit_media_path (media_path=?)"
+          ]
+        },
+        "orphan_path_last": {
+          "median_ms": 0.0013,
+          "min_ms": 0.0012,
+          "max_ms": 0.0016,
+          "repeats": 9,
+          "plan": [
+            "SCAN CONSTANT ROW",
+            "SCALAR SUBQUERY 1",
+            "SEARCH audio_blocks USING COVERING INDEX audit_media_path (media_path=?)"
+          ]
+        },
+        "session_replay": {
+          "median_ms": 0.0048,
+          "min_ms": 0.0046,
+          "max_ms": 0.0059,
+          "repeats": 9,
+          "plan": [
+            "SEARCH audio_blocks USING INDEX audit_session_samples (session_id=? AND sample_start<?)"
+          ]
+        },
+        "usage_counter_read": {
+          "median_ms": 0.0011,
+          "min_ms": 0.0011,
+          "max_ms": 0.0015,
+          "repeats": 9,
+          "plan": [
+            "SEARCH audit_usage USING INTEGER PRIMARY KEY (rowid=?)"
+          ]
+        },
+        "pending_one_at_end": {
+          "median_ms": 0.0026,
+          "min_ms": 0.0025,
+          "max_ms": 0.0036,
+          "repeats": 9,
+          "plan": [
+            "SCAN b USING INDEX audit_pending",
+            "SEARCH s USING INDEX sqlite_autoindex_recording_sessions_1 (id=?)",
+            "CORRELATED SCALAR SUBQUERY 3",
+            "SEARCH later USING COVERING INDEX audit_session_samples (session_id=? AND sample_start>?)",
+            "CORRELATED SCALAR SUBQUERY 1",
+            "SEARCH later USING COVERING INDEX audit_session_samples (session_id=? AND sample_start>?)",
+            "CORRELATED SCALAR SUBQUERY 2",
+            "SEARCH adjacent USING INDEX audit_session_samples (session_id=? AND sample_start=?)"
+          ]
+        },
+        "pending_empty": {
+          "median_ms": 0.0015,
+          "min_ms": 0.0015,
+          "max_ms": 0.0019,
+          "repeats": 9,
+          "plan": [
+            "SCAN b USING INDEX audit_pending",
+            "SEARCH s USING INDEX sqlite_autoindex_recording_sessions_1 (id=?)",
+            "CORRELATED SCALAR SUBQUERY 3",
+            "SEARCH later USING COVERING INDEX audit_session_samples (session_id=? AND sample_start>?)",
+            "CORRELATED SCALAR SUBQUERY 1",
+            "SEARCH later USING COVERING INDEX audit_session_samples (session_id=? AND sample_start>?)",
+            "CORRELATED SCALAR SUBQUERY 2",
+            "SEARCH adjacent USING INDEX audit_session_samples (session_id=? AND sample_start=?)"
+          ]
+        }
+      }
+    }
+  ]
+}

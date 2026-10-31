@@ -28,6 +28,7 @@ export interface EntryGeometry {
 	rabbit_y: number;
 	top_band: number;
 	top_shift: number;
+	menu_y: number;
 }
 export type EntryView = "collapsed" | "panel" | "comment";
 export type EntryKind = "mark" | "comment" | "screenshot" | "control";

@@ -1,0 +1,18 @@
+# Review Contract
+
+1. Mode: repair.
+2. Requirement: latest user asks ≥10 real varied-length events, iterative prompt tests until structure and quality accepted. See specs/prd/devplan_261024_event-prompt-evaluation.md. Acceptance is fixed final candidate, all 12 cases twice consecutively, raw schema/evidence/publication valid, source-supported key facts and whole-event summaries, no major factual invention. This is not yet passed. Do not lower standards to manufacture success.
+3. Base: 729e1ba6fc737416e9ef091e9a9bf6dc1f337190; working diff + new files below.
+4. Scope: crates/hear-core/src/events/understanding_replay_tests.rs; scripts/evaluate_event_prompt.py; devplan; specs/research/2026-10-24-event-prompt-evaluation non-private docs/schema/prompts. Fixed snapshot at start: prompt v1–v9. Private fixtures/results are read-only review evidence, ignored by Git. Ongoing model runs may append immutable output; no edits to reviewed code/prompt while Phase1 runs.
+5. Exclude: pre-existing Cargo/package/version/UI changes and other untracked files. Production FIT_SYSTEM/runtime/model/windowing/publishing unchanged.
+6. Guarantees: frozen genuine raw inputs, actual production replay chain with empty isolated DB per case, single call/window, original raw responses + attempts retained, no silent retries/manual output edits/live DB writes/credential export. Runtime parity is reported separately: default60s; explicit120s only to inspect quality after repeated60s timeouts, not a production setting change. No claim of general reliability or unseen holdouts after v6.
+7. In-scope defects: newly introduced audit/harness defects, source→gold→output assessment mistakes, missing acceptance evidence, generic prompt behavior causing observed quality/structure failures. Ambiguous raw transcript must not be scored against an invented answer. Existing gold stays immutable; corrections require an explicit justified erratum, not silent rewrite.
+8. Allowed architecture: test-only prompt/deadline config + recording; standalone Python orchestration/audit. No production state/model/protocol/fallback/retry changes.
+9. Lenses: fresh requirements + adversarial now; final architecture after repairs and final verification. Reviewers read appropriate skill, do not edit or delegate. Known unfinished evidence is a gap, not permission to stop at partial completion.
+10. Checks: Core329passed/13ignored, cargo check/build; schema/examples valid, auditor fault injection; strict percase structural audit + raw semantic human review of final two rounds. Prompt changes invalidate model evidence for final acceptance; auditor-only repairs re-audit existing results. Final review follows up on reported defects and actual two-round results.
+
+Known observations to verify: v8 c09 comparator age promoted to actual age; v9 c04 future discussion promoted to completed; v8 c08 unstudied reward mechanism overasserted; v8 c10 mixed recording called one continuous conversation. Original c04 gold says next new request first output still poor, but raw is garbled and may say relatively good: do not force either reading. v8 c11 has a system-audio gap; assess continuity from actual input rather than expectation. Current v9-probe and v8-all-a may still be finishing; do not run paid calls yourselves.
+
+## 对照实验范围补充（低推理13版仍失败后）
+
+用户目标是测试至结构/质量稳定；新增同一deepseek-flash的high推理隔离对照，不换模型、不改生产配置。范围增加cloud.rs中cfg(test)且付费回放opt-in下的请求参数覆盖、replay设置快照、runner显式--reasoning-effort low|high（默认low）。最终报告按配置分别验收，不将high通过作为low通过；验收同一候选、同一配置两轮12例标准不变。正式部署不在范围。原Phase1结论对未变审计成立，新增test-only路径须定向adversarial/requirements检查，最终architecture看全diff。

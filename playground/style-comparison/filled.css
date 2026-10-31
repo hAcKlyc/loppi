@@ -1,0 +1,20 @@
+/* C: A's geometry and hierarchy, grouped by contrasting surfaces instead of outlines. */
+:root {
+ --color-canvas:#f0f3ee;
+ --color-sidebar:#e7ede3;
+ --color-surface:#ffffff;
+ --color-surface-subtle:#f4f7f1;
+}
+.sidebar { border-right-color:transparent; }
+.nav-button.active { box-shadow:none; }
+.day-map,.panel-card,.event-card,.calendar-button { border-color:transparent; box-shadow:none; }
+.event-card:hover { border-color:transparent; background:#fafcf8; box-shadow:none; }
+.event-card.is-recording { border-color:transparent; background:#e0eddd; }
+.event-card.is-recording:hover { border-color:transparent; background:#d9e8d5; }
+.quiet-button { border-color:transparent; background:#e8eee3; }
+.quiet-button:hover { background:#dde7d7; }
+.timeline-page .create-event { border-color:transparent; background:#dce9d6; }
+.timeline-page .create-event:hover { background:#d1e2c9; }
+.calendar-button:hover { background:#e4eddf; }
+.preview-dialog { border-color:transparent!important; }
+/* Keep meaningful axis lines, row separators and keyboard focus outlines. */

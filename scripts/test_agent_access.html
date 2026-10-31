@@ -59,10 +59,9 @@ document.getElementById('run').onclick=async()=>{
   try {
     await waitFor(()=>document.querySelector('.agent-online'));
     button('复制配置').click();await waitFor(()=>document.querySelector('.agent-copy-feedback').textContent==='已复制');
-    assert(copied.includes('[mcp_servers.hear]'),'配置复制内容错误');
-    document.querySelector('input[value=generic]')?.click();
-    const radios=[...document.querySelectorAll('input[type=radio]')];radios.find(x=>x.value==='generic')?.click();
-    await wait(30);assert(document.querySelector('.agent-code').textContent.includes('mcpServers'),'通用配置未切换');
+    assert(copied.includes('mcpServers'),'默认通用配置复制内容错误');
+    document.querySelector('input[value=codex]')?.click();
+    await wait(30);assert(document.querySelector('.agent-code').textContent.includes('[mcp_servers.hear]'),'Codex配置未切换');
     const tab=document.querySelector('[role=tab][aria-selected=true]');tab.focus();
     tab.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
     assert(document.activeElement?.textContent==='CLI + Skill','方向键焦点错误');
@@ -78,7 +77,7 @@ document.getElementById('run').onclick=async()=>{
     }
     assert(document.querySelector('.agent-access').scrollWidth<=document.querySelector('.agent-access').clientWidth,'页面横向溢出');
     assert(!document.querySelector('.agent-access').querySelector('[data-tauri-drag-region] button'),'拖拽区域覆盖操作');
-    button('MCP').click();await wait(30);document.querySelector('input[value=codex]')?.click();
+    button('MCP').click();await wait(30);document.querySelector('input[value=generic]')?.click();
     output.textContent='PASS · 两种配置 / 键盘切换 / 复制成功与失败 / 五种连接状态';
   } catch(error){output.textContent='FAIL · '+error.message;throw error;}
 };

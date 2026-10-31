@@ -23,6 +23,11 @@ import {
 } from "./api";
 import { Button, Dialog, Icon, IconButton, TabPanel, Tabs } from "./Controls";
 import { entryTime, nearestSegmentIndex, pageCoversTime } from "./detail-entry";
+import {
+	bestSegments,
+	type TranscriptMore,
+	transcriptPageEnd,
+} from "./detail-transcript";
 import { MomentList } from "./MomentList";
 import { type Chunk, ContinuousPlayback } from "./playback";
 import { type SpeakerAction, SpeakerPicker } from "./SpeakerPicker";
@@ -79,48 +84,6 @@ function uniqueSegments<T extends { id: string }>(segments: T[]): T[] {
 function localDateTime(timestamp: number): string {
 	const value = new Date(timestamp);
 	return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}T${String(value.getHours()).padStart(2, "0")}:${String(value.getMinutes()).padStart(2, "0")}:${String(value.getSeconds()).padStart(2, "0")}`;
-}
-
-function coveredByPrecise(
-	coarse: CoarseSegment,
-	precise: PreciseSegment[],
-): boolean {
-	const intervals = precise
-		.filter(
-			(part) =>
-				part.source === coarse.source &&
-				part.ended_ms > coarse.started_ms &&
-				part.started_ms < coarse.ended_ms,
-		)
-		.sort((a, b) => a.started_ms - b.started_ms);
-	let cursor = coarse.started_ms;
-	let covered = 0;
-	for (const part of intervals) {
-		const start = Math.max(coarse.started_ms, part.started_ms, cursor);
-		const end = Math.min(coarse.ended_ms, part.ended_ms);
-		covered += Math.max(0, end - start);
-		cursor = Math.max(cursor, end);
-	}
-	return covered >= (coarse.ended_ms - coarse.started_ms) / 2;
-}
-
-function bestSegments(
-	detail: TimelineItem,
-): (CoarseSegment | PreciseSegment)[] {
-	if (
-		detail.processing_state === "transcribed" &&
-		detail.precise_segments.length > 0
-	) {
-		return [...detail.precise_segments].sort(
-			(a, b) => a.started_ms - b.started_ms,
-		);
-	}
-	return [
-		...detail.precise_segments,
-		...detail.coarse_segments.filter(
-			(coarse) => !coveredByPrecise(coarse, detail.precise_segments),
-		),
-	].sort((a, b) => a.started_ms - b.started_ms);
 }
 
 function speakerName(
@@ -203,7 +166,15 @@ export function DetailDrawer({
 	const offset = useRef(0);
 	const initialScroll = useRef(initialAt);
 	const transcriptRef = useRef<HTMLDivElement>(null);
-	const [hasMore, setHasMore] = useState(false);
+	const [more, setMore] = useState<TranscriptMore>({
+		coarse: false,
+		precise: false,
+	});
+	const hasMore = more.coarse || more.precise;
+	const [loadingPage, setLoadingPage] = useState(false);
+	const loading = useRef(false);
+	const [pageError, setPageError] = useState<string | null>(null);
+	const moreRef = useRef<HTMLDivElement>(null);
 	const [editing, setEditing] = useState<string | null>(null);
 	const [draft, setDraft] = useState("");
 	const [assigning, setAssigning] = useState<string | null>(null);
@@ -244,7 +215,11 @@ export function DetailDrawer({
 	});
 
 	const load = useCallback(
-		async (page: number, append = false) => {
+		async (page: number, paging = false) => {
+			if (paging && loading.current) return;
+			loading.current = true;
+			setLoadingPage(true);
+			if (paging) setPageError(null);
 			const token = ++detailRequest.current;
 			setDetailError(null);
 			try {
@@ -259,7 +234,7 @@ export function DetailDrawer({
 				for (let attempt = 0; attempt < 2; attempt++) {
 					allCoarse.length = 0;
 					allPrecise.length = 0;
-					const appendPage = append && attempt === 0;
+					const appendPage = paging && attempt === 0;
 					if (appendPage) {
 						allCoarse.push(...detailRef.current.coarse_segments);
 						allPrecise.push(...detailRef.current.precise_segments);
@@ -301,7 +276,21 @@ export function DetailDrawer({
 									response.event.precise_segments,
 									entryTime(response.event, target),
 									PAGE_SIZE,
-								));
+								) &&
+								entryTime(response.event, target) <
+									transcriptPageEnd(
+										{
+											...response.event,
+											coarse_segments: allCoarse,
+											precise_segments: allPrecise,
+										},
+										{
+											coarse:
+												response.event.coarse_segments.length >= PAGE_SIZE,
+											precise:
+												response.event.precise_segments.length >= PAGE_SIZE,
+										},
+									));
 						if (offset >= page && covered) break;
 					}
 					if (
@@ -330,10 +319,10 @@ export function DetailDrawer({
 				});
 				offset.current = loadedPage;
 				setDetailReady(true);
-				setHasMore(
-					response.event.coarse_segments.length >= PAGE_SIZE ||
-						response.event.precise_segments.length >= PAGE_SIZE,
-				);
+				setMore({
+					coarse: response.event.coarse_segments.length >= PAGE_SIZE,
+					precise: response.event.precise_segments.length >= PAGE_SIZE,
+				});
 				setInfoError(null);
 				// Text and notes become readable before the independent identity list.
 				setSpeakersError(null);
@@ -359,7 +348,15 @@ export function DetailDrawer({
 					setSpeakersReady(true);
 				}
 			} catch (error) {
-				if (token === detailRequest.current) setDetailError(userError(error));
+				if (token === detailRequest.current) {
+					if (paging) setPageError(userError(error));
+					else setDetailError(userError(error));
+				}
+			} finally {
+				if (token === detailRequest.current) {
+					loading.current = false;
+					setLoadingPage(false);
+				}
 			}
 		},
 		[item.id, item.started_ms, item.ended_ms, item.sources],
@@ -698,7 +695,44 @@ export function DetailDrawer({
 	const segments =
 		transcriptSource === "coarse"
 			? detail.coarse_segments
-			: bestSegments(detail);
+			: bestSegments(detail, more);
+	useEffect(() => {
+		const sentinel = moreRef.current;
+		const list = transcriptRef.current;
+		if (
+			!detailReady ||
+			!hasMore ||
+			loadingPage ||
+			pageError ||
+			detailError ||
+			tab !== "transcript" ||
+			editing !== null ||
+			assigning !== null ||
+			!sentinel ||
+			!list
+		)
+			return;
+		const observer = new IntersectionObserver(
+			(entries) => {
+				if (entries.some((entry) => entry.isIntersecting))
+					void load(offset.current + PAGE_SIZE, true);
+			},
+			{ root: list, rootMargin: "240px 0px" },
+		);
+		observer.observe(sentinel);
+		return () => observer.disconnect();
+	}, [
+		detailReady,
+		hasMore,
+		loadingPage,
+		pageError,
+		detailError,
+		tab,
+		editing,
+		assigning,
+		load,
+	]);
+
 	const positionedIndex =
 		!playing && playhead < detail.ended_ms
 			? nearestSegmentIndex(segments, playhead, playSource)
@@ -970,7 +1004,7 @@ export function DetailDrawer({
 							}}
 						>
 							{!detailReady && !detailError && <DetailSkeleton />}
-							{detailReady && segments.length === 0 && (
+							{detailReady && segments.length === 0 && !hasMore && (
 								<div className="detail-empty">
 									<strong>还没有转录文字</strong>
 									{(detail.id || detail.manual_range_id) && (
@@ -1172,13 +1206,20 @@ export function DetailDrawer({
 								);
 							})}
 							{hasMore && (
-								<button
-									type="button"
-									className="load-more"
-									onClick={() => void load(offset.current + PAGE_SIZE, true)}
-								>
-									显示更多文字
-								</button>
+								<div ref={moreRef} className="transcript-pagination">
+									{pageError ? (
+										<LoadError
+											message={`后续文字加载失败：${pageError}`}
+											retry={() => void load(offset.current + PAGE_SIZE, true)}
+										/>
+									) : (
+										<span role="status">
+											{loadingPage
+												? "正在加载后续文字…"
+												: "向下滚动加载更多文字"}
+										</span>
+									)}
+								</div>
 							)}
 						</TabPanel>
 						<TabPanel

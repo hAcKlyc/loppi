@@ -1,0 +1,668 @@
+{
+  "main": "9c9cbd83bbd55be29d58a698bfd20e0f8e44297b",
+  "remote_heads": {
+    "codex/cross-machine-reliability-0.1.13": "4de9e3b9c5cf27599548ac010549059a2f8a9de7",
+    "codex/event-understanding": "667e8fcc65b62dc7896fd59603669c9c6503606a",
+    "codex/release-0.1.5": "f3c1b45c8736dd8dad08d6803336eed36f3e0829",
+    "dev": "999b9345103b6a4a8a73d1750ffe8c2a4aa0da91",
+    "feat/diagnostics-and-verification": "cf1d5794ebdacf99986e8a85945792332ff0f5fd",
+    "fix/agent-context-reliability": "5144001d357a2d02b6f9bb21eaabe910e0a83812",
+    "fix/asr-contiguous-event-fitting": "4f59d92214ecf85d903cf93b35da6ff1997fe9d4",
+    "fix/asr-publication-input-clock": "b15a93b121edc4f1349a54ec720e00373aabeb1f",
+    "fix/asr-retry-input-recovery": "bb75142c41b7a0ac6de65c1cc36042d3857084c7",
+    "fix/evening-pipeline-reliability": "37cec75dfc4c12776dc97f3c6ac180a565c11006",
+    "fix/local-failure-isolation": "4fd2ba7a72b1a3411a51024e5e333dbaeac0f4dd",
+    "fix/local-processing-reliability": "3660d24211245dd56f1c7dee1ddff5966ba60175",
+    "fix/partial-fit-publication": "4a1343c67d4efa7a830ccdebb3ba1ca078de1545",
+    "fix/read-capacity": "42b3806a82b12cb166cf424ed1dbc8b40ec74df2",
+    "fix/transcript-scroll-pagination": "69863c1fa8bcab08cf4475d6147506e2819dad5c",
+    "main": "9c9cbd83bbd55be29d58a698bfd20e0f8e44297b"
+  },
+  "branches": [
+    {
+      "branch": "local:codex/agent-access-compact",
+      "ancestor_merged": false,
+      "main_only": 7,
+      "branch_only": 5,
+      "head": "4bf6322",
+      "cherry": [
+        "+ 5a529c0cd0c0299f32088d554f04311b5c9ce0dc fix(ui): keep transcript pages aligned while scrolling",
+        "+ 69863c1fa8bcab08cf4475d6147506e2819dad5c docs: record transcript pagination acceptance",
+        "+ 154c53ea90f337fee18615e1f94a350365b0f77b fix(ui): handle floating rabbit drag in the native event owner",
+        "+ 1374a970c0bc6251fb67b7a3f54f8d0144781dae docs: record floating drag acceptance and local integration",
+        "+ 4bf63224803f7e855e038b9c9a4e838cd4fe5aff fix(ui): prioritize connection setup on the agent access page"
+      ],
+      "dry_merge_clean": false,
+      "dry_merge_same_main": false,
+      "dry_merge_notes": [
+        "100644 7b51a2ffd176a372c0ea1cb58ce0b3ce692ebbd2 1\tsrc-tauri/src/lib.rs",
+        "100644 401c08eadb01fe0fcca7244717a9a2de4facf53f 2\tsrc-tauri/src/lib.rs",
+        "100644 5e78c13fde9856e02170621b39b6fe555d742d28 3\tsrc-tauri/src/lib.rs",
+        "100644 3ceb45696017f7e02c2a679bab62e4ebc75807f4 1\tsrc/DetailDrawer.tsx",
+        "100644 5b88ce214ea3243d55d3e9660cd96d438e1dfeab 2\tsrc/DetailDrawer.tsx",
+        "100644 53a2fe4f828efe47588a6b20707b0fd5b09ff737 3\tsrc/DetailDrawer.tsx",
+        "",
+        "Auto-merging specs/ARCHITECTURE.md",
+        "Auto-merging src-tauri/src/entry.rs",
+        "Auto-merging src-tauri/src/lib.rs",
+        "CONFLICT (content): Merge conflict in src-tauri/src/lib.rs",
+        "Auto-merging src/DetailDrawer.tsx",
+        "CONFLICT (content): Merge conflict in src/DetailDrawer.tsx"
+      ]
+    },
+    {
+      "branch": "local:codex/bootstrap-specs",
+      "ancestor_merged": true,
+      "main_only": 142,
+      "branch_only": 0,
+      "head": "f93d831"
+    },
+    {
+      "branch": "local:codex/copy-development-skills",
+      "ancestor_merged": true,
+      "main_only": 140,
+      "branch_only": 0,
+      "head": "45b50a5"
+    },
+    {
+      "branch": "local:codex/cross-machine-reliability-0.1.13",
+      "ancestor_merged": true,
+      "main_only": 1,
+      "branch_only": 0,
+      "head": "4de9e3b"
+    },
+    {
+      "branch": "local:codex/design-system-polish",
+      "ancestor_merged": true,
+      "main_only": 31,
+      "branch_only": 0,
+      "head": "18cba03"
+    },
+    {
+      "branch": "local:codex/event-understanding",
+      "ancestor_merged": false,
+      "main_only": 7,
+      "branch_only": 5,
+      "head": "4bf6322",
+      "cherry": [
+        "+ 5a529c0cd0c0299f32088d554f04311b5c9ce0dc fix(ui): keep transcript pages aligned while scrolling",
+        "+ 69863c1fa8bcab08cf4475d6147506e2819dad5c docs: record transcript pagination acceptance",
+        "+ 154c53ea90f337fee18615e1f94a350365b0f77b fix(ui): handle floating rabbit drag in the native event owner",
+        "+ 1374a970c0bc6251fb67b7a3f54f8d0144781dae docs: record floating drag acceptance and local integration",
+        "+ 4bf63224803f7e855e038b9c9a4e838cd4fe5aff fix(ui): prioritize connection setup on the agent access page"
+      ],
+      "dry_merge_clean": false,
+      "dry_merge_same_main": false,
+      "dry_merge_notes": [
+        "100644 7b51a2ffd176a372c0ea1cb58ce0b3ce692ebbd2 1\tsrc-tauri/src/lib.rs",
+        "100644 401c08eadb01fe0fcca7244717a9a2de4facf53f 2\tsrc-tauri/src/lib.rs",
+        "100644 5e78c13fde9856e02170621b39b6fe555d742d28 3\tsrc-tauri/src/lib.rs",
+        "100644 3ceb45696017f7e02c2a679bab62e4ebc75807f4 1\tsrc/DetailDrawer.tsx",
+        "100644 5b88ce214ea3243d55d3e9660cd96d438e1dfeab 2\tsrc/DetailDrawer.tsx",
+        "100644 53a2fe4f828efe47588a6b20707b0fd5b09ff737 3\tsrc/DetailDrawer.tsx",
+        "",
+        "Auto-merging specs/ARCHITECTURE.md",
+        "Auto-merging src-tauri/src/entry.rs",
+        "Auto-merging src-tauri/src/lib.rs",
+        "CONFLICT (content): Merge conflict in src-tauri/src/lib.rs",
+        "Auto-merging src/DetailDrawer.tsx",
+        "CONFLICT (content): Merge conflict in src/DetailDrawer.tsx"
+      ]
+    },
+    {
+      "branch": "local:codex/floating-drag-snap",
+      "ancestor_merged": false,
+      "main_only": 7,
+      "branch_only": 4,
+      "head": "1374a97",
+      "cherry": [
+        "+ 5a529c0cd0c0299f32088d554f04311b5c9ce0dc fix(ui): keep transcript pages aligned while scrolling",
+        "+ 69863c1fa8bcab08cf4475d6147506e2819dad5c docs: record transcript pagination acceptance",
+        "+ 154c53ea90f337fee18615e1f94a350365b0f77b fix(ui): handle floating rabbit drag in the native event owner",
+        "+ 1374a970c0bc6251fb67b7a3f54f8d0144781dae docs: record floating drag acceptance and local integration"
+      ],
+      "dry_merge_clean": false,
+      "dry_merge_same_main": false,
+      "dry_merge_notes": [
+        "100644 7b51a2ffd176a372c0ea1cb58ce0b3ce692ebbd2 1\tsrc-tauri/src/lib.rs",
+        "100644 401c08eadb01fe0fcca7244717a9a2de4facf53f 2\tsrc-tauri/src/lib.rs",
+        "100644 5e78c13fde9856e02170621b39b6fe555d742d28 3\tsrc-tauri/src/lib.rs",
+        "100644 3ceb45696017f7e02c2a679bab62e4ebc75807f4 1\tsrc/DetailDrawer.tsx",
+        "100644 5b88ce214ea3243d55d3e9660cd96d438e1dfeab 2\tsrc/DetailDrawer.tsx",
+        "100644 53a2fe4f828efe47588a6b20707b0fd5b09ff737 3\tsrc/DetailDrawer.tsx",
+        "",
+        "Auto-merging specs/ARCHITECTURE.md",
+        "Auto-merging src-tauri/src/entry.rs",
+        "Auto-merging src-tauri/src/lib.rs",
+        "CONFLICT (content): Merge conflict in src-tauri/src/lib.rs",
+        "Auto-merging src/DetailDrawer.tsx",
+        "CONFLICT (content): Merge conflict in src/DetailDrawer.tsx"
+      ]
+    },
+    {
+      "branch": "local:codex/offline-universal",
+      "ancestor_merged": true,
+      "main_only": 14,
+      "branch_only": 0,
+      "head": "d48e31d"
+    },
+    {
+      "branch": "local:codex/recording-schedule",
+      "ancestor_merged": true,
+      "main_only": 73,
+      "branch_only": 0,
+      "head": "c302de6"
+    },
+    {
+      "branch": "local:codex/release-0-1-4",
+      "ancestor_merged": true,
+      "main_only": 41,
+      "branch_only": 0,
+      "head": "0666e02"
+    },
+    {
+      "branch": "local:codex/release-0.1.5",
+      "ancestor_merged": true,
+      "main_only": 35,
+      "branch_only": 0,
+      "head": "f3c1b45"
+    },
+    {
+      "branch": "local:codex/rename-specs-0.1",
+      "ancestor_merged": true,
+      "main_only": 141,
+      "branch_only": 0,
+      "head": "9d0bf65"
+    },
+    {
+      "branch": "local:codex/review-pr-11",
+      "ancestor_merged": false,
+      "main_only": 68,
+      "branch_only": 2,
+      "head": "bd98602",
+      "cherry": [
+        "- bd98602d15351bc24eb79fba1fb2786a833c4a38 fix: retain source audio range in delayed VAD failure logs"
+      ],
+      "dry_merge_clean": false,
+      "dry_merge_same_main": false,
+      "dry_merge_notes": [
+        "100644 8ecc48b701662333c20597cebe2bb37781c9e4ed 1\tcrates/hear-core/src/main.rs",
+        "100644 829364b98eeefb0bd95f56a2e586e81eb4daecd5 2\tcrates/hear-core/src/main.rs",
+        "100644 f9992a818d814546787e71be1abb6e5d6463bfa0 3\tcrates/hear-core/src/main.rs",
+        "100644 f947bf88123690bcb2dd564bdee8590a2c4a7ccf 1\tspecs/tech_docs/diagnostics-and-verification.md",
+        "100644 c772e19d07de8b8bb2f5937452d800c633da239d 2\tspecs/tech_docs/diagnostics-and-verification.md",
+        "100644 fe3126e42cf7ce2c44414c8b65d282a4b2c3a484 3\tspecs/tech_docs/diagnostics-and-verification.md",
+        "",
+        "Auto-merging crates/hear-core/src/coarse.rs",
+        "Auto-merging crates/hear-core/src/diagnostic_tests.rs",
+        "Auto-merging crates/hear-core/src/ingestion.rs",
+        "Auto-merging crates/hear-core/src/main.rs",
+        "CONFLICT (content): Merge conflict in crates/hear-core/src/main.rs",
+        "Auto-merging specs/tech_docs/diagnostics-and-verification.md",
+        "CONFLICT (content): Merge conflict in specs/tech_docs/diagnostics-and-verification.md"
+      ]
+    },
+    {
+      "branch": "local:codex/settings-interactions",
+      "ancestor_merged": true,
+      "main_only": 48,
+      "branch_only": 0,
+      "head": "83bc811"
+    },
+    {
+      "branch": "local:codex/update-0.1.12",
+      "ancestor_merged": true,
+      "main_only": 4,
+      "branch_only": 0,
+      "head": "3651aa1"
+    },
+    {
+      "branch": "local:dev",
+      "ancestor_merged": true,
+      "main_only": 60,
+      "branch_only": 0,
+      "head": "276ab29"
+    },
+    {
+      "branch": "local:feat/diagnostics-and-verification",
+      "ancestor_merged": true,
+      "main_only": 75,
+      "branch_only": 0,
+      "head": "db56b19"
+    },
+    {
+      "branch": "local:fix/asr-contiguous-event-fitting",
+      "ancestor_merged": true,
+      "main_only": 79,
+      "branch_only": 0,
+      "head": "4f59d92"
+    },
+    {
+      "branch": "local:fix/local-processing-reliability",
+      "ancestor_merged": true,
+      "main_only": 83,
+      "branch_only": 0,
+      "head": "a1ced1f"
+    },
+    {
+      "branch": "local:fix/partial-fit-publication",
+      "ancestor_merged": false,
+      "main_only": 32,
+      "branch_only": 2,
+      "head": "4a1343c",
+      "cherry": [
+        "+ 5ad5076fc0dc04b87338b008300023f45018044f fix: preserve usable event results when model fields are invalid",
+        "+ 4a1343c67d4efa7a830ccdebb3ba1ca078de1545 docs: close partial-result publication acceptance"
+      ],
+      "dry_merge_clean": false,
+      "dry_merge_same_main": false,
+      "dry_merge_notes": [
+        "100644 04f0327cce8bdda8abdf4c38bc569543c2f6eeb4 1\tcrates/hear-core/src/diagnostic_tests.rs",
+        "100644 ab53fac61be483e8acf46ea446a8e305bd17af51 2\tcrates/hear-core/src/diagnostic_tests.rs",
+        "100644 e6db9973cbcfb035b0cedcef9834c6f91b0422a3 3\tcrates/hear-core/src/diagnostic_tests.rs",
+        "100644 24b42f7eaa70a0341e1637a50cc52eb8814e8f19 1\tcrates/hear-core/src/events.rs",
+        "100644 1d93a856e9141f07bce89d717f9dc98dd6f623e0 2\tcrates/hear-core/src/events.rs",
+        "100644 8617f6ae7c932d0de5df9fad32fff4a11bcb17f6 3\tcrates/hear-core/src/events.rs",
+        "100644 676bce13e1b7d2e34e556f5a63c8aabcb0c2a155 1\tcrates/hear-core/src/events/activity_tests.rs",
+        "100644 4eda6a31fec1ca8cf6f1446d9e3b6e63cf49cd04 2\tcrates/hear-core/src/events/activity_tests.rs",
+        "100644 28c8c3f8e59886d5d76ee4b7a860b887e6594180 3\tcrates/hear-core/src/events/activity_tests.rs",
+        "100644 569055f42047852cd2318f2cbb3120f6f2fbf680 1\tcrates/hear-core/src/events/asr.rs",
+        "100644 dcaac2479e5cb1253de02a8ae870ae23213b1867 2\tcrates/hear-core/src/events/asr.rs",
+        "100644 53cc81eed237bd0f1be6cd208d933fa9570e9b53 3\tcrates/hear-core/src/events/asr.rs",
+        "100644 68674bd52b85adb3f38e6610620b5e044b0b0d0d 1\tscripts/test_timeline_view.mjs",
+        "100644 9c94a5e6dec1009ab801459a6dd4b3ea55a13e77 2\tscripts/test_timeline_view.mjs",
+        "100644 61459f675a5f2cb84eef8c35d588d4ba8740ff1b 3\tscripts/test_timeline_view.mjs",
+        "100644 c6543f9ad7a3509ac32e3d986d768553f19f67e4 1\tspecs/ARCHITECTURE.md",
+        "100644 2cd1b351d3526e6c9cc8102ce95fa5624d586e4f 2\tspecs/ARCHITECTURE.md",
+        "100644 1cf669df91ba37bf47d6fcfdbda7d7c2eec5d058 3\tspecs/ARCHITECTURE.md",
+        "100644 66eca699dd894548ad499ca3a08c0d63357c7aff 1\tspecs/tech_docs/algorithms.md",
+        "100644 3abf1cdd15365384821c882451b252f3ebc9e42e 2\tspecs/tech_docs/algorithms.md",
+        "100644 462e585c244ae4386e6ec0aa9d6dec0461bc6517 3\tspecs/tech_docs/algorithms.md",
+        "100644 c38f9e8ce3c2cddcf4cb8cb6b9a39cecde0414f1 1\tspecs/tech_docs/diagnostics-and-verification.md",
+        "100644 c772e19d07de8b8bb2f5937452d800c633da239d 2\tspecs/tech_docs/diagnostics-and-verification.md",
+        "100644 c88468dc3c87a272e16494542256abdda5a75448 3\tspecs/tech_docs/diagnostics-and-verification.md",
+        "100644 199b47f282557f6f159bad707037c804bb9e58a0 1\tsrc/TimelineView.tsx",
+        "100644 08aca923402780d445f3479e4ff5d22891245163 2\tsrc/TimelineView.tsx",
+        "100644 e90d949674f5bb2c5f3f23c0934d7c450ebbae02 3\tsrc/TimelineView.tsx",
+        "",
+        "Auto-merging crates/hear-core/src/diagnostic_tests.rs",
+        "CONFLICT (content): Merge conflict in crates/hear-core/src/diagnostic_tests.rs",
+        "Auto-merging crates/hear-core/src/events.rs",
+        "CONFLICT (content): Merge conflict in crates/hear-core/src/events.rs",
+        "Auto-merging crates/hear-core/src/events/activity_tests.rs",
+        "CONFLICT (content): Merge conflict in crates/hear-core/src/events/activity_tests.rs",
+        "Auto-merging crates/hear-core/src/events/asr.rs",
+        "CONFLICT (content): Merge conflict in crates/hear-core/src/events/asr.rs",
+        "Auto-merging crates/hear-core/src/events/asr/tests.rs",
+        "Auto-merging scripts/test_timeline_view.mjs",
+        "CONFLICT (content): Merge conflict in scripts/test_timeline_view.mjs",
+        "Auto-merging specs/ARCHITECTURE.md",
+        "CONFLICT (content): Merge conflict in specs/ARCHITECTURE.md",
+        "Auto-merging specs/tech_docs/algorithms.md",
+        "CONFLICT (content): Merge conflict in specs/tech_docs/algorithms.md",
+        "Auto-merging specs/tech_docs/diagnostics-and-verification.md",
+        "CONFLICT (content): Merge conflict in specs/tech_docs/diagnostics-and-verification.md",
+        "Auto-merging src/TimelineView.tsx",
+        "CONFLICT (content): Merge conflict in src/TimelineView.tsx"
+      ]
+    },
+    {
+      "branch": "remote:codex/cross-machine-reliability-0.1.13",
+      "ancestor_merged": true,
+      "main_only": 1,
+      "branch_only": 0,
+      "head": "4de9e3b"
+    },
+    {
+      "branch": "remote:codex/event-understanding",
+      "ancestor_merged": true,
+      "main_only": 8,
+      "branch_only": 0,
+      "head": "667e8fc"
+    },
+    {
+      "branch": "remote:codex/release-0.1.5",
+      "ancestor_merged": true,
+      "main_only": 35,
+      "branch_only": 0,
+      "head": "f3c1b45"
+    },
+    {
+      "branch": "remote:dev",
+      "ancestor_merged": true,
+      "main_only": 65,
+      "branch_only": 0,
+      "head": "999b934"
+    },
+    {
+      "branch": "remote:feat/diagnostics-and-verification",
+      "ancestor_merged": true,
+      "main_only": 74,
+      "branch_only": 0,
+      "head": "cf1d579"
+    },
+    {
+      "branch": "remote:fix/agent-context-reliability",
+      "ancestor_merged": false,
+      "main_only": 7,
+      "branch_only": 6,
+      "head": "5144001",
+      "cherry": [
+        "+ c0c1f9ba304f7df9e0f2a22df62d33f3762f442f fix: make Agent context reads reliable and add vocabulary support",
+        "+ 2132d4fd2901038519bdc8c5f1c83acc7cc20941 fix: simplify event understanding and restore app readiness",
+        "+ b4301d1035197c4f0b7dda970c398be0a786f15c chore: prepare 0.1.11 candidate with read-only credential check",
+        "+ 85593936eb3920b1550405e514f99b530396cc95 fix: 修复 WebKit 焦点转移导致人物浮层提前关闭",
+        "+ 2b974b9442107d99919269a491343f316463432a fix: bound GUI detail reads and diagnose query failures",
+        "+ 5144001d357a2d02b6f9bb21eaabe910e0a83812 test: 对齐 IPC 日志归属语义"
+      ],
+      "dry_merge_clean": false,
+      "dry_merge_same_main": false,
+      "dry_merge_notes": [
+        "100644 fdb571f449032a28b2332bc747b26c1b97a3fedc 1\tCargo.lock",
+        "100644 b94d92158949f775d7374c9394bba793952594c2 2\tCargo.lock",
+        "100644 8e8bef995d78c7390e927713334a0d8ce5f0e76c 3\tCargo.lock",
+        "100644 83c0facfbfc40badf459b8ab1cbcd2db0e736dd1 1\tCargo.toml",
+        "100644 0133854a5204c23dd60233c1da872941daa07527 2\tCargo.toml",
+        "100644 ff0b68c014c887a103d642bf84a6c0a7bd8e9f84 3\tCargo.toml",
+        "100644 2f608cb28506894475b9f58723cc6f188850c15a 2\tcrates/hear-core/src/events/gui_read_tests.rs",
+        "100644 a4dc4d8bd54a3596ffd64b0a4c566b5bdb658daf 3\tcrates/hear-core/src/events/gui_read_tests.rs",
+        "100644 e23bbc8ec1b087bed8e23b56c718a2a38d3e433c 1\tcrates/hear-core/src/main.rs",
+        "100644 829364b98eeefb0bd95f56a2e586e81eb4daecd5 2\tcrates/hear-core/src/main.rs",
+        "100644 e4e8935f7622716e01251b7cc95f923ff10777ed 3\tcrates/hear-core/src/main.rs",
+        "100644 119efabaf39fbbbde868853aa7e640a9fe1e5faf 1\tcrates/hear-protocol/src/lib.rs",
+        "100644 841b458076ea1f5ab51d3a879dc48ed229cbae50 2\tcrates/hear-protocol/src/lib.rs",
+        "100644 d22a965a2c351b9fbd943b047f55ba2e4dbf501b 3\tcrates/hear-protocol/src/lib.rs",
+        "100644 3a808f7ccd45a77307fed8e679046fb9f4b9ab59 1\tpackage-lock.json",
+        "100644 84127f50431646e3b9ce2c6977f2df4cedd2f67b 2\tpackage-lock.json",
+        "100644 d4c67c5473b65cad21168d4d82b8f5faa6abcf9d 3\tpackage-lock.json",
+        "100644 b08bbb18b29d3ba6f23ae79bdb5517dc39aa38eb 1\tpackage.json",
+        "100644 a3dc6d0f4ee25803d3b13519fb4b61e64db5198b 2\tpackage.json",
+        "100644 c960c9a8d26d9da5dc518e5b66ba4b0277bae016 3\tpackage.json",
+        "100644 0d882960b96cd1a2102017894ae0933b87c529bf 2\tscripts/measure_gui_reads.mjs",
+        "100644 9b85d4bd7021678861b35cbdb182a6d67ba9604c 3\tscripts/measure_gui_reads.mjs",
+        "100644 4c5c690729623c469ede8e8e7803dbb84da2b99e 1\tscripts/smoke_diagnostics.py",
+        "100644 b953b898c2960da4de898c5fd2422747e6946bd9 2\tscripts/smoke_diagnostics.py",
+        "100644 09d96844d2b55a065ff1c764667fd728be27047e 3\tscripts/smoke_diagnostics.py",
+        "100644 a297bbb8fcbb3397f548592828f87165266b37bd 1\tsrc-tauri/Cargo.toml",
+        "100644 fb2e456f95d60d1f948b883cbd26ed5397b59134 2\tsrc-tauri/Cargo.toml",
+        "100644 790c986adbc9dbe0fd747a0ee8537f8e23c76fc7 3\tsrc-tauri/Cargo.toml",
+        "100644 9bb8c9a96c2cba96b8317cf1b9abafe0a33916c3 1\tsrc-tauri/native/HearCore-Info.plist",
+        "100644 63f08c0d2bce4aba0751bb6bc42109823549ebcd 2\tsrc-tauri/native/HearCore-Info.plist",
+        "100644 326f71aae0a8c16d9378e2421b510fdd1052d526 3\tsrc-tauri/native/HearCore-Info.plist",
+        "100644 5e2544949daedb9a427f74a4fb3ce9a23e6d89b9 1\tsrc-tauri/tauri.conf.json",
+        "100644 30f36abf6e96e791d03a33192a7d85c9ddb9191a 2\tsrc-tauri/tauri.conf.json",
+        "100644 ed79bf2b3e99ce98a2cbc7bcb984ed4a74f29181 3\tsrc-tauri/tauri.conf.json",
+        "",
+        "Auto-merging Cargo.lock",
+        "CONFLICT (content): Merge conflict in Cargo.lock",
+        "Auto-merging Cargo.toml",
+        "CONFLICT (content): Merge conflict in Cargo.toml",
+        "Auto-merging crates/hear-core/src/cloud.rs",
+        "Auto-merging crates/hear-core/src/events.rs",
+        "Auto-merging crates/hear-core/src/events/asr.rs",
+        "Auto-merging crates/hear-core/src/events/gui_read_tests.rs",
+        "CONFLICT (add/add): Merge conflict in crates/hear-core/src/events/gui_read_tests.rs",
+        "Auto-merging crates/hear-core/src/main.rs",
+        "CONFLICT (content): Merge conflict in crates/hear-core/src/main.rs",
+        "Auto-merging crates/hear-core/src/reads.rs",
+        "Auto-merging crates/hear-core/src/unilogs.rs",
+        "Auto-merging crates/hear-protocol/src/diagnostic.rs",
+        "Auto-merging crates/hear-protocol/src/lib.rs",
+        "CONFLICT (content): Merge conflict in crates/hear-protocol/src/lib.rs",
+        "Auto-merging package-lock.json",
+        "CONFLICT (content): Merge conflict in package-lock.json",
+        "Auto-merging package.json",
+        "CONFLICT (content): Merge conflict in package.json",
+        "Auto-merging scripts/measure_gui_reads.mjs",
+        "CONFLICT (add/add): Merge conflict in scripts/measure_gui_reads.mjs",
+        "Auto-merging scripts/smoke_agent_context.py",
+        "Auto-merging scripts/smoke_core.py",
+        "Auto-merging scripts/smoke_diagnostics.py",
+        "CONFLICT (content): Merge conflict in scripts/smoke_diagnostics.py",
+        "Auto-merging src-tauri/Cargo.toml",
+        "CONFLICT (content): Merge conflict in src-tauri/Cargo.toml",
+        "Auto-merging src-tauri/native/HearCore-Info.plist",
+        "CONFLICT (content): Merge conflict in src-tauri/native/HearCore-Info.plist",
+        "Auto-merging src-tauri/src/lib.rs",
+        "Auto-merging src-tauri/tauri.conf.json",
+        "CONFLICT (content): Merge conflict in src-tauri/tauri.conf.json",
+        "Auto-merging src/DetailDrawer.tsx",
+        "Auto-merging src/api.ts"
+      ]
+    },
+    {
+      "branch": "remote:fix/asr-contiguous-event-fitting",
+      "ancestor_merged": true,
+      "main_only": 79,
+      "branch_only": 0,
+      "head": "4f59d92"
+    },
+    {
+      "branch": "remote:fix/asr-publication-input-clock",
+      "ancestor_merged": true,
+      "main_only": 43,
+      "branch_only": 0,
+      "head": "b15a93b"
+    },
+    {
+      "branch": "remote:fix/asr-retry-input-recovery",
+      "ancestor_merged": true,
+      "main_only": 46,
+      "branch_only": 0,
+      "head": "bb75142"
+    },
+    {
+      "branch": "remote:fix/evening-pipeline-reliability",
+      "ancestor_merged": true,
+      "main_only": 39,
+      "branch_only": 0,
+      "head": "37cec75"
+    },
+    {
+      "branch": "remote:fix/local-failure-isolation",
+      "ancestor_merged": false,
+      "main_only": 8,
+      "branch_only": 2,
+      "head": "4fd2ba7",
+      "cherry": [
+        "+ 4c404347ef283cff8f0dc8760ed91116a8f2fb94 fix: isolate local analysis failures from event transcription",
+        "+ 4fd2ba7a72b1a3411a51024e5e333dbaeac0f4dd docs: record local failure isolation review and PR delivery"
+      ],
+      "dry_merge_clean": false,
+      "dry_merge_same_main": false,
+      "dry_merge_notes": [
+        "100644 53cc81eed237bd0f1be6cd208d933fa9570e9b53 1\tcrates/hear-core/src/events/asr.rs",
+        "100644 dcaac2479e5cb1253de02a8ae870ae23213b1867 2\tcrates/hear-core/src/events/asr.rs",
+        "100644 1d7639cba08901801814bf24ffc602271a5bcc5a 3\tcrates/hear-core/src/events/asr.rs",
+        "100644 8d250a0b4160d92839042c1bbdbc36d0d49f1cc0 1\tcrates/hear-core/src/main.rs",
+        "100644 829364b98eeefb0bd95f56a2e586e81eb4daecd5 2\tcrates/hear-core/src/main.rs",
+        "100644 e23bbc8ec1b087bed8e23b56c718a2a38d3e433c 3\tcrates/hear-core/src/main.rs",
+        "100644 99ef1df96f246980f83a51a9691fca94349cf7ec 1\tcrates/hear-protocol/src/diagnostic.rs",
+        "100644 8fd784c12c7f45de24d936acc72fc5f1cc63d1a6 2\tcrates/hear-protocol/src/diagnostic.rs",
+        "100644 bd8b2b583381f0902d263d916ac125db0badabd1 3\tcrates/hear-protocol/src/diagnostic.rs",
+        "100644 30434aece40f6d454968a67265d224e211d6a728 1\tcrates/hear-worker/src/main.rs",
+        "100644 b682d694e34bc1d32f47eff1ecbc2eadf3650544 2\tcrates/hear-worker/src/main.rs",
+        "100644 55abb53592229f9b93b893319e3f0b7a6f73353b 3\tcrates/hear-worker/src/main.rs",
+        "100644 4b3bab7c3aa1bd9347166feb326a4369692ab808 1\tscripts/smoke_diagnostics.py",
+        "100644 b953b898c2960da4de898c5fd2422747e6946bd9 2\tscripts/smoke_diagnostics.py",
+        "100644 4c5c690729623c469ede8e8e7803dbb84da2b99e 3\tscripts/smoke_diagnostics.py",
+        "100644 f00acb15f72b2886f281349c0aa3cdfb6e8f09aa 1\tscripts/verify.py",
+        "100644 3c539332397ea150e8ec77b8bba1d91d36c64643 2\tscripts/verify.py",
+        "100644 6ec089895d6b346bb395c19f0863821aacef0edc 3\tscripts/verify.py",
+        "100644 f948eb5cc22e61b83f8bfd71de03beeeb92ac6bb 1\tspecs/tech_docs/diagnostics-and-verification.md",
+        "100644 c772e19d07de8b8bb2f5937452d800c633da239d 2\tspecs/tech_docs/diagnostics-and-verification.md",
+        "100644 401b64cc07b8abd6ad873c3e219011c66a59255f 3\tspecs/tech_docs/diagnostics-and-verification.md",
+        "",
+        "Auto-merging crates/hear-core/native/system_audio.m",
+        "Auto-merging crates/hear-core/native/system_audio_tap.m",
+        "Auto-merging crates/hear-core/src/cloud.rs",
+        "Auto-merging crates/hear-core/src/events.rs",
+        "Auto-merging crates/hear-core/src/events/asr.rs",
+        "CONFLICT (content): Merge conflict in crates/hear-core/src/events/asr.rs",
+        "Auto-merging crates/hear-core/src/events/asr/tests.rs",
+        "Auto-merging crates/hear-core/src/main.rs",
+        "CONFLICT (content): Merge conflict in crates/hear-core/src/main.rs",
+        "Auto-merging crates/hear-core/src/record.rs",
+        "Auto-merging crates/hear-core/src/source_process.rs",
+        "Auto-merging crates/hear-core/src/system_audio.rs",
+        "Auto-merging crates/hear-protocol/src/diagnostic.rs",
+        "CONFLICT (content): Merge conflict in crates/hear-protocol/src/diagnostic.rs",
+        "Auto-merging crates/hear-protocol/src/lib.rs",
+        "Auto-merging crates/hear-worker/src/main.rs",
+        "CONFLICT (content): Merge conflict in crates/hear-worker/src/main.rs",
+        "Auto-merging scripts/smoke_diagnostics.py",
+        "CONFLICT (content): Merge conflict in scripts/smoke_diagnostics.py",
+        "Auto-merging scripts/verify.py",
+        "CONFLICT (content): Merge conflict in scripts/verify.py",
+        "Auto-merging specs/tech_docs/diagnostics-and-verification.md",
+        "CONFLICT (content): Merge conflict in specs/tech_docs/diagnostics-and-verification.md",
+        "Auto-merging src/DetailDrawer.tsx",
+        "Auto-merging src/TimelineView.tsx",
+        "Auto-merging src/api.ts"
+      ]
+    },
+    {
+      "branch": "remote:fix/local-processing-reliability",
+      "ancestor_merged": true,
+      "main_only": 82,
+      "branch_only": 0,
+      "head": "3660d24"
+    },
+    {
+      "branch": "remote:fix/partial-fit-publication",
+      "ancestor_merged": false,
+      "main_only": 32,
+      "branch_only": 2,
+      "head": "4a1343c",
+      "cherry": [
+        "+ 5ad5076fc0dc04b87338b008300023f45018044f fix: preserve usable event results when model fields are invalid",
+        "+ 4a1343c67d4efa7a830ccdebb3ba1ca078de1545 docs: close partial-result publication acceptance"
+      ],
+      "dry_merge_clean": false,
+      "dry_merge_same_main": false,
+      "dry_merge_notes": [
+        "100644 04f0327cce8bdda8abdf4c38bc569543c2f6eeb4 1\tcrates/hear-core/src/diagnostic_tests.rs",
+        "100644 ab53fac61be483e8acf46ea446a8e305bd17af51 2\tcrates/hear-core/src/diagnostic_tests.rs",
+        "100644 e6db9973cbcfb035b0cedcef9834c6f91b0422a3 3\tcrates/hear-core/src/diagnostic_tests.rs",
+        "100644 24b42f7eaa70a0341e1637a50cc52eb8814e8f19 1\tcrates/hear-core/src/events.rs",
+        "100644 1d93a856e9141f07bce89d717f9dc98dd6f623e0 2\tcrates/hear-core/src/events.rs",
+        "100644 8617f6ae7c932d0de5df9fad32fff4a11bcb17f6 3\tcrates/hear-core/src/events.rs",
+        "100644 676bce13e1b7d2e34e556f5a63c8aabcb0c2a155 1\tcrates/hear-core/src/events/activity_tests.rs",
+        "100644 4eda6a31fec1ca8cf6f1446d9e3b6e63cf49cd04 2\tcrates/hear-core/src/events/activity_tests.rs",
+        "100644 28c8c3f8e59886d5d76ee4b7a860b887e6594180 3\tcrates/hear-core/src/events/activity_tests.rs",
+        "100644 569055f42047852cd2318f2cbb3120f6f2fbf680 1\tcrates/hear-core/src/events/asr.rs",
+        "100644 dcaac2479e5cb1253de02a8ae870ae23213b1867 2\tcrates/hear-core/src/events/asr.rs",
+        "100644 53cc81eed237bd0f1be6cd208d933fa9570e9b53 3\tcrates/hear-core/src/events/asr.rs",
+        "100644 68674bd52b85adb3f38e6610620b5e044b0b0d0d 1\tscripts/test_timeline_view.mjs",
+        "100644 9c94a5e6dec1009ab801459a6dd4b3ea55a13e77 2\tscripts/test_timeline_view.mjs",
+        "100644 61459f675a5f2cb84eef8c35d588d4ba8740ff1b 3\tscripts/test_timeline_view.mjs",
+        "100644 c6543f9ad7a3509ac32e3d986d768553f19f67e4 1\tspecs/ARCHITECTURE.md",
+        "100644 2cd1b351d3526e6c9cc8102ce95fa5624d586e4f 2\tspecs/ARCHITECTURE.md",
+        "100644 1cf669df91ba37bf47d6fcfdbda7d7c2eec5d058 3\tspecs/ARCHITECTURE.md",
+        "100644 66eca699dd894548ad499ca3a08c0d63357c7aff 1\tspecs/tech_docs/algorithms.md",
+        "100644 3abf1cdd15365384821c882451b252f3ebc9e42e 2\tspecs/tech_docs/algorithms.md",
+        "100644 462e585c244ae4386e6ec0aa9d6dec0461bc6517 3\tspecs/tech_docs/algorithms.md",
+        "100644 c38f9e8ce3c2cddcf4cb8cb6b9a39cecde0414f1 1\tspecs/tech_docs/diagnostics-and-verification.md",
+        "100644 c772e19d07de8b8bb2f5937452d800c633da239d 2\tspecs/tech_docs/diagnostics-and-verification.md",
+        "100644 c88468dc3c87a272e16494542256abdda5a75448 3\tspecs/tech_docs/diagnostics-and-verification.md",
+        "100644 199b47f282557f6f159bad707037c804bb9e58a0 1\tsrc/TimelineView.tsx",
+        "100644 08aca923402780d445f3479e4ff5d22891245163 2\tsrc/TimelineView.tsx",
+        "100644 e90d949674f5bb2c5f3f23c0934d7c450ebbae02 3\tsrc/TimelineView.tsx",
+        "",
+        "Auto-merging crates/hear-core/src/diagnostic_tests.rs",
+        "CONFLICT (content): Merge conflict in crates/hear-core/src/diagnostic_tests.rs",
+        "Auto-merging crates/hear-core/src/events.rs",
+        "CONFLICT (content): Merge conflict in crates/hear-core/src/events.rs",
+        "Auto-merging crates/hear-core/src/events/activity_tests.rs",
+        "CONFLICT (content): Merge conflict in crates/hear-core/src/events/activity_tests.rs",
+        "Auto-merging crates/hear-core/src/events/asr.rs",
+        "CONFLICT (content): Merge conflict in crates/hear-core/src/events/asr.rs",
+        "Auto-merging crates/hear-core/src/events/asr/tests.rs",
+        "Auto-merging scripts/test_timeline_view.mjs",
+        "CONFLICT (content): Merge conflict in scripts/test_timeline_view.mjs",
+        "Auto-merging specs/ARCHITECTURE.md",
+        "CONFLICT (content): Merge conflict in specs/ARCHITECTURE.md",
+        "Auto-merging specs/tech_docs/algorithms.md",
+        "CONFLICT (content): Merge conflict in specs/tech_docs/algorithms.md",
+        "Auto-merging specs/tech_docs/diagnostics-and-verification.md",
+        "CONFLICT (content): Merge conflict in specs/tech_docs/diagnostics-and-verification.md",
+        "Auto-merging src/TimelineView.tsx",
+        "CONFLICT (content): Merge conflict in src/TimelineView.tsx"
+      ]
+    },
+    {
+      "branch": "remote:fix/read-capacity",
+      "ancestor_merged": false,
+      "main_only": 6,
+      "branch_only": 1,
+      "head": "42b3806",
+      "cherry": [
+        "- 42b3806a82b12cb166cf424ed1dbc8b40ec74df2 fix: 提高只读连接数，避免日期页并发读取互相挤占"
+      ],
+      "dry_merge_clean": true,
+      "dry_merge_same_main": true,
+      "dry_merge_notes": []
+    },
+    {
+      "branch": "remote:fix/transcript-scroll-pagination",
+      "ancestor_merged": false,
+      "main_only": 7,
+      "branch_only": 2,
+      "head": "69863c1",
+      "cherry": [
+        "+ 5a529c0cd0c0299f32088d554f04311b5c9ce0dc fix(ui): keep transcript pages aligned while scrolling",
+        "+ 69863c1fa8bcab08cf4475d6147506e2819dad5c docs: record transcript pagination acceptance"
+      ],
+      "dry_merge_clean": false,
+      "dry_merge_same_main": false,
+      "dry_merge_notes": [
+        "100644 3ceb45696017f7e02c2a679bab62e4ebc75807f4 1\tsrc/DetailDrawer.tsx",
+        "100644 5b88ce214ea3243d55d3e9660cd96d438e1dfeab 2\tsrc/DetailDrawer.tsx",
+        "100644 53a2fe4f828efe47588a6b20707b0fd5b09ff737 3\tsrc/DetailDrawer.tsx",
+        "",
+        "Auto-merging src/DetailDrawer.tsx",
+        "CONFLICT (content): Merge conflict in src/DetailDrawer.tsx"
+      ]
+    }
+  ],
+  "content_merged_by_squash": {
+    "fix/agent-context-reliability": 19,
+    "fix/local-failure-isolation": 17,
+    "fix/partial-fit-publication": 16,
+    "fix/read-capacity": 20
+  },
+  "equivalent_cherry_pick": [
+    "codex/review-pr-11"
+  ],
+  "actual_missing_groups": [
+    {
+      "feature": "转录分页/滚动加载",
+      "commits": [
+        "5a529c0",
+        "69863c1"
+      ],
+      "remote": "fix/transcript-scroll-pagination",
+      "pr": 18
+    },
+    {
+      "feature": "悬浮兔子原生拖动/吸边",
+      "commits": [
+        "154c53e",
+        "1374a97"
+      ],
+      "local": "codex/floating-drag-snap"
+    },
+    {
+      "feature": "Agent接入页精简",
+      "commits": [
+        "4bf6322"
+      ],
+      "local": [
+        "codex/agent-access-compact",
+        "codex/event-understanding"
+      ]
+    }
+  ],
+  "local_main_behind_remote_commits": 7,
+  "original_untracked_files": 108
+}

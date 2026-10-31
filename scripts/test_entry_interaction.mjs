@@ -43,15 +43,17 @@ const { emit } = await import('@tauri-apps/api/event');
 const { FloatingWidget } = await import('../src/FloatingWidget.tsx');
 const layouts = [], actions = [], focus = [], drags = [];
 let outcome = 'confirmed';
+let mode = 'top';
 let finishLayout = true, confirmFocus = true;
 mockWindows('float');
 mockIPC(async (command, args) => {
   if (command === 'entry_snapshot') return { sequence: 1, state: null, error: null, mode: 'top', appearance: 'sleeping', control: 'resume', detail: null, notice: null };
   if (command === 'entry_layout') {
     layouts.push(args);
+    if (mode === 'floating') return { width: 68, height: 68, band: 0, top_band: 0, top_shift: 0, rabbit_x: 8, rabbit_y: 8, menu_y: 8 };
     if (finishLayout && args.view === 'panel')
       await emit('hear-entry-native', { kind: 8, value: 1, generation: args.generation });
-    return { width: args.view === 'collapsed' ? 44 : 412, height: args.view === 'collapsed' ? 32 : 160, band: 32, top_band: 32, top_shift: args.feedback ? 178 : 296, rabbit_x: 8, rabbit_y: 2 };
+    return { width: args.view === 'collapsed' ? 44 : 412, height: args.view === 'collapsed' ? 32 : 160, band: 32, top_band: 32, top_shift: args.feedback ? 178 : 296, rabbit_x: 8, rabbit_y: 2, menu_y: 8 };
   }
   if (command === 'entry_focus') { focus.push(args); return confirmFocus; }
   if (command === 'entry_action') { actions.push(args.action); return { outcome, message: 'simulated failure' }; }
@@ -142,18 +144,31 @@ try {
   await settle(() => document.querySelector('.entry-rabbit').focus());
   assert(panel(), 'explicit keyboard focus reopens after dismissal');
   assert(document.activeElement.matches('.notch-rabbit-control'), 'focus moves off hidden trigger');
-  await settle(() => emit('hear-entry-snapshot', { sequence: 2, state: null, error: null, mode: 'floating', appearance: 'sleeping', control: 'resume', detail: null, notice: null }));
+  mode = 'floating';
+  await settle(() => emit('hear-entry-snapshot', { sequence: 2, state: null, error: null, mode, appearance: 'sleeping', control: 'resume', detail: null, notice: null }));
   const rabbit = document.querySelector('.entry-rabbit');
   const marks = actions.filter(a => a.kind === 'mark').length;
   await click(rabbit);
   assert.equal(actions.filter(a => a.kind === 'mark').length, marks + 1, 'floating click still marks');
-  await settle(() => {
-    rabbit.dispatchEvent(new MouseEvent('pointerdown', { screenX: 100, screenY: 100, bubbles: true }));
-    rabbit.dispatchEvent(new MouseEvent('pointermove', { screenX: 110, screenY: 100, bubbles: true }));
-  });
+  await native(7, 0);
+  await native(1, 1);
+  assert(document.querySelector('.rabbit-menu'));
+  await settle(() => emit('hear-entry-native', { kind: 5, value: 1, geometry: { width: 68, height: 68, rabbit_x: 8, rabbit_y: 8, menu_y: 8, band: 0, top_band: 0, top_shift: 0 } }));
+  assert(!document.querySelector('.rabbit-menu'), 'native drag collapses the menu');
+  assert.equal(document.querySelector('.entry-floating').style.getPropertyValue('--entry-rabbit-y'), '8px', 'drag-start geometry keeps the rabbit visible even with feedback');
+  await native(1, 1);
+  assert(!document.querySelector('.rabbit-menu'), 'hover cannot reopen during drag');
   await click(rabbit);
   assert.equal(actions.filter(a => a.kind === 'mark').length, marks + 1, 'drag does not mark');
-  assert(drags.some(d => d.command === 'entry_drag' && d.args.dragging), 'native drag starts');
+  assert.equal(drags.length, 0, 'pointer moves do not start asynchronous window dragging or write preferences');
+  await settle(() => emit('hear-entry-native', { kind: 5, value: 0, geometry: { width: 132, height: 230, rabbit_x: 8, rabbit_y: 8, menu_y: 55, band: 0, top_band: 0, top_shift: 0 } }));
+  assert.equal(drags.length, 0, 'native completion saves position without a WebView round trip');
+  assert.equal(document.querySelector('.entry-floating').dataset.menuDown, 'true');
+  assert.equal(document.querySelector('.entry-floating').style.getPropertyValue('--entry-rabbit-y'), '8px');
+  await native(10, 0);
+  assert.equal(actions.filter(a => a.kind === 'mark').length, marks + 2, 'native physical click uses the existing mark action');
+  await settle(() => emit('hear-entry-native', { kind: 5, value: 0, error: 'position save failed' }));
+  assert.match(document.querySelector('[role=status]').textContent, /position save failed/, 'position save errors remain visible');
   console.log('PASS: hover/click, suppression, idempotence, comment focus/cancel/failure/retry, floating click/drag');
 } finally {
   await settle(() => root.unmount());

@@ -5,9 +5,7 @@ use tauri::Manager;
 mod entry;
 mod onboarding;
 mod playback_output;
-use entry::{
-    EntryRuntime, entry_action, entry_drag, entry_focus, entry_layout, entry_mode, entry_snapshot,
-};
+use entry::{EntryRuntime, entry_action, entry_focus, entry_layout, entry_mode, entry_snapshot};
 use std::sync::{Arc, Mutex};
 static PRIVACY_REQUEST: Mutex<()> = Mutex::new(());
 
@@ -410,7 +408,6 @@ pub fn run() {
             entry_mode,
             entry_layout,
             entry_focus,
-            entry_drag,
             entry_action,
             playback_output::playback_output
         ])
