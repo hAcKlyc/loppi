@@ -1,6 +1,6 @@
 ---
 type: prd
-status: in-progress
+status: implemented
 created: 2026-10-31
 updated: 2026-10-31
 scope: "保留新建事件表单，将名称、粗略时间和音源作为一次用户指示，通过既有LLM整理链路重组相关事件与摘要；复用已有转录，不建立长期指示规则、独立队列或语义审查链。"
@@ -188,7 +188,7 @@ flowchart LR
 - [x] 表单、队列、CLI及文档。
 - [x] 静态/构建、前端与Core回归、真实模型合成验收。
 - [x] mandatory Computer Use隔离应用闭环。
-- [ ] fresh requirements/adversarial并行、最终architecture PASS、提交推送dev、整体静态复核。
+- [x] fresh requirements/adversarial并行、最终architecture PASS、提交推送dev、整体静态复核。
 
 ### Review基线与验证对应
 - Batch base：01772c97c328efa5e303474b47b41f936d06b847；仅本需求实际diff。rename PRD及本地资料不纳入。
@@ -210,3 +210,5 @@ flowchart LR
 - 修复后tree b26c1281：原requirements/adversarial定向复核均PASS；随后fresh architecture审查完整19文件diff及修复后PASS，未引入不必要机制。三项阻塞已闭环，无剩余证据缺口。
 - 修复后全量407项Rust（391 Core、14协议、2 CLI，21项既有/显式付费测试忽略）、67项前端与静态/构建通过；五组真实配置LLM重跑通过，见real-model-repaired/及日志。完整桌面包构建及模型准备/重试烟测通过（desktop-build-repaired.log）。
 - 最终桌面包Computer Use确认队列显示“09:00—10:00 · 双路声音”；实际CLI IPC回执object_id等于准确的cloud_tasks.id，音源投影正确。ui-final-sources.*与cli-repaired-receipt.json/cli-repaired-tasks.json为证据。无新增正式安装/发布，代码与版本仍为dev/0.1.14，协议24。
+- 开发提交8ce77920f1ecbea8a934c524cf047a1faa51052f已推送origin/dev；该HEAD共同typecheck/lint/cargo check再次通过。单批次整体范围/mandatory验收/三路审查闭环，无临时并行机制或待用户决定项。本收尾只更新交付台账，不使运行证据失效。
+- GitHub检查124505835515（run41190395376）未启动：注释明确账户付款失败/支出上限阻断，另有macOS arm64容量提示；不记为CI通过，不改账单或工作流。远端证据remote-checks.json、remote-check-annotations.json。QA进程已关闭，原正式Core双来源录制健康再次确认；verification-summary.json汇总本地证据。
