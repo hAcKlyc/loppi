@@ -1,0 +1,67 @@
+{
+  "version": "0.1.17",
+  "source_commit": "e705b714f5e52449f4f9671af002b8b0290c4372",
+  "application": "/Applications/loppi.app",
+  "dmg": "/Users/ethan/Projects/hear/build/releases/0.1.17/macos-universal2/loppi_0.1.17_macos-universal2.dmg",
+  "dmg_sha256": "a9d367ba38e1e9c7c85a7e5a46bf951dfd0f992320d1685c114522a3773fe936",
+  "architectures": [
+    "arm64",
+    "x86_64"
+  ],
+  "signing": "PASS: deep strict signatures, Developer ID",
+  "notarization": "Accepted; stapled and validated",
+  "gatekeeper": "accepted: Notarized Developer ID",
+  "models": "PASS: bundled read-only models, Unicode rename, VAD/ASR readiness and retry; no capture/cloud tasks",
+  "normal_exit_and_restart": true,
+  "original_icon_matches": true,
+  "bundled_assets_without_dev_server": true,
+  "native_main": "Viewed actual retained record: simple aligned dot, no ring or tail, same range/content and paused state. Main screenshot kept local outside Git because it contains user notes.",
+  "native_top": "Tab and pointer open actual panel; screenshots/mark/comment visible; Escape collapses. No capture action invoked.",
+  "native_floating": "Temporary mode switch; Tab opens actual menu; continue/comment/screenshot visible; Escape collapses. No mark/drag/write invoked.",
+  "entry_mode_restored": "top; exact prior absent preference file state restored after temporary test",
+  "preferences_equal": true,
+  "verified_preferences": {
+    "capture": {
+      "enabled_intent": true,
+      "paused_intent": true,
+      "microphone_enabled": true,
+      "system_enabled": true,
+      "capture_state": "paused",
+      "microphone_recording": false,
+      "system_recording": false,
+      "audio_limit_bytes": 10737418240,
+      "schedule": {
+        "enabled": false,
+        "start_minute": 480,
+        "stop_minute": 1380,
+        "paused_by_schedule": false,
+        "error": null
+      }
+    },
+    "processing": [
+      {
+        "provider": "llm",
+        "configured": true,
+        "paused": true
+      },
+      {
+        "provider": "asr",
+        "configured": true,
+        "paused": true
+      }
+    ],
+    "gui": {
+      "entry-preferences.json": null,
+      "onboarding.json": {
+        "schema_version": 1,
+        "completed": true
+      }
+    }
+  },
+  "private_main_screenshot": "local Codex artifact loppi-0.1.17/main.jpg",
+  "native_policy": "Current-source harness PASS and CSS/token/native26/20 coupling PASS",
+  "advisory_limits": {
+    "intel_native_test": "not run; cross-compiled and slices verified",
+    "minimum_os_runtime_test": "not run"
+  }
+}
