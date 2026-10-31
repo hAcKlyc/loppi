@@ -18,6 +18,7 @@ import {
 	time,
 	userError,
 } from "./api";
+import wordmark from "./assets/brand/wordmark.svg";
 import appIcon from "./assets/rabbit/app-icon-square.png";
 import { CaptureStatus, useCaptureControl } from "./CaptureStatus";
 import { Button, Field, Modal } from "./Controls";
@@ -848,7 +849,13 @@ function App() {
 						draggable={false}
 						data-tauri-drag-region
 					/>
-					<strong>loppi</strong>
+					<img
+						className="brand-wordmark"
+						src={wordmark}
+						alt="loppi"
+						draggable={false}
+						data-tauri-drag-region
+					/>
 				</div>
 				<nav aria-label="主导航" data-tauri-drag-region>
 					{(
@@ -1075,7 +1082,7 @@ function App() {
 								void addMoment("comment", commentAnchor, commentDraft.trim())
 							}
 						>
-							发送
+							保存评论
 						</Button>
 					</div>
 				</Modal>

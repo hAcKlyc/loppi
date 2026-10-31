@@ -888,7 +888,7 @@ export function DetailDrawer({
 								<input
 									className="player-track"
 									style={{
-										background: `linear-gradient(to right, var(--color-brand) ${playbackProgress}%, var(--color-brand-border) ${playbackProgress}%)`,
+										background: `linear-gradient(to right, var(--color-live) ${playbackProgress}%, var(--color-border) ${playbackProgress}%)`,
 									}}
 									type="range"
 									min={detail.started_ms}

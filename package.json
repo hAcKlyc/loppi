@@ -1,7 +1,7 @@
 {
   "name": "loppi",
   "private": true,
-  "version": "0.1.14",
+  "version": "0.1.15",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "verify": "python3 scripts/verify.py",
-    "test": "python3 scripts/verify.py --suite test"
+    "test": "python3 scripts/verify.py --suite test",
+    "design:build": "node scripts/build_design_assets.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

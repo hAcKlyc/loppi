@@ -50,7 +50,7 @@ mockIPC(async(command,args)=>{
   if(r.type==='usage_statistics') return {type:r.type,statistics:{started_ms:fixedNow,days:[]}};
   if(r.type==='voice_samples') return {type:r.type,samples:[]};
   if(r.type==='playback_chunk') return {type:r.type,has_audio:false,wav_base64:'',next_audio_ms:null};
-  if(/^(create|update|delete|set_|clear|export|add_|remove|correct|split|merge|enqueue|retry|configure|prepare)/.test(r.type)) {await wait(240);throw Error('模拟提交失败，草稿保留');}
+  if(/^(create|update|delete|set_|clear|export|add_|remove|correct|split|merge|reorganize|enqueue|retry|configure|prepare)/.test(r.type)) {await wait(240);return {type:'error',code:'database_error',message:'模拟提交失败，草稿保留'};}
   if(r.type==='moments') return {type:r.type,moments:[]};
   if(r.type==='cloud_status') return {type:r.type,queues:['llm','asr'].map(provider=>({provider,configured:true,paused:false,pending:0,processing:0,failed:0}))};
   if(r.type==='people') return {type:r.type,people:[]};
@@ -66,7 +66,7 @@ const enter=async(el,text)=>{Object.getOwnPropertyDescriptor(el.tagName==='TEXTA
 document.getElementById('run').onclick=async()=>{let n=0;const check=(ok,label)=>{if(!ok)throw Error(label);n++};const out=document.getElementById('result');try{
  const busy=async text=>{button(text,dialog()).click();await wait(40);const d=dialog();check(d.textContent.includes('正在处理')&&d.querySelector('[aria-label=关闭弹窗]').disabled,'提交反馈缺失');d.dispatchEvent(new Event('cancel',{cancelable:true}));await wait(30);check(d.open,'写入中允许关闭');await wait(260);check(d.open&&d.textContent.includes('模拟提交失败')&&!d.querySelector('[aria-label=关闭弹窗]').disabled,'失败未恢复或丢失反馈');await click(d.querySelector('[aria-label=关闭弹窗]'));};
  await wait(350);await click(document.querySelector('.create-event'));await enter(dialog().querySelector('input'),'隔离事件名称');await busy('保存');
- await emit('loppi-open-comment',{anchor_ms:Date.now()});await wait(80);await enter(dialog().querySelector('textarea'),'隔离评论');await busy('发送');
+ await emit('loppi-open-comment',{anchor_ms:Date.now()});await wait(80);await enter(dialog().querySelector('textarea'),'隔离评论');await busy('保存评论');
  await click(document.querySelector('.event-card'));await wait(200);await click(document.querySelector('[aria-label=更多事件操作]'));await wait(80);
  await busy('保存');
  out.textContent=`PASS · ${n} 项真实 App 表单反馈检查`;

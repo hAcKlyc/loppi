@@ -1,4 +1,4 @@
-/* C surfaces: clear grouping, controls communicate their own interaction. */
+/* Open, warm-neutral surfaces; controls own their interaction states. */
 .form-error,
 .app-dialog .form-error {
 	color: var(--color-danger);
@@ -185,7 +185,7 @@
 .sample-progress {
 	font-size: var(--type-caption);
 	font-variant-numeric: tabular-nums;
-	color: var(--color-brand);
+	color: var(--color-live-text);
 }
 .segmented-options {
 	display: inline-flex;

@@ -358,12 +358,18 @@ export function TimelineView({
 												now,
 											);
 											if (!style) return null;
-											const title = `${time(Math.max(item.started_ms, from))}—${time(Math.min(item.ended_ms, to, now))} · ${item.title || (item.manual_range_id ? "精转范围" : "未整理素材")} · ${label}`;
+											const liveSource =
+												item === activeItem &&
+												item.recording_sources?.includes(key) &&
+												(key === "microphone"
+													? recordingState?.microphone_recording
+													: recordingState?.system_recording);
+											const title = `${time(Math.max(item.started_ms, from))}—${time(Math.min(item.ended_ms, to, now))} · ${item.title || (item.manual_range_id ? "精转范围" : "未整理素材")} · ${label}${liveSource ? " · 正在记录" : ""}`;
 											return (
 												<button
 													key={`${item.id ?? item.manual_range_id ?? "raw"}-${item.started_ms}-${item.sources}`}
 													type="button"
-													className={`day-map-event ${item.id || item.manual_range_id ? "organized" : "raw"}`}
+													className={`day-map-event ${item.id || item.manual_range_id ? "organized" : "raw"}${liveSource ? " is-recording" : ""}`}
 													title={title}
 													aria-label={title}
 													style={style}
@@ -506,7 +512,13 @@ export function TimelineView({
 									className="event-line"
 									key={`${item.id ?? item.manual_range_id ?? "unorganized"}-${item.started_ms}-${item.ended_ms}-${item.sources}`}
 								>
-									<time>{time(item.started_ms)}</time>
+									<time aria-hidden="true">
+										<span>{time(item.started_ms)}</span>
+										{(item.ended_ms - item.started_ms >= 60_000 ||
+											item.processing_state !== "moment_only") && (
+											<small>— {live ? "至今" : time(item.ended_ms)}</small>
+										)}
+									</time>
 									<button
 										type="button"
 										className={`event-card ${item.id || item.manual_range_id ? "named" : ""} ${live ? "is-recording" : ""}`}
@@ -516,7 +528,7 @@ export function TimelineView({
 										}}
 									>
 										<div className="event-card-meta">
-											<span>
+											<span className="event-card-time">
 												{time(item.started_ms)}
 												{item.ended_ms - item.started_ms < 60_000 &&
 												item.processing_state === "moment_only"
@@ -536,7 +548,9 @@ export function TimelineView({
 												</span>
 											)}
 											{fitIssue && fitIssue !== processingState && (
-												<span className="event-card-state is-failed">
+												<span
+													className={`event-card-state ${fitIssue === "fit_failed" ? "is-failed" : "is-warning"}`}
+												>
 													{fitIssue === "fit_failed"
 														? "部分整理失败"
 														: processingLabel(fitIssue)}
@@ -544,7 +558,7 @@ export function TimelineView({
 											)}
 											{(!live || processingIssue) && (
 												<span
-													className={`event-card-state ${processingIssue ? "is-failed" : ""}`}
+													className={`event-card-state ${processingIssue ? (processingState.includes("failed") ? "is-failed" : "is-warning") : ""}`}
 													title={
 														processingState === "fit_credentials_unavailable"
 															? "请重新打开 loppi；若仍失败，请在设置中重新保存云端密钥"

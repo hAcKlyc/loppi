@@ -190,7 +190,7 @@
 	display: block;
 	margin-top: var(--space-2);
 	font-size: var(--type-caption);
-	color: var(--color-text-muted);
+	color: var(--color-text-secondary);
 }
 .modal label.check-line {
 	display: flex;

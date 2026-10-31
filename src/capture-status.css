@@ -10,8 +10,8 @@
 	gap: var(--space-6);
 }
 .capture-status.recording {
-	--capture-ink: var(--color-brand);
-	--capture-wash: var(--color-positive-soft);
+	--capture-ink: var(--color-live-text);
+	--capture-wash: var(--color-live-soft);
 }
 .capture-status.warning {
 	--capture-ink: var(--color-warning-strong);
@@ -97,6 +97,15 @@
 .capture-status-control:has(.capture-control-overlay[data-persistent="true"])
 	.capture-status-copy {
 	opacity: 0;
+}
+.capture-status.recording .capture-status-copy strong::before {
+	content: "";
+	display: inline-block;
+	width: 6px;
+	height: 6px;
+	margin-right: var(--space-3);
+	border-radius: 2px;
+	background: var(--color-live);
 }
 .capture-status-copy strong {
 	font-size: var(--type-lead);

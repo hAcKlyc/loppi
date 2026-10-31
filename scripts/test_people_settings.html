@@ -1,6 +1,7 @@
 <!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>loppi 人物与设置交互验证</title>
 <div id="root"></div><aside style="position:fixed;bottom:8px;left:8px;z-index:101;background:white;padding:10px;font:12px system-ui"><button id="run">运行交互回归</button><output id="result">模拟数据，不连接真实人物、密钥或音频</output></aside>
 <script type="module">
+import{emit}from'@tauri-apps/api/event';
 import React,{useState} from 'react';import{createRoot}from'react-dom/client';import{mockIPC}from'@tauri-apps/api/mocks';import{PeopleView}from'/src/PeopleView.tsx';import{SettingsView}from'/src/WorkspaceViews.tsx';import'/src/App.css';
 const h=React.createElement,wait=ms=>new Promise(r=>setTimeout(r,ms)),base=new Date(2026,9,18,14,10).getTime();
 let people=[{id:'a',display_name:'陈老师',sample_count:2,revision:1,created_ms:base},{id:'b',display_name:'周同学',sample_count:0,revision:1,created_ms:base}];
@@ -8,9 +9,19 @@ let samples=[{id:'s1',person_id:'a',source:'microphone',started_ms:base,ended_ms
 let requests=[],mutations=[],delay=0,fail=false,readFail=false,configureFail=false,setView,refresh,login=1;
 const state={recording_schedule:{enabled:false,start_minute:480,stop_minute:1380,paused_by_schedule:false,next_at_ms:null,next_action:null,error:null},revision:1,microphone_enabled:true,system_enabled:true,microphone_recording:true,system_recording:true,audio_limit_bytes:10737418240,audio_used_bytes:805306368};
 if(!window.isTauri)window.isTauri=true;
-class FakeAudioContext { constructor(){this.origin=performance.now();this.destination={};}get currentTime(){return(performance.now()-this.origin)/100;}resume(){return Promise.resolve();}suspend(){return Promise.resolve();}close(){return Promise.resolve();}decodeAudioData(bytes){const data=JSON.parse(new TextDecoder().decode(bytes));return Promise.resolve({numberOfChannels:1,sampleRate:48000,duration:data.duration});}createBufferSource(){let timer;const ctx=this;return{buffer:null,onended:null,connect(){},disconnect(){},stop(){clearTimeout(timer)},start(at){timer=setTimeout(()=>this.onended?.(),Math.max(0,(at+this.buffer.duration-ctx.currentTime)*100));}}}}
-window.AudioContext=FakeAudioContext;
+// Silent native-output fixture: finish each buffer at an accelerated clock.
+let bufferId=0;const buffers=new Map(),timers=new Map();
+const cancelBuffers=()=>{for(const timer of timers.values())clearTimeout(timer);timers.clear();};
 mockIPC(async(command,args)=>{
+ if(command==='playback_output'){
+  const c=args.command;
+  if(c.type==='open')return{context:1};
+  if(c.type==='load'){const buffer=++bufferId,duration=JSON.parse(atob(c.wav)).duration;buffers.set(buffer,duration);return{buffer,duration,sampleRate:48000,numberOfChannels:1,clock:0};}
+  if(c.type==='schedule'){timers.set(c.buffer,setTimeout(()=>{timers.delete(c.buffer);void emit('loppi-playback-ended',{context:c.context,epoch:c.epoch,buffer:c.buffer,status:1});},buffers.get(c.buffer)*100));return{when:c.when};}
+  if(c.type==='remove'){clearTimeout(timers.get(c.buffer));timers.delete(c.buffer);buffers.delete(c.buffer);}
+  if(c.type==='suspend'||c.type==='close')cancelBuffers();
+  return{clock:0};
+ }
  if(command==='entry_snapshot')return{mode:'floating'};
  if(command==='entry_mode')return null;
  if(command==='register_login_item'){login=1;return null;}if(command==='unregister_login_item'){login=0;return null;}
@@ -20,7 +31,7 @@ mockIPC(async(command,args)=>{
  if(r.type==='playback_chunk')return{type:'playback_chunk',id:r.id,has_audio:true,next_audio_ms:null,generation:1,wav_base64:btoa(JSON.stringify({duration:(r.to_ms-r.from_ms)/1000}))};
  if(r.type==='playback_valid')return{type:'playback_valid',id:r.id,valid:true};
  throw Error('unexpected '+r.type);
-});
+},{shouldMockEvents:true});
 function App(){const[view,sv]=useState('people'),[version,update]=useState(0),[busy,sb]=useState(false);setView=sv;refresh=()=>update(x=>x+1);
  const mutate=async r=>{mutations.push(r);sb(true);await wait(45);try{if(fail||(r.type==='configure_cloud'&&configureFail))return false;if(r.type==='create_person')people=[...people,{id:'new',display_name:r.display_name,sample_count:0,revision:1,created_ms:base}];if(r.type==='rename_person')people=people.map(p=>p.id===r.person_id?{...p,display_name:r.display_name,revision:p.revision+1}:p);if(r.type==='delete_person')people=people.filter(p=>p.id!==r.person_id);if(r.type==='remove_voice_sample'){samples=samples.filter(s=>s.id!==r.sample_id);people=people.map(p=>({...p,sample_count:samples.filter(s=>s.person_id===p.id).length,revision:p.revision+1}));}if(r.type==='set_source')state[r.source==='system'?'system_enabled':'microphone_enabled']=r.enabled;refresh();return true;}finally{sb(false)}};
  return h('div',{className:'app-shell'},h('aside',{className:'sidebar'},h('div',{className:'brand'},'loppi'),h('nav',null,...['people','settings'].map(v=>h('button',{key:v,className:view===v?'active':'',onClick:()=>sv(v)},v==='people'?'人物库':'设置')))),h('main',{className:'main-area'},view==='people'?h(PeopleView,{people,busy,onMutate:mutate}):h(SettingsView,{date:new Date(base),state,queues:[{provider:'llm',configured:true},{provider:'asr',configured:true}],selection:null,privacy:{microphone:3,tap_required:true,tap_ready:true,screen_and_system_audio:1},loginStatus:login,models:{phase:'ready',speaker_phase:'ready',progress_percent:100},busy,onStatus:async()=>{},onContext:async()=>refresh(),onTimeline:async()=>{},onMutate:mutate,onMessage:()=>{}})));

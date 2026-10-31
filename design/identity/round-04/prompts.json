@@ -1,0 +1,45 @@
+{
+  "created": "2026-10-31",
+  "status": "approved-visual-reference-not-production-assets",
+  "mode": "built-in image_gen",
+  "file": "color-wordmark-confirmation.png",
+  "editTarget": "User-attached copy of round-03/soft-pixel-identity.png",
+  "supportingReference": "round-02/a2-everyday-companion.png (dark simple i dot only)",
+  "userConfirmedDirection": {
+    "completed": "soft green",
+    "inProgress": "gentle warm coral/red",
+    "wordmarkIDot": "darker warm red, simple square, no stair",
+    "deferred": "date/rabbit relationship and navigation"
+  },
+  "proposedPalette": {
+    "text": "#292C28",
+    "paper": "#FAF8F2",
+    "surface": "#EDE9E1",
+    "completed": "#8BBDA1",
+    "inProgress": "#F4A686",
+    "wordmarkDot": "#B65B42",
+    "warmTextOnPaper": "#A6533C"
+  },
+  "prompt": "Use case: precise-object-edit + ui-mockup.\nEdit IMAGE 1, the user's selected \"loppi\" identity/UI proof sheet, into ONE closely matching COLOR-AND-WORDMARK CONFIRMATION BOARD. Preserve the source landscape 3:2 composition, warm near-white background, charcoal typography, the exact existing \"loppi\" letterforms and weights, panel arrangement, rabbit illustrations/poses, source labels, date, black entry toolbar and overall restrained atmosphere.\n\nIMAGE ROLES:\nImage 1 is the EDIT TARGET and authoritative visual base. It is the board titled \"像素的温度。\", with the large black \"loppi\" at left and timeline/transcript at right.\nImage 2 is ONLY supporting reference for the DARK WARM RED simple dot on i, not a layout reference. Do not copy its sidebar or alter date/rabbit placement.\n\nUSER'S CONFIRMED DESIGN LOGIC:\n- Soft muted GREEN means a record has been completed/kept.\n- Gentle WARM CORAL/RED means something is in progress: actively recording, current time, currently playing position.\n- The whole experience is ongoing and undemanding: small static colored marks and soft highlights, no vivid alarm-red fills or pressure.\n- Logo i dot should be DARKER warm rust red, SIMPLE SQUARE, no stair shape.\n- Date and rabbit spatial relationship is deliberately deferred. Do NOT redesign their placement or navigation.\n\nMake these targeted corrections consistently:\n1. In BOTH \"loppi\" wordmarks (large upper left and small lower band), change ONLY the dot over i from the pale stepped shape into a simple, modest, solid square with minimally softened corners, dark warm terracotta #B65B42. Keep the black letters and their shape/size unchanged. The dot is visually separate from the stem, aligns optically, has NO staircase, notch, rabbit ears, highlight or gradient.\n2. Replace the large peach stepped \"品牌图形\" specimen at left with a plain dark-terracotta SQUARE specimen of the i dot, ample surrounding whitespace. Change its small heading to \"字标细节\" and supporting text to \"深暖红色方点，保持简洁。\" This is a specimen of the wordmark dot, not a new standalone logo.\n3. Remove the giant decorative peach staircase at the lower right of the bottom strip, leaving calm ivory whitespace. Preserve the small wordmark, bunny and existing \"声音留在这里。\" text in that strip. No stepped shapes anywhere else on the board.\n4. Keep already-recorded audio interval bars on the top two lanes in the original soft mint/sage GREEN near #8BBDA1. The last currently accumulating interval just before the 19:31 now marker may use a tiny gentle CORAL section near #F4A686. Current vertical marker and \"19:31\" use darker warm coral ink for legibility.\n5. At top right keep the rabbit and \"正在记录\"; its small status square is gentle coral. Add no new recorder timer or animation graphic.\n6. The two list rows \"14:00—15:20 产品设计讨论\" and \"12:40—12:52 午后随记\" are FINISHED records, so their small left status squares must be GREEN, not coral/grey. Preserve text hierarchy, row layout, excerpts, metadata and titles.\n7. The saved note at right of the transcript is already kept. Its little marker beside \"已保存的笔记\" should be GREEN, not coral. Keep note time \"14:12\" and note text intact.\n8. The transcript playback progress and current 14:08 reading row remain gentle CORAL: peach/coral progress fill, tiny playhead, a faint peach active-row tint, and a restrained darker-coral timestamp. Main text stays charcoal. Standard play and bookmark icons unchanged. The color indicates playback activity, not an alarm.\n9. Preserve charcoal #292C28, stone #EDE9E1 and paper #FAF8F2 foundations. Organize six discreet color chips along the lower-left palette area in this order: charcoal, paper, warm stone, green, light coral, deep rust dot. Include simple readable labels \"文字\" \"底色\" \"表面\" \"已完成\" \"进行中\" \"字标\". Values if space permits: #292C28 #FAF8F2 #EDE9E1 #8BBDA1 #F4A686 #B65B42. This small palette replaces the original five-chip row, without taking space away from the rabbit.\n10. Near the left concept description include one concise line \"绿色 · 已完成    暖红 · 进行中\" if it fits cleanly; no new explanatory paragraphs or marketing slogans.\n\nNo other redesign. Keep date \"10月31日\" and \"星期六\", same right header position, same rabbit sizes/poses/locations, same black toolbar actions \"截图\" \"重点\" \"笔记\". Preserve overall Chinese labels faithfully and source times; no invented data, new features, navigation bars or dense annotation. Exact source visual warmth, quiet paper-like flat colors, clear labels and clean optical alignment. Do not make all colors darker to match the logo dot: pale warm coral is still used for live state and playback, and dark rust is principally the letter i dot. Return ONE polished corrected image.",
+  "review": {
+    "pass": [
+      "Both wordmark i dots dark warm rust simple squares",
+      "Completed list row markers green",
+      "Saved note marker green",
+      "Live status/current time/playback warm coral",
+      "Large stepped specimens removed",
+      "Original board composition and rabbit/date positions retained"
+    ],
+    "limits": [
+      "Palette values are intended design candidates, raster render is approximate",
+      "Exact letterform curves/dot geometry and all production contrast pairs require later precise design",
+      "Green retained/completed audio does not imply every derived cloud processing task is complete",
+      "This image is for color/wordmark confirmation, not IA or layout approval"
+    ]
+  },
+  "userApproval": {
+    "date": "2026-10-31",
+    "quote": "可以啊。接下来应该要输出哪些素材资源还有规范呀？",
+    "scope": "Colors/semantic relationships and simple dark warm-red i dot accepted as visual reference. Exact vector geometry, complete tokens/components/pages and date/rabbit layout are not yet finalized."
+  }
+}

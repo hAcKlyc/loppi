@@ -1,0 +1,13 @@
+[
+  {
+    "background": "rgb(231, 226, 217)",
+    "color": "rgb(98, 94, 87)",
+    "text": "文字和已提取声纹特征继续保留"
+  },
+  {
+    "background": "rgb(231, 226, 217)",
+    "color": "rgb(98, 94, 87)",
+    "text": "还会移除文字、截图和相关声纹样例"
+  }
+]
+Both actual selected choices: 4.996:1 (>4.5).

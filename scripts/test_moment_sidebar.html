@@ -26,6 +26,7 @@ const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const canvas=document.createElement('canvas');canvas.width=800;canvas.height=450;const ctx=canvas.getContext('2d');ctx.fillStyle='#eff5f0';ctx.fillRect(0,0,800,450);ctx.fillStyle='#215d50';ctx.font='32px system-ui';ctx.fillText('截图预览 · 测试画面',40,80);const png=canvas.toDataURL().split(',')[1];
 if(!window.isTauri)window.isTauri=true;
 mockIPC(async(command,args)=>{
+ if(command==='playback_output')return args.command.type==='open'?{context:1}:{clock:0};
  if(command!=='core_request')return null;
  const r=args.request;requests.push(r);
  if(r.type==='range_detail')return {type:'event',event:item};
@@ -34,7 +35,7 @@ mockIPC(async(command,args)=>{
  if(r.type==='playback_chunk')return {type:'playback_chunk',has_audio:false,wav_base64:'',next_audio_ms:null};
  if(r.type==='add_moment'){await wait(noteDelay);if(rejectNote)throw Error('simulated save failure');moments=[...moments,make('saved','comment',r.anchor_ms-base,{text:r.text})].sort((a,b)=>a.anchor_ms-b.anchor_ms);return {type:'ok'};}
  return {type:'ok'};
-});
+},{shouldMockEvents:true});
 let token=0;const root=createRoot(document.getElementById('root'));
 const render=()=>root.render(React.createElement(DetailDrawer,{item,people:[],onClose:()=>{},onEdit:()=>{},onTools:()=>{},onQueue:()=>{},onDataAction:()=>{},onChanged:()=>{},onMessage:m=>messages.push(m),refreshToken:token}));render();
 const assert=(value,message)=>{if(!value)throw Error(message)};

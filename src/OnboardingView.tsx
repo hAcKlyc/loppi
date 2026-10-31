@@ -78,7 +78,7 @@ export function OnboardingView({
 				)}
 				<fieldset disabled={busy} className="setup-fields">
 					<section className="setup-group">
-						<h2>① 下载本地模型</h2>
+						<h2>① 检查本地组件</h2>
 						<div className="setup-step-content">
 							<ModelPreparation
 								compact

@@ -124,7 +124,7 @@
       '关于现场记录，我更希望它像当时留下的便签。记下来的重点、随手写的一句话和一张截图，应该都能回到原来的时刻，而不是在整理完成后才被重新解释成另外一种内容。',
       '这里还有一个实际问题：如果我们在深夜开始讨论，过了零点才结束，播放器显示的时间和左边的句子时间都需要带上日期。不然两天里相同的时刻很容易让人误以为播放位置发生了跳动。',
       '窄窗口里也需要保留连续阅读的感觉。我们可以让名字自然换行，让修改操作跟随这句话，但不要为了放下所有标签，把主要文字缩得太小。阅读时看清句子比一行放满信息更重要。',
-      '当前正在播放的句子可以有一层浅绿色背景，时间稍微加重就够了。暂停后，如果用户是从概览里的某个时间点进入，也应该看得出定位到了哪里，然后允许他自己继续向下阅读。',
+      '当前正在播放的句子可以有一层浅暖红色背景，时间稍微加重就够了。暂停后，如果用户是从概览里的某个时间点进入，也应该看得出定位到了哪里，然后允许他自己继续向下阅读。',
       '截图的识别文字默认折叠是合适的。用户先看到当时留下的截图入口，需要核对内容时再展开。即使识别失败，截图本身仍然存在，界面也应该把这两个结果分别说明。',
       '我们把这句话稍微修正一下：内容摘要是一段整理后的概括，精转文字则是对原始声音的记录。两种内容可以互相帮助，但不应该用局部原话代替摘要，再让用户误判它的来源。',
       '如果这次处理没有完成，最好直接告诉用户是哪一步失败了，以及能在哪里重试。已经读到的内容应当继续留在原处，不能因为一次后台刷新，就把整页替换成空白或重新跳回顶部。',
@@ -169,8 +169,8 @@
     const screenshot = document.createElement('canvas');
     screenshot.width = 960; screenshot.height = 540;
     const context = screenshot.getContext('2d');
-    context.fillStyle = '#f0f3ee'; context.fillRect(0, 0, 960, 540);
-    context.fillStyle = '#25352e'; context.font = '32px system-ui';
+    context.fillStyle = '#faf8f2'; context.fillRect(0, 0, 960, 540);
+    context.fillStyle = '#292c28'; context.font = '32px system-ui';
     context.fillText('设计讨论 · 下一步安排', 48, 80);
     context.font = '24px system-ui';
     ['核对时间线与详情的信息层级', '检查双栏阅读、跨日时间和长姓名', '仅用于隔离样例，不包含真实截图'].forEach((text, i) => context.fillText(text, 48, 160 + i * 64));
@@ -180,13 +180,26 @@
     mockIPC(async (command, args) => {
       requests.push({ command, type: args?.request?.type ?? null });
       if (command === 'gui_ready') return null;
+      if (command === 'agent_access_info') {
+        const cli = '/Applications/loppi.app/Contents/MacOS/loppi';
+        return {
+          cli_path: cli, cli_available: true,
+          codex_config: `[mcp_servers.loppi]\ncommand = "${cli}"\nargs = ["mcp", "serve"]`,
+          mcp_config: {mcpServers: {loppi: {command: cli, args: ['mcp', 'serve']}}},
+          codex_command: `codex mcp add loppi -- '${cli}' mcp serve`,
+          skill_command: `'${cli}' integrations install-skill --destination '/Users/example/.agents/skills/loppi-context'`,
+          example_command: `'${cli}' context list --date today`,
+          status: {ok: true, data: {online: true}},
+        };
+      }
+      if (command === 'copy_agent_text') return navigator.clipboard.writeText(args.text);
       if (command === 'onboarding_status') return { completed: true };
       if (command === 'entry_snapshot') return {
         sequence: 1, state, error: null, mode: 'top',
         appearance: isRecording ? 'listening' : 'sleeping', detail: null,
         control: isRecording ? 'pause' : 'resume', notice: null,
       };
-      if (command === 'privacy_status') return { microphone: 1, screen_and_system_audio: 1, tap_required: false, tap_ready: true };
+      if (command === 'privacy_status') return { microphone: 3, screen_and_system_audio: 1, tap_required: false, tap_ready: true };
       if (command === 'login_item_status') return 1;
       if (command !== 'core_request') throw Error(`隔离样例未执行原生命令：${command}`);
       const request = args.request;
@@ -222,7 +235,11 @@
       if (request.type === 'models') return response({ state: { phase: 'ready', speaker_phase: 'ready', progress_percent: 100 } });
       if (request.type === 'cloud_tasks') return response({ tasks: [] });
       if (request.type === 'review_items') return response({ items: [] });
-      if (request.type === 'voice_samples') return response({ samples: [] });
+      if (request.type === 'voice_samples') return response({ samples: Array.from({length: people.find(person => person.id === request.person_id)?.sample_count ?? 0}, (_, index) => ({
+        id: `sample-${request.person_id}-${index}`, person_id: request.person_id, source: index % 2 ? 'system' : 'microphone',
+        started_ms: day(22) + (14 * 60 + index) * 60_000, ended_ms: day(22) + (14 * 60 + index) * 60_000 + 7600,
+        parts: [], audio_available: false, revision: 1,
+      })) });
       if (request.type === 'usage_statistics') return response({ statistics: { started_ms: fixedNow, days: [] } });
       if (request.type === 'screenshot_data') return response({ png_base64: png });
       if (request.type === 'playback_chunk') return response({ has_audio: false, wav_base64: '', next_audio_ms: null });

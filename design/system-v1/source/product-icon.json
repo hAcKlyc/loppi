@@ -1,0 +1,38 @@
+{
+  "rule": "Preserve the approved one-folded-ear, one-upright-ear, tilted-head product ICON. It is independent of the upright listening animation.",
+  "baseline": "18a3f77681f36597ba26d03adeffed27b13f11b4",
+  "files": [
+    {
+      "path": "assets/loppi-icon-source.png",
+      "sha256": "45082ead6a3e9119a97d8420001107c1c7f2bdd62c7bc984459a422bf4285653"
+    },
+    {
+      "path": "src/assets/rabbit/app-icon-square.png",
+      "sha256": "87ddbd6ea93de992e37ad266fd5496e1d4154f7138c938c206fdaab3fda52a8f"
+    },
+    {
+      "path": "src-tauri/icons/128x128.png",
+      "sha256": "b88ffe02652612572db33ddb632d8f6454dd37815d6dd8ad3a39c79c553bf44f"
+    },
+    {
+      "path": "src-tauri/icons/128x128@2x.png",
+      "sha256": "579b63e08788197a17cf1a56f67d15556135915a66595687d5f7254fb7e7be61"
+    },
+    {
+      "path": "src-tauri/icons/32x32.png",
+      "sha256": "0415e10664183e96ca17135f3c1202955f2ca544ae2361a88a2a84521ce3548b"
+    },
+    {
+      "path": "src-tauri/icons/64x64.png",
+      "sha256": "035a74a14e5f0e2f1da7ea9da7e9aff7a972f84952f2d1ba9c6c638cdde33370"
+    },
+    {
+      "path": "src-tauri/icons/icon.icns",
+      "sha256": "26a29addba67cfb6d527bdbb7a69b9ceb07b84f1a3042a31c930cc387494f920"
+    },
+    {
+      "path": "src-tauri/icons/icon.png",
+      "sha256": "3ec23b9f600c39842c29408918e099eaec87b01e82b3cd628dcddb013b2e5a5b"
+    }
+  ]
+}

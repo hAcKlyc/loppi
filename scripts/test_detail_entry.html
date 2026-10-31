@@ -2,6 +2,7 @@
 <div id="root" style="padding:24px"></div><aside style="position:fixed;z-index:999;bottom:8px;left:8px;background:white;padding:8px"><button id="run">运行定位回归</button> <output id="result">模拟长记录，不连接真实数据</output></aside>
 <script type="module">
 import "/scripts/fixture-controls.ts";
+import {mockIPC} from '@tauri-apps/api/mocks';
 import React from 'react'; import {createRoot} from 'react-dom/client'; import {flushSync} from 'react-dom';
 import {TimelineView} from '/src/TimelineView.tsx'; import {DetailDrawer} from '/src/DetailDrawer.tsx'; import '/src/App.css';
 const from=new Date(2026,9,17).getTime(),to=new Date(2026,9,18).getTime(),target=from+(17*60+54)*60000;
@@ -9,14 +10,16 @@ const base={id:'fixture',manual_range_id:null,title:'模拟长记录',summary:nu
 const rows=Array.from({length:300},(_,i)=>({id:`row-${i}`,source:i%2?'system':'microphone',started_ms:from+i*4*60000,ended_ms:from+(i*4+2)*60000,text:`第 ${i+1} 条模拟转录。这是用于检查长记录定位的文本内容。`}));
 let selected=null,version=0,requests=[],hold=null;
 if(!window.isTauri)window.isTauri=true;
-window.__TAURI_INTERNALS__={invoke:async(command,{request})=>{
+mockIPC(async(command,args)=>{
+ if(command==='playback_output')return args.command.type==='open'?{context:1}:{clock:0};
+ const request=args.request;
  requests.push(request.type+':'+(request.offset??0));
  if(request.type==='event_detail') {if(hold) await hold;return {type:'event',id:'reply',event:{...base,coarse_segments:rows.slice(request.offset,request.offset+request.limit)}};}
  if(request.type==='playback_chunk')return new Promise(()=>{}); // Hold audio to inspect playing state without making sound.
  if(request.type==='moments')return {type:'moments',moments:[]};
  if(request.type==='session_speakers')return {type:'session_speakers',speakers:[]};
  throw Error('Unexpected request '+request.type);
-}};
+},{shouldMockEvents:true});
 const root=createRoot(document.getElementById('root'));
 function render(){flushSync(()=>root.render(React.createElement(React.Fragment,null,
  React.createElement(TimelineView,{date:new Date(from),recordedDays:[from],recordingState:null,captureStatus:null,items:[base],gaps:[],moments:[],loading:false,hideCoarse:false,onDate:()=>{},onCreate:()=>{},onSelect:(item,initialAt)=>{selected={item,initialAt};render()}}),
@@ -33,7 +36,10 @@ document.getElementById('run').onclick=async()=>{const output=document.getElemen
  const enteredAt=Number(document.querySelector('.player-track').value);assert(enteredAt>=target&&enteredAt<target+86400000/document.querySelector('.day-map-track').getBoundingClientRect().width+1,'播放器未停在点击分钟');
  assert(document.querySelector('[aria-label="播放录音"]'),'打开时自动播放');
  assert(requests.includes('event_detail:240'),'目标在后页但未加载');
- const list=document.querySelector('.transcript-list'),row=list.querySelectorAll('.transcript-row')[268],box=list.getBoundingClientRect(),r=row.getBoundingClientRect();
+ // A whole screen pixel spans more than a minute on this 24-hour index.
+ // Check the closest side of the actual selected gap, independent of layout width.
+ const expectedIndex=enteredAt-rows[268].ended_ms<=rows[269].started_ms-enteredAt?268:269;
+ const list=document.querySelector('.transcript-list'),row=list.querySelectorAll('.transcript-row')[expectedIndex],box=list.getBoundingClientRect(),r=row.getBoundingClientRect();
  assert(r.top>=box.top-1&&r.top<box.bottom,'最近文本未滚动可见');
  assert(enteredAt>rows[268].ended_ms&&enteredAt<rows[269].started_ms,'夹具没有覆盖句间空隙');
  assert(row.classList.contains('is-current')&&row.getAttribute('aria-current')==='true','暂停时的最近文本没有选中态');
@@ -43,9 +49,9 @@ document.getElementById('run').onclick=async()=>{const output=document.getElemen
  close();await frames();let release;hold=new Promise(r=>release=r);openAt();await frames();const count=requests.length;close();hold=null;release();await frames();await frames();assert(!document.querySelector('.detail-drawer'),'关闭后迟到结果重新打开');assert(requests.length===count,'关闭后仍继续翻页');
  assert(!requests.some(r=>r.startsWith('playback_chunk')),'无播放意图却读取音频');
  openAt();await until(()=>document.querySelectorAll('.transcript-row').length===270);await frames();
- const positioned=document.querySelector('.transcript-row.is-current');assert(positioned?.textContent.includes('第 269 条'),'重开后缺少定位高亮');
+ const positioned=document.querySelector('.transcript-row.is-current');assert(positioned?.textContent.includes(`第 ${expectedIndex+1} 条`),'重开后缺少定位高亮');
  document.querySelector('[aria-label="播放录音"]').click();await frames();assert(document.querySelector('[aria-label="暂停播放"]'),'播放状态未切换');assert(!document.querySelector('.transcript-row.is-current'),'播放间隙保留了伪当前句高亮');
- document.querySelector('[aria-label="暂停播放"]').click();await frames();assert(document.querySelector('.transcript-row.is-current')?.textContent.includes('第 269 条'),'暂停后未恢复最近文本选中态');
+ document.querySelector('[aria-label="暂停播放"]').click();await frames();assert(document.querySelector('.transcript-row.is-current')?.textContent.includes(`第 ${expectedIndex+1} 条`),'暂停后未恢复最近文本选中态');
  const source=document.querySelector('.audio-player select');source.value='system';source.dispatchEvent(new Event('change',{bubbles:true}));await frames();assert(document.querySelector('.transcript-row.is-current')?.textContent.includes('第 270 条'),'来源切换后选中错误文本');
  source.value='both';source.dispatchEvent(new Event('change',{bubbles:true}));await frames();
  output.textContent='PASS：句间选中态、播放/暂停切换、来源筛选、17:54 播放器定位、后页文本滚动、暂停打开、刷新不抢位置、键盘/卡片默认起点、关闭淘汰请求。';

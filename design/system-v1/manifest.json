@@ -1,0 +1,442 @@
+{
+  "schema": 1,
+  "designVersion": 1,
+  "sources": {
+    "wordmark": "src/assets/brand/wordmark.svg",
+    "icon": "assets/loppi-icon-source.png",
+    "rabbit": "src/assets/rabbit/manifest.json",
+    "tokens": "src/tokens.css"
+  },
+  "files": [
+    {
+      "path": "brand/lockup.png",
+      "bytes": 26300,
+      "sha256": "aee9010960ff2c452679a941d29d609337ebfa19d612cb7c5695c75f5ce1d5ff"
+    },
+    {
+      "path": "brand/lockup.svg",
+      "bytes": 11336,
+      "sha256": "c6879832abaf6f9e14c8032cf6e55613f9f4da6513af6c5f3ff5a5d82591407c"
+    },
+    {
+      "path": "brand/wordmark-color-1200.png",
+      "bytes": 30586,
+      "sha256": "9014551b3662bd12b8104593f587b3e6aee058953711fa4203bb5d81d6d0c1e0"
+    },
+    {
+      "path": "brand/wordmark-color-240.png",
+      "bytes": 4040,
+      "sha256": "5b879844820f60dff8d96ac0ee21dd40854d0c021770a5a330db017e08aa2795"
+    },
+    {
+      "path": "brand/wordmark-color-96.png",
+      "bytes": 1600,
+      "sha256": "ac9c7f775227d184e5efd1261f04a17e3c992b65593a3aded36f769b68168df8"
+    },
+    {
+      "path": "brand/wordmark-color.svg",
+      "bytes": 778,
+      "sha256": "2bf31043755099ae8da7d5ff7bcd55aca21f8983b943f0fb8f393b449ccc36cd"
+    },
+    {
+      "path": "brand/wordmark-mono-1200.png",
+      "bytes": 30433,
+      "sha256": "6c8a0d03c71fc8223638811b9dcd408a43e8a3af8f9a3bc20c5d1136f2ad6e0e"
+    },
+    {
+      "path": "brand/wordmark-mono-240.png",
+      "bytes": 3984,
+      "sha256": "c573e75106e6a695a42e65f12d8e0be9cbacfb549ecf171e543ef58186a914e9"
+    },
+    {
+      "path": "brand/wordmark-mono-96.png",
+      "bytes": 1571,
+      "sha256": "3d452e629ba654457169114c5ea6b2ddc3d5bb7fb32dfbfc1e83c8e8591b3d35"
+    },
+    {
+      "path": "brand/wordmark-mono.svg",
+      "bytes": 778,
+      "sha256": "d160b36ef84eb7df2e3e4dca647b5fcebb7f010565740bf0feaed063407d5043"
+    },
+    {
+      "path": "brand/wordmark-reversed-1200.png",
+      "bytes": 30807,
+      "sha256": "15a3186887b88d526b69323f2b19e726575fd5312dff8fc9e0931aa1277a6512"
+    },
+    {
+      "path": "brand/wordmark-reversed-240.png",
+      "bytes": 4086,
+      "sha256": "90a9082e0450db2feb9e27fb966e03b88d1d6107e4ecb82ad4c7953a8723084f"
+    },
+    {
+      "path": "brand/wordmark-reversed-96.png",
+      "bytes": 1591,
+      "sha256": "bf674aa3554b0e060bc73ae3d69782fbb0e82ab55177a8c944b6b4c1e4273d45"
+    },
+    {
+      "path": "brand/wordmark-reversed.svg",
+      "bytes": 778,
+      "sha256": "a7dd25a60134b70bb1e598c0e7b6c03f2eb3d8ff367d872c325af9892fcba04a"
+    },
+    {
+      "path": "components.md",
+      "bytes": 3156,
+      "sha256": "33e2191831f97cd8bdb74fcaa24a3a257813ed5efbbb60553047f61518bf6642"
+    },
+    {
+      "path": "DESIGN.md",
+      "bytes": 14139,
+      "sha256": "ad153b28cc760db3215a60587eec40429a9cef9539d78912250a57a35a91c5c1"
+    },
+    {
+      "path": "icons/app-1024.png",
+      "bytes": 827746,
+      "sha256": "87ddbd6ea93de992e37ad266fd5496e1d4154f7138c938c206fdaab3fda52a8f"
+    },
+    {
+      "path": "icons/app-128.png",
+      "bytes": 16441,
+      "sha256": "49c63e986b225647ebf918ff34fa0f072d60e19486385ca642375d9a14b17165"
+    },
+    {
+      "path": "icons/app-16.png",
+      "bytes": 711,
+      "sha256": "4f7c6568f0d967ca60cd5319fc4ec0f62dedffeaeda9861be33b0af4a66e5aa2"
+    },
+    {
+      "path": "icons/app-24.png",
+      "bytes": 1365,
+      "sha256": "507d2309332d9a6c7650545fa6bcf02e480f13ae1e399b68f42aaabe39c38d15"
+    },
+    {
+      "path": "icons/app-256.png",
+      "bytes": 60464,
+      "sha256": "885c06bda134286997701967f2bd7ddde73043fb5fa5e24726b667373023d806"
+    },
+    {
+      "path": "icons/app-32.png",
+      "bytes": 1956,
+      "sha256": "ce742123640ae9ff51a10358ee8d8a002f0bd9eaede680ac619c315f39b09422"
+    },
+    {
+      "path": "icons/app-48.png",
+      "bytes": 3763,
+      "sha256": "0f78ca8290aab033bc5d43c0ecc268ca0eab5f41c886031b4137d91bb708dbee"
+    },
+    {
+      "path": "icons/app-512.png",
+      "bytes": 244646,
+      "sha256": "8bc07eae725bf1fc08496be1f71e746c9be999b4a0aee23ec7cb0446f6b0e769"
+    },
+    {
+      "path": "icons/app-64.png",
+      "bytes": 5326,
+      "sha256": "1c752c8f389e0afc8d0168bceb266685df65a9cf53e8d070bb8eaa3c4db6429f"
+    },
+    {
+      "path": "icons/app-macos-1024.png",
+      "bytes": 868352,
+      "sha256": "b36748d84732b978285e2f84f63ca62f79b2265370d405b967fb12dd347e68c6"
+    },
+    {
+      "path": "icons/app-square-1024.png",
+      "bytes": 827746,
+      "sha256": "87ddbd6ea93de992e37ad266fd5496e1d4154f7138c938c206fdaab3fda52a8f"
+    },
+    {
+      "path": "icons/loppi.icns",
+      "bytes": 1833648,
+      "sha256": "26a29addba67cfb6d527bdbb7a69b9ceb07b84f1a3042a31c930cc387494f920"
+    },
+    {
+      "path": "icons/loppi.iconset/icon_128x128.png",
+      "bytes": 18242,
+      "sha256": "ba30d10d8210b66215eba7b269366ec3f1b944b9863b24ea55bbfc4d1c2db656"
+    },
+    {
+      "path": "icons/loppi.iconset/icon_128x128@2x.png",
+      "bytes": 65465,
+      "sha256": "254754e7b9b9db2963180bdfd2b8f754d171a071421b1b08bbeaac4353510231"
+    },
+    {
+      "path": "icons/loppi.iconset/icon_16x16.png",
+      "bytes": 846,
+      "sha256": "cf2bb9e091652e9ed1e8b27ea0b7746587067dad63ba5f025d9f2d3c5441240e"
+    },
+    {
+      "path": "icons/loppi.iconset/icon_16x16@2x.png",
+      "bytes": 2334,
+      "sha256": "7bdf0208f009c57919f9433e1ff8715f7f473ca8b90366bc797aa73931728723"
+    },
+    {
+      "path": "icons/loppi.iconset/icon_256x256.png",
+      "bytes": 65465,
+      "sha256": "254754e7b9b9db2963180bdfd2b8f754d171a071421b1b08bbeaac4353510231"
+    },
+    {
+      "path": "icons/loppi.iconset/icon_256x256@2x.png",
+      "bytes": 260447,
+      "sha256": "f940df2f9ac0f83cd3b859d69505df932e181919d856bf32635290425b34dbc1"
+    },
+    {
+      "path": "icons/loppi.iconset/icon_32x32.png",
+      "bytes": 2334,
+      "sha256": "7bdf0208f009c57919f9433e1ff8715f7f473ca8b90366bc797aa73931728723"
+    },
+    {
+      "path": "icons/loppi.iconset/icon_32x32@2x.png",
+      "bytes": 6115,
+      "sha256": "312ddb822c2f3532db2f1247b395bafb138f9b7fef909dfeafd29093549abf55"
+    },
+    {
+      "path": "icons/loppi.iconset/icon_512x512.png",
+      "bytes": 260447,
+      "sha256": "f940df2f9ac0f83cd3b859d69505df932e181919d856bf32635290425b34dbc1"
+    },
+    {
+      "path": "icons/loppi.iconset/icon_512x512@2x.png",
+      "bytes": 868352,
+      "sha256": "b36748d84732b978285e2f84f63ca62f79b2265370d405b967fb12dd347e68c6"
+    },
+    {
+      "path": "preview.html",
+      "bytes": 1840670,
+      "sha256": "b18f97a1b3c5eda6876f2087d439527a852bdce9eb8609d0c71617e1e0d563d5"
+    },
+    {
+      "path": "rabbit/animations/listening.gif",
+      "bytes": 91618,
+      "sha256": "f181bfe95b5043342db296458ac6a20cb9142e143fffa26a33d44679ea0f6ba8"
+    },
+    {
+      "path": "rabbit/animations/sleeping.gif",
+      "bytes": 46498,
+      "sha256": "66d99ef8b2b5c7c3d273f57eab50d65142bbd0f30048a3e1d951e2b93a46ee5e"
+    },
+    {
+      "path": "rabbit/app-icon-square.png",
+      "bytes": 827746,
+      "sha256": "87ddbd6ea93de992e37ad266fd5496e1d4154f7138c938c206fdaab3fda52a8f"
+    },
+    {
+      "path": "rabbit/manifest.json",
+      "bytes": 3696,
+      "sha256": "3579373aa4b8491adbd0155584967c5fd184204e6786687bff0b78c566816a8a"
+    },
+    {
+      "path": "rabbit/poses/blink.png",
+      "bytes": 7765,
+      "sha256": "56c40231d31c134730fba7bf7ce072f83f3056b2a2861a7ebbe5c20ed0650847"
+    },
+    {
+      "path": "rabbit/poses/curious.png",
+      "bytes": 7827,
+      "sha256": "da8557c290aed6bea3e7df74ddf54011603bc9b21320e34c2713fca8cd4f186b"
+    },
+    {
+      "path": "rabbit/poses/listening-breath.png",
+      "bytes": 7852,
+      "sha256": "4c7421c428c68cb3d9ec261fddcefa041515349d723e29fb420146a004c79b61"
+    },
+    {
+      "path": "rabbit/poses/listening-inhale.png",
+      "bytes": 7861,
+      "sha256": "d708a038624dde78ee88fe23e37418933beaf9a1c5c504c392637eb7e1aff626"
+    },
+    {
+      "path": "rabbit/poses/listening.png",
+      "bytes": 7840,
+      "sha256": "ff87612516690f8f65c40f6fde343b6be028d39dc597c9d9fc94400f46c3baf6"
+    },
+    {
+      "path": "rabbit/poses/nod.png",
+      "bytes": 7765,
+      "sha256": "588d01243795d11d455cada237368958d4b0c29b0ad4700387405da96fafd0bc"
+    },
+    {
+      "path": "rabbit/poses/partial.png",
+      "bytes": 870,
+      "sha256": "bab50cf0f2776a23c07448d6a591a75303352dc34b20b11567f1fe10f97c3367"
+    },
+    {
+      "path": "rabbit/poses/sleeping-breath.png",
+      "bytes": 7542,
+      "sha256": "bf3a9decea33d69cbea7e93bf12669f63840624c5cf6d35c8af7de849d0788e5"
+    },
+    {
+      "path": "rabbit/poses/sleeping-inhale.png",
+      "bytes": 7511,
+      "sha256": "18a529e1e07ca456212a80511b808f90eba235362d23c056d939672f9d071be7"
+    },
+    {
+      "path": "rabbit/poses/sleeping-nod.png",
+      "bytes": 7580,
+      "sha256": "62bba05a076a418d3b5c28289ef3b26a3121c0505b9dc7925529ad083956b5fb"
+    },
+    {
+      "path": "rabbit/poses/sleeping.png",
+      "bytes": 7580,
+      "sha256": "31abd19b18c563d1e23298b9f04cd2674eaf2a9479683979d81dd2d6e759f379"
+    },
+    {
+      "path": "rabbit/poses/stretch.png",
+      "bytes": 7841,
+      "sha256": "76cc0e0acf217ec68bb7eb45bc915cd444d7bac50694459c97067d9ea82ae60e"
+    },
+    {
+      "path": "rabbit/poses/waiting.png",
+      "bytes": 856,
+      "sha256": "316b7ea372bd85f58865e7511914906565e35c7c0bfea9c6d83c838aeb4dfa70"
+    },
+    {
+      "path": "rabbit/poses/wave.png",
+      "bytes": 7840,
+      "sha256": "ff87612516690f8f65c40f6fde343b6be028d39dc597c9d9fc94400f46c3baf6"
+    },
+    {
+      "path": "rabbit/sprite-atlas.png",
+      "bytes": 60442,
+      "sha256": "e4c4f6d417780ea2020caf7444e88c82d331f593e90d6e3241b55bd3f95da860"
+    },
+    {
+      "path": "README.md",
+      "bytes": 3358,
+      "sha256": "88d168bf8b6f81a1f1d8fe39489acb17a81f2d8d66eba5d4f1b92e27a3629d79"
+    },
+    {
+      "path": "release/copy.md",
+      "bytes": 966,
+      "sha256": "81c05471b003cd3c71b11c0a5239a6668445f93b62445ce0b60111b46ccec217"
+    },
+    {
+      "path": "release/readme-header.png",
+      "bytes": 30008,
+      "sha256": "2e2503791469eefd240f2d5921c98fcb3c93f854e295947dcdc1d3bf34d0ec1c"
+    },
+    {
+      "path": "release/readme-header.svg",
+      "bytes": 11626,
+      "sha256": "9e9cba6b35a7cddcda8b7f4a97d1a73b6ff249544dafec1e72efc762fa4457e2"
+    },
+    {
+      "path": "release/screenshots/agent-1120.jpg",
+      "bytes": 36151,
+      "sha256": "8694f28dea793d28b84191511afb7e7eef38e7b03e5998b0d1d20b6b15f240e2"
+    },
+    {
+      "path": "release/screenshots/agent-760.jpg",
+      "bytes": 24138,
+      "sha256": "606add845fcaf15091dff28de3d034e27fa64c3dd30ca1b5a6bfd59775d19e5c"
+    },
+    {
+      "path": "release/screenshots/detail-1120.jpg",
+      "bytes": 101277,
+      "sha256": "333d2be762108593887b8aee7b68c5e9e0ac5fae407b8ad3e679e49bd3f39eed"
+    },
+    {
+      "path": "release/screenshots/detail-760.jpg",
+      "bytes": 51790,
+      "sha256": "67bbbb620dde38f05ca17533175297508b69d797f968d8afc27b3d87ce5167a9"
+    },
+    {
+      "path": "release/screenshots/onboarding-1120.jpg",
+      "bytes": 22944,
+      "sha256": "37e769fc5b37fcdb3cc1b90f3ecc10e54de641433f521aee1f3addbf0e4621d6"
+    },
+    {
+      "path": "release/screenshots/onboarding-760.jpg",
+      "bytes": 19487,
+      "sha256": "e6d61c6c274f0af53eceaf725f472ee9769c2052a016edb59499f816f194017f"
+    },
+    {
+      "path": "release/screenshots/people-1120.jpg",
+      "bytes": 21382,
+      "sha256": "c376b233f407e3ff7c074b3e4f01761b7c9371640a929f5d89819e41b59cf840"
+    },
+    {
+      "path": "release/screenshots/people-760.jpg",
+      "bytes": 14631,
+      "sha256": "72b80233ea2d1ce4bbb4863206b42ffcbf1cf7d1ebebd19129464ff17c9a7798"
+    },
+    {
+      "path": "release/screenshots/queue-1120.jpg",
+      "bytes": 26999,
+      "sha256": "bbdc744214983e732a28d8cf73e63173d0b8b6faea5c972614a5ab41cf974256"
+    },
+    {
+      "path": "release/screenshots/queue-760.jpg",
+      "bytes": 17549,
+      "sha256": "755f79ecd2b6f3e23410dec3de3db91ebb1327a2fca8c8ad0da4c927423fd41a"
+    },
+    {
+      "path": "release/screenshots/settings-1120.jpg",
+      "bytes": 36006,
+      "sha256": "6e194acd05725d6470d73cd3dae104d684f057293cff20a1679ce7c8c8537074"
+    },
+    {
+      "path": "release/screenshots/settings-760.jpg",
+      "bytes": 19946,
+      "sha256": "13ce696197cbe9788947612cfac7a373412bd727eb88b35d31b3e2e008e32ac9"
+    },
+    {
+      "path": "release/screenshots/statistics-1120.jpg",
+      "bytes": 36177,
+      "sha256": "d5b22bcf5918eb209f3790938051e8f56597d4b5c2794c699fedccbac29eaaf9"
+    },
+    {
+      "path": "release/screenshots/statistics-760.jpg",
+      "bytes": 19033,
+      "sha256": "65cee9a221a5aeabf76ac8685d6f495ef6983cbe7eb690c6b5f2a7ace146ee89"
+    },
+    {
+      "path": "release/screenshots/timeline-recording-1120.jpg",
+      "bytes": 56099,
+      "sha256": "3e0233e9698e117dbfaaae9b39810f0bdc7f1287314b0713460e69ead4bd0c59"
+    },
+    {
+      "path": "release/screenshots/timeline-recording-760.jpg",
+      "bytes": 32813,
+      "sha256": "36d8694a2015c69384ac8c56065ee7c66d1bc14d914b4f6d9588b456c4e1bb82"
+    },
+    {
+      "path": "release/social-cover.png",
+      "bytes": 42184,
+      "sha256": "a90d3e043954e36b429d97f0bc2f658b9e74dab055701105f689e3e650f604a4"
+    },
+    {
+      "path": "release/social-cover.svg",
+      "bytes": 11649,
+      "sha256": "12e9e9149126db2678b8d5f2282296b164956112d012b630cc080b611df5db4b"
+    },
+    {
+      "path": "source/product-icon-original.png",
+      "bytes": 1212284,
+      "sha256": "45082ead6a3e9119a97d8420001107c1c7f2bdd62c7bc984459a422bf4285653"
+    },
+    {
+      "path": "source/product-icon.json",
+      "bytes": 1359,
+      "sha256": "40dfef3c5db08ac54bc300b47cead7441bf6cc902c5f049deafd9a1681d9612d"
+    },
+    {
+      "path": "tokens.css",
+      "bytes": 5662,
+      "sha256": "607962026f4b9cf16a5a6cd3e51c2d1ee27ac1dd9306b5094ba71cf28b27f3b7"
+    },
+    {
+      "path": "tokens.json",
+      "bytes": 6212,
+      "sha256": "8b11c6c29cd730378c94f593b03d72214f603721c63602c225a67ee9d20f974f"
+    },
+    {
+      "path": "usage.png",
+      "bytes": 163626,
+      "sha256": "c45b4fe6b76632c801ba3759222509e2261c2277532826906da99b135e607d63"
+    },
+    {
+      "path": "usage.svg",
+      "bytes": 25527,
+      "sha256": "165a4fe255d5df6829e9350f7b3e2dbe36bfc4e288dc6ab9ee22d3997e9ff9bf"
+    }
+  ]
+}

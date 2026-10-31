@@ -81,7 +81,7 @@
 	transform: translateX(-50%);
 	overflow: hidden;
 	background: var(--entry-surface);
-	border-radius: 0 0 26px 26px;
+	border-radius: 0 0 var(--radius-xl) var(--radius-xl);
 	display: flex;
 	align-items: flex-start;
 	padding: calc(var(--entry-band) + 24px) 18px 26px 20px;
@@ -96,7 +96,7 @@
 	padding: 0;
 	position: relative;
 	background: transparent;
-	border-radius: 20px;
+	border-radius: var(--radius-lg);
 }
 .rabbit-control-overlay {
 	position: absolute;
@@ -104,7 +104,7 @@
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	border-radius: 18px;
+	border-radius: var(--radius-lg);
 	background: var(--entry-control-overlay);
 	color: var(--entry-control-ink);
 	opacity: 0;
@@ -130,7 +130,7 @@
 	align-items: center;
 	justify-content: center;
 	gap: 9px;
-	border-radius: 18px;
+	border-radius: var(--radius-lg);
 	color: var(--entry-text);
 	background: var(--entry-action);
 	transition: background 120ms;
@@ -289,7 +289,7 @@
 	gap: 4px;
 	background: var(--entry-menu);
 	border: 1px solid transparent;
-	border-radius: 20px;
+	border-radius: var(--radius-lg);
 	box-shadow: 0 4px 12px var(--entry-menu-shadow);
 }
 .rabbit-menu button {
