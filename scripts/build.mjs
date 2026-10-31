@@ -229,5 +229,5 @@ function buildTarget(target, { release, version, source, epoch, dirty, env: base
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  try { main(); } catch (error) { console.error(error.message); process.exitCode = 1; }
+  try { if(process.platform === 'win32') { await (await import('./build_windows.mjs')).main(); } else { main(); } } catch (error) { console.error(error.message); process.exitCode = 1; }
 }

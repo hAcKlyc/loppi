@@ -378,13 +378,13 @@ impl EntryRuntime {
     }
     fn save(&self, prefs: &Preferences) -> Result<(), String> {
         use std::io::Write;
+        #[cfg(unix)]
         use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
         let parent = self.path.parent().ok_or("missing preference directory")?;
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-        std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700))
-            .map_err(|e| e.to_string())?;
+        loppi_protocol::platform::set_mode(parent, 0o700).map_err(|e| e.to_string())?;
         let pending = self.path.with_extension("tmp");
-        let mut file = std::fs::OpenOptions::new()
+        let mut file = loppi_protocol::platform::OpenOptions::new()
             .write(true)
             .create(true)
             .truncate(true)
@@ -394,7 +394,7 @@ impl EntryRuntime {
         file.write_all(&serde_json::to_vec(prefs).map_err(|e| e.to_string())?)
             .and_then(|_| file.sync_all())
             .map_err(|e| e.to_string())?;
-        std::fs::rename(pending, &self.path).map_err(|e| e.to_string())
+        loppi_protocol::platform::rename(pending, &self.path).map_err(|e| e.to_string())
     }
 }
 #[repr(C)]
@@ -423,7 +423,7 @@ async fn native<T: Send + 'static>(
             .get_webview_window("float")
             .ok_or("entry unavailable".into())
             .and_then(|w| {
-                w.ns_window()
+                w.native_window()
                     .map_err(|e| e.to_string())
                     .and_then(|n| operation(&w, n))
             });
@@ -439,6 +439,20 @@ async fn native<T: Send + 'static>(
 }
 extern "C" fn native_event(kind: i32, value: i32, generation: u64) {
     let Some(app) = HOST.get() else { return };
+    #[cfg(windows)]
+    {
+        if kind == 11 {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+            return;
+        }
+        if kind == 12 {
+            app.exit(0);
+            return;
+        }
+    }
     if kind == 2 || kind == 3 || (kind == 5 && value == 1) {
         let runtime = app.state::<Arc<EntryRuntime>>();
         let mut inner = runtime.inner.lock().unwrap();
@@ -452,7 +466,7 @@ extern "C" fn native_event(kind: i32, value: i32, generation: u64) {
     }
     let geometry = if kind == 3 || kind == 5 || kind == 8 {
         app.get_webview_window("float")
-            .and_then(|w| w.ns_window().ok())
+            .and_then(|w| w.native_window().ok())
             .map(|n| unsafe { loppi_entry_geometry(n) })
     } else {
         None
@@ -479,7 +493,7 @@ pub fn install(
     window
         .set_focusable(unsafe { loppi_entry_active() != 0 })
         .map_err(|e| e.to_string())?;
-    let pointer = window.ns_window().map_err(|e| e.to_string())?;
+    let pointer = window.native_window().map_err(|e| e.to_string())?;
     unsafe {
         loppi_entry_install(pointer, native_event);
     }
@@ -505,7 +519,7 @@ pub fn install(
 }
 pub fn dispose(app: &tauri::AppHandle) {
     if let Some(w) = app.get_webview_window("float") {
-        if let Ok(n) = w.ns_window() {
+        if let Ok(n) = w.native_window() {
             unsafe {
                 loppi_entry_dispose(n);
             }
@@ -602,6 +616,11 @@ pub async fn entry_layout(
                 generation,
             )
         };
+        #[cfg(windows)]
+        if mode == Mode::Top && view == View::Collapsed && !feedback {
+            w.hide().map_err(|e| e.to_string())?;
+            return Ok(Some(geometry));
+        }
         if !w.is_visible().map_err(|e| e.to_string())? {
             w.show().map_err(|e| e.to_string())?;
         }
@@ -654,7 +673,7 @@ pub async fn entry_focus(
 }
 fn save_entry_position(app: &tauri::AppHandle) -> Result<(), String> {
     let window = app.get_webview_window("float").ok_or("entry unavailable")?;
-    let n = window.ns_window().map_err(|error| error.to_string())?;
+    let n = window.native_window().map_err(|error| error.to_string())?;
     let position = {
         let p = unsafe { loppi_entry_position(n) };
         if p.is_null() {
@@ -1067,5 +1086,23 @@ mod tests {
         s.microphone_recording = false;
         s.system_recording = false;
         assert!(inner.observe(Ok(s)).notice.is_none());
+    }
+}
+
+trait NativeWindow {
+    fn native_window(&self) -> Result<*mut std::ffi::c_void, String>;
+}
+impl NativeWindow for tauri::WebviewWindow {
+    fn native_window(&self) -> Result<*mut std::ffi::c_void, String> {
+        #[cfg(target_os = "macos")]
+        {
+            self.ns_window().map_err(|e| e.to_string())
+        }
+        #[cfg(windows)]
+        {
+            self.hwnd()
+                .map(|h| h.0 as *mut std::ffi::c_void)
+                .map_err(|e| e.to_string())
+        }
     }
 }

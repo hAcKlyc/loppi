@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 import subprocess
+import sys
 
 
 def inspect(paths):
@@ -32,7 +33,8 @@ def main():
                  'core':args.bundle/'Contents/Library/LoginItems/LoppiCore.app/Contents/MacOS/loppi-core',
                  'worker':args.bundle/'Contents/Library/LoginItems/LoppiCore.app/Contents/MacOS/loppi-worker'}
     else:
-        paths = {role:args.directory/name for role,name in [('gui','loppi-desktop'),('core','loppi-core'),('worker','loppi-worker'),('cli','loppi')]}
+        suffix = '.exe' if sys.platform == 'win32' else ''
+        paths = {role:args.directory/(name+suffix) for role,name in [('gui','loppi-desktop'),('core','loppi-core'),('worker','loppi-worker'),('cli','loppi')]}
     data = json.dumps(inspect(paths), indent=2)+'\n'
     if args.output:
         args.output.write_text(data)

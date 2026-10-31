@@ -1,10 +1,14 @@
 use base64::Engine;
 use loppi_protocol::{MomentKind, MomentView};
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
-use std::ffi::{CStr, CString};
+#[cfg(unix)]
+use std::ffi::CStr;
+use std::ffi::CString;
 use std::fs::{self, File};
 use std::io::Read;
+#[cfg(unix)]
 use std::os::unix::ffi::OsStrExt;
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
@@ -17,6 +21,7 @@ unsafe extern "C" {
         count: usize,
         peer_pid: i32,
     ) -> i32;
+    #[cfg(unix)]
     fn loppi_ocr_png(path: *const libc::c_char, output: *mut *mut libc::c_char) -> i32;
 }
 
@@ -199,6 +204,23 @@ pub struct CaptureResult {
     pub ocr_state: &'static str,
 }
 
+pub fn capture_error_code(message: &str) -> &'static str {
+    #[cfg(windows)]
+    {
+        if message.starts_with("screen capture unavailable:") {
+            return "screenshot_desktop_unavailable";
+        }
+        if message == "cannot verify excluded windows belong to caller" {
+            return "screenshot_window_owner";
+        }
+        if message == "screen capture timed out" {
+            return "screenshot_timeout";
+        }
+    }
+    let _ = message;
+    "screenshot_failed"
+}
+
 pub fn capture(
     directory: &Path,
     now: i64,
@@ -218,13 +240,13 @@ pub fn capture(
     }
     let target_dir = directory.join("screenshots");
     fs::create_dir_all(&target_dir).map_err(|error| error.to_string())?;
-    fs::set_permissions(&target_dir, fs::Permissions::from_mode(0o700))
-        .map_err(|error| error.to_string())?;
+    loppi_protocol::platform::set_mode(&target_dir, 0o700).map_err(|error| error.to_string())?;
     let id = Uuid::new_v4();
     let pending = target_dir.join(format!("{id}.pending"));
     let relative = PathBuf::from("screenshots").join(format!("{id}.png"));
     let final_path = directory.join(&relative);
-    let c_pending = CString::new(pending.as_os_str().as_bytes()).map_err(|e| e.to_string())?;
+    let c_pending =
+        CString::new(pending.to_string_lossy().as_bytes()).map_err(|e| e.to_string())?;
     let status = unsafe {
         loppi_capture_png(
             c_pending.as_ptr(),
@@ -237,6 +259,7 @@ pub fn capture(
         let _ = fs::remove_file(&pending);
         return Err(match status {
             -2 => "cannot verify excluded windows belong to caller",
+            -4 => "screen capture unavailable: Windows session is locked or its state cannot be verified",
             -3 => "screen capture timed out",
             _ => "screen capture failed or screen recording permission is missing",
         }
@@ -258,27 +281,32 @@ pub fn capture(
         if signature != [137, 80, 78, 71, 13, 10, 26, 10] {
             return Err("screenshot is not PNG".into());
         }
-        fs::set_permissions(&pending, fs::Permissions::from_mode(0o600))
+        loppi_protocol::platform::set_mode(&pending, 0o600).map_err(|error| error.to_string())?;
+        loppi_protocol::platform::sync_file(&pending).map_err(|error| error.to_string())?;
+        loppi_protocol::platform::rename(&pending, &final_path)
             .map_err(|error| error.to_string())?;
-        File::open(&pending)
-            .and_then(|file| file.sync_all())
-            .map_err(|error| error.to_string())?;
-        fs::rename(&pending, &final_path).map_err(|error| error.to_string())?;
-        File::open(&target_dir)
-            .and_then(|directory| directory.sync_all())
-            .map_err(|error| error.to_string())?;
-        let c_path =
-            CString::new(final_path.as_os_str().as_bytes()).map_err(|error| error.to_string())?;
-        let mut output = std::ptr::null_mut();
-        let recognized = unsafe { loppi_ocr_png(c_path.as_ptr(), &mut output) } != 0;
-        let ocr_text = if recognized && !output.is_null() {
-            let value = unsafe { CStr::from_ptr(output) }
-                .to_string_lossy()
-                .to_string();
-            unsafe { libc::free(output.cast()) };
-            Some(value)
-        } else {
-            None
+        loppi_protocol::platform::sync_directory(&target_dir).map_err(|error| error.to_string())?;
+        #[cfg(unix)]
+        let (recognized, ocr_text) = {
+            let c_path = CString::new(final_path.to_string_lossy().as_bytes())
+                .map_err(|error| error.to_string())?;
+            let mut output = std::ptr::null_mut();
+            let recognized = unsafe { loppi_ocr_png(c_path.as_ptr(), &mut output) } != 0;
+            let ocr_text = if recognized && !output.is_null() {
+                let value = unsafe { CStr::from_ptr(output) }
+                    .to_string_lossy()
+                    .to_string();
+                unsafe { libc::free(output.cast()) };
+                Some(value)
+            } else {
+                None
+            };
+            (recognized, ocr_text)
+        };
+        #[cfg(windows)]
+        let (recognized, ocr_text) = match crate::ocr::recognize(&final_path) {
+            Ok(text) => (true, Some(text)),
+            Err(_) => (false, None),
         };
         Ok(CaptureResult {
             id,
@@ -311,7 +339,7 @@ pub fn save_capture(
             anchor_ms,
             now,
             captured.captured_ms,
-            captured.relative.to_string_lossy().to_string(),
+            loppi_protocol::platform::relative_key(&captured.relative),
             captured.ocr_text,
             captured.ocr_state
         ],
@@ -415,7 +443,7 @@ pub fn image(db: &Connection, directory: &Path, id: Uuid) -> Result<String, Stri
         .optional()
         .map_err(|error| error.to_string())?;
     let expected = PathBuf::from("screenshots").join(format!("{id}.png"));
-    if relative.as_deref() != Some(expected.to_string_lossy().as_ref()) {
+    if relative.as_deref() != Some(loppi_protocol::platform::relative_key(&expected).as_str()) {
         return Err("screenshot is unavailable".into());
     }
     let path = directory.join(expected);

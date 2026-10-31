@@ -584,7 +584,7 @@ fn review_wire(path: &std::path::Path, ids: &[String]) {
         atomic::{AtomicBool, Ordering},
     };
     let dir = path.parent().unwrap();
-    let listener = std::os::unix::net::UnixListener::bind(dir.join("core.sock")).unwrap();
+    let listener = loppi_protocol::ipc::Listener::bind(dir.join("core.sock")).unwrap();
     listener.set_nonblocking(true).unwrap();
     let stop = Arc::new(AtomicBool::new(false));
     let done = stop.clone();
@@ -627,7 +627,7 @@ fn review_wire(path: &std::path::Path, ids: &[String]) {
     let mut cli_times = Vec::new();
     for id in ids {
         let start = std::time::Instant::now();
-        let output = Command::new(&cli)
+        let output = loppi_protocol::platform::command(&cli)
             .env("LOPPI_DATA_DIR", dir)
             .args(["context", "event", id, "--section", "key_points"])
             .output()
@@ -641,7 +641,7 @@ fn review_wire(path: &std::path::Path, ids: &[String]) {
         assert_eq!(v["ok"], true);
         cli_times.push(start.elapsed().as_millis());
     }
-    let mut child = Command::new(&cli)
+    let mut child = loppi_protocol::platform::command(&cli)
         .env("LOPPI_DATA_DIR", dir)
         .args(["mcp", "serve"])
         .stdin(Stdio::piped())

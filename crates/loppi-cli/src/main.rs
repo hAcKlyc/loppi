@@ -1,3 +1,5 @@
+#[cfg(windows)]
+mod cli_launcher;
 mod context_cli;
 mod mcp;
 use clap::{Parser, Subcommand, ValueEnum};
@@ -53,6 +55,9 @@ enum UnderstandingCommand {
 
 #[derive(Subcommand)]
 enum Command {
+    #[cfg(windows)]
+    #[command(hide = true)]
+    PrepareInstall,
     /// Read existing context for an Agent. Never launches Core.
     Context(context_cli::Context),
     /// Local stdio Model Context Protocol server.
@@ -457,6 +462,20 @@ fn current_ms() -> i64 {
 }
 
 fn main() {
+    #[cfg(windows)]
+    if let Err(error) = loppi_protocol::platform::initialize_process() {
+        eprintln!("loppi: {error}");
+        std::process::exit(1);
+    }
+    #[cfg(windows)]
+    match cli_launcher::forward_if_installed() {
+        Ok(Some(code)) => std::process::exit(code),
+        Ok(None) => {}
+        Err(message) => {
+            eprintln!("{message}");
+            std::process::exit(1);
+        }
+    }
     let cli = match Cli::try_parse() {
         Ok(cli) => cli,
         Err(error) => {
@@ -470,6 +489,24 @@ fn main() {
         }
     };
     match cli.command {
+        #[cfg(windows)]
+        Command::PrepareInstall => {
+            let result = (|| -> Result<(), String> {
+                let own = std::env::current_exe().map_err(|e| e.to_string())?;
+                let directory = own.parent().ok_or("installation directory missing")?;
+                loppi_protocol::platform::stop_installed_gui(directory)
+                    .map_err(|e| e.to_string())?;
+                loppi_protocol::quit_gui_core()?;
+                loppi_protocol::platform::wait_installed_helpers(directory)
+                    .map_err(|e| e.to_string())
+            })();
+            if let Err(error) = result {
+                eprintln!("{error}");
+                std::process::exit(1);
+            }
+            println!("{}", serde_json::json!({"stopped":true,"forced":false}));
+            return;
+        }
         Command::Context(command) => std::process::exit(context_cli::run(command)),
         Command::Integrations(command) => std::process::exit(context_cli::integrations(command)),
         Command::Mcp {
@@ -518,8 +555,9 @@ fn main() {
                 };
                 let data = serde_json::to_vec_pretty(&serde_json::json!({"cli_build":loppi_protocol::build_info("cli"),"report":report})).map_err(|e|e.to_string())?;
                 if let Some(path) = output {
+                    #[cfg(unix)]
                     use std::os::unix::fs::OpenOptionsExt;
-                    let mut file = std::fs::OpenOptions::new()
+                    let mut file = loppi_protocol::platform::OpenOptions::new()
                         .write(true)
                         .create_new(true)
                         .mode(0o600)
@@ -614,6 +652,8 @@ fn main() {
         }
     };
     let request = match cli.command {
+        #[cfg(windows)]
+        Command::PrepareInstall => unreachable!("local command handled above"),
         Command::Context(_)
         | Command::Integrations(_)
         | Command::Mcp { .. }
@@ -1185,23 +1225,33 @@ fn run_cleanup(
         return;
     }
     if all_data {
-        // The separate native sheet is intentional, including CLI callers.
-        // Without a graphical login session, osascript fails and no request is sent.
-        let outcome=std::process::Command::new("/usr/bin/osascript")
+        #[cfg(windows)]
+        if !loppi_protocol::platform::confirm_cleanup() {
+            eprintln!("loppi: cleanup cancelled");
+            return;
+        }
+        #[cfg(unix)]
+        {
+            // The separate native sheet is intentional, including CLI callers.
+            // Without a graphical login session, osascript fails and no request is sent.
+            let outcome=loppi_protocol::platform::command("/usr/bin/osascript")
             .args(["-e","display dialog \"将永久清除选中范围的录音、文字、笔记、截图和相关声纹样例。已经导出或发送给服务商的副本无法从这里撤回。\" with title \"清除全部数据\" buttons {\"取消\", \"清除全部数据\"} default button \"取消\" cancel button \"取消\" with icon caution"])
             .output();
-        match outcome {
-            Ok(result)
-                if result.status.success()
-                    && String::from_utf8_lossy(&result.stdout)
-                        .contains("button returned:清除全部数据") => {}
-            Ok(result) if result.status.success() => {
-                eprintln!("loppi: cleanup cancelled");
-                return;
-            }
-            _ => {
-                eprintln!("loppi: a graphical macOS session is required to confirm 清除全部数据");
-                std::process::exit(2);
+            match outcome {
+                Ok(result)
+                    if result.status.success()
+                        && String::from_utf8_lossy(&result.stdout)
+                            .contains("button returned:清除全部数据") => {}
+                Ok(result) if result.status.success() => {
+                    eprintln!("loppi: cleanup cancelled");
+                    return;
+                }
+                _ => {
+                    eprintln!(
+                        "loppi: a graphical macOS session is required to confirm 清除全部数据"
+                    );
+                    std::process::exit(2);
+                }
             }
         }
     } else {

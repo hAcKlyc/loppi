@@ -4320,7 +4320,8 @@ mod tests {
     fn prompt_output_examples_follow_event_contract() {
         use serde_json::{Value, json};
 
-        let blocks: Vec<Value> = FIT_SYSTEM
+        let normalized = FIT_SYSTEM.replace("\r\n", "\n");
+        let blocks: Vec<Value> = normalized
             .split("```json\n")
             .skip(1)
             .map(|block| serde_json::from_str(block.split_once("\n```").unwrap().0).unwrap())

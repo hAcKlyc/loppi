@@ -13,3 +13,6 @@ serde_json.workspace = true
 clap = { version = "4", features = ["derive"] }
 uuid = "1"
 rpassword = "7.5.4"
+
+[target.'cfg(windows)'.dependencies]
+sha2 = "0.10"

@@ -78,7 +78,7 @@ pub fn install_skill(destination: &Path, cli: &Path) -> Result<(), String> {
             std::fs::write(path, text).map_err(|e| e.to_string())?;
         }
         // rename cannot replace a non-empty existing skill directory.
-        std::fs::rename(&temporary, destination).map_err(|e| e.to_string())
+        crate::platform::rename(&temporary, destination).map_err(|e| e.to_string())
     })();
     if result.is_err() {
         let _ = std::fs::remove_dir_all(&temporary);

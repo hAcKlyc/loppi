@@ -297,6 +297,7 @@ mod tests {
 #[ignore = "read-only frozen database audit; requires LOPPI_TEST_DB and LOPPI_TEST_REPORT"]
 fn audit_frozen_snapshot_without_starting_services() {
     use std::io::Write;
+    #[cfg(unix)]
     use std::os::unix::fs::OpenOptionsExt;
     let path = std::env::var("LOPPI_TEST_DB").expect("frozen snapshot required");
     let output = std::env::var("LOPPI_TEST_REPORT").expect("private output required");
@@ -314,7 +315,7 @@ fn audit_frozen_snapshot_without_starting_services() {
         job_id: None,
     };
     let report = facts(&db, &filter, crate::now_ms().unwrap()).unwrap();
-    let mut file = std::fs::OpenOptions::new()
+    let mut file = loppi_protocol::platform::OpenOptions::new()
         .write(true)
         .create_new(true)
         .mode(0o600)

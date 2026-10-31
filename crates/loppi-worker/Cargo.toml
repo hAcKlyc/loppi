@@ -5,8 +5,13 @@ edition.workspace = true
 
 [dependencies]
 loppi-protocol = { path = "../loppi-protocol" }
-sherpa-onnx = "=2.0.0"
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 libc = "0.2"
 tempfile = "3"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+sherpa-onnx = "=2.0.0"
+
+[target.'cfg(windows)'.dependencies]
+sherpa-onnx = { version = "=2.0.0", default-features = false, features = ["shared"] }

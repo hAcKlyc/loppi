@@ -1,17 +1,19 @@
 pub mod agent_assets;
 pub mod context;
 mod diagnostic;
+pub mod ipc;
 mod lifecycle;
+pub mod platform;
 pub mod vocabulary;
 pub use diagnostic::*;
+use ipc::Stream as UnixStream;
 pub use lifecycle::quit_gui_core;
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs;
 use std::io::{Read, Write};
-use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::thread;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
@@ -1056,9 +1058,11 @@ pub fn data_dir() -> Result<PathBuf, String> {
     if let Some(path) = env::var_os("LOPPI_DATA_DIR") {
         return Ok(PathBuf::from(path));
     }
-    dirs::data_dir()
-        .map(|base| base.join("loppi"))
-        .ok_or_else(|| "cannot locate the user's application data directory".to_owned())
+    #[cfg(windows)]
+    let directory = dirs::data_local_dir().map(|base| base.join("app.loppi.core"));
+    #[cfg(unix)]
+    let directory = dirs::data_dir().map(|base| base.join("loppi"));
+    directory.ok_or_else(|| "cannot locate the user's application data directory".to_owned())
 }
 
 pub fn socket_path() -> Result<PathBuf, String> {
@@ -1207,7 +1211,7 @@ fn wait_for_core(socket: &Path) -> Result<UnixStream, String> {
 
 fn start_core_on_demand() -> Result<(), String> {
     let path = core_binary_path()?;
-    Command::new(path)
+    crate::platform::command(path)
         .arg("serve")
         .arg("--on-demand")
         .stdin(Stdio::null())
@@ -1230,7 +1234,7 @@ fn core_binary_path() -> Result<PathBuf, String> {
     if installed.is_file() {
         return fs::canonicalize(installed).map_err(|error| error.to_string());
     }
-    let development = sibling.join("loppi-core");
+    let development = sibling.join(platform::executable("loppi-core"));
     if development.is_file() {
         return Ok(development);
     }

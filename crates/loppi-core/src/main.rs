@@ -1,4 +1,6 @@
-use fs2::FileExt;
+#![cfg_attr(windows, windows_subsystem = "windows")]
+use loppi_protocol::ipc::{Listener as UnixListener, Stream as UnixStream};
+use loppi_protocol::platform::OpenOptions;
 use loppi_protocol::{
     AudioSource, CaptureState, ClientKind, Envelope, LifecycleAction, LogEvent, LogFilter,
     LogLevel, ModelPhase, ModelState, PROTOCOL_VERSION, ProbeStats, Request, Response,
@@ -6,10 +8,10 @@ use loppi_protocol::{
 };
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use sha2::{Digest, Sha256};
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, File};
 use std::io::{Read, Write};
+#[cfg(unix)]
 use std::os::unix::fs::{FileTypeExt, MetadataExt, OpenOptionsExt, PermissionsExt};
-use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, SyncSender};
@@ -27,6 +29,7 @@ mod cleanup;
 mod cloud;
 mod coarse;
 mod context;
+mod credentials;
 mod diagnostic_report;
 #[cfg(test)]
 mod diagnostic_tests;
@@ -39,6 +42,10 @@ mod media;
 mod microphone;
 mod model_pack;
 mod moments;
+#[cfg(windows)]
+mod ocr;
+#[cfg(windows)]
+mod pipe_io;
 mod playback;
 mod reads;
 mod record;
@@ -60,6 +67,11 @@ enum LaunchMode {
 }
 
 fn main() {
+    #[cfg(windows)]
+    if let Err(error) = loppi_protocol::platform::initialize_process() {
+        eprintln!("loppi: {error}");
+        std::process::exit(1);
+    }
     if let Err(error) = run() {
         eprintln!("loppi-core: {error}");
         std::process::exit(1);
@@ -67,6 +79,8 @@ fn main() {
 }
 
 fn run() -> Result<(), String> {
+    #[cfg(windows)]
+    loppi_protocol::platform::require_supported().map_err(|e| e.to_string())?;
     let args: Vec<_> = std::env::args().skip(1).collect();
     if std::env::args().nth(1).as_deref() == Some("--build-info") {
         println!(
@@ -117,21 +131,26 @@ fn run() -> Result<(), String> {
         if !(1..=20).contains(&seconds) || parent_pid.is_some_and(|pid| pid <= 1) {
             return Err("usage: loppi-core probe-system [1..20 seconds]".to_owned());
         }
+        #[cfg(windows)]
         if let Some(parent_pid) = parent_pid {
-            if unsafe { libc::getppid() } != parent_pid {
+            loppi_protocol::platform::watch_process_exit(parent_pid as u32)
+                .map_err(|e| e.to_string())?;
+        }
+        if let Some(parent_pid) = parent_pid {
+            if loppi_protocol::platform::parent_pid() != parent_pid {
                 // Forced helper termination must not run global native
                 // destructors concurrently with capture/model threads.
-                unsafe { libc::_exit(70) };
+                loppi_protocol::platform::hard_exit(70);
             }
             thread::spawn(move || {
-                while unsafe { libc::getppid() } == parent_pid {
+                while loppi_protocol::platform::parent_pid() == parent_pid {
                     thread::sleep(Duration::from_millis(200));
                 }
                 // HAL can remain blocked after the caller exits. The child
                 // must not survive its authorization/probe owner.
                 // Forced helper termination must not run global native
                 // destructors concurrently with capture/model threads.
-                unsafe { libc::_exit(70) };
+                loppi_protocol::platform::hard_exit(70);
             });
         }
         println!(
@@ -167,16 +186,16 @@ fn run() -> Result<(), String> {
 
     let directory = data_dir()?;
     fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
-    fs::set_permissions(&directory, fs::Permissions::from_mode(0o700))
-        .map_err(|error| error.to_string())?;
+    loppi_protocol::platform::set_mode(&directory, 0o700).map_err(|error| error.to_string())?;
     let Some(lock) = acquire_owner_lock(&directory, launch_mode)? else {
         return Ok(());
     };
     let socket = directory.join("core.sock");
+    #[cfg(unix)]
     remove_stale_socket(&socket)?;
     let listener = UnixListener::bind(&socket).map_err(|error| error.to_string())?;
-    fs::set_permissions(&socket, fs::Permissions::from_mode(0o600))
-        .map_err(|error| error.to_string())?;
+    #[cfg(unix)]
+    loppi_protocol::platform::set_mode(&socket, 0o600).map_err(|error| error.to_string())?;
     let connection =
         Connection::open(directory.join("loppi.sqlite")).map_err(|error| error.to_string())?;
     let store = Store::new(connection)?;
@@ -335,6 +354,7 @@ fn run() -> Result<(), String> {
     }
     let _ = capture_thread.join();
     drop(listener);
+    #[cfg(unix)]
     fs::remove_file(&socket).map_err(|error| error.to_string())?;
     drop(lock);
     Ok(())
@@ -660,7 +680,7 @@ fn resource_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
         // A bounded, replace-only diagnostic snapshot; it is not durable
         // business state and contains no audio, text, people or credentials.
         let path = shared.directory.join("diagnostics.json.pending");
-        if let Ok(mut file) = std::fs::OpenOptions::new()
+        if let Ok(mut file) = loppi_protocol::platform::OpenOptions::new()
             .write(true)
             .create(true)
             .truncate(true)
@@ -668,7 +688,10 @@ fn resource_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
             .open(&path)
         {
             if serde_json::to_writer(&mut file, &diagnostics).is_ok() {
-                let _ = fs::rename(&path, shared.directory.join("diagnostics.json"));
+                let _ = loppi_protocol::platform::rename(
+                    &path,
+                    shared.directory.join("diagnostics.json"),
+                );
             }
         }
         thread::sleep(Duration::from_secs(1));
@@ -764,7 +787,7 @@ fn coarse_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
                 stage = "coarse_worker_start";
                 worker = Some(
                     analysis::AnalysisClient::start(
-                        &exe.with_file_name("loppi-worker"),
+                        &exe.with_file_name(loppi_protocol::platform::executable("loppi-worker")),
                         "recognize",
                         &model,
                     )?
@@ -951,7 +974,7 @@ fn check_speech_load(
     };
     let worker = std::env::current_exe()
         .map_err(|_| "model_worker_missing")?
-        .with_file_name("loppi-worker");
+        .with_file_name(loppi_protocol::platform::executable("loppi-worker"));
     let directory = assets.speech_directory();
     let samples = vec![0.0f32; 16_000];
     let cancelled = || resources.cancel(resources::Work::Coarse);
@@ -993,7 +1016,7 @@ fn check_speech_load(
 fn analysis_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
     let worker_path = match std::env::current_exe()
         .ok()
-        .map(|path| path.with_file_name("loppi-worker"))
+        .map(|path| path.with_file_name(loppi_protocol::platform::executable("loppi-worker")))
     {
         Some(path) => path,
         None => return,
@@ -1451,7 +1474,9 @@ fn voice_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
                             let exe = std::env::current_exe().map_err(|e| e.to_string())?;
                             worker = Some(
                                 analysis::AnalysisClient::start(
-                                    &exe.with_file_name("loppi-worker"),
+                                    &exe.with_file_name(loppi_protocol::platform::executable(
+                                        "loppi-worker",
+                                    )),
                                     "embed",
                                     &shared.model_assets.speaker_file(),
                                 )?
@@ -2521,7 +2546,7 @@ fn probe(source: AudioSource, seconds: u8, direct: bool) -> Result<ProbeStats, S
             Ok(ProbeStats {
                 source,
                 sample_rate: 48_000,
-                channels: 1,
+                channels: if cfg!(windows) { 2 } else { 1 },
                 frames: frames as u64,
                 peak: peak_millionths as f32 / 1_000_000.0,
                 dropped_packets: 0,
@@ -2538,7 +2563,7 @@ fn acquire_lock(directory: &Path) -> Result<Option<File>, String> {
         .write(true)
         .open(directory.join("core.lock"))
         .map_err(|error| error.to_string())?;
-    match lock.try_lock_exclusive() {
+    match loppi_protocol::platform::try_lock_exclusive(&lock) {
         Ok(()) => Ok(Some(lock)),
         Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
         Err(error) => Err(error.to_string()),
@@ -2566,6 +2591,7 @@ fn acquire_owner_lock(directory: &Path, mode: LaunchMode) -> Result<Option<File>
     }
 }
 
+#[cfg(unix)]
 fn remove_stale_socket(socket: &Path) -> Result<(), String> {
     match fs::symlink_metadata(socket) {
         Ok(metadata) => {
@@ -2579,7 +2605,9 @@ fn remove_stale_socket(socket: &Path) -> Result<(), String> {
     }
 }
 
+#[cfg(unix)]
 fn verify_peer(stream: &UnixStream) -> Result<(), String> {
+    #[cfg(unix)]
     use std::os::fd::AsRawFd;
     let mut uid = 0;
     let mut gid = 0;
@@ -2590,7 +2618,9 @@ fn verify_peer(stream: &UnixStream) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(unix)]
 fn peer_pid(stream: &UnixStream) -> Result<i32, String> {
+    #[cfg(unix)]
     use std::os::fd::AsRawFd;
     let mut pid: libc::pid_t = 0;
     let mut length = std::mem::size_of_val(&pid) as libc::socklen_t;
@@ -2609,6 +2639,7 @@ fn peer_pid(stream: &UnixStream) -> Result<i32, String> {
     Ok(pid)
 }
 
+#[cfg(unix)]
 #[repr(C)]
 struct AuditInfo {
     user: u32,
@@ -2619,6 +2650,7 @@ struct AuditInfo {
     session: i32,
 }
 
+#[cfg(unix)]
 fn current_login_session() -> Result<i64, String> {
     unsafe extern "C" {
         fn getaudit(info: *mut AuditInfo) -> i32;
@@ -3665,7 +3697,7 @@ fn handle_request(
                         }
                         Err(message) => Response::Error {
                             id: envelope.id,
-                            code: "screenshot_failed".into(),
+                            code: moments::capture_error_code(&message).into(),
                             message,
                         },
                     }
@@ -4495,9 +4527,41 @@ fn now_ms() -> Result<i64, String> {
     i64::try_from(duration.as_millis()).map_err(|error| error.to_string())
 }
 
+#[cfg(windows)]
+fn verify_peer(stream: &UnixStream) -> Result<(), String> {
+    stream.peer_pid().map(|_| ()).map_err(|e| e.to_string())
+}
+#[cfg(windows)]
+fn peer_pid(stream: &UnixStream) -> Result<i32, String> {
+    stream
+        .peer_pid()
+        .map(|p| p as i32)
+        .map_err(|e| e.to_string())
+}
+#[cfg(windows)]
+fn current_login_session() -> Result<i64, String> {
+    loppi_protocol::platform::login_id().map_err(|e| e.to_string())
+}
+#[cfg(windows)]
+fn watch_test_owner() -> Result<(), String> {
+    let Some(owner) = std::env::var_os("LOPPI_TEST_PARENT_PID") else {
+        return Ok(());
+    };
+    let owner = owner
+        .to_str()
+        .and_then(|v| v.parse::<u32>().ok())
+        .filter(|v| *v > 1 && *v != std::process::id())
+        .ok_or("invalid test owner pid")?;
+    if std::env::var_os("LOPPI_DATA_DIR").is_none() {
+        return Err("test owner requires explicit disposable data directory".into());
+    }
+    loppi_protocol::platform::watch_process_exit(owner).map_err(|e| e.to_string())
+}
+
 // Opt-in only. A test runner owns its disposable Core even when a CLI starts
 // it indirectly. kqueue binds to that process lifetime, avoiding PID reuse and
 // leaving ordinary Login ownership entirely unchanged.
+#[cfg(unix)]
 fn watch_test_owner() -> Result<(), String> {
     let Some(owner) = std::env::var_os("LOPPI_TEST_PARENT_PID") else {
         return Ok(());
@@ -5024,7 +5088,10 @@ impl Store {
                     .path
                     .strip_prefix(directory)
                     .map_err(|_| "sealed media was outside the application directory".to_owned())?;
-                (Some(relative.to_string_lossy().into_owned()), media.bytes)
+                (
+                    Some(loppi_protocol::platform::relative_key(&relative)),
+                    media.bytes,
+                )
             }
             None => (None, 0),
         };
@@ -6044,9 +6111,21 @@ mod tests {
     #[test]
     fn stalled_voice_worker_cannot_hold_the_core_forever_while_stdin_is_full() {
         let directory = tempfile::tempdir().unwrap();
-        let worker = directory.path().join("stalled-worker");
-        fs::write(&worker, b"#!/bin/sh\nexec sleep 60\n").unwrap();
-        fs::set_permissions(&worker, fs::Permissions::from_mode(0o700)).unwrap();
+        let worker = directory.path().join(if cfg!(windows) {
+            "stalled-worker.py"
+        } else {
+            "stalled-worker"
+        });
+        fs::write(
+            &worker,
+            if cfg!(windows) {
+                b"import time;time.sleep(60)".as_slice()
+            } else {
+                b"#!/bin/sh\nexec sleep 60\n".as_slice()
+            },
+        )
+        .unwrap();
+        loppi_protocol::platform::set_mode(&worker, 0o700).unwrap();
         let started = Instant::now();
         let samples = vec![0.1; 16_000 * 15];
         let result = run_voice_worker_with_timeout(

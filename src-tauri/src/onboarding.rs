@@ -1,10 +1,13 @@
 //! GUI routing metadata only. Business readiness remains in Core and macOS.
 use loppi_protocol::{ClientKind, ModelPhase, Request, Response, SourcePhase};
 use serde::{Deserialize, Serialize};
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
+#[cfg(all(test, unix))]
+use std::os::unix::fs::PermissionsExt;
 use std::{
     fs,
     io::Write,
-    os::unix::fs::{OpenOptionsExt, PermissionsExt},
     path::{Path, PathBuf},
     sync::Mutex,
 };
@@ -39,14 +42,14 @@ fn read(path: &Path) -> Result<Option<Metadata>, String> {
 fn write(path: &Path, completed: bool) -> Result<Metadata, String> {
     let parent = path.parent().ok_or("配置目录不可用")?;
     fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).map_err(|e| e.to_string())?;
+    loppi_protocol::platform::set_mode(parent, 0o700).map_err(|e| e.to_string())?;
     let temp = parent.join(format!(".onboarding-{}.tmp", uuid::Uuid::new_v4()));
     let value = Metadata {
         schema_version: 1,
         completed,
     };
     let result = (|| {
-        let mut f = fs::OpenOptions::new()
+        let mut f = loppi_protocol::platform::OpenOptions::new()
             .create_new(true)
             .write(true)
             .mode(0o600)
@@ -55,10 +58,8 @@ fn write(path: &Path, completed: bool) -> Result<Metadata, String> {
         f.write_all(&serde_json::to_vec(&value).map_err(|e| e.to_string())?)
             .and_then(|_| f.sync_all())
             .map_err(|e| e.to_string())?;
-        fs::rename(&temp, path).map_err(|e| e.to_string())?;
-        fs::File::open(parent)
-            .and_then(|f| f.sync_all())
-            .map_err(|e| e.to_string())
+        loppi_protocol::platform::rename(&temp, path).map_err(|e| e.to_string())?;
+        loppi_protocol::platform::sync_directory(parent).map_err(|e| e.to_string())
     })();
     if let Err(error) = result {
         let _ = fs::remove_file(temp);
@@ -120,7 +121,7 @@ pub async fn complete_onboarding(app: tauri::AppHandle) -> Result<Metadata, Stri
         let Response::Models { state: models, .. } = checked_response(Request::Models)? else {
             return Err("无法读取本地组件".into());
         };
-        let privacy = super::privacy_status();
+        let privacy = super::privacy_snapshot();
         if !recording_space_available(
             state.audio_used_bytes,
             state.audio_limit_bytes,
@@ -145,7 +146,16 @@ pub async fn complete_onboarding(app: tauri::AppHandle) -> Result<Metadata, Stri
             && (!(if privacy.tap_required {
                 privacy.tap_ready
             } else {
-                privacy.screen_and_system_audio == 1
+                {
+                    #[cfg(windows)]
+                    {
+                        privacy.system_audio == 1
+                    }
+                    #[cfg(unix)]
+                    {
+                        privacy.screen_and_system_audio == 1
+                    }
+                }
             }) || matches!(state.system_phase, SourcePhase::Unavailable))
         {
             return Err("请完成电脑声音授权，或取消选择电脑声音".into());
@@ -158,23 +168,35 @@ pub async fn complete_onboarding(app: tauri::AppHandle) -> Result<Metadata, Stri
 }
 #[tauri::command]
 pub fn open_privacy_settings(source: String) -> Result<(), String> {
-    let pane = match source.as_str() {
-        "microphone" => "Privacy_Microphone",
-        "system" => "Privacy_ScreenCapture",
-        _ => return Err("未知声音来源".into()),
-    };
-    let status = std::process::Command::new("/usr/bin/open")
-        .arg(format!(
-            "x-apple.systempreferences:com.apple.preference.security?{pane}"
-        ))
-        .status()
-        .map_err(|e| e.to_string())?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err("请打开系统设置 → 隐私与安全性，允许 loppi 访问麦克风或屏幕与系统音频录制".into())
+    #[cfg(windows)]
+    {
+        return super::windows_host::open_url(match source.as_str() {
+            "microphone" => "ms-settings:privacy-microphone",
+            "system" => "ms-settings:sound",
+            _ => return Err("unknown audio source".into()),
+        });
+    }
+    #[cfg(unix)]
+    {
+        let pane = match source.as_str() {
+            "microphone" => "Privacy_Microphone",
+            "system" => "Privacy_ScreenCapture",
+            _ => return Err("未知声音来源".into()),
+        };
+        let status = loppi_protocol::platform::command("/usr/bin/open")
+            .arg(format!(
+                "x-apple.systempreferences:com.apple.preference.security?{pane}"
+            ))
+            .status()
+            .map_err(|e| e.to_string())?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err("请打开系统设置 → 隐私与安全性，允许 loppi 访问麦克风或屏幕与系统音频录制".into())
+        }
     }
 }
+
 fn recording_space_available(used: u64, limit: u64, free: u64) -> bool {
     used < limit && free > 1_073_741_824
 }
@@ -198,6 +220,7 @@ mod tests {
         assert!(!read(&path).unwrap().unwrap().completed);
         write(&path, true).unwrap();
         assert!(read(&path).unwrap().unwrap().completed);
+        #[cfg(unix)]
         assert_eq!(
             fs::metadata(&path).unwrap().permissions().mode() & 0o777,
             0o600
@@ -219,13 +242,20 @@ pub fn open_setup_help(provider: String) -> Result<(), String> {
         }
         _ => return Err("未知服务".into()),
     };
-    let status = std::process::Command::new("/usr/bin/open")
-        .arg(url)
-        .status()
-        .map_err(|e| e.to_string())?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err("无法打开官方帮助，请在浏览器访问对应服务商文档".into())
+    #[cfg(windows)]
+    {
+        return super::windows_host::open_url(url);
+    }
+    #[cfg(unix)]
+    {
+        let status = loppi_protocol::platform::command("/usr/bin/open")
+            .arg(url)
+            .status()
+            .map_err(|e| e.to_string())?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err("无法打开官方帮助，请在浏览器访问对应服务商文档".into())
+        }
     }
 }

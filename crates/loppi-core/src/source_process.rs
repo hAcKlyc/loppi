@@ -2,9 +2,10 @@
 use crate::{ingestion, record};
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
+#[cfg(unix)]
 use std::os::fd::AsRawFd;
 use std::path::Path;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
@@ -122,16 +123,20 @@ pub fn error_code(error: &str) -> String {
 }
 
 fn exit_error(status: std::process::ExitStatus) -> String {
+    #[cfg(unix)]
     use std::os::unix::process::ExitStatusExt;
     if let Some(code) = status.code() {
         format!("capture source exited with code {code}")
-    } else if let Some(signal) = status.signal() {
-        format!("capture source terminated by signal {signal}")
     } else {
+        #[cfg(unix)]
+        if let Some(signal) = status.signal() {
+            return format!("capture source terminated by signal {signal}");
+        }
         "capture source exited".into()
     }
 }
 
+#[cfg(unix)]
 fn nonblocking(fd: i32) -> Result<(), String> {
     let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
     if flags < 0 || unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0 {
@@ -161,7 +166,7 @@ pub fn supervise(
         return Err("invalid recording duration".into());
     }
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let child = Command::new(exe)
+    let child = loppi_protocol::platform::command(exe)
         .args(["capture-source", &std::process::id().to_string()])
         .env("LOPPI_DATA_DIR", directory)
         .stdin(Stdio::piped())
@@ -214,7 +219,9 @@ fn monitor(
     if config.len() > 4096 {
         return Err("capture config too large".into());
     }
+    #[cfg(unix)]
     nonblocking(input.as_ref().unwrap().as_raw_fd())?;
+    #[cfg(unix)]
     nonblocking(output.as_raw_fd())?;
     input
         .as_mut()
@@ -240,7 +247,7 @@ fn monitor(
         }
         let mut chunk = [0; 4096];
         loop {
-            match output.read(&mut chunk) {
+            match read_progress(&mut output, &mut chunk) {
                 Ok(0) => break,
                 Ok(n) => {
                     buffer.extend_from_slice(&chunk[..n]);
@@ -312,33 +319,40 @@ fn emit(progress: &Progress) {
         if bytes.len() <= 4096 {
             // One atomic nonblocking write. Dropping telemetry cannot lose
             // metadata: the journal, not this pipe, owns reliable delivery.
+            #[cfg(unix)]
             unsafe {
                 libc::write(libc::STDOUT_FILENO, bytes.as_ptr().cast(), bytes.len());
+            }
+            #[cfg(windows)]
+            {
+                let _ = crate::pipe_io::try_write(&std::io::stdout(), &bytes);
             }
         }
     }
 }
 
 pub fn run_child(parent: i32) -> Result<(), String> {
-    if parent <= 1 || unsafe { libc::getppid() } != parent {
+    if parent <= 1 || loppi_protocol::platform::parent_pid() != parent {
         return Err("capture parent unavailable".into());
     }
+    #[cfg(windows)]
+    loppi_protocol::platform::watch_process_exit(parent as u32).map_err(|e| e.to_string())?;
     let stop = Arc::new(AtomicBool::new(false));
     let watch_stop = Arc::clone(&stop);
     std::thread::spawn(move || {
         let mut stopping = None;
         loop {
-            if unsafe { libc::getppid() } != parent {
+            if loppi_protocol::platform::parent_pid() != parent {
                 // Forced helper termination must not run global native
                 // destructors concurrently with capture/model threads.
-                unsafe { libc::_exit(70) };
+                loppi_protocol::platform::hard_exit(70);
             }
             if watch_stop.load(Ordering::Acquire) {
                 let began = stopping.get_or_insert_with(Instant::now);
                 if began.elapsed() > STOP_DEADLINE {
                     // Forced helper termination must not run global native
                     // destructors concurrently with capture/model threads.
-                    unsafe { libc::_exit(70) };
+                    loppi_protocol::platform::hard_exit(70);
                 }
             }
             std::thread::sleep(Duration::from_millis(100));
@@ -363,7 +377,10 @@ pub fn run_child(parent: i32) -> Result<(), String> {
         let _ = input.read(&mut byte);
         control_stop.store(true, Ordering::Release);
     });
+    #[cfg(unix)]
     nonblocking(libc::STDOUT_FILENO)?;
+    #[cfg(windows)]
+    crate::pipe_io::nonblocking(&std::io::stdout()).map_err(|e| e.to_string())?;
     let ready = Arc::new(AtomicBool::new(false));
     let frames = Arc::new(AtomicU64::new(0));
     let finished = Arc::new(AtomicBool::new(false));
@@ -541,13 +558,17 @@ mod tests {
         assert_eq!(decoded.capture.unwrap().dropped_frames, 1024);
     }
     fn fixture(code: &str, stop: bool) -> (Result<record::RecordResult, String>, Duration, u32) {
-        let child = Command::new("/usr/bin/python3")
-            .args(["-c", code])
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()
-            .unwrap();
+        let child = loppi_protocol::platform::command(if cfg!(windows) {
+            "python.exe"
+        } else {
+            "/usr/bin/python3"
+        })
+        .args(["-c", code])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
         let pid = child.id();
         let config = Config {
             session: ingestion::Session {
@@ -582,7 +603,10 @@ mod tests {
         let (result, elapsed, pid) = fixture("import time; time.sleep(60)", true);
         assert!(result.err().unwrap().contains("stop timed out"));
         assert!(elapsed < Duration::from_secs(2));
+        #[cfg(unix)]
         assert_eq!(unsafe { libc::kill(pid as i32, 0) }, -1);
+        #[cfg(windows)]
+        assert!(!crate::analysis::process_alive(pid));
     }
     #[test]
     fn heartbeats_without_durable_audio_do_not_hide_stalled_sealing() {
@@ -609,4 +633,19 @@ mod tests {
         );
         assert_eq!(result.unwrap().frames, 48000);
     }
+}
+
+#[cfg(unix)]
+fn read_progress(
+    output: &mut std::process::ChildStdout,
+    bytes: &mut [u8],
+) -> std::io::Result<usize> {
+    output.read(bytes)
+}
+#[cfg(windows)]
+fn read_progress(
+    output: &mut std::process::ChildStdout,
+    bytes: &mut [u8],
+) -> std::io::Result<usize> {
+    crate::pipe_io::try_read(output, bytes)
 }

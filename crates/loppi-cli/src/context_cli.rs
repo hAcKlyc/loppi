@@ -403,16 +403,27 @@ pub fn integrations(c: Integrations) -> i32 {
                 Ok(json!({"installed":destination,"api_version":context::API_VERSION}))
             }
             Integration::InstallCli { directory } => {
-                std::fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
-                let link = directory.join("loppi");
-                if std::fs::symlink_metadata(&link).is_ok() {
-                    if std::fs::canonicalize(&link).ok().as_ref() != Some(&cli) {
-                        return Err("An unrelated loppi command exists in this directory".into());
-                    }
-                } else {
-                    std::os::unix::fs::symlink(&cli, &link).map_err(|e| e.to_string())?;
+                #[cfg(windows)]
+                {
+                    let link = crate::cli_launcher::install(&directory, &cli)?;
+                    return Ok(json!({"installed":link,"target":cli}));
                 }
-                Ok(json!({"installed":link,"target":cli}))
+                #[cfg(unix)]
+                {
+                    std::fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
+                    let link = directory.join(loppi_protocol::platform::executable("loppi"));
+                    if std::fs::symlink_metadata(&link).is_ok() {
+                        if std::fs::canonicalize(&link).ok().as_ref() != Some(&cli) {
+                            return Err(
+                                "An unrelated loppi command exists in this directory".into()
+                            );
+                        }
+                    } else {
+                        #[cfg(unix)]
+                        std::os::unix::fs::symlink(&cli, &link).map_err(|e| e.to_string())?;
+                    }
+                    Ok(json!({"installed":link,"target":cli}))
+                }
             }
         }
     })();

@@ -1,6 +1,7 @@
+use loppi_protocol::platform::OpenOptions;
 use ogg::{PacketWriteEndInfo, PacketWriter};
 use opus2::{Application, Bitrate, Channels, Decoder, Encoder};
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
@@ -212,11 +213,10 @@ impl OpusBlock {
         let pending = self.pending.clone();
         let final_path = self.final_path.clone();
         drop(self);
-        fs::rename(&pending, &final_path).map_err(|error| error.to_string())?;
+        loppi_protocol::platform::rename(&pending, &final_path)
+            .map_err(|error| error.to_string())?;
         if let Some(parent) = final_path.parent() {
-            File::open(parent)
-                .and_then(|dir| dir.sync_all())
-                .map_err(|error| error.to_string())?;
+            loppi_protocol::platform::sync_directory(parent).map_err(|error| error.to_string())?;
         }
         let bytes = fs::metadata(&final_path)
             .map_err(|error| error.to_string())?

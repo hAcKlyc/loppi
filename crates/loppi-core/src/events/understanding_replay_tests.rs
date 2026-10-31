@@ -1,6 +1,8 @@
 //! Explicit opt-in replay of a user-selected frozen fixture; never starts capture or ASR.
 use super::*;
 use serde_json::{Value, json};
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
 
 #[test]
 #[ignore = "explicit private replay, paid configured LLM calls; never live DB writes"]
@@ -9,7 +11,6 @@ fn real_understanding_replay() {
         cell::RefCell,
         fs,
         io::Write,
-        os::unix::fs::OpenOptionsExt,
         path::PathBuf,
         time::{Duration, Instant},
     };
@@ -42,7 +43,7 @@ fn real_understanding_replay() {
             assert_eq!(&previous, value, "resume must use identical input");
             return;
         }
-        let mut f = fs::OpenOptions::new()
+        let mut f = loppi_protocol::platform::OpenOptions::new()
             .write(true)
             .create_new(true)
             .mode(0o600)
@@ -168,7 +169,7 @@ fn real_understanding_replay() {
         }
         fn llm_response(&self, id: &str, r: &Value) -> Result<(), String> {
             // Save even malformed model content before cloud::chat parses it.
-            let mut f = fs::OpenOptions::new()
+            let mut f = loppi_protocol::platform::OpenOptions::new()
                 .write(true)
                 .create_new(true)
                 .mode(0o600)

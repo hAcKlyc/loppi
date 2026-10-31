@@ -400,7 +400,7 @@ pub fn execute(query: Query) -> Value {
             }
             let offline = crate::socket_path()
                 .ok()
-                .and_then(|p| std::os::unix::net::UnixStream::connect(p).ok())
+                .and_then(|p| crate::ipc::Stream::connect(p).ok())
                 .is_none();
             if status && offline {
                 success(

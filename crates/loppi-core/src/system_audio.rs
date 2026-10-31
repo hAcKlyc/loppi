@@ -4,7 +4,7 @@ use std::cell::UnsafeCell;
 use std::ffi::c_void;
 use std::io::Read;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, mpsc};
 use std::thread;
@@ -34,7 +34,7 @@ pub fn probe_child(
     timeout: Duration,
 ) -> Result<ProbeStats, String> {
     let binary = std::env::current_exe().map_err(|error| error.to_string())?;
-    let mut probe = Command::new(binary)
+    let mut probe = loppi_protocol::platform::command(binary)
         .args([
             if source == loppi_protocol::AudioSource::Microphone {
                 "probe-mic"
@@ -211,7 +211,7 @@ impl SystemAudio {
                     eprintln!("loppi-core Tap startup exceeded deadline: {error}");
                     // Forced helper termination must not run global native
                     // destructors concurrently with capture/model threads.
-                    unsafe { libc::_exit(70) };
+                    loppi_protocol::platform::hard_exit(70);
                 }
             }
         } else {
@@ -289,7 +289,7 @@ impl Drop for SystemAudio {
             eprintln!("loppi-core system audio stop timed out; terminating capture owner");
             // Forced helper termination must not run global native
             // destructors concurrently with capture/model threads.
-            unsafe { libc::_exit(70) };
+            loppi_protocol::platform::hard_exit(70);
         } else {
             unsafe { drop(Box::from_raw(self.context)) };
         }
@@ -297,6 +297,7 @@ impl Drop for SystemAudio {
 }
 
 /// Observation only: main-display power is not machine sleep or a capture gate.
+#[cfg(unix)]
 pub fn main_display_asleep() -> Option<bool> {
     unsafe extern "C" {
         fn CGMainDisplayID() -> u32;
@@ -304,4 +305,9 @@ pub fn main_display_asleep() -> Option<bool> {
     }
     let display = unsafe { CGMainDisplayID() };
     (display != 0).then(|| unsafe { CGDisplayIsAsleep(display) != 0 })
+}
+
+#[cfg(windows)]
+pub fn main_display_asleep() -> Option<bool> {
+    None
 }

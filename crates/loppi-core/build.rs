@@ -1,4 +1,35 @@
 fn main() {
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+        let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../config/windows-runtime.manifest");
+        println!("cargo:rerun-if-changed={}", manifest.display());
+        println!("cargo:rustc-link-arg=/MANIFEST:EMBED");
+        println!("cargo:rustc-link-arg=/MANIFESTINPUT:{}", manifest.display());
+        println!("cargo:rerun-if-changed=native/windows.cpp");
+        cc::Build::new()
+            .cpp(true)
+            .file("native/windows.cpp")
+            .flag("/std:c++17")
+            .define("_WIN32_WINNT", "0x0A00")
+            .compile("loppi_windows");
+        for library in [
+            "ole32",
+            "oleaut32",
+            "mmdevapi",
+            "uuid",
+            "psapi",
+            "advapi32",
+            "powrprof",
+            "windowscodecs",
+            "gdi32",
+            "user32",
+            "dwmapi",
+            "wtsapi32",
+        ] {
+            println!("cargo:rustc-link-lib={library}");
+        }
+        return;
+    }
     println!("cargo:rerun-if-changed=native/schedule.m");
     println!("cargo:rerun-if-changed=native/system_audio.m");
     println!("cargo:rerun-if-changed=native/system_audio_tap.m");

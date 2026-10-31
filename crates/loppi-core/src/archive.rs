@@ -1,10 +1,14 @@
 use loppi_protocol::EventSources;
+use loppi_protocol::platform::OpenOptions;
 use rusqlite::{Connection, Row, params};
 use serde_json::{Value, json};
+#[cfg(unix)]
 use std::ffi::CString;
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, File};
 use std::io::{BufWriter, Read, Write};
+#[cfg(unix)]
 use std::os::unix::ffi::OsStrExt;
+#[cfg(unix)]
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -139,14 +143,25 @@ pub fn recover_job(job: &RecoveryJob) -> bool {
                             }
                             removed_published = true;
                         }
-                        Ok(_) if *staging_dev != Some(parent_meta.dev() as i64) => return false,
+                        Ok(_)
+                            if *staging_dev
+                                != Some(
+                                    loppi_protocol::platform::volume_id(parent).unwrap_or(u64::MAX)
+                                        as i64,
+                                ) =>
+                        {
+                            return false;
+                        }
                         Ok(_) => {}
                         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                         Err(_) => return false,
                     }
                 }
             }
-            if !removed_published && staging_dev.is_some_and(|dev| dev != parent_meta.dev() as i64)
+            if !removed_published
+                && staging_dev.is_some_and(|dev| {
+                    dev != loppi_protocol::platform::volume_id(parent).unwrap_or(u64::MAX) as i64
+                })
             {
                 // The mountpoint may currently name a different volume.
                 // Without our marked destination, keep the job for retry.
@@ -157,10 +172,7 @@ pub fn recover_job(job: &RecoveryJob) -> bool {
         // recording on login. Keep the job and retry on next launch.
         Err(_) => return false,
     }
-    if File::open(parent)
-        .and_then(|directory| directory.sync_all())
-        .is_err()
-    {
+    if loppi_protocol::platform::sync_directory(parent).is_err() {
         return false;
     }
     true
@@ -183,6 +195,7 @@ pub fn recover(db: &Connection) -> Result<(), String> {
     }
 }
 
+#[cfg(unix)]
 fn rename_exclusive(from: &Path, to: &Path) -> Result<(), String> {
     let from = CString::new(from.as_os_str().as_bytes()).map_err(|error| error.to_string())?;
     let to = CString::new(to.as_os_str().as_bytes()).map_err(|error| error.to_string())?;
@@ -342,8 +355,7 @@ pub fn export(
     let spool = directory.join("export_tmp");
     // Startup recovery owns stale spool cleanup. Concurrent exports use
     // unique temporary names and must not delete each other's files.
-    fs::set_permissions(&spool, fs::Permissions::from_mode(0o700))
-        .map_err(|error| error.to_string())?;
+    loppi_protocol::platform::set_mode(&spool, 0o700).map_err(|error| error.to_string())?;
     let cleared_before: i64 = db
         .query_row("SELECT coalesce(max(rowid),0) FROM clear_ranges", [], |r| {
             r.get(0)
@@ -427,7 +439,7 @@ pub fn export(
             return Err(error.to_string());
         }
     };
-    if let Err(error) = fs::set_permissions(&staging, fs::Permissions::from_mode(0o000)) {
+    if let Err(error) = loppi_protocol::platform::set_mode(&staging, 0o000) {
         let _ = fs::remove_file(&staging);
         let _ = db.execute(
             "DELETE FROM export_jobs WHERE id=?1",
@@ -435,10 +447,12 @@ pub fn export(
         );
         return Err(error.to_string());
     }
-    let identity = file.metadata().map_err(|error| error.to_string())?;
     if let Err(error) = db.execute(
         "UPDATE export_jobs SET staging_dev=?2 WHERE id=?1",
-        params![job_id.to_string(), identity.dev() as i64],
+        params![
+            job_id.to_string(),
+            loppi_protocol::platform::volume_id(&staging).map_err(|e| e.to_string())? as i64
+        ],
     ) {
         let _ = fs::remove_file(&staging);
         let _ = db.execute(
@@ -732,19 +746,16 @@ pub fn export(
         }
         // Make final permissions durable while the file is still hidden. A
         // crash immediately after rename must never expose a 000 final TAR.
-        fs::set_permissions(&staging, fs::Permissions::from_mode(0o600))
-            .map_err(|error| error.to_string())?;
-        File::open(&staging)
-            .and_then(|file| file.sync_all())
-            .map_err(|error| error.to_string())?;
+        loppi_protocol::platform::set_mode(&staging, 0o600).map_err(|error| error.to_string())?;
+        loppi_protocol::platform::sync_file(&staging).map_err(|error| error.to_string())?;
         rename_exclusive(&staging, destination)?;
         // Persist the directory rename before forgetting the recovery job.
         let parent = destination.parent().ok_or("export parent missing")?;
-        if let Err(error) = File::open(parent).and_then(|directory| directory.sync_all()) {
+        if let Err(error) = loppi_protocol::platform::sync_directory(parent) {
             // The job still remembers the destination and TAR marker if
             // immediate rollback fails; startup retries when writable.
             let _ = fs::remove_file(destination);
-            let _ = File::open(parent).and_then(|directory| directory.sync_all());
+            let _ = loppi_protocol::platform::sync_directory(parent);
             return Err(error.to_string());
         }
         if let Err(error) = db.execute(
@@ -752,7 +763,7 @@ pub fn export(
             params![job_id.to_string()],
         ) {
             let _ = fs::remove_file(destination);
-            let _ = File::open(parent).and_then(|directory| directory.sync_all());
+            let _ = loppi_protocol::platform::sync_directory(parent);
             return Err(error.to_string());
         }
         Ok((audio_files, coarse + precise))
@@ -764,8 +775,7 @@ pub fn export(
         || (removed_staging
             && staging
                 .parent()
-                .and_then(|parent| File::open(parent).ok())
-                .is_some_and(|directory| directory.sync_all().is_ok()));
+                .is_some_and(|parent| loppi_protocol::platform::sync_directory(parent).is_ok()));
     if safe_to_retire {
         let _ = db.execute(
             "DELETE FROM export_jobs WHERE id=?1",
@@ -1026,11 +1036,11 @@ mod tests {
                 job_id,
                 staging.to_string_lossy().to_string(),
                 destination.to_string_lossy().to_string(),
-                meta.dev() as i64
+                loppi_protocol::platform::volume_id(destination.parent().unwrap()).unwrap() as i64
             ],
         )
         .unwrap();
-        fs::rename(&staging, &destination).unwrap();
+        loppi_protocol::platform::rename(&staging, &destination).unwrap();
         recover(&db).unwrap();
         assert!(!destination.exists());
         let pending: i64 = db
@@ -1059,7 +1069,7 @@ mod tests {
                 Uuid::new_v4().to_string(),
                 staging.to_string_lossy().to_string(),
                 destination.to_string_lossy().to_string(),
-                meta.dev() as i64
+                loppi_protocol::platform::volume_id(destination.parent().unwrap()).unwrap() as i64
             ],
         )
         .unwrap();
@@ -1089,7 +1099,7 @@ mod tests {
                 Uuid::new_v4().to_string(),
                 staging.to_string_lossy().to_string(),
                 destination.to_string_lossy().to_string(),
-                meta.dev() as i64
+                loppi_protocol::platform::volume_id(destination.parent().unwrap()).unwrap() as i64
             ],
         )
         .unwrap();
@@ -1125,11 +1135,12 @@ mod tests {
                 job_id,
                 staging.to_string_lossy().to_string(),
                 destination.to_string_lossy().to_string(),
-                meta.dev() as i64 + 1
+                loppi_protocol::platform::volume_id(destination.parent().unwrap()).unwrap() as i64
+                    + 1
             ],
         )
         .unwrap();
-        fs::rename(&staging, &destination).unwrap();
+        loppi_protocol::platform::rename(&staging, &destination).unwrap();
         recover(&db).unwrap();
         assert!(!destination.exists());
         let pending: i64 = db
@@ -1229,4 +1240,9 @@ mod tests {
         assert!(audio[0].0.starts_with("audio/system/"));
         assert_eq!(audio[0].1.len(), 44 + 48_000 * 2);
     }
+}
+
+#[cfg(windows)]
+fn rename_exclusive(from: &Path, to: &Path) -> Result<(), String> {
+    loppi_protocol::platform::rename_exclusive(from, to).map_err(|e| e.to_string())
 }
