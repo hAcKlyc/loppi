@@ -19,7 +19,7 @@ window.__TAURI_INTERNALS__={invoke:async(command,{request})=>{
 }};
 const root=createRoot(document.getElementById('root'));
 function render(){flushSync(()=>root.render(React.createElement(React.Fragment,null,
- React.createElement(TimelineView,{date:new Date(from),recordedDays:[from],recordingState:null,captureStatus:null,items:[base],gaps:[],moments:[],loading:false,hideCoarse:false,onHideCoarse:()=>{},onDate:()=>{},onCreate:()=>{},onSelect:(item,initialAt)=>{selected={item,initialAt};render()}}),
+ React.createElement(TimelineView,{date:new Date(from),recordedDays:[from],recordingState:null,captureStatus:null,items:[base],gaps:[],moments:[],loading:false,hideCoarse:false,onDate:()=>{},onCreate:()=>{},onSelect:(item,initialAt)=>{selected={item,initialAt};render()}}),
  selected&&React.createElement(DetailDrawer,{key:'detail',...selected,people:[],refreshToken:version,onClose:()=>{selected=null;render()},onEdit:()=>{},onTools:()=>{},onQueue:()=>{},onDataAction:()=>{},onChanged:()=>{},onMessage:()=>{}})
 )));}
 render();

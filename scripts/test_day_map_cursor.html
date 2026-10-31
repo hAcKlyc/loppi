@@ -13,7 +13,7 @@ let date=new Date(2026,9,17), selected=0;
 function render(){
  const from=new Date(date.getFullYear(),date.getMonth(),date.getDate()).getTime(),to=new Date(date.getFullYear(),date.getMonth(),date.getDate()+1).getTime();
  const item={id:'fixture',manual_range_id:null,title:'模拟记录',summary:'鼠标移动查看时间，点击色块仍打开原记录。',started_ms:from,ended_ms:to,sources:'both',processing_state:'transcribed',recording_sources:[],preview:null};
- flushSync(()=>root.render(React.createElement(TimelineView,{date,recordedDays:[from],recordingState:null,items:[item],gaps:[],moments:[{id:'mark',anchor_ms:from+18*3600000,kind:'mark'}],loading:false,hideCoarse:false,onSelect:()=>{selected++},onDate:()=>{},onCreate:()=>{},onHideCoarse:()=>{}})));
+ flushSync(()=>root.render(React.createElement(TimelineView,{date,recordedDays:[from],recordingState:null,items:[item],gaps:[],moments:[{id:'mark',anchor_ms:from+18*3600000,kind:'mark'}],loading:false,hideCoarse:false,onSelect:()=>{selected++},onDate:()=>{},onCreate:()=>{}})));
 }
 render();
 const frames=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));

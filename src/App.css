@@ -601,20 +601,6 @@ p {
 	align-items: center;
 	gap: var(--space-3);
 }
-:where(.timeline-page) .section-actions .quiet-button {
-	min-height: 32px;
-	padding: var(--space-3) var(--space-6);
-}
-.timeline-page .coarse-filter {
-	border-color: transparent;
-	background: transparent;
-	color: var(--color-text-secondary);
-	font-weight: var(--weight-regular);
-}
-.timeline-page .coarse-filter:hover,
-.timeline-page .coarse-filter.active {
-	background: var(--color-surface-hover);
-}
 .event-list {
 	position: relative;
 }

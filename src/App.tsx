@@ -76,7 +76,6 @@ function App() {
 		void loadSetup();
 	}, [loadSetup]);
 	const [date, setDate] = useState(() => new Date());
-	const [hideCoarse, setHideCoarse] = useState(true);
 	const [items, setItems] = useState<TimelineItem[]>([]);
 	const [recordedDays, setRecordedDays] = useState<number[] | null>(null);
 	const [gaps, setGaps] = useState<TimeGap[]>([]);
@@ -928,8 +927,7 @@ function App() {
 						ready={timelineReady}
 						loadError={timelineError}
 						onRetry={() => void refreshTimeline(false, true)}
-						hideCoarse={hideCoarse}
-						onHideCoarse={setHideCoarse}
+						hideCoarse
 						onDate={selectDate}
 						onSelect={(item, initialAt) => setSelection({ item, initialAt })}
 						onCreate={() => openForm({ mode: "create" })}

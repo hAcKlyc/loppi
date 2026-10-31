@@ -2,14 +2,14 @@
 <div id="root"></div><aside style="position:fixed;z-index:999;bottom:8px;left:8px;background:white;padding:8px"><button id="run">运行局部整理回归</button> <output id="result">模拟数据，不连接真实录音</output></aside>
 <script type="module">
 import "/scripts/fixture-controls.ts";
-import React, {useState} from 'react'; import {createRoot} from 'react-dom/client';
+import React from 'react'; import {createRoot} from 'react-dom/client';
 import {TimelineView} from '/src/TimelineView.tsx'; import '/src/App.css';
 const date=new Date(2026,9,23),start=date.getTime()+15*3600000;
 const base={id:null,manual_range_id:null,title:null,summary:null,sources:'microphone',revision:null,fit_state:null,manual_asr_state:null,recording_sources:[],coarse_segments:[],precise_segments:[],preview:{text:'模拟粗转正文',source:'microphone',is_precise:false}};
 const items=[{...base,started_ms:start+3600000,ended_ms:start+4500000,processing_state:'fit_failed'},
  {...base,id:'fixture-event',title:'模拟会议',summary:'已保存的讨论摘要。',started_ms:start,ended_ms:start+3600000,processing_state:'partial_transcript',fit_state:'fit_failed',transcription:{total:4,complete:4,empty:1,boundary_clipped:false}}];
 let selected=null;
-function App(){const [hide,setHide]=useState(true);return React.createElement(TimelineView,{date,items,gaps:[],moments:[],recordingState:null,loading:false,hideCoarse:hide,onHideCoarse:()=>setHide(v=>!v),onSelect:item=>{selected=item},onShift:()=>{},onNewEvent:()=>{},onDate:()=>{}})}
+function App(){return React.createElement(TimelineView,{date,items,gaps:[],moments:[],recordingState:null,loading:false,hideCoarse:true,onSelect:item=>{selected=item},onShift:()=>{},onNewEvent:()=>{},onDate:()=>{}})}
 createRoot(document.getElementById('root')).render(React.createElement(App));
 const frames=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
 document.getElementById('run').onclick=async()=>{const out=document.getElementById('result');try{
@@ -19,8 +19,8 @@ document.getElementById('run').onclick=async()=>{const out=document.getElementBy
  assert(document.body.textContent.includes('精转完成 · 1 段无文字'),'精转进度被整理异常覆盖');
  assert(!document.body.textContent.includes('模拟粗转正文'),'隐藏粗转时泄露正文');
  document.querySelector('.event-card').click();await frames();assert(selected?.processing_state==='fit_failed','失败入口不可点击');
- document.querySelector('.coarse-filter').click();await frames();assert(document.body.textContent.includes('模拟粗转正文'),'无法展开粗转');
- document.querySelector('.coarse-filter').click();await frames();
- out.textContent='PASS：局部整理异常与精转进度并列，隐藏粗转保留失败素材入口，展开可查看。';
+ assert(!document.querySelector('.coarse-filter'),'仍存在粗转切换按钮');
+ assert(document.querySelector('.create-event'),'新建事件入口消失');
+ out.textContent='PASS：局部整理异常与精转进度并列，固定展示策略保留失败素材入口，无粗转切换按钮。';
 }catch(e){out.textContent='FAIL：'+e.message}};
 </script></html>

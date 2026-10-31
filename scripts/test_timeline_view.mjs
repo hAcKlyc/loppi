@@ -191,3 +191,28 @@ test('coarse filtering preserves the active recording and its excerpt, but not p
     }
   } finally { await server.close(); }
 });
+
+test('removing the coarse toggle preserves the default visible cards and excerpts', async () => {
+  const { createServer } = await import('vite');
+  const { createElement } = await import('react');
+  const { renderToStaticMarkup } = await import('react-dom/server');
+  const server = await createServer({server:{middlewareMode:true},appType:'custom'});
+  try {
+    const { TimelineView } = await server.ssrLoadModule('/src/TimelineView.tsx');
+    const now=Date.now(), date=new Date(now);
+    const make=(slot,text,extra={})=>({...item,title:null,sources:'microphone',started_ms:now-slot*60000,ended_ms:now-(slot-1)*60000,processing_state:'pending_fit',recording_sources:[],preview:{text,source:'microphone',is_precise:false},...extra});
+    const entries=[make(1,'实时摘录',{recording_sources:['microphone']}),make(2,'应收起的普通素材'),make(3,'命名原文',{id:'named',title:'命名事件',summary:'事件摘要'}),make(4,'手动范围摘录',{manual_range_id:'range'}),make(5,'失败原文',{processing_state:'fit_failed'}),make(6,'本地失败原文',{processing_state:'raw_audio',local_analysis_failures:2}),make(7,'笔记区间原文')];
+    const state={capture_state:'recording',paused_intent:false,storage_paused:false,microphone_phase:'recording',microphone_recording:true};
+    const moments=[{id:'note',kind:'comment',anchor_ms:entries[6].started_ms+1000,text:'保留的现场笔记'}];
+    const render=recordingState=>renderToStaticMarkup(createElement(TimelineView,{date,items:entries,gaps:[],moments,recordingState,loading:false,hideCoarse:true}));
+    const html=render(state);
+    assert.doesNotMatch(html,/coarse-filter|显示粗转|隐藏粗转/);
+    assert.match(html,/create-event/);
+    assert.equal((html.match(/class="event-card /g)||[]).length,6);
+    for(const text of ['实时摘录','事件摘要','手动范围摘录','事件整理失败','部分本地分析失败 · 2 项','保留的现场笔记']) assert(html.includes(text),text);
+    for(const text of ['应收起的普通素材','命名原文','失败原文','本地失败原文','笔记区间原文']) assert(!html.includes(text),text);
+    const paused=render({...state,paused_intent:true});
+    assert.equal((paused.match(/class="event-card /g)||[]).length,5);
+    assert.doesNotMatch(paused,/实时摘录|recording-label|coarse-filter/);
+  } finally { await server.close(); }
+});

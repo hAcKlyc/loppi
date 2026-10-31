@@ -42,7 +42,6 @@ type Props = {
 	loadError?: string;
 	onRetry?: () => void;
 	hideCoarse: boolean;
-	onHideCoarse: (hide: boolean) => void;
 	onDate: (date: Date) => void;
 	onSelect: (item: TimelineItem, at?: number) => void;
 	onCreate: () => void;
@@ -93,7 +92,6 @@ export function TimelineView({
 	loadError,
 	onRetry,
 	hideCoarse,
-	onHideCoarse,
 	onDate,
 	onSelect,
 	onCreate,
@@ -439,14 +437,6 @@ export function TimelineView({
 					{ready && <span className="record-count">{visible.length}</span>}
 				</h2>
 				<div className="section-actions">
-					<button
-						type="button"
-						className={`quiet-button coarse-filter ${hideCoarse ? "active" : ""}`}
-						aria-pressed={hideCoarse}
-						onClick={() => onHideCoarse(!hideCoarse)}
-					>
-						{hideCoarse ? "显示粗转" : "隐藏粗转"}
-					</button>
 					<Button
 						type="button"
 						tone="secondary"
