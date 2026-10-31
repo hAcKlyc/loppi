@@ -11,19 +11,19 @@ import time
 import uuid
 
 ROOT = Path(__file__).resolve().parent.parent
-CLI = Path(os.environ.get('HEAR_TEST_CLI', ROOT/'target/debug/hear'))
-CORE = Path(os.environ.get('HEAR_TEST_CORE', ROOT/'target/debug/hear-core'))
+CLI = Path(os.environ.get('LOPPI_TEST_CLI', ROOT/'target/debug/loppi'))
+CORE = Path(os.environ.get('LOPPI_TEST_CORE', ROOT/'target/debug/loppi-core'))
 
 
 def main():
-    with tempfile.TemporaryDirectory(prefix='hear-diagnose-') as directory:
+    with tempfile.TemporaryDirectory(prefix='loppi-diagnose-') as directory:
         data=Path(directory)
-        env=os.environ|{'HEAR_TEST_PARENT_PID':str(os.getpid()),'HEAR_DATA_DIR':directory,'HEAR_CORE_BIN':str(CORE)}
+        env=os.environ|{'LOPPI_TEST_PARENT_PID':str(os.getpid()),'LOPPI_DATA_DIR':directory,'LOPPI_CORE_BIN':str(CORE)}
         def command(*args, **kwargs):
             return subprocess.run([str(CLI),*args],env=env,text=True,capture_output=True,timeout=20,**kwargs)
         # No auto-start, even when the binary is available.
         absent=command('diagnose','--from-ms','0','--to-ms','10000')
-        assert absent.returncode!=0 and not (data/'hear.sqlite').exists()
+        assert absent.returncode!=0 and not (data/'loppi.sqlite').exists()
         try:
             command('status',check=True)
             before=json.loads(command('status',check=True).stdout)['state']
@@ -49,7 +49,7 @@ def main():
                     break
                 time.sleep(.05)
             snapshot = json.loads((data/'diagnostics.json').read_text())
-            entries = [json.loads(line) for line in (data/'logs/hear.jsonl').read_text().splitlines()]
+            entries = [json.loads(line) for line in (data/'logs/loppi.jsonl').read_text().splitlines()]
             started_entries = [r for r in entries if r['component']=='core' and r['event']=='started']
             assert len(started_entries)==1
             assert started_entries[0]['run_id']==snapshot['run_id']
@@ -94,7 +94,7 @@ def main():
                 checked.append((identity, request['type'], expected, expected))
             # A missing schema used to be mislabeled "invalid time range" or
             # "event changed". Simulate it only in this temporary database.
-            with sqlite3.connect(data/'hear.sqlite') as db:
+            with sqlite3.connect(data/'loppi.sqlite') as db:
                 db.execute('ALTER TABLE named_events RENAME TO unavailable_events')
             for request in [dict(type='timeline', from_ms=0, to_ms=1000), cases[1][0]]:
                 identity, payload = envelope(request)
@@ -104,7 +104,7 @@ def main():
             # Force SQLite's actual three-second progress-handler deadline in
             # both GUI paths; a result-independent recursive aggregate cannot
             # finish within the deadline even on a fast machine.
-            with sqlite3.connect(data/'hear.sqlite') as db:
+            with sqlite3.connect(data/'loppi.sqlite') as db:
                 db.execute("""CREATE VIEW named_events AS
                     WITH RECURSIVE slow(x) AS (VALUES(0) UNION ALL SELECT x+1 FROM slow WHERE x<1000000000)
                     SELECT '00000000-0000-0000-0000-000000000001' AS id,
@@ -116,7 +116,7 @@ def main():
                 response = wire(payload)
                 assert response['code'] == 'query_timeout', response
                 checked.append((identity, request['type'], 'query_timeout', 'query_timeout'))
-            with sqlite3.connect(data/'hear.sqlite') as db:
+            with sqlite3.connect(data/'loppi.sqlite') as db:
                 db.execute('DROP VIEW named_events')
                 db.execute('ALTER TABLE unavailable_events RENAME TO named_events')
             # A response larger than the socket buffer makes write failure
@@ -126,7 +126,7 @@ def main():
                         level='info', event='x'*80, error_code='x'*80,
                         correlation_id=str(uuid.uuid4()), job_id=str(uuid.uuid4()),
                         capture_span_id=str(uuid.uuid4()))
-            with (data/'logs/hear.jsonl').open('a') as logs:
+            with (data/'logs/loppi.jsonl').open('a') as logs:
                 logs.write((json.dumps(seed)+'\n')*500)
             write_id, payload = envelope(dict(type='logs', filter=dict(limit=500)))
             wire(payload, close_reader=True)
@@ -137,7 +137,7 @@ def main():
                 assert stalled.recv(1) == b''
             deadline = time.monotonic() + 3
             while True:
-                records = [json.loads(line) for line in (data/'logs/hear.jsonl').read_text().splitlines()]
+                records = [json.loads(line) for line in (data/'logs/loppi.jsonl').read_text().splitlines()]
                 failures = {r.get('error_code'): r for r in records if r.get('component') == 'ipc'}
                 if all(code in failures for code in ['ipc_invalid_json','ipc_execute_failed','ipc_write_disconnected','ipc_read_timeout']):
                     break
@@ -155,8 +155,8 @@ def main():
                 assert record['context']['command'] == expected_command
                 assert record['context']['cause'] == cause
                 assert record['duration_ms'] >= 0 and record['context']['output_bytes'] > 0
-            assert 'synthetic-private-marker' not in (data/'logs/hear.jsonl').read_text()
-            with sqlite3.connect(f'file:{data}/hear.sqlite?mode=ro',uri=True) as db:
+            assert 'synthetic-private-marker' not in (data/'logs/loppi.jsonl').read_text()
+            with sqlite3.connect(f'file:{data}/loppi.sqlite?mode=ro',uri=True) as db:
                 assert db.execute('select count(*) from recording_sessions').fetchone()[0]==0
                 assert db.execute('select count(*) from cloud_tasks').fetchone()[0]==0
             print('diagnostics: read-only export, private logs, IPC phase failures and correlation passed')

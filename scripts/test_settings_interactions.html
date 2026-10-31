@@ -11,7 +11,7 @@ mockIPC(async(command,args)=>{
  if(command==='plugin:event|listen')return 1;if(command==='plugin:event|unlisten')return;
  if(command==='entry_snapshot')return{mode:'top'};
  if(command==='entry_mode')return;
- if(command==='plugin:dialog|save')return '/tmp/hear-fixture-only.tar';
+ if(command==='plugin:dialog|save')return '/tmp/loppi-fixture-only.tar';
  if(command==='cleanup_request'){await wait(220);throw Error('测试写入失败');}
  calls.push({command,args:structuredClone(args)});
  if(command==='register_login_item'){login=1;return;}if(command==='unregister_login_item'){login=0;return;}
@@ -40,7 +40,7 @@ mockIPC(async(command,args)=>{
  else throw Error('unexpected '+r.type);
  const result={type:'status',state};receipts.set(args.requestId,result);if(mode==='lost')throw Error('lost');return result;
 });
-function App(){const[,update]=useState(0);refresh=()=>update(v=>v+1);return h('div',{className:'app-shell'},h('aside',{className:'sidebar'},h('div',{className:'brand'},'hear'),h('nav',null,h('button',{className:'active'},'设置'))),h('main',{className:'main-area'},h(SettingsView,{date:new Date(),state,privacy,queues,loginStatus:login,models:{phase:'ready',speaker_phase:'ready',progress_percent:100},selection:null,busy:false,onStatus:async()=>refresh(),onContext:async()=>refresh(),onTimeline:async()=>{},onMutate:async()=>true,onMessage:message=>{document.getElementById('result').textContent=message;}})));}
+function App(){const[,update]=useState(0);refresh=()=>update(v=>v+1);return h('div',{className:'app-shell'},h('aside',{className:'sidebar'},h('div',{className:'brand'},'loppi'),h('nav',null,h('button',{className:'active'},'设置'))),h('main',{className:'main-area'},h(SettingsView,{date:new Date(),state,privacy,queues,loginStatus:login,models:{phase:'ready',speaker_phase:'ready',progress_percent:100},selection:null,busy:false,onStatus:async()=>refresh(),onContext:async()=>refresh(),onTimeline:async()=>{},onMutate:async()=>true,onMessage:message=>{document.getElementById('result').textContent=message;}})));}
 createRoot(document.getElementById('root')).render(h(App));
 const button=(text,scope=document)=>[...scope.querySelectorAll('button')].find(b=>b.textContent.trim()===text);
 const click=async e=>{if(!e||e.disabled)throw Error('按钮不可用');e.click();await wait(80)};

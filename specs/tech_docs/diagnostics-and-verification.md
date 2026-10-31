@@ -2,7 +2,7 @@
 
 ## 状态与所有权
 
-Core 仍是唯一业务状态 owner。`hear diagnose` 通过当前版本配套协议的只读请求，使用 `reads::Pool` 的 3 秒查询快照。SQL 只选择 ID、状态、时间、数量、模型/策略标识和错误码，之后释放快照再读取轮转日志；两者有不同观察时间，报告不承诺跨文件原子快照。它不复制数据库、录音、文字、标题、截图、供应商正文或凭据，也不提交后台任务。
+Core 仍是唯一业务状态 owner。`loppi diagnose` 通过当前版本配套协议的只读请求，使用 `reads::Pool` 的 3 秒查询快照。SQL 只选择 ID、状态、时间、数量、模型/策略标识和错误码，之后释放快照再读取轮转日志；两者有不同观察时间，报告不承诺跨文件原子快照。它不复制数据库、录音、文字、标题、截图、供应商正文或凭据，也不提交后台任务。
 
 报告是临时投影，不参与调度、重试或 UI 状态裁决。无需维护新的状态库、日志服务器或故障恢复框架。CLI 在 Core 未运行时直接失败，不能为了诊断悄悄启动处理服务。协议版本不匹配时应使用与安装包配套的 CLI。
 
@@ -10,16 +10,16 @@ Core 仍是唯一业务状态 owner。`hear diagnose` 通过当前版本配套�
 
 ```sh
 # 本组件编译身份；不会打开 UI、模型或服务
-./target/debug/hear build-info
-./target/debug/hear-core --build-info
-./target/debug/hear-worker --build-info
-./target/debug/hear-desktop --build-info
+./target/debug/loppi build-info
+./target/debug/loppi-core --build-info
+./target/debug/loppi-worker --build-info
+./target/debug/loppi-desktop --build-info
 
 # 毫秒 UTC，左闭右开，最多七天；通常按当地一天换算边界
-hear diagnose --from-ms 1792339200000 --to-ms 1792425600000 --output report.json
-hear diagnose --from-ms 1792339200000 --to-ms 1792425600000 --event-id <uuid>
-hear diagnose --from-ms 1792339200000 --to-ms 1792425600000 --job-id <uuid>
-hear logs --from-ms 1792339200000 --to-ms 1792425600000 --capture-span-id <uuid>
+loppi diagnose --from-ms 1792339200000 --to-ms 1792425600000 --output report.json
+loppi diagnose --from-ms 1792339200000 --to-ms 1792425600000 --event-id <uuid>
+loppi diagnose --from-ms 1792339200000 --to-ms 1792425600000 --job-id <uuid>
+loppi logs --from-ms 1792339200000 --to-ms 1792425600000 --capture-span-id <uuid>
 ```
 
 `--output` 创建 0600 新文件，拒绝覆盖已有目标；不指定时打印 JSON。报告仍有时间、稳定内部 ID 与技术元数据，分享前按受众检查。工具不自动上传。
@@ -35,7 +35,7 @@ hear logs --from-ms 1792339200000 --to-ms 1792425600000 --capture-span-id <uuid>
 
 ## 已保存 ASR 结果的离线发布回放
 
-`diagnostic_tests::replay_oct21_asr_publication` 为显式 ignored 的私有回归：`HEAR_TEST_DB` 指向 SQLite backup 冻结库，`HEAR_ASR_RESPONSES` 指向原请求响应目录。测试只在临时数据库副本调用生产解析/映射/发布和迁移，核对 18 个请求、779 个句段、重复发布、事件状态及暂停缺口；不启动采集、不调用云端。私有正文不进入仓库，默认 CI 使用合成回归。调查与安装边界见 [10/21 精转发布失败调查](../research/2026-10-22-asr-publication-failures.md)。
+`diagnostic_tests::replay_oct21_asr_publication` 为显式 ignored 的私有回归：`LOPPI_TEST_DB` 指向 SQLite backup 冻结库，`LOPPI_ASR_RESPONSES` 指向原请求响应目录。测试只在临时数据库副本调用生产解析/映射/发布和迁移，核对 18 个请求、779 个句段、重复发布、事件状态及暂停缺口；不启动采集、不调用云端。私有正文不进入仓库，默认 CI 使用合成回归。调查与安装边界见 [10/21 精转发布失败调查](../research/2026-10-22-asr-publication-failures.md)。
 
 历史日志中的 `provider_unmapped_timing_audio_coverage` 表示旧版以当前原声留存过滤云端文字。当前已删除该过滤；文字可用、原声回放、声纹质量分别核对，不能据声纹不可用推断精转失败。查询远端原 ID 与离线发布是不同操作；普通队列重试遇到远端不存在仍可能重传，不能标成 query-only。
 
@@ -85,7 +85,7 @@ macOS、Node 24、当前稳定 Rust、Xcode 26.0.1 或更新版本（含 macOS 2
 
 ```sh
 python3 scripts/verify_ingestion_quality.py \
-  --core "$PWD/target/debug/hear-core" --cli "$PWD/target/debug/hear" \
+  --core "$PWD/target/debug/loppi-core" --cli "$PWD/target/debug/loppi" \
   --models /private/path/models --wav /private/path/public-speech.wav \
   --output /private/path/ingestion-report.json
 ```
@@ -96,9 +96,9 @@ python3 scripts/verify_ingestion_quality.py \
 
 每个任务从当前 dev 建独立分支/工作树；一个开发 agent 写一份改动，review agent 只读。PR 写清代码提交、检查证据和实际安装版本，避免“已 merge”被当作“本机已运行”。
 
-`scripts/build_macos.sh` 为 Cargo/Tauri 注入同一个 `HEAR_BUILD_EPOCH`，读取四个最终二进制的编译身份，任何混合构建直接失败。清单写入 bundle `Contents/Resources/build-info.json` 后再签名。版本包含 SHA、dirty、构建秒、协议版本；dirty 是编译时的工作树状态，不证明构建内容可由 SHA 单独复现。
+`scripts/build_macos.sh` 为 Cargo/Tauri 注入同一个 `LOPPI_BUILD_EPOCH`，读取四个最终二进制的编译身份，任何混合构建直接失败。清单写入 bundle `Contents/Resources/build-info.json` 后再签名。版本包含 SHA、dirty、构建秒、协议版本；dirty 是编译时的工作树状态，不证明构建内容可由 SHA 单独复现。
 
-沿用运行中 build bundle 禁止覆盖的保护。验证只使用隔离数据目录；日常录制运行 `/Applications/hear.app`。发布仍须整包停止/替换/重新启动并确认运行身份；本 PR 不安装、不重启现有客户端。
+沿用运行中 build bundle 禁止覆盖的保护。验证只使用隔离数据目录；日常录制运行 `/Applications/loppi.app`。发布仍须整包停止/替换/重新启动并确认运行身份；本 PR 不安装、不重启现有客户端。
 
 LLM 返回 evidence IDs 后让 Core 导出时间看似更简单，但 coarse observation 可覆盖同一段内多个主题，只选择整段 ID 会丢失片段内部毫秒切分；要保留精度仍需额外边界协议。当前继续使用毫秒边界，但发布按字段/事件独立接纳；覆盖和未整理下标不再作为整批准入条件，有限重试只针对整份输出无法解析等任务级失败。
 
@@ -108,19 +108,19 @@ LLM 返回 evidence IDs 后让 Core 导出时间看似更简单，但 coarse obs
 
 `invalid_fit_boundary_unorganized/uncovered_speech` 是旧版覆盖协议错误，当前不再产生。旧失败不会自动重跑，但不再阻塞有效事件的自动精转。`malformed_entries_and_metadata_preserve_independent_fields_and_slots`、`omitted_speech_and_any_unorganized_metadata_do_not_reject_useful_events` 验证字段隔离与底层素材保留；`invalid_top_level_and_storage_errors_remain_real_failures` 区分模型字段异常与真正存储失败。
 
-显式 ignored 测试 `snapshot_partial_fit_publication_oct23` 在 `HEAR_TEST_DB` 的临时副本调用生产发布与规划函数，验证当天两个失败窗口、原声/粗转/精转原文数量和已有付费请求身份。不调用云服务、不写活跃数据库。原供应商响应没有保存，使用合成异常响应，不能声称重放了原模型输出。
+显式 ignored 测试 `snapshot_partial_fit_publication_oct23` 在 `LOPPI_TEST_DB` 的临时副本调用生产发布与规划函数，验证当天两个失败窗口、原声/粗转/精转原文数量和已有付费请求身份。不调用云服务、不写活跃数据库。原供应商响应没有保存，使用合成异常响应，不能声称重放了原模型输出。
 
 ## 极短输入与终态失败隔离
 
 合成 X-ASR 输入不含用户音频，使用已经准备的模型目录：
 
 ```sh
-python3 scripts/smoke_recognizer.py --worker target/debug/hear-worker --models /path/to/speech-xasr-v1
+python3 scripts/smoke_recognizer.py --worker target/debug/loppi-worker --models /path/to/speech-xasr-v1
 ```
 
 一次 worker 连续处理 0、1、32、1056、2080、3200、16000 样本及短/长交替；另验证初始化和已加载状态的真实父进程退出。Rust 子进程回归验证 watchdog 不调用 atexit。默认门禁的 native capture errors 用受控 SCK discovery 回调验证 NSError/无来源传播，不获取权限或启动采集。
 
-`diagnostic_tests::snapshot_local_failures_do_not_block_event_asr` 需要冻结 `HEAR_TEST_DB`、逗号分隔的 `HEAR_TEST_EVENTS` 和只读媒体根 `HEAR_TEST_MEDIA`。它仅在临时副本运行生产 planner，断言生成的输入非空、媒体存在、重复规划幂等，原有音频/本地失败/文字/云任务所有列不变；不会启动云端队列或发送音频。实际证据见 [10/27 调查与修复](../research/2026-10-28-local-failure-isolation.md)。
+`diagnostic_tests::snapshot_local_failures_do_not_block_event_asr` 需要冻结 `LOPPI_TEST_DB`、逗号分隔的 `LOPPI_TEST_EVENTS` 和只读媒体根 `LOPPI_TEST_MEDIA`。它仅在临时副本运行生产 planner，断言生成的输入非空、媒体存在、重复规划幂等，原有音频/本地失败/文字/云任务所有列不变；不会启动云端队列或发送音频。实际证据见 [10/27 调查与修复](../research/2026-10-28-local-failure-isolation.md)。
 
 
 ## 0.1.13 两机可靠性诊断与验收
@@ -129,7 +129,7 @@ Core 在建立日志线程前生成唯一 run_id；LogWorker/UniLogs 共用它�
 
 HTTP 402 在既有 cloud_queues.blocked_reason 表达账号阻塞，独立于用户 paused/configured；明确继续、有效目标的手动重试、成功保存已验证的新配置才解除。解除队列不批量重跑失败历史。供应商重试由既有 cloud_tasks.retry_failures 保留预算，凭据等待不消耗；网络失败最多 8 次，整份整理输出无效最多 3 次，显式重试重置预算且保留原付费请求身份。LLM 使用有界 SSE 流，忽略思考正文，收到完整终止和结束原因后才进入原发布流程；180 秒总时限、45 秒空闲读取及 8MB 响应上限仍生效。故障日志区分 headers/body 阶段与耗时。普通 status/app_opened 客户端在写回时主动断开只记 request_cancelled info；其它执行和写回故障仍保留。
 
-离线 runner 显式传 HEAR_TEST_PARENT_PID 并使用独立 HEAR_DATA_DIR，Core 用 kqueue 绑定运行者生命周期；该模式禁止读取/写入 Keychain 与访问正式供应商端点。正式 Login 没有此环境，不改变后台驻留。默认 verify 设置此绑定；手动 runner 同样绑定自身。真实模型和录制验收使用合成数据/隔离副本，付费历史回放仍不自动运行。
+离线 runner 显式传 LOPPI_TEST_PARENT_PID 并使用独立 LOPPI_DATA_DIR，Core 用 kqueue 绑定运行者生命周期；该模式禁止读取/写入 Keychain 与访问正式供应商端点。正式 Login 没有此环境，不改变后台驻留。默认 verify 设置此绑定；手动 runner 同样绑定自身。真实模型和录制验收使用合成数据/隔离副本，付费历史回放仍不自动运行。
 
 前端回归包含真实 App 的同日在途合并、变更时立即失效及串行新快照；原生输出的会话/epoch、旧关闭与取消，以及原有连续播放清理/边界回归。原生 AVAudioPlayer 硬件时钟验证只使用合成静音，不录音、不调用云；无声音设备环境不能据此声称完成真实设备验收。电源消息注入验证 CanSleep/WillSleep 立即确认、不阻止系统休眠、早期 Wake 不恢复、完成 Wake 才恢复。
 

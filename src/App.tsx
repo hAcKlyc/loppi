@@ -457,7 +457,7 @@ function App() {
 
 	useEffect(() => {
 		if (!isTauri()) return;
-		const subscription = listen("hear-open-settings", () =>
+		const subscription = listen("loppi-open-settings", () =>
 			setPage(setupCompleted === false ? "onboarding" : "settings"),
 		);
 		return () => {
@@ -468,7 +468,7 @@ function App() {
 		if (!isTauri()) return;
 		let disposed = false;
 		const subscription = listen<EntrySnapshot>(
-			"hear-entry-snapshot",
+			"loppi-entry-snapshot",
 			(event) => {
 				if (!disposed) acceptSnapshot(event.payload);
 			},
@@ -557,11 +557,11 @@ function App() {
 		let disposed = false;
 		const unsubscribers: Array<() => void> = [];
 		void Promise.all([
-			listen("hear-moment-changed", () => {
+			listen("loppi-moment-changed", () => {
 				setMomentVersion((value) => value + 1);
 				void refreshTimeline(false, true);
 			}),
-			listen<{ anchor_ms: number }>("hear-open-comment", (event) => {
+			listen<{ anchor_ms: number }>("loppi-open-comment", (event) => {
 				setCommentAnchor(event.payload.anchor_ms);
 				setCommentDraft("");
 				setDialogError("");
@@ -796,7 +796,7 @@ function App() {
 	if (setupCompleted === null)
 		return (
 			<main className="onboarding-loading">
-				<h1>准备 Hear</h1>
+				<h1>准备 loppi</h1>
 				<p role="status">{setupError || "正在读取设置…"}</p>
 				{setupError && (
 					<>
@@ -848,7 +848,7 @@ function App() {
 						draggable={false}
 						data-tauri-drag-region
 					/>
-					<strong>hear</strong>
+					<strong>loppi</strong>
 				</div>
 				<nav aria-label="主导航" data-tauri-drag-region>
 					{(

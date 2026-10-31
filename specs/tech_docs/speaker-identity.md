@@ -7,10 +7,10 @@
 | 名称 | 来源/作用域 | 含义 |
 | --- | --- | --- |
 | `speaker_label` | 火山 ASR 单个物理请求 | 供应商认为这些句子属于同一匿名声音。即使另一请求也叫 `1`，也不能直接视为同一人。 |
-| `speaker_group` | hear 的当前目标事件/来源/版本 | 本机对一场活动中云标签做可重算的匿名合组；界面据此按出现顺序显示“说话人 1/2”。组数不证明真实人数。 |
+| `speaker_group` | loppi 的当前目标事件/来源/版本 | 本机对一场活动中云标签做可重算的匿名合组；界面据此按出现顺序显示“说话人 1/2”。组数不证明真实人数。 |
 | `person_id` | 本机全局人物库 | 用户创建/确认的稳定身份。仅人工指定或本机声纹可信匹配时，句段才与此 ID 关联并显示姓名。 |
 
-云端 ASR 接收获准精转的音频，返回文字、时间和临时 speaker 标签；**不接收本机人物库和声纹向量**，也不认识已有姓名。跨事件比对目前全在本机。LLM 事件拟合也不推断人物身份。[供应商适配](../../crates/hear-core/src/cloud.rs)；[本机身份投影](../../crates/hear-core/src/knowledge.rs)。
+云端 ASR 接收获准精转的音频，返回文字、时间和临时 speaker 标签；**不接收本机人物库和声纹向量**，也不认识已有姓名。跨事件比对目前全在本机。LLM 事件拟合也不推断人物身份。[供应商适配](../../crates/loppi-core/src/cloud.rs)；[本机身份投影](../../crates/loppi-core/src/knowledge.rs)。
 
 ```mermaid
 flowchart LR
@@ -27,7 +27,7 @@ flowchart LR
 
 ## 2. 本地模型与样例
 
-当前用 sherpa-onnx 的 **3D-Speaker CAMPPlus 中文 16 kHz** ONNX 权重：`3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx`。模型由[模型包管理](../../crates/hear-core/src/model_pack.rs)按固定 SHA-256 下载校验，位于私有目录 `models/speaker-v1/model.onnx`；[`hear-worker embed`](../../crates/hear-worker/src/main.rs)以 CPU、单线程运行。输出经过归一化后存为 **192 维 float 向量**，内部版本为 `campplus-zh-v1`。[向量编码与策略常量](../../crates/hear-core/src/knowledge.rs)。
+当前用 sherpa-onnx 的 **3D-Speaker CAMPPlus 中文 16 kHz** ONNX 权重：`3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx`。模型由[模型包管理](../../crates/loppi-core/src/model_pack.rs)按固定 SHA-256 下载校验，位于私有目录 `models/speaker-v1/model.onnx`；[`loppi-worker embed`](../../crates/loppi-worker/src/main.rs)以 CPU、单线程运行。输出经过归一化后存为 **192 维 float 向量**，内部版本为 `campplus-zh-v1`。[向量编码与策略常量](../../crates/loppi-core/src/knowledge.rs)。
 
 ### 文字与身份处理的边界
 
@@ -35,15 +35,15 @@ flowchart LR
 
 ### 从精转句段取得“观察”
 
-`publish_asr` 对有云 speaker 标签的精转句段尝试登记 `voice_observation`。当前只给 **2–15 秒**句段排本地提取任务；这是一项可调的资源/质量策略，短句并非被云端丢弃，而是仍有精转文字却没有足够本机身份声音证据。取得原声后还检查来源、区间、重叠说话、音量过低/削波、模型可用性等。成功为 `ready`，不合格/失败为 `unavailable` 并带原因码；待处理与处理中分别有持久状态。[`enqueue_voice_observation`、`take_voice`、`publish_voice`](../../crates/hear-core/src/knowledge.rs)；[原声组装与音质检查](../../crates/hear-core/src/events.rs)。
+`publish_asr` 对有云 speaker 标签的精转句段尝试登记 `voice_observation`。当前只给 **2–15 秒**句段排本地提取任务；这是一项可调的资源/质量策略，短句并非被云端丢弃，而是仍有精转文字却没有足够本机身份声音证据。取得原声后还检查来源、区间、重叠说话、音量过低/削波、模型可用性等。成功为 `ready`，不合格/失败为 `unavailable` 并带原因码；待处理与处理中分别有持久状态。[`enqueue_voice_observation`、`take_voice`、`publish_voice`](../../crates/loppi-core/src/knowledge.rs)；[原声组装与音质检查](../../crates/loppi-core/src/events.rs)。
 
-`audio_quality` 表示长度/电平/削波等无法作可靠声纹；`audio_unavailable` 才表示对应原声区间缺失或不可读；`overlapping_speakers` 是检测到同请求不同标签发言重叠。旧版本写出的笼统错误码不自动当作新口径的实测结果。已存 `ready` 向量可在模型暂时不可用时重放匹配；提取新的向量仍需要模型文件。[`voice_loop`](../../crates/hear-core/src/main.rs)。
+`audio_quality` 表示长度/电平/削波等无法作可靠声纹；`audio_unavailable` 才表示对应原声区间缺失或不可读；`overlapping_speakers` 是检测到同请求不同标签发言重叠。旧版本写出的笼统错误码不自动当作新口径的实测结果。已存 `ready` 向量可在模型暂时不可用时重放匹配；提取新的向量仍需要模型文件。[`voice_loop`](../../crates/loppi-core/src/main.rs)。
 
 ### 用户建档和样例
 
 人物详情通过 `VoiceSamples` 的增量字段 `parts` 取得实际样例成员时间段，`audio_available` 按既有原音保留索引检查。组合样例不能用包围范围代替成员范围。原音不可用时特征仍保留，GUI 禁用试听；运行时文件缺失和清理继续由 `playback_chunk` / `playback_valid` 校验。`SamplePlayback` 复用有界 `ContinuousPlayback`，逐片段播放而不播放间隔；切人、离页或删除时停止并释放。没有新增音频副本或声纹特征回传。
 
-用户新建或选择已有 Person，只有明确的 `speaker_bindings(origin='manual')` 可以授权补充声纹；自动命名不产生训练样本。姓名归属和声纹入库独立：无合格样例仍保存名字，显示“待补充声纹”。已有 `ready` 向量且带实测音质的数据立即提交后台筛选，尚未提取的在 `publish_voice` 时提交。姓名确认不等待全库比对；只有筛选通过才增加样例数。显式追加样例也不能绕过质量、去重、容量与人工证据检查。实现集中于 [`knowledge/enrollment.rs`](../../crates/hear-core/src/knowledge/enrollment.rs)。
+用户新建或选择已有 Person，只有明确的 `speaker_bindings(origin='manual')` 可以授权补充声纹；自动命名不产生训练样本。姓名归属和声纹入库独立：无合格样例仍保存名字，显示“待补充声纹”。已有 `ready` 向量且带实测音质的数据立即提交后台筛选，尚未提取的在 `publish_voice` 时提交。姓名确认不等待全库比对；只有筛选通过才增加样例数。显式追加样例也不能绕过质量、去重、容量与人工证据检查。实现集中于 [`knowledge/enrollment.rs`](../../crates/loppi-core/src/knowledge/enrollment.rs)。
 
 #### 短句组合与音质
 
@@ -65,17 +65,17 @@ flowchart LR
 
 单句也复用候选表暂存向量和评分。全库筛选复用 `VoiceMatcher` 的有界分页与缓存，在 Store 锁外计算；最终事务核对 `identity_state.generation`、候选向量和人工证据。库变化则重取快照，不重复音频提取。事务内只比较该人物最多 24 份样例以择优替换。已经提取的待筛选候选在原音清理或模型不可用时仍能完成筛选。
 
-一次性迁移为历史样例关联可验证的人工归属、去重并收紧数量；缺少有效人工证据的旧样例退出匹配，人物名称保留。历史评分只按原片段时长作保守排序，不宣称已通过新 PCM 门槛。原音清理后保留已经入库的特征；清除全部数据会删除相交样例及组合任务。每份样例保留来源、真实时间与模型版本，可逐条撤销。迁移及撤销、重启、清理、迟到发布测试见 [`enrollment/tests.rs`](../../crates/hear-core/src/knowledge/enrollment/tests.rs)。
+一次性迁移为历史样例关联可验证的人工归属、去重并收紧数量；缺少有效人工证据的旧样例退出匹配，人物名称保留。历史评分只按原片段时长作保守排序，不宣称已通过新 PCM 门槛。原音清理后保留已经入库的特征；清除全部数据会删除相交样例及组合任务。每份样例保留来源、真实时间与模型版本，可逐条撤销。迁移及撤销、重启、清理、迟到发布测试见 [`enrollment/tests.rs`](../../crates/loppi-core/src/knowledge/enrollment/tests.rs)。
 
 `embed` 模型按需常驻复用，空闲 30 秒或资源压力下卸载；统一有界 RPC 可取消、超时后回收。`worker_failed`/`worker_timeout` 按持久退避重试，资源延期不计错误次数；输入音质和永久模型错误仍区别处理。全局样例按 generation 缓存已解码向量，最多 4096 条；更大库逐 256 条分页评分且不截断候选。解码/余弦评分在 Store 锁外进行，发布事务复核 generation、原向量与当前人工归属；同场合组规则和全部匹配阈值保持不变。
 
 ## 3. 同一场活动的匿名合组
 
-云端标签是线索，不是声纹证据。hear 在当前 `target_kind + target_id + target_version + source` 内，比对 `ready` 观察的归一化向量，用余弦相似度尝试合并被云端拆开的匿名标签。**跨来源、跨事件、跨版本不因编号相同而合组。**当前同场跨请求原型门槛为相似度至少 `0.66`、相对第二候选领先 `0.15`；同一云请求内不同标签原本表示不同声音，合并要求更强证据：候选分数至少 `0.74`、另一次直接证据至少 `0.70`，并要求领先间隔 `0.12`。[`reconcile_session_speaker`、`safe_session_merge`](../../crates/hear-core/src/knowledge.rs)。
+云端标签是线索，不是声纹证据。loppi 在当前 `target_kind + target_id + target_version + source` 内，比对 `ready` 观察的归一化向量，用余弦相似度尝试合并被云端拆开的匿名标签。**跨来源、跨事件、跨版本不因编号相同而合组。**当前同场跨请求原型门槛为相似度至少 `0.66`、相对第二候选领先 `0.15`；同一云请求内不同标签原本表示不同声音，合并要求更强证据：候选分数至少 `0.74`、另一次直接证据至少 `0.70`，并要求领先间隔 `0.12`。[`reconcile_session_speaker`、`safe_session_merge`](../../crates/loppi-core/src/knowledge.rs)。
 
-合并之前还检查：两组在同一来源上不能有重叠发言；不能已有两个不同的有效人物归属；合并组内**每一对**来自同一云请求的不同标签都要有直接声音证据，避免 A≈B、B≈C 便把实际不同的 A/C 传递性误并。`speaker_groups` 只是可重建投影；样例、人工归属、音频或任务版本改变时撤销旧自动结果并重放当前证据。[`rebuild_speaker_groups`](../../crates/hear-core/src/knowledge.rs)。
+合并之前还检查：两组在同一来源上不能有重叠发言；不能已有两个不同的有效人物归属；合并组内**每一对**来自同一云请求的不同标签都要有直接声音证据，避免 A≈B、B≈C 便把实际不同的 A/C 传递性误并。`speaker_groups` 只是可重建投影；样例、人工归属、音频或任务版本改变时撤销旧自动结果并重放当前证据。[`rebuild_speaker_groups`](../../crates/loppi-core/src/knowledge.rs)。
 
-极短、占比很低的云端标签不强行当作一位确定新人。当前 `precise_speaker_projection` 对某标签要求该请求累计至少 15 秒，或占请求发言时长至少 5%，否则显示“未确定”。这是一项显示层保守策略，不代表这段文字或音频被删除。[投影视图](../../crates/hear-core/src/knowledge.rs)。
+极短、占比很低的云端标签不强行当作一位确定新人。当前 `precise_speaker_projection` 对某标签要求该请求累计至少 15 秒，或占请求发言时长至少 5%，否则显示“未确定”。这是一项显示层保守策略，不代表这段文字或音频被删除。[投影视图](../../crates/loppi-core/src/knowledge.rs)。
 
 事件边界不再决定物理请求生命周期。当前归属经 `transcript_tasks` 从事件引用投影；自然延长、裁剪、拆分、合并复用完整句段及其观察、人工修订和姓名，不重新提取已有向量。新增请求各自保留局部云编号，再以原声时间段提取 CampPlus 特征，与同一个人物库比对；编号是否一致不决定身份。人工裁剪穿过句子的情况不自动猜测半句/声纹范围，该句退出当前显示，事件提示部分精转。
 
@@ -100,11 +100,11 @@ flowchart LR
 且没有有效的人工句段归属与之冲突
 ```
 
-当前实现见 [`prepare_match` / `VoiceMatcher` / `publish_match`](../../crates/hear-core/src/knowledge.rs)。参数是原型阈值，尚缺麦克风/系统声道、耳机、远场、语言切换的留出集验证。没有命中可以是：没有样例、句子太短/音质不合格、模型版本不同、分数不够、第一/第二名过于接近、用户否定、人工归属冲突，或任务尚未处理；不能简单显示成“声纹库没有连接”。
+当前实现见 [`prepare_match` / `VoiceMatcher` / `publish_match`](../../crates/loppi-core/src/knowledge.rs)。参数是原型阈值，尚缺麦克风/系统声道、耳机、远场、语言切换的留出集验证。没有命中可以是：没有样例、句子太短/音质不合格、模型版本不同、分数不够、第一/第二名过于接近、用户否定、人工归属冲突，或任务尚未处理；不能简单显示成“声纹库没有连接”。
 
-**自动命名只落到实际提供合格向量且命中人物的句段。**火山同一个临时 speaker 标签可能误并两个人，因此一个句段命中不能自动把整组句子全改成人名。用户明确勾选“应用于本场同一说话人”是人工整组决定，可以按该操作传播；单句人工纠错只影响该句。2026-09-29 的 `speaker_policy_version=3` 迁移撤销了早期整组自动扩散并逐句重放已存向量。[版本迁移、身份视图与匹配](../../crates/hear-core/src/knowledge.rs)。
+**自动命名只落到实际提供合格向量且命中人物的句段。**火山同一个临时 speaker 标签可能误并两个人，因此一个句段命中不能自动把整组句子全改成人名。用户明确勾选“应用于本场同一说话人”是人工整组决定，可以按该操作传播；单句人工纠错只影响该句。2026-09-29 的 `speaker_policy_version=3` 迁移撤销了早期整组自动扩散并逐句重放已存向量。[版本迁移、身份视图与匹配](../../crates/loppi-core/src/knowledge.rs)。
 
-样例库增加/撤销、人工否定或事件重转会推动 `identity_state.generation`，旧 `ready` 观察逐步重算；已无证据的自动姓名应撤销。人工确认优先且不因自动重算消失。重新精转后若旧人物归属无法唯一对上新句段，留待核对；不凭新云 speaker 数字复制旧身份。[重放与待核对](../../crates/hear-core/src/knowledge.rs)。
+样例库增加/撤销、人工否定或事件重转会推动 `identity_state.generation`，旧 `ready` 观察逐步重算；已无证据的自动姓名应撤销。人工确认优先且不因自动重算消失。重新精转后若旧人物归属无法唯一对上新句段，留待核对；不凭新云 speaker 数字复制旧身份。[重放与待核对](../../crates/loppi-core/src/knowledge.rs)。
 
 ## 5. 用户最终看到什么
 

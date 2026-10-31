@@ -1,5 +1,5 @@
 // Opt-in, no capture/cloud. A closed SQLite backup is copied into a temporary Core.
-// HEAR_PLAYWRIGHT_MODULE=/path/to/playwright-core/index.mjs node scripts/measure_gui_reads.mjs
+// LOPPI_PLAYWRIGHT_MODULE=/path/to/playwright-core/index.mjs node scripts/measure_gui_reads.mjs
 //   CORE_BIN SNAPSHOT.sqlite OUTPUT.json [http://127.0.0.1:5198] [/path/to/old/DetailDrawer.tsx]
 import {mkdtempSync,copyFileSync,readFileSync,writeFileSync,existsSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -10,10 +10,10 @@ import {randomUUID} from 'node:crypto';
 import {performance} from 'node:perf_hooks';
 const [coreArg,snapshot,output,base='http://127.0.0.1:5198',drawer='/src/DetailDrawer.tsx']=process.argv.slice(2);
 if(!coreArg||!snapshot||!output)throw Error('CORE_BIN SNAPSHOT OUTPUT required; snapshot must be a closed backup');
-const core=resolve(coreArg),cli=process.env.HEAR_BENCH_CLI || join(dirname(core),'hear');
-const data=mkdtempSync(join(tmpdir(),'hear-gui-measure-'));
-copyFileSync(snapshot,join(data,'hear.sqlite'));
-const env={...process.env,HEAR_DATA_DIR:data,HEAR_CORE_BIN:core,HEAR_TEST_PARENT_PID:String(process.pid)};
+const core=resolve(coreArg),cli=process.env.LOPPI_BENCH_CLI || join(dirname(core),'loppi');
+const data=mkdtempSync(join(tmpdir(),'loppi-gui-measure-'));
+copyFileSync(snapshot,join(data,'loppi.sqlite'));
+const env={...process.env,LOPPI_DATA_DIR:data,LOPPI_CORE_BIN:core,LOPPI_TEST_PARENT_PID:String(process.pid)};
 const build=JSON.parse(execFileSync(core,['--build-info'],{env}));
 const child=spawn(core,['serve','--handoff','query'],{env,stdio:'ignore'});
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -49,8 +49,8 @@ try {
   const detail=await wire({type:'event_detail',event_id:item.id,offset:0,limit});
   result.wire.at(-1).fields=Object.fromEntries(Object.entries(detail.event??{}).map(([k,v])=>[k,Buffer.byteLength(JSON.stringify(v))]));
  }
- if(process.env.HEAR_PLAYWRIGHT_MODULE) {
-  const {webkit}=await import(process.env.HEAR_PLAYWRIGHT_MODULE);
+ if(process.env.LOPPI_PLAYWRIGHT_MODULE) {
+  const {webkit}=await import(process.env.LOPPI_PLAYWRIGHT_MODULE);
   browser=await webkit.launch({headless:true});
   for(let run=0;run<5;run++) {
    const page=await browser.newPage({viewport:{width:1280,height:900}});
@@ -81,7 +81,7 @@ try {
   }
  }
  await sleep(150);
- const logs=readFileSync(join(data,'logs/hear.jsonl'),'utf8').trim().split('\n').map(JSON.parse);
+ const logs=readFileSync(join(data,'logs/loppi.jsonl'),'utf8').trim().split('\n').map(JSON.parse);
  for(const req of result.wire){
   const log=logs.find(x=>x.request_id===req.id&&x.event===req.command);
   if(log){req.core_ms=log.duration_ms;req.serialize_us=log.context?.serialize_us;}

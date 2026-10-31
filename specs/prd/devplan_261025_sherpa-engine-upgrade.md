@@ -15,7 +15,7 @@ updated: 2026-10-25
 ### 开发契约
 - 原子交付：版本确认、两个 Rust 依赖与锁更新、真实构建/本地推理回归、独立审查、必要文档及本地提交一起完成。
 - 必须保证：不存在两套 sherpa 主版本；不改变模型文件、安装源/哈希、模型标签、worker 协议或业务状态 owner；VAD、粗转、重采样、声纹路径保持可用。
-- 范围：crates/hear-core/Cargo.toml、crates/hear-worker/Cargo.toml、Cargo.lock 的本次依赖差异及本台账/审查证据。共享工作区既有 0.1.6 版本和其它功能改动不属于本次，不覆盖、不暂存、不提交。
+- 范围：crates/loppi-core/Cargo.toml、crates/loppi-worker/Cargo.toml、Cargo.lock 的本次依赖差异及本台账/审查证据。共享工作区既有 0.1.6 版本和其它功能改动不属于本次，不覆盖、不暂存、不提交。
 - 隔离：以 e9463dc 为干净构建/审查基线建立独立工作树；最终仅合入本任务补丁到原工作区，组合态验证后显式提交自有差异。生产库只归 Core，模型验证使用隔离数据副本，不访问活跃业务库或云端。
 - 复用：既有官方 Rust crate 与原生静态库；hear-worker vad/recognize/embed；Core LinearResampler；scripts/verify.py、smoke_model_preparation.py；独立 benchmark 冻结音频/答案及帧 runner。
 - 新增架构机制：无；不增加 owner、协议、队列、fallback 或恢复路径。

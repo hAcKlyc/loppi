@@ -37,7 +37,7 @@ updated: 2026-10-18
 ### Review Contract
 - Mode: repair；baseline: 419b0f223d8267af1203fbf3c2682747e385a606。
 - Requirement source: 本 devplan 和用户明确的“短句组合取样、已有身份补样本，筛选、去重、限额，避免自动识别污染”请求。
-- In-scope: 本次 crates/hear-core/src/knowledge.rs、knowledge/enrollment.rs、knowledge/enrollment/tests.rs、events.rs、main.rs、cleanup.rs；src/DetailDrawer.tsx（异步筛选提示）；specs/ARCHITECTURE.md、specs/tech_docs/speaker-identity.md。其余已有未跟踪文件不在范围。
+- In-scope: 本次 crates/loppi-core/src/knowledge.rs、knowledge/enrollment.rs、knowledge/enrollment/tests.rs、events.rs、main.rs、cleanup.rs；src/DetailDrawer.tsx（异步筛选提示）；specs/ARCHITECTURE.md、specs/tech_docs/speaker-identity.md。其余已有未跟踪文件不在范围。
 - Guarantees: 人工确认来源；同组/target/version/音源组合，排除间隔音频及插话；新 PCM 质量门槛；重复择优及 active 3/24 上限；同人一致性/他人冲突拒绝；迟到发布复验，纠正任一成员/删人物/重转/清理撤销；沿用 Core owner 和既有资源门控；保留逐句显示及已确认姓名。
 - Non-goals: 不保证真实准确率/消除首次人工误标，不训练/更换模型，不新增云能力，不对历史全库音频重新提取；历史样本只做证据/去重/限额迁移，不假称已通过新的 PCM 门槛。无新 UI 或新协议。
 - In-scope defects: 本改动引入/放大，或上面 guarantees 明确要求的故障。不得把未修改的旧 ASR/归属/UI 问题纳入必做。

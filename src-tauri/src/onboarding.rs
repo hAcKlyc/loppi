@@ -1,5 +1,5 @@
 //! GUI routing metadata only. Business readiness remains in Core and macOS.
-use hear_protocol::{ClientKind, ModelPhase, Request, Response, SourcePhase};
+use loppi_protocol::{ClientKind, ModelPhase, Request, Response, SourcePhase};
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
@@ -66,7 +66,7 @@ fn write(path: &Path, completed: bool) -> Result<Metadata, String> {
     }
     Ok(value)
 }
-fn business() -> Result<(hear_protocol::ServiceState, bool), String> {
+fn business() -> Result<(loppi_protocol::ServiceState, bool), String> {
     let Response::Status { state, .. } = checked_response(Request::Status)? else {
         return Err("无法读取记录状态".into());
     };
@@ -74,15 +74,15 @@ fn business() -> Result<(hear_protocol::ServiceState, bool), String> {
         return Err("无法读取云端配置".into());
     };
     let configured = [
-        hear_protocol::CloudProvider::Llm,
-        hear_protocol::CloudProvider::Asr,
+        loppi_protocol::CloudProvider::Llm,
+        loppi_protocol::CloudProvider::Asr,
     ]
     .iter()
     .all(|p| queues.iter().any(|q| q.provider == *p && q.configured));
     Ok((state, configured))
 }
 fn checked_response(request: Request) -> Result<Response, String> {
-    match hear_protocol::send_from(ClientKind::Gui, request)? {
+    match loppi_protocol::send_from(ClientKind::Gui, request)? {
         Response::Error { code, message, .. } => Err(format!("{code}: {message}")),
         response => Ok(response),
     }
@@ -172,7 +172,7 @@ pub fn open_privacy_settings(source: String) -> Result<(), String> {
     if status.success() {
         Ok(())
     } else {
-        Err("请打开系统设置 → 隐私与安全性，允许 Hear 访问麦克风或屏幕与系统音频录制".into())
+        Err("请打开系统设置 → 隐私与安全性，允许 loppi 访问麦克风或屏幕与系统音频录制".into())
     }
 }
 fn recording_space_available(used: u64, limit: u64, free: u64) -> bool {
@@ -191,7 +191,7 @@ mod tests {
     #[test]
     fn metadata_is_private_atomic_and_corruption_is_not_first_run() {
         let dir =
-            std::env::temp_dir().join(format!("hear-onboarding-test-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("loppi-onboarding-test-{}", uuid::Uuid::new_v4()));
         let path = dir.join("onboarding.json");
         assert!(read(&path).unwrap().is_none());
         write(&path, false).unwrap();

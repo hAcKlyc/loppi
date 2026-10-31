@@ -1,4 +1,4 @@
-# hear
+# loppi
 
 持续情境记录器。持续留下声音，通过初步识别、片段筛选与会话归组，形成包含音频、转写、截图、重点和评论的情境记录。
 
@@ -16,7 +16,7 @@
 | [设计系统](specs/DESIGN.md) | 视觉原则、组件规则与语义样式 token |
 | [开发计划](plan.md) | 批次、验收证据与未完成的发布门槛 |
 | [方案自审](specs/prd/REVIEW.md) | 本次审查发现、已做修正、仍需决策或实测的事项 |
-| [界面交互 Playground](playground/hear-0.1.html) | 基于 0.1 PRD 的单文件 HTML 交互试验稿；直接在浏览器中打开 |
+| [界面交互 Playground](playground/loppi-0.1.html) | 基于 0.1 PRD 的单文件 HTML 交互试验稿；直接在浏览器中打开 |
 
 ## 设计主线
 
@@ -24,7 +24,9 @@
 
 保留下来的人声音频与已有粗转文字默认持续保存，直到用户主动清理或达到全局空间边界而暂停录音。用户主动截图、Mark 和评论关联到发生时刻。产品自身完成记录、整理、找回和回放，并在 macOS 首版提供完整命令行能力。
 
-`hear` 是项目代号，尚未作商标或域名可用性确认。0.1 以 macOS `.dmg` 直接分发，不通过 Mac App Store。源码现阶段保持闭源；未来是否开源及采用 Apache-2.0、AGPL-3.0 或其他许可证尚未决定。复用 MyAgents 代码和第三方模型前，须分别核查相应代码权利与许可；当前仓库不复制第三方实现、模型权重或真实录音资料。
+`loppi` 是产品正式名称。0.1 以 macOS `.dmg` 直接分发，不通过 Mac App Store。源码现阶段保持闭源；未来是否开源及采用 Apache-2.0、AGPL-3.0 或其他许可证尚未决定。复用 MyAgents 代码和第三方模型前，须分别核查相应代码权利与许可；当前仓库不复制第三方实现、模型权重或真实录音资料。
+
+更名后的应用使用全新的数据目录、系统身份和凭据配置，不读取或迁移旧 hear 数据。首次使用需重新完成系统授权、Provider 配置和 Agent 接入；旧资料不主动删除。
 
 ## macOS 发行构建
 
@@ -48,7 +50,7 @@ node scripts/build.mjs build --target x86_64-apple-darwin
 ./build_release.sh --target universal-apple-darwin
 ```
 
-App 位于 `target/<target>/release/bundle/macos/hear.app`。单架构候选在异架构宿主上只做编译和结构检查，不声称通过原生启动验证。脚本不会更新 `/Applications/hear.app`。完整布局、升级与验证边界见[离线资源与 Mac 打包说明](specs/tech_docs/offline-macos-packaging.md)。
+App 位于 `target/<target>/release/bundle/macos/loppi.app`。单架构候选在异架构宿主上只做编译和结构检查，不声称通过原生启动验证。脚本不会更新 `/Applications/loppi.app`。完整布局、升级与验证边界见[离线资源与 Mac 打包说明](specs/tech_docs/offline-macos-packaging.md)。
 
 对外分发前需要完成 Apple 公证。`build_release.sh` 自动读取根目录 `.env` 中的以下配置（已有环境变量优先），不会把 `.env` 或私钥文件放进安装包：
 
@@ -61,21 +63,21 @@ APPLE_API_KEY_PATH=/absolute/path/to/AuthKey_YOUR_KEY_ID.p8
 
 `APPLE_API_KEY` 是 App Store Connect API Key 的 ID，私钥放在 `APPLE_API_KEY_PATH` 指定的文件中。团队 API Key 需要 Issuer ID，个人 API Key 不应填写 Issuer ID。私钥路径支持绝对路径、相对仓库根目录的路径和 `~/`。配置后直接运行 `./build_release.sh`，即可依次完成构建、DMG 打包、公证、装订票据和 Gatekeeper 验证。
 
-也支持钥匙串凭据：首次在本机终端运行 `xcrun notarytool store-credentials hear-notary`，按提示输入开发者 Apple ID、App 专用密码与 Team ID，然后执行：
+也支持钥匙串凭据：首次在本机终端运行 `xcrun notarytool store-credentials loppi-notary`，按提示输入开发者 Apple ID、App 专用密码与 Team ID，然后执行：
 
 ```sh
-APPLE_NOTARY_PROFILE=hear-notary ./build_release.sh
+APPLE_NOTARY_PROFILE=loppi-notary ./build_release.sh
 ```
 
-`APPLE_NOTARY_PROFILE` 是钥匙串中的配置名，也可写入 `.env`；设置后优先使用钥匙串认证。缺少签名或公证配置时，发行入口在编译前退出。仅构建 App 可运行 `zsh scripts/build_macos.sh`；单独重新打包须显式传入 App 和输出 DMG 路径：`zsh scripts/package_macos.sh /absolute/hear.app /absolute/output.dmg`，并自行传入签名、公证环境变量。
+`APPLE_NOTARY_PROFILE` 是钥匙串中的配置名，也可写入 `.env`；设置后优先使用钥匙串认证。缺少签名或公证配置时，发行入口在编译前退出。仅构建 App 可运行 `zsh scripts/build_macos.sh`；单独重新打包须显式传入 App 和输出 DMG 路径：`zsh scripts/package_macos.sh /absolute/loppi.app /absolute/output.dmg`，并自行传入签名、公证环境变量。
 
-长时资源观测可运行 `zsh scripts/measure_macos.sh 600 /tmp/hear-process-usage.csv /Applications/hear.app new /tmp/hear-resource-report.html`。脚本每分钟记录安装版核心、worker 与界面的实际可执行路径/PID、CPU 累计时间、物理内存足迹、常驻内存、磁盘 IO 和进程能耗计数；允许短暂重叠的 worker，并在重启或进程缺席时留下可追溯样本。报告每 15 次采样自动更新一次，同时生成同名 `.html.json` 摘要；`HEAR_REPORT_EVERY` 可调整频率。意外停止后以 `resume` 代替 `new` 续写同一个 CSV，先校验表头，不覆盖原曲线。也可用 `python3 scripts/report_macos_resources.py <一个或多个 CSV> --output /tmp/hear-resource-report.html --summary /tmp/hear-resource-report.json` 合并重叠采样。报告按 PID 分段显示内存和单核 CPU 曲线、峰值、P95、末值与超过 150 秒的采样空档；空档内的峰值未知。进程能耗计数只能用于同机趋势，不能替代整机电池续航实测。录音覆盖、可回放性与来源缺口仍须以核心状态和媒体清单单独核对。
+长时资源观测可运行 `zsh scripts/measure_macos.sh 600 /tmp/loppi-process-usage.csv /Applications/loppi.app new /tmp/loppi-resource-report.html`。脚本每分钟记录安装版核心、worker 与界面的实际可执行路径/PID、CPU 累计时间、物理内存足迹、常驻内存、磁盘 IO 和进程能耗计数；允许短暂重叠的 worker，并在重启或进程缺席时留下可追溯样本。报告每 15 次采样自动更新一次，同时生成同名 `.html.json` 摘要；`LOPPI_REPORT_EVERY` 可调整频率。意外停止后以 `resume` 代替 `new` 续写同一个 CSV，先校验表头，不覆盖原曲线。也可用 `python3 scripts/report_macos_resources.py <一个或多个 CSV> --output /tmp/loppi-resource-report.html --summary /tmp/loppi-resource-report.json` 合并重叠采样。报告按 PID 分段显示内存和单核 CPU 曲线、峰值、P95、末值与超过 150 秒的采样空档；空档内的峰值未知。进程能耗计数只能用于同机趋势，不能替代整机电池续航实测。录音覆盖、可回放性与来源缺口仍须以核心状态和媒体清单单独核对。
 
 CLI 的 `transcribe-range` 返回 `range_id` 和 `tasks`；每条任务有可用于 `cloud retry` 的真实 `id`、`source`、起止时间和当前 `state`。双路或长范围可能产生多条任务；无可用原声会返回 `range_no_audio`，不会留下空的精转范围。
 
 精转文字优先保留完整内容与供应商时间：时间能映射到原请求且当前归属有效，就保存文字，允许偶发长静默跨度；VAD、当前原声留存和声纹质量不再导致整段文字丢失。声纹和回放各自检查真实原声。最新修复、证据与安装状态见 [精转失败调查](specs/research/2026-10-22-asr-publication-failures.md)。
 
-已有事件可以在详情的「音频信息」中重新精转；命令行可运行 `hear event retranscribe <event-id> <revision>`。新任务按当前云端适配器处理整场可用原声，原有人工修正只在可确认的同一时段自动恢复，其余进入待核对。
+已有事件可以在详情的「音频信息」中重新精转；命令行可运行 `loppi event retranscribe <event-id> <revision>`。新任务按当前云端适配器处理整场可用原声，原有人工修正只在可确认的同一时段自动恢复，其余进入待核对。
 
 ## 开发验证用云端配置
 
@@ -83,12 +85,12 @@ CLI 的 `transcribe-range` 返回 `range_id` 和 `tasks`；每条任务有可用
 
 ## Agent 接入
 
-保持 hear 运行，同机 Agent 可以通过只读 CLI 或 stdio MCP 找回已有记录。侧栏「Agent 接入」提供当前安装路径对应的配置与 Skill 安装命令；不需要网络端口，也不自动修改 Agent 配置。
+保持 loppi 运行，同机 Agent 可以通过只读 CLI 或 stdio MCP 找回已有记录。侧栏「Agent 接入」提供当前安装路径对应的配置与 Skill 安装命令；不需要网络端口，也不自动修改 Agent 配置。
 
 ```sh
-/Applications/hear.app/Contents/MacOS/hear context list --date today
-/Applications/hear.app/Contents/MacOS/hear context search '发布计划'
-/Applications/hear.app/Contents/MacOS/hear mcp serve
+/Applications/loppi.app/Contents/MacOS/loppi context list --date today
+/Applications/loppi.app/Contents/MacOS/loppi context search '发布计划'
+/Applications/loppi.app/Contents/MacOS/loppi mcp serve
 ```
 
-两种入口共享六项能力：状态、时间浏览、关键词检索、事件理解、证据读取、人物查询。使用说明与边界见 [Agent Context 契约](specs/tech_docs/agent-context.md)。
+两种入口共享七项能力：状态、时间浏览、关键词检索、事件理解、证据读取、概览、人物查询。使用说明与边界见 [Agent Context 契约](specs/tech_docs/agent-context.md)。

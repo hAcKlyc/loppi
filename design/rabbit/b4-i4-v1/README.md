@@ -1,4 +1,4 @@
-# hear · B4 / I4 视觉素材首版
+# loppi · B4 / I4 视觉素材首版
 
 日期：2026-10-01。用户选定 B4「好奇折耳」角色和 I4「折耳近景」图标为基准。
 本包用于形象、尺寸和动效验收，未接入录音服务或生产入口。
@@ -9,7 +9,7 @@
 - `icons/app-1024.png`：1024×1024 方形母图，四角不透明，无边框、外留白、圆角、阴影或底座。
 - `icons/app-{16,24,32,48,64,128,256,512,1024}.png`：方形尺寸导出；小尺寸先供辨识度验收，未逐尺寸手工像素修整。
 - `icons/rounded-1024.png` / `circle-1024.png`：从方形母图裁切的透明派生版。
-- `icons/hear.iconset` / `hear.icns`：圆角派生版的 macOS 容器，用于预览，最终应用到平台前需在实际 Dock 中验收比例。
+- `icons/loppi.iconset` / `loppi.icns`：圆角派生版的 macOS 容器，用于预览，最终应用到平台前需在实际 Dock 中验收比例。
 - `icons/app.ico`：16–256px 的方形、多尺寸 PNG 容器；记录 Windows 图标规则，不表示客户端已适配。
 
 母图不预制平台形状；保留母图，按用途施加遮罩。`source/icon-generated.png` 是已被替代的圆角底座探索图，仅供追溯，不能作为源图。
@@ -56,5 +56,5 @@ rabbit.dispose();
 ## 来源与可重建性
 
 使用内置 image_gen 生成；生成提示词及引用见 `source/prompts.json`。按用户授权，生成后裁切、统一网格和颜色、派生呼吸/眨眼帧、导出尺寸和平台遮罩。
-`build-assets.cjs` 仅使用本地 Sharp；产出姿态、精灵图、动画、PNG、ICO 与 iconset。`iconutil -c icns icons/hear.iconset -o icons/hear.icns` 生成 macOS 容器。
+`build-assets.cjs` 仅使用本地 Sharp；产出姿态、精灵图、动画、PNG、ICO 与 iconset。`iconutil -c icns icons/loppi.iconset -o icons/loppi.icns` 生成 macOS 容器。
 UI 预览中的截图、重点和评论都是视觉演示，不产生实际数据。

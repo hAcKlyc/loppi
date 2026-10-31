@@ -47,7 +47,7 @@
 - 明确不属于本 PRD 的反向边界：尚未决定；不能由讨论阶段擅自排除用户提出的指标或交付。
 
 ## 技术前提
-- 已核实：当前代码使用 sherpa-onnx 1.13.8，粗转录为 SenseVoice INT8，模型路径 `models/speech-v1/sensevoice/model.int8.onnx`；依据 `crates/hear-worker/src/main.rs`、`crates/hear-core/src/model_pack.rs`、`crates/hear-core/src/coarse.rs`。
+- 已核实：当前代码使用 sherpa-onnx 1.13.8，粗转录为 SenseVoice INT8，模型路径 `models/speech-v1/sensevoice/model.int8.onnx`；依据 `crates/loppi-worker/src/main.rs`、`crates/loppi-core/src/model_pack.rs`、`crates/loppi-core/src/coarse.rs`。
 - 已核实：生产粗转配置为 `language=auto`、`use_itn=true`、2 线程；16 kHz 输入，持续语音约 20 秒主动切分，输入硬上限 30 秒。基线应复用生产解码、逐块重采样与分段，不能简单将整场音频交给模型后声称复现当前链路。
 - 已核实：私有数据位于 `~/Library/Application Support/hear/`，SQLite 与 Opus 文件是正文/音频依据，日志用于追溯；只读初查约 484 个未删除事件、23,158 条粗转、31,599 条精转（运行中会变化），425 个事件在时间上同时与三类数据相交。该数字只是候选池，不代表已完成音频完整性或当前精转归属验证；最近 100 个留存媒体引用均存在。
 - 已核实：参考精转来自火山录音文件识别，当前请求资源 `volc.seedasr.auc`，当前 `submit_audio` 只发送音频及识别/说话人选项，不发送粗转文本。用户纠错存于 `text_corrections`，初查只有 2 条，不能假定现有精转普遍经过人工校对。当前有效结果须结合 `event_asr_refs`、`cloud_tasks`、`precise_segments` 与人工纠错读取，不能按时间相交拼入旧版本或重复请求。

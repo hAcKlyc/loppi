@@ -1600,85 +1600,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hear-cli"
-version = "0.1.14"
-dependencies = [
- "clap",
- "hear-protocol",
- "rpassword",
- "serde_json",
- "uuid",
-]
-
-[[package]]
-name = "hear-core"
-version = "0.1.14"
-dependencies = [
- "base64 0.22.1",
- "bzip2 0.5.2",
- "cc",
- "cpal",
- "fs2",
- "hear-protocol",
- "httpdate",
- "libc",
- "ogg",
- "opus2",
- "rtrb",
- "rusqlite",
- "security-framework",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "sherpa-onnx",
- "tar",
- "tempfile",
- "ureq",
- "uuid",
-]
-
-[[package]]
-name = "hear-desktop"
-version = "0.1.14"
-dependencies = [
- "cc",
- "hear-protocol",
- "libc",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "uuid",
-]
-
-[[package]]
-name = "hear-protocol"
-version = "0.1.14"
-dependencies = [
- "chrono",
- "chrono-tz",
- "dirs",
- "fs2",
- "iana-time-zone",
- "serde",
- "serde_json",
- "uuid",
-]
-
-[[package]]
-name = "hear-worker"
-version = "0.1.14"
-dependencies = [
- "hear-protocol",
- "libc",
- "serde",
- "serde_json",
- "sherpa-onnx",
- "tempfile",
-]
-
-[[package]]
 name = "heck"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2332,6 +2253,85 @@ name = "log"
 version = "0.4.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
+
+[[package]]
+name = "loppi-cli"
+version = "0.1.14"
+dependencies = [
+ "clap",
+ "loppi-protocol",
+ "rpassword",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "loppi-core"
+version = "0.1.14"
+dependencies = [
+ "base64 0.22.1",
+ "bzip2 0.5.2",
+ "cc",
+ "cpal",
+ "fs2",
+ "httpdate",
+ "libc",
+ "loppi-protocol",
+ "ogg",
+ "opus2",
+ "rtrb",
+ "rusqlite",
+ "security-framework",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "sherpa-onnx",
+ "tar",
+ "tempfile",
+ "ureq",
+ "uuid",
+]
+
+[[package]]
+name = "loppi-desktop"
+version = "0.1.14"
+dependencies = [
+ "cc",
+ "libc",
+ "loppi-protocol",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "uuid",
+]
+
+[[package]]
+name = "loppi-protocol"
+version = "0.1.14"
+dependencies = [
+ "chrono",
+ "chrono-tz",
+ "dirs",
+ "fs2",
+ "iana-time-zone",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "loppi-worker"
+version = "0.1.14"
+dependencies = [
+ "libc",
+ "loppi-protocol",
+ "serde",
+ "serde_json",
+ "sherpa-onnx",
+ "tempfile",
+]
 
 [[package]]
 name = "lzma-rust2"

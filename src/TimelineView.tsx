@@ -547,7 +547,7 @@ export function TimelineView({
 													className={`event-card-state ${processingIssue ? "is-failed" : ""}`}
 													title={
 														processingState === "fit_credentials_unavailable"
-															? "请重新打开 hear；若仍失败，请在设置中重新保存云端密钥"
+															? "请重新打开 loppi；若仍失败，请在设置中重新保存云端密钥"
 															: undefined
 													}
 												>

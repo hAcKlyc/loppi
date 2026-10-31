@@ -71,11 +71,11 @@ flowchart LR
 值得保留的资产：
 
 - **核心掌握事实，GUI 与 CLI 共享协议。**不要把录音搬进 WebView，也不要让后台 worker 自行改主数据库。
-- **短块不可变媒体、写入前准备记录、文件同步后发布。**这是崩溃恢复基础，不应为跑分去掉。[封块](../../crates/hear-core/src/record.rs#L156)、[媒体写入](../../crates/hear-core/src/media.rs#L164)
-- **零采样静音与 VAD 无人声分开；失败、未完成不直接删除。**这是可靠保留的产品契约。[保留策略](../../crates/hear-core/src/retention.rs#L22)
-- **20 秒主动语音分段、推理独立进程、音频与响应大小边界。**已经解决一部分内存无界问题；不能重新建议一个不存在的“整场 PCM 一次装内存”问题。[worker](../../crates/hear-worker/src/main.rs#L11)、[ASR 拼接](../../crates/hear-core/src/events.rs#L3064)
-- **云任务先持久化身份、重启查询旧请求、发布前复核版本。**边界变更和清理不能被迟到结果复活。[任务领取](../../crates/hear-core/src/events.rs#L2138)、[外发与发布](../../crates/hear-core/src/main.rs#L639)
-- **播放已有独立只读连接，导出已经分页处理并另开连接。**优化应扩展已有模式，而不是误判为全部操作都在同一连接完成。[调度](../../crates/hear-core/src/main.rs#L2260)、[导出](../../crates/hear-core/src/archive.rs#L293)
+- **短块不可变媒体、写入前准备记录、文件同步后发布。**这是崩溃恢复基础，不应为跑分去掉。[封块](../../crates/loppi-core/src/record.rs#L156)、[媒体写入](../../crates/loppi-core/src/media.rs#L164)
+- **零采样静音与 VAD 无人声分开；失败、未完成不直接删除。**这是可靠保留的产品契约。[保留策略](../../crates/loppi-core/src/retention.rs#L22)
+- **20 秒主动语音分段、推理独立进程、音频与响应大小边界。**已经解决一部分内存无界问题；不能重新建议一个不存在的“整场 PCM 一次装内存”问题。[worker](../../crates/loppi-worker/src/main.rs#L11)、[ASR 拼接](../../crates/loppi-core/src/events.rs#L3064)
+- **云任务先持久化身份、重启查询旧请求、发布前复核版本。**边界变更和清理不能被迟到结果复活。[任务领取](../../crates/loppi-core/src/events.rs#L2138)、[外发与发布](../../crates/loppi-core/src/main.rs#L639)
+- **播放已有独立只读连接，导出已经分页处理并另开连接。**优化应扩展已有模式，而不是误判为全部操作都在同一连接完成。[调度](../../crates/loppi-core/src/main.rs#L2260)、[导出](../../crates/loppi-core/src/archive.rs#L293)
 
 现有最核心的架构问题，是这些资产之间仍有阻塞依赖和缺少预算的后台活动，而不是语言、框架或 SQLite 本身选错了。
 
@@ -102,7 +102,7 @@ flowchart LR
 
 ### 4.1 F01：采集隔离还差最后一段
 
-麦克风回调中 `collect()`、系统声回调中 `to_vec()` 分配音频包，再 `try_send` 至 64 包队列。后续消费线程完成重采样，积累 5 秒音频，准备清单、编码、文件同步、最终清单写入都在它继续消费下一包之前发生。[麦克风](../../crates/hear-core/src/microphone.rs#L134)、[系统声回调](../../crates/hear-core/src/system_audio.rs#L89)、[封块](../../crates/hear-core/src/record.rs#L156)、[持久化闭包](../../crates/hear-core/src/main.rs#L898)
+麦克风回调中 `collect()`、系统声回调中 `to_vec()` 分配音频包，再 `try_send` 至 64 包队列。后续消费线程完成重采样，积累 5 秒音频，准备清单、编码、文件同步、最终清单写入都在它继续消费下一包之前发生。[麦克风](../../crates/loppi-core/src/microphone.rs#L134)、[系统声回调](../../crates/loppi-core/src/system_audio.rs#L89)、[封块](../../crates/loppi-core/src/record.rs#L156)、[持久化闭包](../../crates/loppi-core/src/main.rs#L898)
 
 这不是“识别直接堵住录音”，而是：
 
@@ -120,7 +120,7 @@ Apple 明确将音频实时线程中的锁阻塞、内存分配和复杂工作�
 
 ### 4.2 F02 / F03：更确定、回报更高的是消除历史扫描
 
-`capture_supervisor` 每次循环调用 `store.state()`，循环末尾休眠 250 ms；`read_state` 每次汇总全体 `audio_blocks.bytes`。每次完成封块的 `storage_available` 又汇总一次。状态 IPC 和部分日志的 revision 读取也会走这条路径。即便用户已暂停，supervisor 仍在运行。[控制循环](../../crates/hear-core/src/main.rs#L1018)、[容量检查](../../crates/hear-core/src/main.rs#L3519)、[状态查询](../../crates/hear-core/src/main.rs#L3997)
+`capture_supervisor` 每次循环调用 `store.state()`，循环末尾休眠 250 ms；`read_state` 每次汇总全体 `audio_blocks.bytes`。每次完成封块的 `storage_available` 又汇总一次。状态 IPC 和部分日志的 revision 读取也会走这条路径。即便用户已暂停，supervisor 仍在运行。[控制循环](../../crates/loppi-core/src/main.rs#L1018)、[容量检查](../../crates/loppi-core/src/main.rs#L3519)、[状态查询](../../crates/loppi-core/src/main.rs#L3997)
 
 此外，当前没有 `audio_blocks(media_path)`、`(session_id, sample_start)` 或针对待分析记录的索引。源码与本机实际 schema 一致。直接后果包括：
 
@@ -140,23 +140,23 @@ Apple 明确将音频实时线程中的锁阻塞、内存分配和复杂工作�
 
 不能据此宣称“产品快了几万倍”：实验没有计入写入维护、业务投影、IPC、UI、真实历史分布和冷缓存。它证明的是：**很多高频操作可以只随待办或当前范围增长，没有必要随全部历史增长。**
 
-启动流程先执行删除恢复、媒体恢复、孤儿扫描等，再启动采集线程和请求接收循环。socket 已创建也不等于服务可用。应把恢复拆为“必须先完成的有限恢复”和“可后台续做的历史巡检”。[启动顺序](../../crates/hear-core/src/main.rs#L126)、[孤儿扫描](../../crates/hear-core/src/main.rs#L3229)
+启动流程先执行删除恢复、媒体恢复、孤儿扫描等，再启动采集线程和请求接收循环。socket 已创建也不等于服务可用。应把恢复拆为“必须先完成的有限恢复”和“可后台续做的历史巡检”。[启动顺序](../../crates/loppi-core/src/main.rs#L126)、[孤儿扫描](../../crates/loppi-core/src/main.rs#L3229)
 
-还有一项容易漏掉的启动成本：`knowledge::init` 每次执行两条全量 `INSERT OR IGNORE ... SELECT`，从粗转和精转表回填搜索记录。已有触发器承担后续增量更新，这类全量回填应变为版本化、可续跑的一次迁移；“OR IGNORE”避免重复插入，并不会免去遍历原表的成本。[搜索初始化](../../crates/hear-core/src/knowledge.rs#L149)
+还有一项容易漏掉的启动成本：`knowledge::init` 每次执行两条全量 `INSERT OR IGNORE ... SELECT`，从粗转和精转表回填搜索记录。已有触发器承担后续增量更新，这类全量回填应变为版本化、可续跑的一次迁移；“OR IGNORE”避免重复插入，并不会免去遍历原表的成本。[搜索初始化](../../crates/loppi-core/src/knowledge.rs#L149)
 
 ### 4.3 F04 / F07：重启能力不等于故障隔离
 
 现有 2/4/8/16/30 秒来源重试、3 秒回调停滞检测、Tap 预检与启动超时值得保留。但仍存在以下边界：
 
-- `SystemAudio::start` 的 Tap 超时，以及 `Drop` 的原生停止失败，会 `process::exit(70)`。这是避免失控采集和悬空回调的保护，却也结束同进程中的麦克风、存储和队列。[系统声生命周期](../../crates/hear-core/src/system_audio.rs#L174)
-- supervisor 对来源线程串行 `join`；线程若卡在不可取消的原生调用或存储操作，另一来源的监督与整个退出过程可能受影响。不能靠普通 Rust 线程“超时后杀线程”解决。[监督循环](../../crates/hear-core/src/main.rs#L1088)
-- 原生 Tap 忽略 `input_time`；CPAL 也没有把输入时间戳传入自己的包，当前采用回调到达时刻减包时长。调度抖动与真实声音时间的偏差需要单独测量，不能只检查数据库时间递增。[Tap 回调](../../crates/hear-core/native/system_audio_tap.m#L57)、[包定义](../../crates/hear-core/src/capture.rs#L3)
-- 重建本地 worker 时，仅对当前块的来源调用一次 `replay_context`。随后另一来源恢复处理时没有同等回放步骤。共享进程重启必须按每条流分别恢复，而非以进程重建完成为准。[分析循环](../../crates/hear-core/src/main.rs#L329)
-- `started()` 在设备打开后、第一包到来之前设置 active；实际进度需要回调、消费、可靠封块三层心跳证明。现有 UI 可以继续使用原状态，只改判定依据。[录音入口](../../crates/hear-core/src/record.rs#L305)
+- `SystemAudio::start` 的 Tap 超时，以及 `Drop` 的原生停止失败，会 `process::exit(70)`。这是避免失控采集和悬空回调的保护，却也结束同进程中的麦克风、存储和队列。[系统声生命周期](../../crates/loppi-core/src/system_audio.rs#L174)
+- supervisor 对来源线程串行 `join`；线程若卡在不可取消的原生调用或存储操作，另一来源的监督与整个退出过程可能受影响。不能靠普通 Rust 线程“超时后杀线程”解决。[监督循环](../../crates/loppi-core/src/main.rs#L1088)
+- 原生 Tap 忽略 `input_time`；CPAL 也没有把输入时间戳传入自己的包，当前采用回调到达时刻减包时长。调度抖动与真实声音时间的偏差需要单独测量，不能只检查数据库时间递增。[Tap 回调](../../crates/loppi-core/native/system_audio_tap.m#L57)、[包定义](../../crates/loppi-core/src/capture.rs#L3)
+- 重建本地 worker 时，仅对当前块的来源调用一次 `replay_context`。随后另一来源恢复处理时没有同等回放步骤。共享进程重启必须按每条流分别恢复，而非以进程重建完成为准。[分析循环](../../crates/loppi-core/src/main.rs#L329)
+- `started()` 在设备打开后、第一包到来之前设置 active；实际进度需要回调、消费、可靠封块三层心跳证明。现有 UI 可以继续使用原状态，只改判定依据。[录音入口](../../crates/loppi-core/src/record.rs#L305)
 
 ### 4.4 F05 / F06：判定、识别与资源治理应各司其职
 
-当前 worker 在 VAD 产出一段语音时立即同步执行 SenseVoice，然后才返回该块的 `speech_active` 和文本；core 在收到完整结果后提交保留判定。两路来源虽然各有 VAD 状态，但共享一个串行请求入口。[worker 处理](../../crates/hear-worker/src/main.rs#L129)、[发布与保留](../../crates/hear-core/src/main.rs#L3658)
+当前 worker 在 VAD 产出一段语音时立即同步执行 SenseVoice，然后才返回该块的 `speech_active` 和文本；core 在收到完整结果后提交保留判定。两路来源虽然各有 VAD 状态，但共享一个串行请求入口。[worker 处理](../../crates/loppi-worker/src/main.rs#L129)、[发布与保留](../../crates/loppi-core/src/main.rs#L3658)
 
 其影响不是当前必然误删，而是：**复杂识别或某一路很长的语音，会推迟另一来源的检测、粗转和无人声回收。**待办在数据库中，不会把全天 PCM 全装进内存，这是正确的；但磁盘积压、最新内容延迟与模型内存仍需要管理。
 
@@ -166,23 +166,23 @@ ONNX Runtime 的 arena 可能保留已申请内存；高平台不自动等于泄
 
 ### 4.5 F08 / F12：后台任务有边界，但恢复和吞吐还可改进
 
-声纹每条观察启动 `hear-worker embed` 并创建模型，天然会释放进程内存，但反复支付加载成本。所有提取串行，尚无优先级或闲时复用策略；`worker_timeout` 等临时错误最终进入 `unavailable`，没有与音质不合格区分重试生命周期。[声纹循环](../../crates/hear-core/src/main.rs#L548)、[错误终态](../../crates/hear-core/src/knowledge.rs#L1431)
+声纹每条观察启动 `hear-worker embed` 并创建模型，天然会释放进程内存，但反复支付加载成本。所有提取串行，尚无优先级或闲时复用策略；`worker_timeout` 等临时错误最终进入 `unavailable`，没有与音质不合格区分重试生命周期。[声纹循环](../../crates/loppi-core/src/main.rs#L548)、[错误终态](../../crates/loppi-core/src/knowledge.rs#L1431)
 
-全局人物匹配对每个候选读取全部有效样例并解码向量，且在事务内完成。以当前人数规模无需上向量数据库；应先按 generation 缓存已解码样例、只重算受影响范围，把纯计算移出写事务，发布时重新校验 generation。不能因此降低人工确认优先级或把单句命中扩散到整组。[匹配](../../crates/hear-core/src/knowledge.rs#L1977)
+全局人物匹配对每个候选读取全部有效样例并解码向量，且在事务内完成。以当前人数规模无需上向量数据库；应先按 generation 缓存已解码样例、只重算受影响范围，把纯计算移出写事务，发布时重新校验 generation。不能因此降低人工确认优先级或把单句命中扩散到整组。[匹配](../../crates/loppi-core/src/knowledge.rs#L1977)
 
-云端已经有请求大小上限和单 provider 队列，也已有稀疏音频分段与 10 秒 PCM slab，值得保留。问题在于每次重新建连接池、慢请求占用调度机会、读取错误分类不完整、退避没有全局压力感知。例如 `provider_read_failed` 不在 `task_failed` 的 transient 列表，应按“响应未知、查询旧远端 ID、可重试”评估，而非直接制造永久失败。[HTTP](../../crates/hear-core/src/cloud.rs#L86)、[失败处理](../../crates/hear-core/src/events.rs#L2368)
+云端已经有请求大小上限和单 provider 队列，也已有稀疏音频分段与 10 秒 PCM slab，值得保留。问题在于每次重新建连接池、慢请求占用调度机会、读取错误分类不完整、退避没有全局压力感知。例如 `provider_read_failed` 不在 `task_failed` 的 transient 列表，应按“响应未知、查询旧远端 ID、可重试”评估，而非直接制造永久失败。[HTTP](../../crates/loppi-core/src/cloud.rs#L86)、[失败处理](../../crates/loppi-core/src/events.rs#L2368)
 
 ### 4.6 F09 / F10 / F11：用户体感也有明确的底层原因
 
-清理已经把重编码准备移出主库锁，并只在清理范围接近录音前沿时暂停采集；不能把它说成“任何清理都停录”。剩余问题是删除队列 `drain_deletions` 一次循环清空任务，并在部分调用点一直持有主库锁，文件系统长尾会被带进采集依赖链。[清理调度](../../crates/hear-core/src/main.rs#L2306)、[删除队列](../../crates/hear-core/src/cleanup.rs#L1031)
+清理已经把重编码准备移出主库锁，并只在清理范围接近录音前沿时暂停采集；不能把它说成“任何清理都停录”。剩余问题是删除队列 `drain_deletions` 一次循环清空任务，并在部分调用点一直持有主库锁，文件系统长尾会被带进采集依赖链。[清理调度](../../crates/loppi-core/src/main.rs#L2306)、[删除队列](../../crates/loppi-core/src/cleanup.rs#L1031)
 
 播放器在当前 5 秒音频触发 `onEnded` 后才获取下一块，随后设置新的 data URL 再播放。即使单块读取很快，链路也没有为接续留提前量。可保持完全相同的播放器交互，增加有界预取与连续调度。[播放器](../../src/DetailDrawer.tsx#L351)、[接续触发](../../src/DetailDrawer.tsx#L702)
 
-GUI 时间线轮询已有前台判断，不能再建议“首次加前台判断”；真正仍需优化的是每 5 秒的全局上下文刷新，以及当前详情逐句计算 revision 的查询成本。CLI 短关键词搜索用 `instr`，若性能不达标，可加辅助候选索引再用原匹配条件复核，不能把“两字搜不到”当作性能优化。[上下文刷新](../../src/App.tsx#L217)、[刷新节奏](../../src/App.tsx#L310)、[详情 revision](../../crates/hear-core/src/events.rs#L1793)、[搜索](../../crates/hear-core/src/knowledge.rs#L810)
+GUI 时间线轮询已有前台判断，不能再建议“首次加前台判断”；真正仍需优化的是每 5 秒的全局上下文刷新，以及当前详情逐句计算 revision 的查询成本。CLI 短关键词搜索用 `instr`，若性能不达标，可加辅助候选索引再用原匹配条件复核，不能把“两字搜不到”当作性能优化。[上下文刷新](../../src/App.tsx#L217)、[刷新节奏](../../src/App.tsx#L310)、[详情 revision](../../crates/loppi-core/src/events.rs#L1793)、[搜索](../../crates/loppi-core/src/knowledge.rs#L810)
 
 ### 4.7 F13：局部编码优化有收益，但不是主矛盾
 
-`OpusBlock::push` 先把输入追加到 Vec，再每 960 样本从头 drain；录音封块一次传入 240,000 样本，会反复搬移剩余数据。仅计算尾部搬移，约 `960 × (249+…+1) × 4 = 119,520,000` 字节/5 秒块，不等于同等磁盘 IO 或实际 DRAM 流量。[编码](../../crates/hear-core/src/media.rs#L131)
+`OpusBlock::push` 先把输入追加到 Vec，再每 960 样本从头 drain；录音封块一次传入 240,000 样本，会反复搬移剩余数据。仅计算尾部搬移，约 `960 × (249+…+1) × 4 = 119,520,000` 字节/5 秒块，不等于同等磁盘 IO 或实际 DRAM 流量。[编码](../../crates/loppi-core/src/media.rs#L131)
 
 直接引用生产媒体模块、交替运行两种输入方式，去掉各自第一轮后 15 次中位数：
 
@@ -272,7 +272,7 @@ WHERE analysis_state='pending'
 
 **第四步，分层启动。**必须先修复未完成封块、打开会话、当前清理屏障和任务领取状态；历史孤儿扫描、物理垃圾回收、完整性巡检改成有界批次和持久游标。后台扫描期间，新封块、清理和恢复必须能安全并发；“先服务”不能靠忽略未完成删除实现。
 
-搜索回填等历史迁移单独记版本；候选重建保留当前增量游标，但迟到粗转可能把游标推回较早历史，追赶要分批并保持跨窗事件延续语义。[候选刷新](../../crates/hear-core/src/events.rs#L433)
+搜索回填等历史迁移单独记版本；候选重建保留当前增量游标，但迟到粗转可能把游标推回较早历史，追赶要分批并保持跨窗事件延续语义。[候选刷新](../../crates/loppi-core/src/events.rs#L433)
 
 **第五步，测 WAL 后再调。**设置可观测的 WAL 大小、checkpoint 耗时和最老读事务；必要时用独立维护连接做 PASSIVE checkpoint，低负载时再尝试收缩。不能在采集热路径强制 TRUNCATE，也不应直接关闭自动 checkpoint 却没有替代调度。WAL 默认 checkpoint 可能由触发提交的线程执行；降低 `synchronous` 会改变掉电耐久性，本文不建议以此换跑分。[SQLite checkpoint 与耐久性](https://www.sqlite.org/wal.html)
 
@@ -480,7 +480,7 @@ CoreAudio/CPAL 实时回调与 ScreenCaptureKit 的样本交付队列分别测�
 - VAD 与粗转分离，按来源恢复，保持保留语义和时间轴。
 - 统一资源准入、压力降载、任务延期与公平追赶；冻结机器分档预算。
 - 声纹短批次复用/空闲退出；区分临时失败和不可处理；纯匹配计算移出写事务。
-- 把超时改为贯穿一次操作的绝对 deadline；当前分析 stdin、响应长度、响应体分别给 30 秒，不能将其理解为整次操作最多 30 秒。[分析 IPC](../../crates/hear-core/src/analysis.rs#L93)
+- 把超时改为贯穿一次操作的绝对 deadline；当前分析 stdin、响应长度、响应体分别给 30 秒，不能将其理解为整次操作最多 30 秒。[分析 IPC](../../crates/loppi-core/src/analysis.rs#L93)
 
 完成条件：模型慢/挂/超预算时采集持续，内存稳定，VAD 与粗转都可恢复，受压后的积压有可解释且足够的追赶速度，留出质量集不退化。
 

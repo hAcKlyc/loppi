@@ -12,7 +12,7 @@ review: passed (requirements, adversarial, architecture)
 
 ## 执行须知
 
-本文件是独立可执行的原子交付契约。先读 `specs/ARCHITECTURE.md`、`specs/tech_docs/algorithms.md` 和 `diagnostics-and-verification.md`。实现 owner 是 `crates/hear-core/src/events.rs`，纠错和清理分别由 `knowledge.rs`、`cleanup.rs` 发起。仓库无 CLAUDE.md。先核对真实代码，不沿用研究阶段旧版 `unorganized` 输出要求。
+本文件是独立可执行的原子交付契约。先读 `specs/ARCHITECTURE.md`、`specs/tech_docs/algorithms.md` 和 `diagnostics-and-verification.md`。实现 owner 是 `crates/loppi-core/src/events.rs`，纠错和清理分别由 `knowledge.rs`、`cleanup.rs` 发起。仓库无 CLAUDE.md。先核对真实代码，不沿用研究阶段旧版 `unorganized` 输出要求。
 
 用户已明确要求“按这个范围写一份 PRD……然后直接开始正式的开发到完成”，因此本次成稿承接已收敛需求，记录 ready-for-development 审核通过后直接进入 in-progress，无二次确认步骤。整个交付包含实现、测试、独立三视角审查与提交；不包含安装、签名发行或修改正在使用的录音数据库。
 

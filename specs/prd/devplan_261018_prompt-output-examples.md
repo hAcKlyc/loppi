@@ -25,7 +25,7 @@ updated: 2026-10-18
   - [x] 提示词与示例合法性/消费路径验证
   - [x] 静态/构建、cross-review、提交
 ### Review 基线
-- Base: 1bd8805（动代码前 HEAD）；范围：crates/hear-core/src/{events,moments,cloud}.rs 和本 devplan。
+- Base: 1bd8805（动代码前 HEAD）；范围：crates/loppi-core/src/{events,moments,cloud}.rs 和本 devplan。
 - 其它工作树文件全部排除。
 ### 待用户决策
 无。

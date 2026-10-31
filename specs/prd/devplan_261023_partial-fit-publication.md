@@ -52,7 +52,7 @@ updated: 2026-10-23
 ### 本批 Review Contract
 - Mode: repair；requirement source 为本文及用户“弱化校验、字段异常仅作废字段、局部失败不扩大、拒绝过度防御”的明确指令。
 - Target/base: 当前完整工作树相对 97e97f9a66ad3086e32a73352481a85704b37c9c。
-- In-scope: crates/hear-core/src/events.rs、events/activity_tests.rs、events/asr.rs、events/asr/tests.rs、diagnostic_tests.rs；src/TimelineView.tsx；scripts/test_timeline_view.mjs、test_partial_fit.html；specs/ARCHITECTURE.md、tech_docs/algorithms.md、tech_docs/diagnostics-and-verification.md、本计划。
+- In-scope: crates/loppi-core/src/events.rs、events/activity_tests.rs、events/asr.rs、events/asr/tests.rs、diagnostic_tests.rs；src/TimelineView.tsx；scripts/test_timeline_view.mjs、test_partial_fit.html；specs/ARCHITECTURE.md、tech_docs/algorithms.md、tech_docs/diagnostics-and-verification.md、本计划。
 - Out-of-scope: 私有证据、活跃数据库和安装包、共享缓存/构建输出；没有其他 writer 改动。
 - 保证/非目标/本次负责问题/允许机制：严格按上方开发契约。不把被用户明确取消的完整覆盖、整批拒绝、固定数量、无效条目清除旧结果重新升级为保证；没有新增状态、owner、队列、协议或恢复器。仅本次引入/显著暴露或本需求明确拥有的问题阻塞。
 - Required lenses: requirements、adversarial、最终 architecture，fresh-context、只读。

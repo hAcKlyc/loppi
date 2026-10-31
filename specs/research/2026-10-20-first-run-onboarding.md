@@ -158,13 +158,13 @@ API Key 沿用现有「回车或离开输入框后验证并保存」行为，验
 | 默认时间线、默认隐藏粗转、前台刷新 | [App.tsx](../../src/App.tsx)，`Page`、`useState("timeline")`、`hideCoarse`、`refreshContext` |
 | 当前设置页 | [WorkspaceViews.tsx](../../src/WorkspaceViews.tsx)，`SettingsView` |
 | 未就绪进入设置的文案与动作 | [capture-status.ts](../../src/capture-status.ts)，`captureStatusView` |
-| 模型下载、校验、暂存 | [model_pack.rs](../../crates/hear-core/src/model_pack.rs)，`download`、`install`、`install_speaker` |
-| Core 初始化、开始门槛与试录 | [main.rs](../../crates/hear-core/src/main.rs)，`Store::new`、`Request::Start`、`PrepareModels`、`Probe`、`RecordTest` |
-| 当前能力诊断 | [diagnostics.rs](../../crates/hear-core/src/diagnostics.rs)，`apply` |
-| 两项云的配置含义 | [events.rs](../../crates/hear-core/src/events.rs)，`configured` |
-| 云验证实际请求 | [cloud.rs](../../crates/hear-core/src/cloud.rs)，`verify_llm`、`verify_asr` |
+| 模型下载、校验、暂存 | [model_pack.rs](../../crates/loppi-core/src/model_pack.rs)，`download`、`install`、`install_speaker` |
+| Core 初始化、开始门槛与试录 | [main.rs](../../crates/loppi-core/src/main.rs)，`Store::new`、`Request::Start`、`PrepareModels`、`Probe`、`RecordTest` |
+| 当前能力诊断 | [diagnostics.rs](../../crates/loppi-core/src/diagnostics.rs)，`apply` |
+| 两项云的配置含义 | [events.rs](../../crates/loppi-core/src/events.rs)，`configured` |
+| 云验证实际请求 | [cloud.rs](../../crates/loppi-core/src/cloud.rs)，`verify_llm`、`verify_asr` |
 | GUI 权限和关闭窗口 | [lib.rs](../../src-tauri/src/lib.rs)，`privacy_status`、三个权限请求命令、`CloseRequested` |
-| 原生权限、版本选择 | [privacy.m](../../src-tauri/native/privacy.m)、[system_audio_tap.m](../../crates/hear-core/native/system_audio_tap.m) |
+| 原生权限、版本选择 | [privacy.m](../../src-tauri/native/privacy.m)、[system_audio_tap.m](../../crates/loppi-core/native/system_audio_tap.m) |
 | 登录项状态与注册 | [agent.m](../../src-tauri/native/agent.m) |
 | 首条本地记录过滤 | [TimelineView.tsx](../../src/TimelineView.tsx)，`visible` |
 | 系统支持/安装包配置 | [tauri.conf.json](../../src-tauri/tauri.conf.json)、[package_macos.sh](../../scripts/package_macos.sh)、[README.md](../../README.md) |

@@ -352,7 +352,7 @@ MyAgents 的现有录音代码是复用基础，不等于它的一次 Record、8
 
 - **模式/基线：**`repair`；target 为当前工作树，base 为 `6bd4e2c`。第一阶段固定快照做需求与故障审查，修复后由全新上下文做架构终审。
 - **需求源：**本 PRD 第 8–11 节的日时间线、事件详情、时刻动作、人物/队列/设置、导出和两种清理、完整 CLI；`specs/DESIGN.md` 的视觉 token 与组件规则；第 12 节真实界面与 OS 验收；RFC 的单写入核心、截图/OCR、悬浮窗口和 IPC 边界；`plan.md` Batch 5 门槛。
-- **范围：**本批 `git diff 6bd4e2c` 及未跟踪的 `crates/hear-core/src/moments.rs`、`playback.rs`、`native/moments.m`、`src/api.ts`、`TimelineView.tsx`、`DetailDrawer.tsx`、`FloatingWidget.tsx`、`WorkspaceViews.tsx`。包含本批修改的核心/CLI/协议、Tauri 配置与桥接、前端、依赖锁文件及 PRD/RFC/计划；不回卷 Batch 1–4 已提交实现。
+- **范围：**本批 `git diff 6bd4e2c` 及未跟踪的 `crates/loppi-core/src/moments.rs`、`playback.rs`、`native/moments.m`、`src/api.ts`、`TimelineView.tsx`、`DetailDrawer.tsx`、`FloatingWidget.tsx`、`WorkspaceViews.tsx`。包含本批修改的核心/CLI/协议、Tauri 配置与桥接、前端、依赖锁文件及 PRD/RFC/计划；不回卷 Batch 1–4 已提交实现。
 - **必须保证：**主动动作按真实时刻持久保存，搜索/导出/清理与现有权威核心一致；每日倒序浏览和事件内正序精转；详情支持音频、人物和逐句纠错；悬浮入口具备重点、截图、评论和暂停；可调整音频上限接近时提示、到达后暂停且只手动恢复；CLI 具有本版完整核心操作且不绕过权限/清理。截图仅用户触发并本地 OCR，云端上传边界不扩大。
 - **明确不做：**界面搜索、自动摘要、自动截屏、Windows、云端预算拦截；Batch 5 不以长时模拟代替 Batch 6 的多小时/近全天、签名公证和质量/功耗门槛。
 - **本次负责的问题/可新增机制：**只审本批引入或明确负责的缺陷；允许在现有单写入核心内增加时刻动作、播放、截图/OCR、可调存储上限及版本化 IPC，不另建事实库、后台服务或外发路径。

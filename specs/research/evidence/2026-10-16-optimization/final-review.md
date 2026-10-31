@@ -17,38 +17,38 @@
 ## In-scope files
 
 - `Cargo.lock`
-- `crates/hear-cli/src/main.rs`
-- `crates/hear-protocol/src/lib.rs`
-- `crates/hear-core/Cargo.toml`
-- `crates/hear-core/build.rs`
-- `crates/hear-core/native/resources.m`
-- `crates/hear-core/native/system_audio.m`
-- `crates/hear-core/native/system_audio_tap.m`
-- `crates/hear-core/src/analysis.rs`
-- `crates/hear-core/src/archive.rs`
-- `crates/hear-core/src/capture.rs`
-- `crates/hear-core/src/cleanup.rs`
-- `crates/hear-core/src/cloud.rs`
-- `crates/hear-core/src/coarse.rs`
-- `crates/hear-core/src/events.rs`
-- `crates/hear-core/src/ingestion.rs`
-- `crates/hear-core/src/inventory.rs`
-- `crates/hear-core/src/knowledge.rs`
-- `crates/hear-core/src/main.rs`
-- `crates/hear-core/src/media.rs`
-- `crates/hear-core/src/microphone.rs`
-- `crates/hear-core/src/moments.rs`
-- `crates/hear-core/src/playback.rs`
-- `crates/hear-core/src/reads.rs`
-- `crates/hear-core/src/record.rs`
-- `crates/hear-core/src/recovery.rs`
-- `crates/hear-core/src/resources.rs`
-- `crates/hear-core/src/retention.rs`
-- `crates/hear-core/src/source_process.rs`
-- `crates/hear-core/src/storage.rs`
-- `crates/hear-core/src/system_audio.rs`
-- `crates/hear-worker/Cargo.toml`
-- `crates/hear-worker/src/main.rs`
+- `crates/loppi-cli/src/main.rs`
+- `crates/loppi-protocol/src/lib.rs`
+- `crates/loppi-core/Cargo.toml`
+- `crates/loppi-core/build.rs`
+- `crates/loppi-core/native/resources.m`
+- `crates/loppi-core/native/system_audio.m`
+- `crates/loppi-core/native/system_audio_tap.m`
+- `crates/loppi-core/src/analysis.rs`
+- `crates/loppi-core/src/archive.rs`
+- `crates/loppi-core/src/capture.rs`
+- `crates/loppi-core/src/cleanup.rs`
+- `crates/loppi-core/src/cloud.rs`
+- `crates/loppi-core/src/coarse.rs`
+- `crates/loppi-core/src/events.rs`
+- `crates/loppi-core/src/ingestion.rs`
+- `crates/loppi-core/src/inventory.rs`
+- `crates/loppi-core/src/knowledge.rs`
+- `crates/loppi-core/src/main.rs`
+- `crates/loppi-core/src/media.rs`
+- `crates/loppi-core/src/microphone.rs`
+- `crates/loppi-core/src/moments.rs`
+- `crates/loppi-core/src/playback.rs`
+- `crates/loppi-core/src/reads.rs`
+- `crates/loppi-core/src/record.rs`
+- `crates/loppi-core/src/recovery.rs`
+- `crates/loppi-core/src/resources.rs`
+- `crates/loppi-core/src/retention.rs`
+- `crates/loppi-core/src/source_process.rs`
+- `crates/loppi-core/src/storage.rs`
+- `crates/loppi-core/src/system_audio.rs`
+- `crates/loppi-worker/Cargo.toml`
+- `crates/loppi-worker/src/main.rs`
 - `scripts/audit_recording_coverage.py`
 - `scripts/macos_rusage.c`
 - `scripts/measure_macos.sh`
@@ -87,7 +87,7 @@
 
 Phase 1 completed against ba7e90e: requirements found F10/P2; adversarial found F05/F07/P1. Main Agent accepted both. Overall status remains in-progress.
 
-- R1/P2: external CLI raw-audio cleanup could leave the next prefetched 5-second chunk scheduled. Repair reuses committed ingestion cleanup generations, adds an additive read-only `playback_valid` request and optional generation in `playback_chunk`; no existing request/response fields or UI change. Player checks only while playing (one validation in flight; ~300ms cadence plus IPC), stops/releases buffered audio on matching committed cleanup; unrelated source/range and rollback do not revoke. Legacy chunks without generations use the prior one-chunk behavior. Protocol file `crates/hear-protocol/src/lib.rs` is added to the repair scope. This is bounded change detection, not an impossible cross-process zero-latency revocation guarantee.
+- R1/P2: external CLI raw-audio cleanup could leave the next prefetched 5-second chunk scheduled. Repair reuses committed ingestion cleanup generations, adds an additive read-only `playback_valid` request and optional generation in `playback_chunk`; no existing request/response fields or UI change. Player checks only while playing (one validation in flight; ~300ms cadence plus IPC), stops/releases buffered audio on matching committed cleanup; unrelated source/range and rollback do not revoke. Legacy chunks without generations use the prior one-chunk behavior. Protocol file `crates/loppi-protocol/src/lib.rs` is added to the repair scope. This is bounded change detection, not an impossible cross-process zero-latency revocation guarantee.
 - A1/P1: closed/old session state could flush VAD while a durable contiguous journal tail remained unimported. Repair requires adjacent metadata, explicit same-session gap, generation-aware cleanup boundary, or fully drained journal; preserves per-session pending order. Source gap ownership is separate from lifecycle tail ownership and survives cleanup splitting. A short directory-inode file lock makes each bounded journal listing a publication prefix: reader never waits for writer, source writer waits at most2s off callback; lock never spans DB/model work in core. This also closes the left-prefix race from enumerating a directory while new entries appear. Legacy non-journal eligibility retains the existing rule.
 - A1-related F05: stronger actual-model onset fixture (voiced onset at 4.8s) exposed premature retention of only the immediately prior block: A ended before detection, B had open speech without a completed region, A was deleted, later coarse input failed. Accepted as the same no-unconfirmed-tail-loss guarantee. Worker exposes open-utterance speech_pending; existing retention owner postpones negative deletion and resolves at most six contiguous predecessors when the region is published; replay includes pending onset. No new threshold/model/store. The fixture originally FAILED with both coarse jobs missing source; repaired version passes uninterrupted/closed delayed import/crash delayed import with exact text/time/retention equality.
 - Repair verification status: 199 workspace tests (185 core + 9 desktop + 5 protocol), Rust fmt/check/build, TS/build/lint, 24 frontend tests, 3 sampler tests, CLI four groups passed. Public eight-input comparison retains exact segments/flags/text (new speech_pending field compared separately by retention tests); actual dual-source pipeline and continuous restart/legacy tests passed. Real WK external CLI cleanup stopped playback, preserving text/event boundary. Final signed SCK/Tap native and million-row claim-scale checks passed; final signed native writer lock 11s yields 2 durable pending blocks per source without drops; killing core while locked then reboot recovers all four pending blocks with identical frame counts. Original requirements R1 and adversarial A1/onset targeted rechecks PASS. Fresh architecture full candidate initially found F06; its final repaired verdict is recorded below. Detailed results go in final-integration.json.

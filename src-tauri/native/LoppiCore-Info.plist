@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key><string>app.loppi.core</string>
+  <key>CFBundleName</key><string>loppi core</string>
+  <key>CFBundleExecutable</key><string>loppi-core</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleVersion</key><string>12</string>
+  <key>CFBundleShortVersionString</key><string>0.1.14</string>
+  <key>LSUIElement</key><true/>
+  <key>LSMinimumSystemVersion</key><string>13.0</string>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>loppi 需要使用麦克风记录你电脑可用时的人声。</string>
+  <key>NSScreenCaptureUsageDescription</key>
+  <string>loppi 需要记录电脑声音。</string>
+  <key>NSAudioCaptureUsageDescription</key>
+  <string>loppi 需要记录电脑播放的声音。</string>
+</dict>
+</plist>

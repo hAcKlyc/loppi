@@ -68,7 +68,7 @@ export function OnboardingView({
 			<div className="onboarding-drag" data-tauri-drag-region />
 			<div className="onboarding-content">
 				<header>
-					<h1>准备 Hear</h1>
+					<h1>准备 loppi</h1>
 				</header>
 				{state?.enabled_intent && (
 					<p className="setup-notice">

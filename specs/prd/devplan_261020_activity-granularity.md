@@ -36,7 +36,7 @@ updated: 2026-10-21
 
 ### 当前批次 Review 基线
 - Base：276ab29eb0908cb45ba22597a796cab8446d17ec
-- 范围：`crates/hear-core/src/events.rs`、事件专项测试/合成样本、`specs/tech_docs/algorithms.md`、本计划。
+- 范围：`crates/loppi-core/src/events.rs`、事件专项测试/合成样本、`specs/tech_docs/algorithms.md`、本计划。
 - 其它工作树修改均非本任务所有，禁止覆盖或提交。
 
 ### 待用户决策
@@ -59,7 +59,7 @@ updated: 2026-10-21
 ### Review Contract
 - mode: repair；required lenses: requirements、adversarial、architecture。
 - requirement source: 本文与用户已确认需求；base: `276ab29eb0908cb45ba22597a796cab8446d17ec`。
-- in-scope: `crates/hear-core/src/events.rs`、`crates/hear-core/src/events/activity_tests.rs`、`specs/tech_docs/algorithms.md`、本文件；tracked/untracked 均包含。
+- in-scope: `crates/loppi-core/src/events.rs`、`crates/loppi-core/src/events/activity_tests.rs`、`specs/tech_docs/algorithms.md`、本文件；tracked/untracked 均包含。
 - out-of-scope: 共享工作树其它全部修改，包括设置 UI、发布脚本和其它文档。
 - 必须保证/非目标/允许机制: 严格采用上文开发契约。没有通用历史重整或新说话人流程；终态失败后手动重试旧候选不承诺自动合并已生成的后继事件。只能阻塞本次引入、显著放大或上述验收明确负责的问题。
 - evidence: 最终静态、构建、84 事件回归；修复前 core 288 全量回归与未受影响路径证据；18/18 合成真实模型场景。按验收与结束条件定向重跑，不以其它并发修改使本次证据整体失效。

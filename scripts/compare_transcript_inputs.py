@@ -145,10 +145,10 @@ def run(args):
         for name in ('manifest.json', 'coarse-input.json'):
             shutil.copyfile(original / name, out / name)
         os.link(source, out / 'source.sqlite')
-        env = dict(os.environ, HEAR_REAL_UNDERSTANDING_ALLOW='1', HEAR_REAL_UNDERSTANDING_OUTPUT=str(out.resolve()),
-                   HEAR_REAL_UNDERSTANDING_PROMPT=str((root / 'prompt.txt').resolve()),
-                   HEAR_REAL_UNDERSTANDING_EFFORT='high', HEAR_REAL_UNDERSTANDING_DEADLINE_SECS='120')
-        env.pop('HEAR_REAL_UNDERSTANDING_RESUME', None)
+        env = dict(os.environ, LOPPI_REAL_UNDERSTANDING_ALLOW='1', LOPPI_REAL_UNDERSTANDING_OUTPUT=str(out.resolve()),
+                   LOPPI_REAL_UNDERSTANDING_PROMPT=str((root / 'prompt.txt').resolve()),
+                   LOPPI_REAL_UNDERSTANDING_EFFORT='high', LOPPI_REAL_UNDERSTANDING_DEADLINE_SECS='120')
+        env.pop('LOPPI_REAL_UNDERSTANDING_RESUME', None)
         started = time.monotonic()
         with (out / 'run.log').open('w') as log:
             result = subprocess.run([str(args.binary.resolve()), '--exact',

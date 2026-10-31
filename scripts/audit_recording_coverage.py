@@ -68,7 +68,7 @@ def audit(directory, start, end, decode=False):
     ffmpeg = shutil.which("ffmpeg") if decode else None
     if decode and not ffmpeg:
         raise ValueError("--decode requires ffmpeg")
-    db = sqlite3.connect(f"file:{(directory/'hear.sqlite').as_posix()}?mode=ro", uri=True, timeout=3)
+    db = sqlite3.connect(f"file:{(directory/'loppi.sqlite').as_posix()}?mode=ro", uri=True, timeout=3)
     db.execute("PRAGMA query_only=ON")
     result = {"from_ms": start, "to_ms": end, "decode_requested": decode, "sources": {},
               "limits": "Manifest coverage and optional decode integrity are separate from known-reference sound and speech-retention recall. No reference or quality pass is implied. Run against a stopped isolated capture for a stable final audit."}

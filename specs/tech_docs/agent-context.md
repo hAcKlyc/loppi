@@ -1,15 +1,15 @@
 # Agent Context v1
 
-2026-10-26。同一 macOS 用户下，hear 保持运行，其他 Agent 通过随包 CLI 或 stdio MCP 消费已有记录。侧栏「Agent 接入」展示实际路径、连接状态与复制入口。
+2026-10-26。同一 macOS 用户下，loppi 保持运行，其他 Agent 通过随包 CLI 或 stdio MCP 消费已有记录。侧栏「Agent 接入」展示实际路径、连接状态与复制入口。
 
 ## 架构与边界
 
 ```mermaid
 flowchart LR
-  Agent --> MCP[hear mcp serve · stdio]
-  Agent --> Skill[hear-context Skill]
-  Skill --> CLI[hear context …]
-  MCP --> Contract[hear_protocol::context]
+  Agent --> MCP[loppi mcp serve · stdio]
+  Agent --> Skill[loppi-context Skill]
+  Skill --> CLI[loppi context …]
+  MCP --> Contract[loppi_protocol::context]
   CLI --> Contract
   Contract --> IPC[现有本机 Unix socket]
   IPC --> Core[Core 读取池]
@@ -17,20 +17,21 @@ flowchart LR
   Capture[既有采集与整理] --> Data
 ```
 
-Core 是数据、有效性和查询的唯一 owner。新入口只用 `send_existing`，不启动 Core、采集、精转或云任务；没有网络监听、独立 daemon 或客户端内容缓存。内部 IPC 版本为 21；对外结果版本为 `hear.context.v1`。同 UID 的 socket 检查沿用现有实现。读取能力不意味着云端 Agent 的模型推理离线。
+Core 是数据、有效性和查询的唯一 owner。新入口只用 `send_existing`，不启动 Core、采集、精转或云任务；没有网络监听、独立 daemon 或客户端内容缓存。内部 IPC 版本为 24；对外结果版本为 `loppi.context.v1`。同 UID 的 socket 检查沿用现有实现。读取能力不意味着云端 Agent 的模型推理离线。
 
-CLI/MCP 的默认参数、校验、描述、schema 和执行入口共用 `crates/hear-protocol/src/context.rs`。MCP 是有限的 JSON-RPC stdio 适配层，支持 initialize / initialized / ping / tools/list / tools/call，协商 2025-11-25、2025-06-18；不声明可选 prompts、resources、通知或异步任务能力。每行请求最多 1 MiB，stdout 只写协议。
+CLI/MCP 的默认参数、校验、描述、schema 和执行入口共用 `crates/loppi-protocol/src/context.rs`。MCP 是有限的 JSON-RPC stdio 适配层，支持 initialize / initialized / ping / tools/list / tools/call，协商 2025-11-25、2025-06-18；不声明可选 prompts、resources、通知或异步任务能力。每行请求最多 1 MiB，stdout 只写协议。
 
 ## 能力
 
 | CLI | MCP | 用途 |
 | --- | --- | --- |
-| `context status` | `hear_status` | 当前在线状态、时区、采集和处理状态 |
-| `context list` | `hear_list_context` | 日期/范围内事件卡片、未整理区间、独立现场记录 |
-| `context search` | `hear_search_context` | 词法短语，搜索转录、笔记、截图文字、事件标题/摘要/话题/要点/对象 |
-| `context event ID --section …` | `hear_get_event` | overview、summary、topics、key_points、mentioned_objects、moments |
-| `context read` | `hear_read_context` | 按 event_id、time、refs 三选一展开证据 |
-| `context people` | `hear_list_people` | 已知发言人姓名到 person_id；不推断提及者身份 |
+| `context status` | `loppi_status` | 当前在线状态、时区、采集和处理状态 |
+| `context list` | `loppi_list_context` | 日期/范围内事件卡片、未整理区间、独立现场记录 |
+| `context search` | `loppi_search_context` | 词法短语，搜索转录、笔记、截图文字、事件标题/摘要/话题/要点/对象 |
+| `context event ID --section …` | `loppi_get_event` | overview、summary、topics、key_points、mentioned_objects、moments |
+| `context read` | `loppi_read_context` | 按 event_id、time、refs 三选一展开证据 |
+| `context digest` | `loppi_digest` | 按日或范围读取概览，默认 compact，可进一步展开事件与证据 |
+| `context people` | `loppi_list_people` | 已知发言人姓名到 person_id；不推断提及者身份 |
 
 完整输入 schema 可离线读取 `context schema OPERATION`，短说明见 `context guide cli|mcp|evidence|workflows|troubleshooting`。所有查询默认 JSON；参数错误也只输出一份机器可读 JSON。CLI 退出码：0 成功（含空结果及离线 status），2 参数，3 后台不可用/不兼容，4 读取忙/超时，5 引用或其他查询失败。安装/配置辅助返回独立 JSON。
 
@@ -51,11 +52,11 @@ CLI/MCP 的默认参数、校验、描述、schema 和执行入口共用 `crates
 
 ## 渐进式披露与安装
 
-`resources/agent/hear-context/SKILL.md` 只包含触发范围、入口选择、检索顺序和证据原则；五个 references 分别承载 CLI、MCP、证据语义、排障、场景工作流。MCP 本身的 server instructions 与六个 tool descriptions 足以独立使用，不要求先装 Skill。
+`resources/agent/loppi-context/SKILL.md` 只包含触发范围、入口选择、检索顺序和证据原则；五个 references 分别承载 CLI、MCP、证据语义、排障、场景工作流。MCP 本身的 server instructions 与七个 tool descriptions 足以独立使用，不要求先装 Skill。
 
 `integrations inspect` 提供真实可执行路径和配置；`configure --target codex|generic` 只生成配置；`doctor` existing-only 自检；`install-skill --destination PATH` 显式安装随包说明，替换路径占位符，相同内容重复安装无操作，自定义副本拒绝覆盖；`install-cli --directory DIR` 显式创建符号链接，不改 PATH、不覆盖无关命令。
 
-配置以安装目录中的 hear 为目标，应用移动后需要重新生成；GUI 不承诺自动修改所有 Agent 的配置。Codex 示例使用 `[mcp_servers.hear]`，通用示例使用 `mcpServers`。
+配置以安装目录中的 loppi 为目标，应用移动后需要重新生成；GUI 不承诺自动修改所有 Agent 的配置。Codex 示例使用 `[mcp_servers.loppi]`，通用示例使用 `mcpServers`。
 
 ## 验证
 

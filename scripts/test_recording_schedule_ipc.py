@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Isolated IPC lifecycle regression; no models, credentials or capture permission.
-Build hear-core + hear-cli first. The first test crosses a real minute boundary.
+Build loppi-core + loppi-cli first. The first test crosses a real minute boundary.
 """
 import json
 import os
@@ -13,13 +13,13 @@ import uuid
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-CLI = Path(os.environ.get('HEAR_TEST_CLI', ROOT / 'target/debug/hear'))
-CORE = Path(os.environ.get('HEAR_TEST_CORE', ROOT / 'target/debug/hear-core'))
+CLI = Path(os.environ.get('LOPPI_TEST_CLI', ROOT / 'target/debug/loppi'))
+CORE = Path(os.environ.get('LOPPI_TEST_CORE', ROOT / 'target/debug/loppi-core'))
 
 
 def main():
-    with tempfile.TemporaryDirectory(prefix='hear-schedule-ipc-') as directory:
-        env = os.environ | {"HEAR_TEST_PARENT_PID": str(os.getpid()), 'HEAR_DATA_DIR': directory, 'HEAR_CORE_BIN': str(CORE)}
+    with tempfile.TemporaryDirectory(prefix='loppi-schedule-ipc-') as directory:
+        env = os.environ | {"LOPPI_TEST_PARENT_PID": str(os.getpid()), 'LOPPI_DATA_DIR': directory, 'LOPPI_CORE_BIN': str(CORE)}
         path = Path(directory)
 
         def cli(*args):
@@ -35,7 +35,7 @@ def main():
                 return json.loads(sock.makefile().read())
 
         def query(sql, *args):
-            with sqlite3.connect(path / 'hear.sqlite') as db:
+            with sqlite3.connect(path / 'loppi.sqlite') as db:
                 return db.execute(sql, args).fetchall()
 
         def quit():

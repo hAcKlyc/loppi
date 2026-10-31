@@ -11,15 +11,15 @@ import tempfile
 import time
 
 ROOT = Path(__file__).resolve().parent.parent
-CORE = ROOT / 'target/debug/hear-core'
+CORE = ROOT / 'target/debug/loppi-core'
 PROGRAM = '''import os,subprocess,sys
-p=subprocess.Popen([sys.argv[1],'serve','--on-demand'],env=os.environ|{'HEAR_TEST_PARENT_PID':str(os.getpid())},stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+p=subprocess.Popen([sys.argv[1],'serve','--on-demand'],env=os.environ|{'LOPPI_TEST_PARENT_PID':str(os.getpid())},stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
 print(p.pid,flush=True)
 sys.stdin.read(1)
 os._exit(0)
 '''
-with tempfile.TemporaryDirectory(prefix='hear-test-owner-') as directory:
-    env = os.environ | {'HEAR_DATA_DIR': directory}
+with tempfile.TemporaryDirectory(prefix='loppi-test-owner-') as directory:
+    env = os.environ | {'LOPPI_DATA_DIR': directory}
     owner = subprocess.Popen([sys.executable, '-c', PROGRAM, str(CORE)], env=env,
                              stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
     pid = int(owner.stdout.readline())
@@ -33,11 +33,11 @@ with tempfile.TemporaryDirectory(prefix='hear-test-owner-') as directory:
             time.sleep(.025)
         else:
             raise AssertionError('disposable Core did not become ready')
-        with sqlite3.connect(Path(directory)/'hear.sqlite') as db:
+        with sqlite3.connect(Path(directory)/'loppi.sqlite') as db:
             for provider, account in [('llm','deepseek'),('asr','volcengine')]:
                 db.execute('UPDATE cloud_queues SET configured=1 WHERE provider=?',(provider,))
                 db.execute('INSERT INTO cloud_credential_refs VALUES(?,?)',(provider,account+':00000000-0000-0000-0000-000000000001'))
-        check = subprocess.run([str(CORE),'--check-credentials'], env=env|{'HEAR_TEST_PARENT_PID':str(os.getpid())},capture_output=True,text=True,timeout=10)
+        check = subprocess.run([str(CORE),'--check-credentials'], env=env|{'LOPPI_TEST_PARENT_PID':str(os.getpid())},capture_output=True,text=True,timeout=10)
         report=json.loads(check.stdout)
         assert all(p['error']=='test_offline' for p in report['providers'])
         assert report['network_requests'] is False and report['user_interaction'] is False

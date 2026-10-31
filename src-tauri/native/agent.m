@@ -4,9 +4,9 @@
 
 // Called on Tauri's main thread, including applicationWillTerminate. A modal
 // run loop keeps accessibility and the acknowledgement button responsive.
-void hear_show_exit_error(const char *message) {
+void loppi_show_exit_error(const char *message) {
   NSAlert *alert = [[NSAlert alloc] init];
-  alert.messageText = @"Hear 后台尚未退出";
+  alert.messageText = @"loppi 后台尚未退出";
   alert.informativeText = [NSString stringWithUTF8String:message] ?: @"请稍后重试";
   alert.alertStyle = NSAlertStyleWarning;
   [alert addButtonWithTitle:@"好"];
@@ -14,26 +14,26 @@ void hear_show_exit_error(const char *message) {
   [alert runModal];
 }
 
-int hear_agent_status(void) {
+int loppi_agent_status(void) {
   if (@available(macOS 13.0, *)) {
-    SMAppService *service = [SMAppService loginItemServiceWithIdentifier:@"app.hear.core"];
+    SMAppService *service = [SMAppService loginItemServiceWithIdentifier:@"app.loppi.core"];
     return (int)service.status;
   }
   return -1;
 }
 
-int hear_agent_register(void) {
+int loppi_agent_register(void) {
   if (@available(macOS 13.0, *)) {
-    SMAppService *service = [SMAppService loginItemServiceWithIdentifier:@"app.hear.core"];
+    SMAppService *service = [SMAppService loginItemServiceWithIdentifier:@"app.loppi.core"];
     NSError *error = nil;
     return [service registerAndReturnError:&error] ? 0 : (int)error.code;
   }
   return -1;
 }
 
-int hear_agent_unregister(void) {
+int loppi_agent_unregister(void) {
   if (@available(macOS 13.0, *)) {
-    SMAppService *service = [SMAppService loginItemServiceWithIdentifier:@"app.hear.core"];
+    SMAppService *service = [SMAppService loginItemServiceWithIdentifier:@"app.loppi.core"];
     NSError *error = nil;
     return [service unregisterAndReturnError:&error] ? 0 : (int)error.code;
   }

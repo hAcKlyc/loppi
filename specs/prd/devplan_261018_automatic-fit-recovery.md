@@ -48,7 +48,7 @@ updated: 2026-10-18
 
 ### Review Contract
 - mode: repair; baseline f9845e710b829ac3652fe1748647a8b3b5232788。
-- In scope: crates/hear-core/src/events.rs, scripts/build_macos.sh（含此前已授权的 Tauri 签名环境隔离）, src/api.ts, src/cloud-task-status.ts, src/TimelineView.tsx, scripts/test_cloud_task_status.mjs, scripts/test_timeline_view.mjs, specs/ARCHITECTURE.md, specs/tech_docs/algorithms.md, 本 devplan。
+- In scope: crates/loppi-core/src/events.rs, scripts/build_macos.sh（含此前已授权的 Tauri 签名环境隔离）, src/api.ts, src/cloud-task-status.ts, src/TimelineView.tsx, scripts/test_cloud_task_status.mjs, scripts/test_timeline_view.mjs, specs/ARCHITECTURE.md, specs/tech_docs/algorithms.md, 本 devplan。
 - Out of scope: README.md, build_release.sh, scripts/package_macos.sh 及其它未跟踪内容。
 - Guarantees/non-goals: 同上契约；不扩大为自动安装/升级器、不允许构建与用户同时启动产物的原子互斥保证，不改 Keychain ACL；本次部署先停旧产物再构建、安装独立副本并恢复意图。
 - Allowed mechanisms: 现有 task 状态投影增加错误标签；既有 restart/save 入口调整凭据失败的 next_attempt_ms；构建前检查运行产物，无新持久状态/协议字段/进程。

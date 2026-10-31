@@ -14,7 +14,7 @@ import time
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--worker', type=Path, default=Path('target/debug/hear-worker'))
+    parser.add_argument('--worker', type=Path, default=Path('target/debug/loppi-worker'))
     parser.add_argument('--models', type=Path, required=True)
     args = parser.parse_args()
     worker = str(args.worker.resolve())

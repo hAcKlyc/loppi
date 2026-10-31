@@ -91,7 +91,7 @@ review: "PASS（需求、异常路径、最终架构三路审查；自动检查�
 ### 4.1 已核实的基础
 
 - `src/WorkspaceViews.tsx::SettingsView` 已有“记录”区域；GUI 经 Tauri 与 `hear-protocol` 调用 Core，不拥有业务数据库。
-- `crates/hear-core/src/main.rs::capture_supervisor` 根据录制意图、暂停、容量、来源开关、模型和运行许可控制两个来源，持有已有启停、异常退避与睡眠处理。`CoreState::service_state` 和 `diagnostics::apply` 投影实际状态。
+- `crates/loppi-core/src/main.rs::capture_supervisor` 根据录制意图、暂停、容量、来源开关、模型和运行许可控制两个来源，持有已有启停、异常退避与睡眠处理。`CoreState::service_state` 和 `diagnostics::apply` 投影实际状态。
 - `Store::handle` 的 `Start/Pause/Resume` 更新意图和缺口，`Store::mutate` 使用修订与请求回执保障重复控制。`Resume` 还可能清除容量暂停，不能无条件用于定时开启。
 - `LaunchMode`、`allow_capture`、`quit_in_login` 与 `serve_one` 区分正常录制、查询启动和本登录显式退出。新增恢复能力必须明确衔接这些条件，不能仅看进程是否存在。
 - `Store::new`、`storage::migrate` 维护 SQLite 与迁移；当前没有录制定时配置或边界执行记录，也未发现可直接复用的 Core 本地日历调度器。

@@ -64,7 +64,7 @@ updated: 2026-10-23
 
 ### 本批 Review Contract
 - Mode: repair；Base: 0666e0262ce45ae051bd08c4d7fdf2beb26e3c32；目标为当前分支完整工作树 diff（含本 devplan、新浏览器夹具），所有改动均属于本批。
-- 范围：`crates/hear-core/src/{events.rs,events/activity_tests.rs,events/asr.rs,events/asr/tests.rs,ingestion.rs,main.rs,diagnostic_tests.rs}`、`crates/hear-protocol/src/lib.rs`、`src/{api.ts,TimelineView.tsx,DetailDrawer.tsx,App.css,cloud-task-status.ts}`、`scripts/test_{cloud_task_status.mjs,timeline_view.mjs,transcription_progress.html}`、本文及架构/算法文档。
+- 范围：`crates/loppi-core/src/{events.rs,events/activity_tests.rs,events/asr.rs,events/asr/tests.rs,ingestion.rs,main.rs,diagnostic_tests.rs}`、`crates/loppi-protocol/src/lib.rs`、`src/{api.ts,TimelineView.tsx,DetailDrawer.tsx,App.css,cloud-task-status.ts}`、`scripts/test_{cloud_task_status.mjs,timeline_view.mjs,transcription_progress.html}`、本文及架构/算法文档。
 - 保证/非目标/新增机制以开发契约为准。三路均 required。只让本次引入、显著放大或契约明确负责的问题阻塞；不得将模型任意语义正确、供应商必然返回有效文字、睡眠不中断采集升级为保证。
 - 没有新的持久状态、写入 owner、队列、重试器。新增请求内观察覆盖协议和可选派生结果统计是契约已允许的接口；兼容已发布旧响应与持久候选。
 - 外部资料、个人数据、安装目录、共享缓存 symlink 不在 PR 范围。无其他用户/会话代码改动。

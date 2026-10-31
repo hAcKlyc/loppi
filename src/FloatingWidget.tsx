@@ -208,7 +208,7 @@ export function FloatingWidget() {
 			}
 		};
 		const subscriptions = [
-			listen<EntrySnapshot>("hear-entry-snapshot", (event) =>
+			listen<EntrySnapshot>("loppi-entry-snapshot", (event) =>
 				accept(event.payload),
 			),
 			listen<{
@@ -217,7 +217,7 @@ export function FloatingWidget() {
 				generation: number;
 				geometry?: EntryGeometry;
 				error?: string | null;
-			}>("hear-entry-native", ({ payload }) => {
+			}>("loppi-entry-native", ({ payload }) => {
 				if (disposed) return;
 				if (payload.kind === 1) {
 					if (payload.value) {
@@ -404,7 +404,7 @@ export function FloatingWidget() {
 		if (snapshotRef.current.mode === "floating") {
 			try {
 				await invoke("show_main");
-				await emit("hear-open-comment", { anchor_ms: Date.now() });
+				await emit("loppi-open-comment", { anchor_ms: Date.now() });
 			} catch (error) {
 				showFeedback(userError(error));
 			}
@@ -418,7 +418,7 @@ export function FloatingWidget() {
 	const openSettings = async () => {
 		try {
 			await invoke("show_main");
-			await emit("hear-open-settings");
+			await emit("loppi-open-settings");
 		} catch (error) {
 			showFeedback(userError(error));
 		}
@@ -440,7 +440,7 @@ export function FloatingWidget() {
 	return (
 		<div
 			role="toolbar"
-			aria-label="hear 常驻入口"
+			aria-label="loppi 常驻入口"
 			className={`entry-root ${isTop ? "entry-top" : "entry-floating"}`}
 			data-menu-down={geometry.menu_y > 8}
 			style={
@@ -641,7 +641,7 @@ export function FloatingWidget() {
 							width: rabbitSize,
 							height: rabbitSize,
 						}}
-						aria-label={isTop ? "hear 快速操作" : "标记重点；拖动以移动兔子"}
+						aria-label={isTop ? "loppi 快速操作" : "标记重点；拖动以移动兔子"}
 						title={!isTop && snapshot.detail ? snapshot.detail : undefined}
 						onMouseEnter={() => {
 							pointerInside.current = true;
@@ -663,7 +663,7 @@ export function FloatingWidget() {
 					className="entry-rabbit notch-rabbit-control"
 					data-view={view}
 					data-ready={panelReady}
-					aria-label={expanded ? controlLabel : "hear 快速操作"}
+					aria-label={expanded ? controlLabel : "loppi 快速操作"}
 					tabIndex={view === "comment" ? -1 : 0}
 					disabled={expanded && (!control || !!busy.control)}
 					aria-disabled={

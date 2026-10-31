@@ -58,7 +58,7 @@ updated: 2026-10-21
 ### Review Contract
 - mode: repair；required lenses: requirements、adversarial、architecture。
 - base: `fb8c35de043f1e59a05e0028537ce5e1d73d9f1c`；requirement source: 本计划与本轮用户批准的 1/2/3，三分钟仅用于已知静默连接。
-- in-scope: `crates/hear-core/src/events.rs`、`crates/hear-core/src/events/activity_tests.rs`、`crates/hear-core/src/events/asr.rs`、`crates/hear-core/src/events/asr/tests.rs`、`crates/hear-core/src/main.rs`、`specs/tech_docs/algorithms.md`、本计划（含 untracked）。
+- in-scope: `crates/loppi-core/src/events.rs`、`crates/loppi-core/src/events/activity_tests.rs`、`crates/loppi-core/src/events/asr.rs`、`crates/loppi-core/src/events/asr/tests.rs`、`crates/loppi-core/src/main.rs`、`specs/tech_docs/algorithms.md`、本计划（含 untracked）。
 - out-of-scope: 其它共享工作树文件，包括 README、发布脚本与其它文档。不得覆盖或提交。
 - 必须保证、非目标、允许机制：上文契约；不增加表/服务/队列/持久调度状态。阻塞项限本次引入/放大或验收明确负责的问题，不扩大到全量识别质量、已发布的无关历史问题。
 - evidence: 上述 check/build、299 core 回归、20/20 合成模型、实际 Ogg 编解码。prompt/输入语义变更重跑相应模型场景；候选/规划变更重跑受影响回归和 check/build；文档/测试修订仅重跑相应检查。

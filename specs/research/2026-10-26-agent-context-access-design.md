@@ -38,10 +38,10 @@
 
 源码证据：
 
-- [现有 CLI 命令](../../crates/hear-cli/src/main.rs)、[业务 IPC / DTO / 按需启动](../../crates/hear-protocol/src/lib.rs)。
-- [Core 启动、同 UID 校验、请求处理](../../crates/hear-core/src/main.rs)、[只读连接池](../../crates/hear-core/src/reads.rs)。
-- [时间线、详情、理解失效](../../crates/hear-core/src/events.rs)、[理解结构与证据锚点](../../crates/hear-core/src/events/understanding.rs)。
-- [搜索与有效精转规则](../../crates/hear-core/src/knowledge.rs)、[评论与图片文字索引](../../crates/hear-core/src/moments.rs)。
+- [现有 CLI 命令](../../crates/loppi-cli/src/main.rs)、[业务 IPC / DTO / 按需启动](../../crates/loppi-protocol/src/lib.rs)。
+- [Core 启动、同 UID 校验、请求处理](../../crates/loppi-core/src/main.rs)、[只读连接池](../../crates/loppi-core/src/reads.rs)。
+- [时间线、详情、理解失效](../../crates/loppi-core/src/events.rs)、[理解结构与证据锚点](../../crates/loppi-core/src/events/understanding.rs)。
+- [搜索与有效精转规则](../../crates/loppi-core/src/knowledge.rs)、[评论与图片文字索引](../../crates/loppi-core/src/moments.rs)。
 - [App 内 CLI 打包](../../scripts/build.mjs)。部分旧架构文档仍保留早期发行和模型下载口径，本次以源码核实结果为准。
 
 ## 3. 架构：一个 Core，两种入口，一个知识契约

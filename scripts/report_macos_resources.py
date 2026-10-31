@@ -14,11 +14,11 @@ from pathlib import Path
 
 MIB = 1024 * 1024
 COLORS = {
-    "hear-core": "#247567",
-    "hear-worker": "#bf7647",
-    "hear-capture": "#4596a2",
-    "hear-webview": "#a05caa",
-    "hear-desktop": "#626faf",
+    "loppi-core": "#247567",
+    "loppi-worker": "#bf7647",
+    "loppi-capture": "#4596a2",
+    "loppi-webview": "#a05caa",
+    "loppi-desktop": "#626faf",
 }
 GAP_SECONDS = 150
 
@@ -195,7 +195,7 @@ def render_html(groups, timestamps, report):
     legend = "".join(f'<span><i style="background:{color}"></i>{role}</span>'
                      for role, color in COLORS.items())
     return f"""<!doctype html><html lang="zh-CN"><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>hear · 资源曲线</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>loppi · 资源曲线</title>
 <style>body{{font:15px/1.55 -apple-system,BlinkMacSystemFont,sans-serif;color:#21342f;background:#f5f7f5;margin:0;padding:28px}}
 main{{max-width:1200px;margin:auto}}h1{{font-size:25px;margin:0 0 4px}}h2{{font-size:18px;margin:0 0 12px}}p{{color:#62746c;margin:0 0 24px}}
 section{{background:#fff;border:1px solid #e0e8e2;border-radius:16px;padding:20px 24px;margin:18px 0;overflow:auto}}
@@ -203,7 +203,7 @@ svg{{width:100%;min-width:680px}}svg text{{font-size:11px;fill:#77877f}}.grid{{s
 .legend{{display:flex;gap:20px;flex-wrap:wrap;margin-bottom:12px}}.legend span{{display:flex;align-items:center;gap:7px}}.legend i{{width:12px;height:12px;border-radius:3px}}
 table{{border-collapse:collapse;width:100%;white-space:nowrap}}th,td{{text-align:right;padding:9px;border-bottom:1px solid #e9eeea}}th:first-child,td:first-child{{text-align:left}}
 th{{color:#62746c;font-weight:600}}.note{{font-size:13px;color:#66786f}}ul{{margin:0;padding-left:20px}}</style>
-<main><h1>hear · 资源曲线</h1><p>更新：{html.escape(report["generated_at"])} · 所有时刻为 UTC · 按 PID 分段；采样空档不连线</p>
+<main><h1>loppi · 资源曲线</h1><p>更新：{html.escape(report["generated_at"])} · 所有时刻为 UTC · 按 PID 分段；采样空档不连线</p>
 <section><h2>物理内存足迹 · MiB</h2><p class="note">分钟摘要保留各进程该分钟峰值；精确同时总量见采样器 meta.json，不能相加不同时间的进程峰值。</p><div class="legend">{legend}</div>{memory}</section>
 <section><h2>单核 CPU 占比 · %</h2><div class="legend">{legend}</div>{cpu}</section>
 <section><h2>进程摘要</h2><table><thead><tr><th>进程</th><th>PID</th><th>采样</th><th>初值 MiB</th><th>末值 MiB</th><th>中位 MiB</th><th>P95 MiB</th><th>峰值 MiB</th><th>平均单核 CPU</th></tr></thead>

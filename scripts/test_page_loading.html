@@ -1,4 +1,4 @@
-<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>hear 全页面加载回归</title>
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>loppi 全页面加载回归</title>
 <div id="root"></div><aside style="position:fixed;z-index:10000;bottom:8px;left:8px;background:white;padding:10px"><button id="run">运行页面加载回归</button><output id="result">模拟延迟数据，不连接真实后台</output></aside>
 <script type="module">
 import "/scripts/fixture-controls.ts";
@@ -60,7 +60,7 @@ document.getElementById('run').onclick=async()=>{const out=q('#result');out.text
  // A fulfilled host snapshot can carry a core failure; an IPC rejection is not required.
  snapshot={...snapshot,sequence:2,state:null,error:'后台状态读取失败'};mount();await page('设置');await until(()=>text().includes('音频存储上限读取失败'));assert(!skeleton('音频存储上限')&&!skeleton('声音来源'),'错误快照导致永久骨架');
  snapshot={...snapshot,sequence:3,state,error:null};await clickText('重试');await until(()=>text().includes('已授权'));
- snapshot={...snapshot,sequence:4,state:null,error:'后台状态读取失败'};await emit('hear-entry-snapshot',snapshot);await frames();assert(text().includes('音频存储上限读取失败')&&!skeleton('音频存储上限'),'异步错误快照导致永久骨架');snapshot={...snapshot,sequence:5,state,error:null};await emit('hear-entry-snapshot',snapshot);await frames();
+ snapshot={...snapshot,sequence:4,state:null,error:'后台状态读取失败'};await emit('loppi-entry-snapshot',snapshot);await frames();assert(text().includes('音频存储上限读取失败')&&!skeleton('音频存储上限'),'异步错误快照导致永久骨架');snapshot={...snapshot,sequence:5,state,error:null};await emit('loppi-entry-snapshot',snapshot);await frames();
  // A background calendar failure must retain dates already loaded for the same month.
  calendarFixture=true;const calendarDate=new Date();let close=()=>{};const renderCalendar=days=>flushSync(()=>root.render(React.createElement(RecordCalendar,{date:calendarDate,days,onDate:()=>{},onClose:close})));
  renderCalendar([]);await frames();q('.calendar-month-heading button').click();await until(()=>q('.calendar-grid button:not(:disabled)'));const enabled=q('.calendar-grid button:not(:disabled)').getAttribute('aria-label');failures.add('calendar_days');renderCalendar([]);await until(()=>document.body.textContent.includes('日期加载失败'));assert(!q(`[aria-label="${enabled}"]`).disabled,'日历背景失败丢失已加载日期');failures.delete('calendar_days');calendarFixture=false;

@@ -5,8 +5,8 @@
 #include <string.h>
 #include <math.h>
 
-typedef void (*HearOutputEnded)(uint64_t, uint64_t, uint64_t, int);
-@interface HearOutput : NSObject <AVAudioPlayerDelegate>
+typedef void (*LoppiOutputEnded)(uint64_t, uint64_t, uint64_t, int);
+@interface LoppiOutput : NSObject <AVAudioPlayerDelegate>
 @property uint64_t identifier;
 @property uint64_t epoch;
 @property uint64_t nextBuffer;
@@ -14,10 +14,10 @@ typedef void (*HearOutputEnded)(uint64_t, uint64_t, uint64_t, int);
 @property BOOL active;
 @property NSMutableDictionary<NSNumber *, AVAudioPlayer *> *players;
 @property AVAudioPlayer *clock;
-@property HearOutputEnded ended;
+@property LoppiOutputEnded ended;
 - (void)stop;
 @end
-@implementation HearOutput
+@implementation LoppiOutput
 - (instancetype)init { if ((self=[super init])) _players=[NSMutableDictionary dictionary]; return self; }
 - (void)stop {
   self.active=NO;
@@ -36,7 +36,7 @@ typedef void (*HearOutputEnded)(uint64_t, uint64_t, uint64_t, int);
   (void)error; [self audioPlayerDidFinishPlaying:player successfully:NO];
 }
 @end
-static HearOutput *output;
+static LoppiOutput *output;
 static uint64_t nextContext;
 static NSDictionary *failure(NSString *code) { return @{ @"ok":@NO,@"error":code }; }
 static NSDictionary *success(NSDictionary *data) { return @{ @"ok":@YES,@"data":data ?: @{} }; }
@@ -54,12 +54,12 @@ static NSData *silent_clock_wav(void) {
   memcpy(bytes+36,"data",4); memcpy(bytes+40,&size,4);
   return [NSData dataWithBytes:bytes length:sizeof(bytes)];
 }
-static NSDictionary *command(NSDictionary *request, HearOutputEnded ended) {
+static NSDictionary *command(NSDictionary *request, LoppiOutputEnded ended) {
   NSString *type=request[@"type"];
   if ([type isEqual:@"open"]) {
     for (NSNumber *key in output.players.allKeys)
       if (output.ended) output.ended(output.identifier,key.unsignedLongLongValue,output.epoch,-1);
-    [output stop]; output=[HearOutput new]; output.identifier=++nextContext; output.ended=ended;
+    [output stop]; output=[LoppiOutput new]; output.identifier=++nextContext; output.ended=ended;
     return success(@{@"context":@(output.identifier)});
   }
   uint64_t context=[request[@"context"] unsignedLongLongValue];
@@ -103,7 +103,7 @@ static NSDictionary *command(NSDictionary *request, HearOutputEnded ended) {
   }
   return failure(@"playback_invalid_command");
 }
-char *hear_output_command(const char *bytes, size_t count, HearOutputEnded ended) {
+char *loppi_output_command(const char *bytes, size_t count, LoppiOutputEnded ended) {
   @autoreleasepool {
     NSDictionary *result;
     if (!NSThread.isMainThread) result=failure(@"playback_thread");
@@ -116,4 +116,4 @@ char *hear_output_command(const char *bytes, size_t count, HearOutputEnded ended
     return data ? strndup(data.bytes,data.length) : NULL;
   }
 }
-void hear_output_shutdown(void) { if (NSThread.isMainThread) { [output stop]; output=nil; } }
+void loppi_output_shutdown(void) { if (NSThread.isMainThread) { [output stop]; output=nil; } }

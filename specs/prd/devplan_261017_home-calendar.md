@@ -29,7 +29,7 @@ updated: 2026-10-17
 - [x] 签名构建、真机验证、提交与关闭台账
 ### Review契约
 - mode repair，base 4b1776e（本轮开始HEAD）。三路required；Phase1固定快照，最终architecture。
-- in-scope: src/App.tsx, src/TimelineView.tsx, src/RecordCalendar.tsx, src/timeline-view.ts, src/api.ts, src/App.css, src/tokens.css（如需）, crates/hear-core/src/events.rs, crates/hear-core/src/main.rs, crates/hear-protocol/src/lib.rs, crates/hear-cli/src/main.rs（响应穷举适配）, scripts/test_timeline_view.mjs, specs/DESIGN.md, 本台账。
+- in-scope: src/App.tsx, src/TimelineView.tsx, src/RecordCalendar.tsx, src/timeline-view.ts, src/api.ts, src/App.css, src/tokens.css（如需）, crates/loppi-core/src/events.rs, crates/loppi-core/src/main.rs, crates/loppi-protocol/src/lib.rs, crates/loppi-cli/src/main.rs（响应穷举适配）, scripts/test_timeline_view.mjs, specs/DESIGN.md, 本台账。
 - out-of-scope：原有未跟踪design/playground/specs/research文件。只阻塞本轮引入/显著放大的问题，禁止提高保证或扩张机制。
 ### 待用户决策
 无。

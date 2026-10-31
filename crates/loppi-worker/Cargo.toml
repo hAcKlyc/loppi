@@ -1,0 +1,12 @@
+[package]
+name = "loppi-worker"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+loppi-protocol = { path = "../loppi-protocol" }
+sherpa-onnx = "=2.0.0"
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+libc = "0.2"
+tempfile = "3"

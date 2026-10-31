@@ -18,17 +18,17 @@ hear 已拥有做「有依据的工作记忆」需要的大部分原始材料：
 | 能力 | 核验结果 | 主要证据 | 对消费层的意义 |
 |---|---|---|---|
 | 持续记录 | 麦克风、电脑声音双路；声音与事件是不同层 | [产品定位与范围](../../prd/prd_0.1.md)、[架构](../../ARCHITECTURE.md) | 同时覆盖会议、临时交谈和学习输入；不能把系统播放内容全当成本人经历 |
-| 事件归组 | LLM 根据粗转形成命名事件；原始时间范围与音频仍独立 | [events.rs](../../../crates/hear-core/src/events.rs) | 有自然的消费入口；项目可能跨事件，同一事件也可能涉及多个项目 |
-| 事件短摘要 | 最多 240 字符，来自粗转；随拟合产生；人工纠错/范围变化会使不再有效的摘要失效 | [增量交付记录](../../prd/devplan_261017_event-summary.md)、[events.rs](../../../crates/hear-core/src/events.rs) 中 `FIT_SYSTEM` / `summary_for_scope` | 可以帮助扫时间线，不能直接升级为可靠的决策记忆，更不能层层总结旧摘要后声称完整 |
-| 精转与修正 | 按有效事件范围提供精转、人工文字与人物修正；空结果、缺口、部分结果有独立语义 | [DetailDrawer.tsx](../../../src/DetailDrawer.tsx)、[knowledge.rs](../../../crates/hear-core/src/knowledge.rs) | 消费层应优先使用当前有效精转和人工修正，并明确未处理/缺失范围 |
-| 原声回放 | 可以按真实时刻定位；文字存在不代表音频仍存在 | [playback.rs](../../../crates/hear-core/src/playback.rs)、[详情界面](../../../src/DetailDrawer.tsx) | 比纯文本记忆更容易核对数字、措辞和上下文；清理原声后应保留文字引用、诚实禁用播放 |
+| 事件归组 | LLM 根据粗转形成命名事件；原始时间范围与音频仍独立 | [events.rs](../../../crates/loppi-core/src/events.rs) | 有自然的消费入口；项目可能跨事件，同一事件也可能涉及多个项目 |
+| 事件短摘要 | 最多 240 字符，来自粗转；随拟合产生；人工纠错/范围变化会使不再有效的摘要失效 | [增量交付记录](../../prd/devplan_261017_event-summary.md)、[events.rs](../../../crates/loppi-core/src/events.rs) 中 `FIT_SYSTEM` / `summary_for_scope` | 可以帮助扫时间线，不能直接升级为可靠的决策记忆，更不能层层总结旧摘要后声称完整 |
+| 精转与修正 | 按有效事件范围提供精转、人工文字与人物修正；空结果、缺口、部分结果有独立语义 | [DetailDrawer.tsx](../../../src/DetailDrawer.tsx)、[knowledge.rs](../../../crates/loppi-core/src/knowledge.rs) | 消费层应优先使用当前有效精转和人工修正，并明确未处理/缺失范围 |
+| 原声回放 | 可以按真实时刻定位；文字存在不代表音频仍存在 | [playback.rs](../../../crates/loppi-core/src/playback.rs)、[详情界面](../../../src/DetailDrawer.tsx) | 比纯文本记忆更容易核对数字、措辞和上下文；清理原声后应保留文字引用、诚实禁用播放 |
 | 人物 | 有跨事件稳定人物 ID、声纹样例、人工绑定与撤销；自动识别不能等同已确认身份 | [人物技术说明](../../tech_docs/speaker-identity.md)、[PeopleView.tsx](../../../src/PeopleView.tsx) | 可发展「上次和这个人聊到哪」，但“我答应了什么”必须有可靠本人归属 |
-| 主动信号 | Mark、评论、单次主动截图挂在真实时刻；无需用户操作也能记录 | [moments.rs](../../../crates/hear-core/src/moments.rs)、[MomentList.tsx](../../../src/MomentList.tsx) | 可作为排序、选材和上下文补充信号；不应逼用户靠记笔记才能获得价值 |
+| 主动信号 | Mark、评论、单次主动截图挂在真实时刻；无需用户操作也能记录 | [moments.rs](../../../crates/loppi-core/src/moments.rs)、[MomentList.tsx](../../../src/MomentList.tsx) | 可作为排序、选材和上下文补充信号；不应逼用户靠记笔记才能获得价值 |
 | 截图理解 | 新截图保留原图/OCR，有 LLM 配置时生成图片摘要与完整 Markdown 转录；历史不自动回填 | [截图增量交付](../../prd/devplan_261018_screenshot-understanding.md) | 讨论中的“这个按钮”“这张表”有机会被解释；目前不等于音画已被联合用于内容消费 |
-| 搜索 | Core/CLI 已有关键词、时间、人物过滤；FTS trigram 和短词匹配；GUI 无搜索入口 | [CLI Search](../../../crates/hear-cli/src/main.rs)、[knowledge.rs](../../../crates/hear-core/src/knowledge.rs) 中 `search` / `search_sql`、[PRD 范围](../../prd/prd_0.1.md) | 找回可以复用现有读取边界；当前不是语义检索，也不是带证据的问答 |
-| 导出 | GUI/CLI 能按范围导出；归档含 manifest、事件/粗转/精转/moments 的 JSONL，可选音频与截图 | [archive.rs](../../../crates/hear-core/src/archive.rs)、[WorkspaceViews.tsx](../../../src/WorkspaceViews.tsx) | 有可移植基础，但这种存档不等于可直接交给同事或 AI 的工作材料 |
-| 开放读取 | 本机 CLI 和受限 IPC 已有；未发现内置 MCP、通用记忆问答或项目工作台实现 | [协议](../../../crates/hear-protocol/src/lib.rs)、[架构](../../ARCHITECTURE.md) | 先验证有边界的上下文包；连接外部 AI 可复用 Core 规则，不能让调用方直接成为数据 owner |
-| 清理与修订 | 本机 Core 为唯一写入者；区分清原音/清全部；搜索、导出只读有效内容 | [架构第 5 节](../../ARCHITECTURE.md)、[cleanup.rs](../../../crates/hear-core/src/cleanup.rs) | 新增摘要、索引、项目记忆也必须失效/删除，不能留下第三份永远不更新的“记忆真相” |
+| 搜索 | Core/CLI 已有关键词、时间、人物过滤；FTS trigram 和短词匹配；GUI 无搜索入口 | [CLI Search](../../../crates/loppi-cli/src/main.rs)、[knowledge.rs](../../../crates/loppi-core/src/knowledge.rs) 中 `search` / `search_sql`、[PRD 范围](../../prd/prd_0.1.md) | 找回可以复用现有读取边界；当前不是语义检索，也不是带证据的问答 |
+| 导出 | GUI/CLI 能按范围导出；归档含 manifest、事件/粗转/精转/moments 的 JSONL，可选音频与截图 | [archive.rs](../../../crates/loppi-core/src/archive.rs)、[WorkspaceViews.tsx](../../../src/WorkspaceViews.tsx) | 有可移植基础，但这种存档不等于可直接交给同事或 AI 的工作材料 |
+| 开放读取 | 本机 CLI 和受限 IPC 已有；未发现内置 MCP、通用记忆问答或项目工作台实现 | [协议](../../../crates/loppi-protocol/src/lib.rs)、[架构](../../ARCHITECTURE.md) | 先验证有边界的上下文包；连接外部 AI 可复用 Core 规则，不能让调用方直接成为数据 owner |
+| 清理与修订 | 本机 Core 为唯一写入者；区分清原音/清全部；搜索、导出只读有效内容 | [架构第 5 节](../../ARCHITECTURE.md)、[cleanup.rs](../../../crates/loppi-core/src/cleanup.rs) | 新增摘要、索引、项目记忆也必须失效/删除，不能留下第三份永远不更新的“记忆真相” |
 
 ## 文档冲突的处理
 

@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "hear",
+  "productName": "loppi",
   "version": "0.1.14",
-  "identifier": "app.hear.desktop",
+  "identifier": "app.loppi.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "macOSPrivateApi": true,
     "windows": [
       {
-        "title": "hear",
+        "title": "loppi",
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
         "trafficLightPosition": { "x": 18, "y": 18 },
@@ -34,8 +34,8 @@
       "minimumSystemVersion": "13.0",
       "infoPlist": "Info.plist",
       "files": {
-        "Library/LoginItems/HearCore.app": "../build/macos/HearCore.app",
-        "MacOS/hear": "../build/macos/hear"
+        "Library/LoginItems/LoppiCore.app": "../build/macos/LoppiCore.app",
+        "MacOS/loppi": "../build/macos/loppi"
       }
     },
     "icon": [

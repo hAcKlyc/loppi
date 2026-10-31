@@ -12,17 +12,17 @@ ROOT = Path(__file__).resolve().parent.parent
 @unittest.skipUnless(sys.platform == "darwin", "macOS native adapter")
 class NativeResourcesTest(unittest.TestCase):
     def test_background_footprint_includes_three_resident_children(self):
-        with tempfile.TemporaryDirectory(prefix="hear-native-resources-") as directory:
+        with tempfile.TemporaryDirectory(prefix="loppi-native-resources-") as directory:
             library = Path(directory) / "resources.dylib"
             subprocess.run([
                 "clang", "-dynamiclib", "-fobjc-arc", "-mmacosx-version-min=13.0",
                 "-framework", "Foundation", "-framework", "IOKit",
-                str(ROOT / "crates/hear-core/native/resources.m"), "-o", str(library),
+                str(ROOT / "crates/loppi-core/native/resources.m"), "-o", str(library),
             ], check=True, capture_output=True, timeout=60)
             native = ctypes.CDLL(str(library))
-            native.hear_process_footprint.argtypes = [ctypes.c_int]
-            native.hear_process_footprint.restype = ctypes.c_uint64
-            native.hear_background_footprint.restype = ctypes.c_uint64
+            native.loppi_process_footprint.argtypes = [ctypes.c_int]
+            native.loppi_process_footprint.restype = ctypes.c_uint64
+            native.loppi_background_footprint.restype = ctypes.c_uint64
             children = []
             try:
                 for _ in range(3):
@@ -34,11 +34,11 @@ class NativeResourcesTest(unittest.TestCase):
                     children.append(child)
                     self.assertEqual(child.stdout.readline().strip(), "ready")
                 import os
-                before = native.hear_process_footprint(os.getpid())
-                sizes = [native.hear_process_footprint(child.pid) for child in children]
+                before = native.loppi_process_footprint(os.getpid())
+                sizes = [native.loppi_process_footprint(child.pid) for child in children]
                 self.assertTrue(all(size >= 16 * 1024 * 1024 for size in sizes))
-                total = native.hear_background_footprint()
-                after = native.hear_process_footprint(os.getpid())
+                total = native.loppi_background_footprint()
+                after = native.loppi_process_footprint(os.getpid())
                 # Account for minor parent sampling movement, while requiring
                 # every live child. The pre-fix count/sizeof(int) loop misses all 3.
                 self.assertGreaterEqual(total, min(before, after) + sum(sizes) - 1024 * 1024)

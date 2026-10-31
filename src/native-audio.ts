@@ -48,7 +48,7 @@ export class NativeAudio implements PlaybackAudio {
 			epoch: number;
 			buffer: number;
 			status: number;
-		}>("hear-playback-ended", async ({ payload }) => {
+		}>("loppi-playback-ended", async ({ payload }) => {
 			if (this.disposed || payload.epoch !== this.epoch) return;
 			if (
 				payload.context !== (await this.opening) ||

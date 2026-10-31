@@ -1,6 +1,6 @@
-# hear 设计语言对比
+# loppi 设计语言对比
 
-交付文件：`../hear-style-comparison.html`。这是包含脚本、样式与兔子资源的单文件 HTML，可直接离线打开。
+交付文件：`../loppi-style-comparison.html`。这是包含脚本、样式与兔子资源的单文件 HTML，可直接离线打开。
 
 - A：使用构建时的 `src/tokens.css`、`src/App.css`、`src/capture-status.css`，当前基线为 `7825429`。
 - B：相同组件叠加 `proposal.css`，改变分组、表面、文字层级和交互状态的视觉表达。
@@ -17,4 +17,4 @@
 node playground/style-comparison/build.mjs
 ```
 
-只生成 playground，不修改生产组件、不重启正在运行的 hear。若生产样式更新，重新构建会更新 A 的基线。
+只生成 playground，不修改生产组件、不重启正在运行的 loppi。若生产样式更新，重新构建会更新 A 的基线。

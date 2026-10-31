@@ -153,7 +153,7 @@ hover 展开后，顶部小兔子消失，面板左侧是兔子，右侧依次�
 
 前端通过类型、lint、构建及相关状态/输入边界验证；签名应用实测真实刘海屏、无刘海屏/外接屏、全屏/工作区、中文输入法、权限失败与截图避让。实施者记录设备与结果；未通过则修复或回到产品/架构决策，不能宣称完成。原有录音与发行门槛沿用现有 PRD，不被本功能豁免。
 
-定位入口：[悬浮组件](../../src/FloatingWidget.tsx)、[主窗口评论](../../src/App.tsx)、[Tauri 宿主](../../src-tauri/src/lib.rs)、[状态与幂等回执](../../crates/hear-core/src/main.rs)、[时刻/截图校验](../../crates/hear-core/src/moments.rs)、[屏幕选择](../../crates/hear-core/native/moments.m)、[协议](../../crates/hear-protocol/src/lib.rs)。
+定位入口：[悬浮组件](../../src/FloatingWidget.tsx)、[主窗口评论](../../src/App.tsx)、[Tauri 宿主](../../src-tauri/src/lib.rs)、[状态与幂等回执](../../crates/loppi-core/src/main.rs)、[时刻/截图校验](../../crates/loppi-core/src/moments.rs)、[屏幕选择](../../crates/loppi-core/native/moments.m)、[协议](../../crates/loppi-protocol/src/lib.rs)。
 
 [技术 RFC](tech_rfc_0.1_quiet-rabbit-entry.md)记录当前代码事实、拟定方案和原生验证门槛；[B4 / I4 素材及动态预览](../../design/rabbit/b4-i4-v1/index.html)为已接受的设计基准。[旧 HTML Playground](../../playground/hear-island.html)仍有整入口隐藏、无刘海回退悬浮、200 字限制等过时演示，不作为行为依据。用户关键原话与决策缘由已完整吸收，接受后移除讨论台账。
 

@@ -16,7 +16,7 @@ scope: macOS arm64 and x86_64
 
 - 0.1.7目前是arm64瘦包，来源为干净提交`4d2c5eb`，DMG约17.7MB；没有随包模型。详见[发行记录](2026-10-25-release-0.1.7.md)。
 - X-ASR＋VAD资源176349407字节，CampPlus 28281138字节，共204630545字节。两者单独压成UDZO模型映像实测163855288字节。此前180–190MB是“当前单架构客户端＋模型”的估算，不能直接当成Universal2最终包大小；Universal2须实际打包后重新量。
-- [model_pack.rs](../../crates/hear-core/src/model_pack.rs)集中持有当前SHA和网络安装，模型安装在用户数据目录。Core负责ModelState/PrepareModels/资源调度；[analysis.rs](../../crates/hear-core/src/analysis.rs)只向worker传绝对路径和计算请求。
+- [model_pack.rs](../../crates/loppi-core/src/model_pack.rs)集中持有当前SHA和网络安装，模型安装在用户数据目录。Core负责ModelState/PrepareModels/资源调度；[analysis.rs](../../crates/loppi-core/src/analysis.rs)只向worker传绝对路径和计算请求。
 - Core本身在`HearCore.app`登录项内，GUI、CLI按需启动及登录启动最终运行同一个Core。不能只靠GUI的Tauri resource_dir才能找到必需模型。
 - 当前脚本默认宿主架构、共用固定暂存目录；package_macos.sh用`uname -m`命名，不能准确表示交叉编译或Universal结果。CI目前只有一项macos-15检查，不能据此声称Intel已验收。
 - 当前首启完成条件还要求云服务配置与声音权限。本设计保证本地模型无需下载并可离线推理；云端事件整理/精转和权限规则保持原产品契约，不宣称整个应用所有功能离线。

@@ -252,11 +252,11 @@ Tap 的 `tap-ready-v1` 仅是历史授权探测证据，不能替代当前可获
 
 - [现状审计与方案](../research/2026-10-20-first-run-onboarding.md)：讨论演进与代码证据；最终行为以本 PRD 为准。
 - [App](../../src/App.tsx)、[设置](../../src/WorkspaceViews.tsx)、[Key 输入](../../src/CloudKeyInput.tsx)、[录制控制](../../src/CaptureStatus.tsx)。
-- [协议](../../crates/hear-protocol/src/lib.rs)：`ModelState`、`ModelPhase`、`Request`、`send_from_with_id`。
-- [Core](../../crates/hear-core/src/main.rs)：`Store::new`、`Store::handle`、`Request::PrepareModels`、`Request::ConfigureCloud`、`service_state`。
-- [模型安装](../../crates/hear-core/src/model_pack.rs)、[推理客户端](../../crates/hear-core/src/analysis.rs)、[worker](../../crates/hear-worker/src/main.rs)、[资源预算](../../crates/hear-core/src/resources.rs)。
+- [协议](../../crates/loppi-protocol/src/lib.rs)：`ModelState`、`ModelPhase`、`Request`、`send_from_with_id`。
+- [Core](../../crates/loppi-core/src/main.rs)：`Store::new`、`Store::handle`、`Request::PrepareModels`、`Request::ConfigureCloud`、`service_state`。
+- [模型安装](../../crates/loppi-core/src/model_pack.rs)、[推理客户端](../../crates/loppi-core/src/analysis.rs)、[worker](../../crates/loppi-worker/src/main.rs)、[资源预算](../../crates/loppi-core/src/resources.rs)。
 - [宿主](../../src-tauri/src/lib.rs)、[GUI 偏好参考](../../src-tauri/src/entry.rs)、[原生权限](../../src-tauri/native/privacy.m)、[登录项](../../src-tauri/native/agent.m)。
-- [云验证](../../crates/hear-core/src/cloud.rs)、[云配置事实](../../crates/hear-core/src/events.rs)：`verify_llm`、`verify_asr`、`configured`。
+- [云验证](../../crates/loppi-core/src/cloud.rs)、[云配置事实](../../crates/loppi-core/src/events.rs)：`verify_llm`、`verify_asr`、`configured`。
 - [DeepSeek API 官方说明](https://api-docs.deepseek.com/api/deepseek-api/)、[火山录音文件识别标准版官方说明](https://docs.volcengine.com/docs/DoubaoVoice/LargemodelrecordingfilerecognitionstandardversionAPI?lang=zh)：2026-10-20 核实当前凭据方式；帮助链接应在实现验收时复查。
 
 

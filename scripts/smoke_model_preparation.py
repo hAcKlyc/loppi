@@ -25,11 +25,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--bundle', type=Path, required=True)
     args = parser.parse_args()
-    version = int(re.search(r'PROTOCOL_VERSION: u32 = (\d+)', (ROOT / 'crates/hear-protocol/src/lib.rs').read_text())[1])
-    with tempfile.TemporaryDirectory(prefix='hear-offline-') as tmp:
+    version = int(re.search(r'PROTOCOL_VERSION: u32 = (\d+)', (ROOT / 'crates/loppi-protocol/src/lib.rs').read_text())[1])
+    with tempfile.TemporaryDirectory(prefix='loppi-offline-') as tmp:
         directory = Path(tmp)
         helper = directory / '离线 测试.app'
-        shutil.copytree(args.bundle / 'Contents/Library/LoginItems/HearCore.app', helper)
+        shutil.copytree(args.bundle / 'Contents/Library/LoginItems/LoppiCore.app', helper)
         model_root = helper / 'Contents/Resources/models'
         lock = json.loads((model_root / 'models.lock.json').read_text())
         for entry in lock['files']:
@@ -39,9 +39,9 @@ def main():
             path.chmod(0o555 if path.is_dir() else 0o444)
         model_root.chmod(0o555)
         data = directory / 'data'
-        env = os.environ | {"HEAR_TEST_PARENT_PID": str(os.getpid()), 'HEAR_DATA_DIR': str(data), 'HEAR_MODEL_ROOT': '/invalid-development-cache'}
+        env = os.environ | {"LOPPI_TEST_PARENT_PID": str(os.getpid()), 'LOPPI_DATA_DIR': str(data), 'LOPPI_MODEL_ROOT': '/invalid-development-cache'}
         process = subprocess.Popen(
-            [str(helper / 'Contents/MacOS/hear-core'), 'serve', '--on-demand'],
+            [str(helper / 'Contents/MacOS/loppi-core'), 'serve', '--on-demand'],
             cwd='/', env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
         )
 
@@ -76,7 +76,7 @@ def main():
             state = query({'type': 'status'})['state']
             assert not state['enabled_intent'] and not state['microphone_recording'] and not state['system_recording']
             assert not (data / 'models').exists(), 'Runtime copied models to user data'
-            with sqlite3.connect(data / 'hear.sqlite') as db:
+            with sqlite3.connect(data / 'loppi.sqlite') as db:
                 for table in ('recording_sessions', 'audio_blocks', 'coarse_segments', 'cloud_tasks'):
                     assert db.execute('SELECT count(*) FROM ' + table).fetchone()[0] == 0, table
             for entry in lock['files']:

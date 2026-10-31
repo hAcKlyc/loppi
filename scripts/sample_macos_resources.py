@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-HELPER = ROOT / "target/hear-rusage"
+HELPER = ROOT / "target/loppi-rusage"
 HEADER = ("timestamp_utc,role,status,executable_path,pid,user_time_ns,system_time_ns,"
           "resident_bytes,physical_footprint_bytes,disk_read_bytes,disk_write_bytes,"
           "energy_nj,penergy_nj,lifetime_peak_footprint_bytes,ppid,process_birth").split(",")
@@ -44,7 +44,7 @@ def inventory(app, cache):
         if key not in cache_keys:
             del cache[key]
     owned = {pid: value for pid, value in processes.items() if value[2].startswith(str(app) + "/Contents/")}
-    desktops = [pid for pid, v in owned.items() if Path(v[2]).name == "hear-desktop"]
+    desktops = [pid for pid, v in owned.items() if Path(v[2]).name == "loppi-desktop"]
     groups = set()
     for pid in desktops:
         key = (pid, processes[pid][1])
@@ -55,9 +55,9 @@ def inventory(app, cache):
     roles = {}
     for pid, (ppid, birth, path) in owned.items():
         name = Path(path).name
-        if name == "hear-core":
-            roles[pid] = "hear-capture" if ppid in owned and Path(owned[ppid][2]).name == "hear-core" else "hear-core"
-        elif name in ("hear-worker", "hear-desktop"):
+        if name == "loppi-core":
+            roles[pid] = "loppi-capture" if ppid in owned and Path(owned[ppid][2]).name == "loppi-core" else "loppi-core"
+        elif name in ("loppi-worker", "loppi-desktop"):
             roles[pid] = name
     unresolved_webview = False
     for pid, value in processes.items():
@@ -68,7 +68,7 @@ def inventory(app, cache):
             cache[key] = coalition(pid)
         unresolved_webview |= cache[key] is None
         if cache[key] in groups:
-            roles[pid] = "hear-webview"
+            roles[pid] = "loppi-webview"
     return processes, roles, bool(desktops) and (len(groups) != len(desktops) or unresolved_webview)
 
 
@@ -103,7 +103,7 @@ def main():
     parser.add_argument("--mode", choices=["new", "resume"], default="new")
     parser.add_argument("--report", default="")
     parser.add_argument("--report-every", type=float, default=900)
-    parser.add_argument("--data-dir", type=Path, default=os.environ.get("HEAR_DATA_DIR"))
+    parser.add_argument("--data-dir", type=Path, default=os.environ.get("LOPPI_DATA_DIR"))
     args = parser.parse_args()
     if not 0 < args.seconds <= 7 * 86400 or not .1 <= args.interval <= 60 or args.report_every < 1:
         parser.error("duration must be <=7 days and sample interval 0.1–60 seconds")
@@ -160,9 +160,9 @@ def main():
                         row[index] = str(max(int(old[index]), int(row[index])))
                 minute[(pid, birth)] = row
             present = {row[1] for row in rows}
-            for role in ("hear-core", "hear-capture", "hear-worker", "hear-desktop", "hear-webview"):
+            for role in ("loppi-core", "loppi-capture", "loppi-worker", "loppi-desktop", "loppi-webview"):
                 if role not in present:
-                    rows.append([stamp, role, "unknown" if role == "hear-webview" and unknown else "absent", *([""] * 13)])
+                    rows.append([stamp, role, "unknown" if role == "loppi-webview" and unknown else "absent", *([""] * 13)])
             append(args.output, rows)
             peak_total = max(peak_total, sum(int(r[8]) for r in rows if r[2] == "present"))
             if args.data_dir:

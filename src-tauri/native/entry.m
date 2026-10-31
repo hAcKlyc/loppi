@@ -4,9 +4,9 @@
 #import <QuartzCore/QuartzCore.h>
 #include <stdint.h>
 
-typedef void (*HearEntryEvent)(int, int, uint64_t);
-typedef struct { double width,height,band,rabbit_x,rabbit_y,top_band,top_shift,menu_y; } HearEntryGeometry;
-static const void *HearEntryKey=&HearEntryKey;
+typedef void (*LoppiEntryEvent)(int, int, uint64_t);
+typedef struct { double width,height,band,rabbit_x,rabbit_y,top_band,top_shift,menu_y; } LoppiEntryGeometry;
+static const void *LoppiEntryKey=&LoppiEntryKey;
 
 // Only user presentation changes animate. System/layout changes settle now.
 static double motionDuration(NSInteger oldMode, NSInteger oldView, NSInteger mode, NSInteger view, BOOL visible, BOOL reducedMotion) {
@@ -25,14 +25,14 @@ static NSRect expansionPeak(NSRect current, NSRect target) {
   return peak;
 }
 
-static HearEntryGeometry topLayout(NSRect screen, double safeTop, NSRect left, NSRect right, NSInteger view, BOOL feedback, BOOL detail, NSRect *frame) {
+static LoppiEntryGeometry topLayout(NSRect screen, double safeTop, NSRect left, NSRect right, NSInteger view, BOOL feedback, BOOL detail, NSRect *frame) {
   BOOL notch=safeTop>0 && !NSIsEmptyRect(left) && !NSIsEmptyRect(right) && NSMaxX(left)<NSMinX(right);
   double center=notch ? (NSMaxX(left)+NSMinX(right))/2 : NSMidX(screen);
   double rabbitCenter=notch ? NSMinX(right)+22 : center;
   // The compact trigger needs room even on a plain display. Expanded content
   // reserves only a real hardware obstruction, not a fictitious 32pt notch.
   double band=view==0 ? MAX(32,notch ? safeTop : 0) : (notch ? safeTop : 0);
-  HearEntryGeometry g={0}; g.band=band; g.top_band=notch ? safeTop : 0;
+  LoppiEntryGeometry g={0}; g.band=band; g.top_band=notch ? safeTop : 0;
   g.top_shift=rabbitCenter-center+206-(feedback ? 140 : 22);
   if(view==0) {
     g.width=feedback ? 280 : 44; g.height=band+(feedback ? 48 : 0);
@@ -46,7 +46,7 @@ static HearEntryGeometry topLayout(NSRect screen, double safeTop, NSRect left, N
   return g;
 }
 
-static HearEntryGeometry hitGeometry(HearEntryGeometry g, NSInteger mode, NSInteger view, NSRect frame) {
+static LoppiEntryGeometry hitGeometry(LoppiEntryGeometry g, NSInteger mode, NSInteger view, NSRect frame) {
   // NSWindow.frame follows the actual AppKit resize, not the final layout.
   if(mode==0 && view!=0) { g.width=frame.size.width; g.height=frame.size.height; }
   return g;
@@ -66,8 +66,8 @@ static NSPoint floatingAnchor(NSRect visible, NSPoint point, BOOL snap) {
   return point;
 }
 
-static HearEntryGeometry floatingLayout(NSRect visible, NSPoint anchor, BOOL expanded, NSRect *frame) {
-  HearEntryGeometry g={0};
+static LoppiEntryGeometry floatingLayout(NSRect visible, NSPoint anchor, BOOL expanded, NSRect *frame) {
+  LoppiEntryGeometry g={0};
   g.width=expanded ? 132 : 68; g.height=expanded ? 230 : 68;
   BOOL down=NSMaxY(visible)-anchor.y<196;
   double x=anchor.x-(expanded && anchor.x>NSMidX(visible) ? 98 : 34);
@@ -88,7 +88,7 @@ static BOOL roundedRegion(NSRect r, double radius, NSPoint p) {
   double cy=MIN(MAX(p.y,NSMinY(r)+radius),NSMaxY(r)-radius);
   return pow(p.x-cx,2)+pow(p.y-cy,2)<=radius*radius;
 }
-static BOOL hitRegion(HearEntryGeometry g, NSInteger mode, NSInteger view, BOOL detail, NSPoint p) {
+static BOOL hitRegion(LoppiEntryGeometry g, NSInteger mode, NSInteger view, BOOL detail, NSPoint p) {
   double size=mode==0 ? (view==0 ? 28 : 72) : 52;
   BOOL rabbit=pow(p.x-(g.rabbit_x+size/2),2)+pow(p.y-(g.rabbit_y+size/2),2)<=pow(size/2+5,2);
   if(mode==0 && view!=0) {
@@ -110,9 +110,9 @@ static BOOL hitRegion(HearEntryGeometry g, NSInteger mode, NSInteger view, BOOL 
   return rabbit;
 }
 
-@interface HearEntry : NSObject
+@interface LoppiEntry : NSObject
 @property (weak) NSWindow *window;
-@property HearEntryEvent callback;
+@property LoppiEntryEvent callback;
 @property NSMutableArray *tokens;
 @property id globalMonitor;
 @property id localMonitor;
@@ -135,17 +135,17 @@ static BOOL hitRegion(HearEntryGeometry g, NSInteger mode, NSInteger view, BOOL 
 @property NSPoint anchor;
 @property NSString *displayUUID;
 @property NSRunningApplication *previous;
-@property HearEntryGeometry geometry;
+@property LoppiEntryGeometry geometry;
 @property NSRect targetFrame;
-- (HearEntryGeometry)layout;
-- (HearEntryGeometry)layoutAnimated:(double)duration;
+- (LoppiEntryGeometry)layout;
+- (LoppiEntryGeometry)layoutAnimated:(double)duration;
 - (BOOL)updatePointer:(NSEvent *)event at:(NSPoint)point;
 - (BOOL)confirmFocus;
 - (BOOL)ownsKeyboard;
 - (void)finishLayout:(uint64_t)serial generation:(uint64_t)generation;
 @end
 
-@implementation HearEntry
+@implementation LoppiEntry
 - (instancetype)init { if((self=[super init])) _tokens=[NSMutableArray array]; return self; }
 - (void)notify:(int)kind value:(int)value { if(_callback) _callback(kind,value,_layoutGeneration); }
 - (BOOL)ownsKeyboard { return NSApp.isActive && _window.isKeyWindow; }
@@ -236,14 +236,14 @@ static BOOL hitRegion(HearEntryGeometry g, NSInteger mode, NSInteger view, BOOL 
   if(event && event.type==NSEventTypeLeftMouseDown && !hit && _view!=0) { [self releaseFocus:NO]; [self notify:2 value:0]; }
   return NO;
 }
-- (HearEntryGeometry)layout {
+- (LoppiEntryGeometry)layout {
   return [self layoutAnimated:0];
 }
-- (HearEntryGeometry)layoutAnimated:(double)duration {
+- (LoppiEntryGeometry)layoutAnimated:(double)duration {
   NSScreen *s=_mode==0 ? NSScreen.screens.firstObject : [self floatingScreen];
   if(!s) return _geometry;
   NSRect screen=s.frame;
-  HearEntryGeometry g={0};
+  LoppiEntryGeometry g={0};
   NSRect frame;
   if(_mode==0) {
     g=topLayout(screen,s.safeAreaInsets.top,s.auxiliaryTopLeftArea,s.auxiliaryTopRightArea,_view,_feedback,_detail,&frame);
@@ -257,7 +257,7 @@ static BOOL hitRegion(HearEntryGeometry g, NSInteger mode, NSInteger view, BOOL 
   }
   _geometry=g; _targetFrame=frame;
   uint64_t serial=++_layoutSerial, generation=_layoutGeneration;
-  __weak HearEntry *weak=self;
+  __weak LoppiEntry *weak=self;
   // NSWindow's animator clamps an overshooting timing curve. Use two native
   // segments instead: a small geometric overshoot, then a short settle. Both
   // are canceled by the same layout serial; there is no second UI clock.
@@ -271,7 +271,7 @@ static BOOL hitRegion(HearEntryGeometry g, NSInteger mode, NSInteger view, BOOL 
     [[self.window animator] setFrame:peak display:YES];
   } completionHandler:^{
     if(!opening) { [weak finishLayout:serial generation:generation]; return; }
-    HearEntry *owner=weak;
+    LoppiEntry *owner=weak;
     if(!owner || serial!=owner.layoutSerial || generation!=owner.layoutGeneration || owner.mode!=0 || owner.view!=1) return;
     [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
       context.duration=0.10;
@@ -284,7 +284,7 @@ static BOOL hitRegion(HearEntryGeometry g, NSInteger mode, NSInteger view, BOOL 
   return g;
 }
 - (void)install {
-  __weak HearEntry *weak=self;
+  __weak LoppiEntry *weak=self;
   NSEventMask mask=NSEventMaskMouseMoved|NSEventMaskLeftMouseDown|NSEventMaskLeftMouseDragged|NSEventMaskLeftMouseUp|NSEventMaskRightMouseDown;
   _globalMonitor=[NSEvent addGlobalMonitorForEventsMatchingMask:mask handler:^(NSEvent *e){ [weak checkPointer:e]; }];
   _localMonitor=[NSEvent addLocalMonitorForEventsMatchingMask:mask handler:^NSEvent *(NSEvent *e){ return [weak checkPointer:e] ? nil : e; }];
@@ -359,11 +359,11 @@ static BOOL hitRegion(HearEntryGeometry g, NSInteger mode, NSInteger view, BOOL 
 }
 @end
 
-static HearEntry *entry(void *window) { return objc_getAssociatedObject((__bridge NSWindow *)window,HearEntryKey); }
-void hear_entry_install(void *window,HearEntryEvent callback) {
+static LoppiEntry *entry(void *window) { return objc_getAssociatedObject((__bridge NSWindow *)window,LoppiEntryKey); }
+void loppi_entry_install(void *window,LoppiEntryEvent callback) {
   NSWindow *w=(__bridge NSWindow *)window;
-  HearEntry *e=[HearEntry new]; e.window=w; e.callback=callback;
-  objc_setAssociatedObject(w,HearEntryKey,e,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  LoppiEntry *e=[LoppiEntry new]; e.window=w; e.callback=callback;
+  objc_setAssociatedObject(w,LoppiEntryKey,e,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
   w.collectionBehavior=NSWindowCollectionBehaviorCanJoinAllSpaces|NSWindowCollectionBehaviorFullScreenAuxiliary|NSWindowCollectionBehaviorCanJoinAllApplications|NSWindowCollectionBehaviorIgnoresCycle;
   w.hidesOnDeactivate=NO; w.hasShadow=NO; w.backgroundColor=NSColor.clearColor;
   w.acceptsMouseMovedEvents=YES;
@@ -371,8 +371,8 @@ void hear_entry_install(void *window,HearEntryEvent callback) {
   if(NSApp.isActive) { w.collectionBehavior=(w.collectionBehavior & ~NSWindowCollectionBehaviorIgnoresCycle)|NSWindowCollectionBehaviorParticipatesInCycle; [NSApp addWindowsItem:w title:w.title filename:NO]; }
   [e install]; [e notify:4 value:NSApp.isActive];
 }
-HearEntryGeometry hear_entry_layout(void *window,int mode,int view,int feedback,int detail,int suppress,uint64_t generation) {
-  HearEntry *e=entry(window);
+LoppiEntryGeometry loppi_entry_layout(void *window,int mode,int view,int feedback,int detail,int suppress,uint64_t generation) {
+  LoppiEntry *e=entry(window);
   if(e.mode!=mode) { if(e.drag) [e finishDrag]; e.dragPending=NO; }
   if(e.drag) view=0;
   e.layoutGeneration=generation;
@@ -382,12 +382,12 @@ HearEntryGeometry hear_entry_layout(void *window,int mode,int view,int feedback,
     if(e.inhibited) { e.inhibited=NO; [e notify:7 value:0]; }
   } else if(suppress && e.view!=0) e.inhibited=YES;
   e.mode=mode; e.view=view; e.feedback=feedback; e.detail=detail;
-  HearEntryGeometry geometry=[e layoutAnimated:duration];
+  LoppiEntryGeometry geometry=[e layoutAnimated:duration];
   if(suppress && !e.inhibited) [e notify:7 value:0];
   return geometry;
 }
-int hear_entry_focus(void *window,int acquire,int restore,uint64_t generation) {
-  HearEntry *e=entry(window);
+int loppi_entry_focus(void *window,int acquire,int restore,uint64_t generation) {
+  LoppiEntry *e=entry(window);
   if(acquire) {
     if(e.view!=2) return 0;
     if(e.commentFocus) return [e confirmFocus];
@@ -400,27 +400,27 @@ int hear_entry_focus(void *window,int acquire,int restore,uint64_t generation) {
   } else [e releaseFocus:restore!=0];
   return 1;
 }
-char *hear_entry_position(void *window) {
-  HearEntry *e=entry(window); NSScreen *s=[e floatingScreen]; NSRect f=s.visibleFrame;
+char *loppi_entry_position(void *window) {
+  LoppiEntry *e=entry(window); NSScreen *s=[e floatingScreen]; NSRect f=s.visibleFrame;
   NSDictionary *p=@{@"display_uuid":e.displayUUID ?: @"", @"x":@((e.anchor.x-NSMinX(f))/f.size.width), @"y":@((e.anchor.y-NSMinY(f))/f.size.height)};
   NSData *data=[NSJSONSerialization dataWithJSONObject:p options:0 error:nil];
   return strdup([[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding].UTF8String);
 }
-void hear_entry_restore(void *window,const char *uuid,double x,double y) {
-  HearEntry *e=entry(window); e.displayUUID=[NSString stringWithUTF8String:uuid];
+void loppi_entry_restore(void *window,const char *uuid,double x,double y) {
+  LoppiEntry *e=entry(window); e.displayUUID=[NSString stringWithUTF8String:uuid];
   NSScreen *s=[e floatingScreen]; NSRect f=s.visibleFrame;
   e.anchor=NSMakePoint(NSMinX(f)+x*f.size.width,NSMinY(f)+y*f.size.height);
 }
-uint32_t hear_entry_window_id(void *window) { return (uint32_t)((__bridge NSWindow *)window).windowNumber; }
-void hear_entry_dispose(void *window) {
-  HearEntry *e=entry(window);
+uint32_t loppi_entry_window_id(void *window) { return (uint32_t)((__bridge NSWindow *)window).windowNumber; }
+void loppi_entry_dispose(void *window) {
+  LoppiEntry *e=entry(window);
   [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
     context.duration=0;
     [[e.window animator] setFrame:e.window.frame display:NO];
   } completionHandler:nil];
-  [e dispose]; objc_setAssociatedObject((__bridge NSWindow *)window,HearEntryKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  [e dispose]; objc_setAssociatedObject((__bridge NSWindow *)window,LoppiEntryKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
-int hear_entry_active(void) { return NSApp.isActive ? 1 : 0; }
+int loppi_entry_active(void) { return NSApp.isActive ? 1 : 0; }
 
-HearEntryGeometry hear_entry_geometry(void *window) { return entry(window).geometry; }
+LoppiEntryGeometry loppi_entry_geometry(void *window) { return entry(window).geometry; }

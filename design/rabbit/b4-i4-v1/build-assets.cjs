@@ -70,7 +70,7 @@ function blinkFrom(frame) {
   return out;
 }
 async function main() {
-  for(const dir of ['poses','animations','icons','icons/hear.iconset'])await fs.mkdir(path.join(root,dir),{recursive:true});
+  for(const dir of ['poses','animations','icons','icons/loppi.iconset'])await fs.mkdir(path.join(root,dir),{recursive:true});
   const source=await sharp(path.join(root,'source/poses-generated.png')).ensureAlpha().raw().toBuffer({resolveWithObject:true});
   const cells=[];
   for(let n=0;n<9;n++) {
@@ -137,7 +137,7 @@ async function main() {
   const circle=await sharp(icon).ensureAlpha().composite([{input:Buffer.from('<svg width="1024" height="1024"><circle cx="512" cy="512" r="512" fill="white"/></svg>'),blend:'dest-in'}]).png().toBuffer();
   await fs.writeFile(path.join(root,'icons/rounded-1024.png'),rounded);
   await fs.writeFile(path.join(root,'icons/circle-1024.png'),circle);
-  for(const s of [16,32,128,256,512])for(const ratio of [1,2])await sharp(rounded).resize(s*ratio,s*ratio).png().toFile(path.join(root,'icons/hear.iconset',`icon_${s}x${s}${ratio===2?'@2x':''}.png`));
+  for(const s of [16,32,128,256,512])for(const ratio of [1,2])await sharp(rounded).resize(s*ratio,s*ratio).png().toFile(path.join(root,'icons/loppi.iconset',`icon_${s}x${s}${ratio===2?'@2x':''}.png`));
   const icoSizes=[16,24,32,48,64,128,256],images=await Promise.all(icoSizes.map(s=>sharp(path.join(root,'icons',`app-${s}.png`)).ensureAlpha().png().toBuffer()));
   const header=Buffer.alloc(6+16*images.length);header.writeUInt16LE(1,2);header.writeUInt16LE(images.length,4);let offset=header.length;
   images.forEach((png,i)=>{const p=6+i*16,s=icoSizes[i];header[p]=s===256?0:s;header[p+1]=s===256?0:s;header.writeUInt16LE(1,p+4);header.writeUInt16LE(32,p+6);header.writeUInt32LE(png.length,p+8);header.writeUInt32LE(offset,p+12);offset+=png.length;});

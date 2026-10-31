@@ -12,35 +12,35 @@ static PRIVACY_REQUEST: Mutex<()> = Mutex::new(());
 #[tauri::command]
 async fn core_request(
     app: tauri::AppHandle,
-    mut request: hear_protocol::Request,
+    mut request: loppi_protocol::Request,
     request_id: Option<uuid::Uuid>,
-) -> Result<hear_protocol::Response, String> {
-    if let hear_protocol::Request::CaptureScreenshot {
+) -> Result<loppi_protocol::Response, String> {
+    if let loppi_protocol::Request::CaptureScreenshot {
         excluded_window_ids,
         ..
     } = &mut request
     {
         *excluded_window_ids = vec![entry::screenshot_window(app.clone()).await?];
     }
-    if matches!(request, hear_protocol::Request::ExecuteCleanup { .. }) {
+    if matches!(request, loppi_protocol::Request::ExecuteCleanup { .. }) {
         return Err("use the cleanup confirmation flow".into());
     }
     let runtime = Arc::clone(&app.state::<Arc<EntryRuntime>>());
-    let status = matches!(request, hear_protocol::Request::Status);
+    let status = matches!(request, loppi_protocol::Request::Status);
     tauri::async_runtime::spawn_blocking(move || {
         if status {
             runtime.refresh(&app);
             let snapshot = runtime.snapshot();
             return snapshot
                 .state
-                .map(|state| hear_protocol::Response::Status {
+                .map(|state| loppi_protocol::Response::Status {
                     id: uuid::Uuid::new_v4(),
                     state,
                 })
                 .ok_or_else(|| snapshot.error.unwrap_or("status unavailable".into()));
         }
-        let result = hear_protocol::send_from_with_id(
-            hear_protocol::ClientKind::Gui,
+        let result = loppi_protocol::send_from_with_id(
+            loppi_protocol::ClientKind::Gui,
             request,
             request_id.unwrap_or_else(uuid::Uuid::new_v4),
         );
@@ -53,9 +53,9 @@ async fn core_request(
 
 #[tauri::command]
 async fn cleanup_request(
-    request: hear_protocol::Request,
-) -> Result<hear_protocol::Response, String> {
-    let hear_protocol::Request::ExecuteCleanup {
+    request: loppi_protocol::Request,
+) -> Result<loppi_protocol::Response, String> {
+    let loppi_protocol::Request::ExecuteCleanup {
         confirmed_all_data, ..
     } = &request
     else {
@@ -75,7 +75,7 @@ async fn cleanup_request(
         }
     }
     tauri::async_runtime::spawn_blocking(move || {
-        hear_protocol::send_from(hear_protocol::ClientKind::Gui, request)
+        loppi_protocol::send_from(loppi_protocol::ClientKind::Gui, request)
     })
     .await
     .map_err(|error| error.to_string())?
@@ -88,10 +88,10 @@ async fn agent_access_info() -> Result<serde_json::Value, String> {
         let cli = executable
             .parent()
             .ok_or("missing app directory")?
-            .join("hear");
-        let mut info = hear_protocol::agent_assets::info(&cli);
-        info["status"] = hear_protocol::context::execute(hear_protocol::context::Query::Status(
-            hear_protocol::context::StatusArgs::default(),
+            .join("loppi");
+        let mut info = loppi_protocol::agent_assets::info(&cli);
+        info["status"] = loppi_protocol::context::execute(loppi_protocol::context::Query::Status(
+            loppi_protocol::context::StatusArgs::default(),
         ));
         Ok(info)
     })
@@ -127,17 +127,18 @@ async fn copy_agent_text(text: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn build_info() -> hear_protocol::BuildInfo {
-    hear_protocol::build_info("gui")
+fn build_info() -> loppi_protocol::BuildInfo {
+    loppi_protocol::build_info("gui")
 }
 
 #[tauri::command]
 fn gui_ready() -> Result<(), String> {
-    let mut event = hear_protocol::LogEvent::simple("gui", hear_protocol::LogLevel::Info, "opened");
-    event.build = Some(hear_protocol::build_info("gui"));
-    hear_protocol::send_from(
-        hear_protocol::ClientKind::Gui,
-        hear_protocol::Request::Log { event },
+    let mut event =
+        loppi_protocol::LogEvent::simple("gui", loppi_protocol::LogLevel::Info, "opened");
+    event.build = Some(loppi_protocol::build_info("gui"));
+    loppi_protocol::send_from(
+        loppi_protocol::ClientKind::Gui,
+        loppi_protocol::Request::Log { event },
     )?;
     Ok(())
 }
@@ -152,16 +153,16 @@ fn show_main(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 unsafe extern "C" {
-    fn hear_agent_status() -> i32;
-    fn hear_agent_register() -> i32;
-    fn hear_agent_unregister() -> i32;
-    fn hear_show_exit_error(message: *const std::ffi::c_char);
-    fn hear_microphone_authorization_status() -> i32;
-    fn hear_request_microphone_authorization() -> i32;
-    fn hear_screen_authorization_status() -> i32;
-    fn hear_request_screen_authorization() -> i32;
-    fn hear_tap_required() -> i32;
-    fn hear_microphone_available() -> i32;
+    fn loppi_agent_status() -> i32;
+    fn loppi_agent_register() -> i32;
+    fn loppi_agent_unregister() -> i32;
+    fn loppi_show_exit_error(message: *const std::ffi::c_char);
+    fn loppi_microphone_authorization_status() -> i32;
+    fn loppi_request_microphone_authorization() -> i32;
+    fn loppi_screen_authorization_status() -> i32;
+    fn loppi_request_screen_authorization() -> i32;
+    fn loppi_tap_required() -> i32;
+    fn loppi_microphone_available() -> i32;
 }
 
 #[derive(serde::Serialize)]
@@ -175,14 +176,14 @@ struct PrivacyStatus {
 
 #[tauri::command]
 fn privacy_status() -> PrivacyStatus {
-    let tap_required = unsafe { hear_tap_required() != 0 };
+    let tap_required = unsafe { loppi_tap_required() != 0 };
     PrivacyStatus {
-        microphone: unsafe { hear_microphone_authorization_status() },
-        microphone_available: unsafe { hear_microphone_available() != 0 },
-        screen_and_system_audio: unsafe { hear_screen_authorization_status() },
+        microphone: unsafe { loppi_microphone_authorization_status() },
+        microphone_available: unsafe { loppi_microphone_available() != 0 },
+        screen_and_system_audio: unsafe { loppi_screen_authorization_status() },
         tap_required,
         tap_ready: tap_required
-            && hear_protocol::data_dir()
+            && loppi_protocol::data_dir()
                 .is_ok_and(|directory| directory.join("tap-ready-v1").is_file()),
     }
 }
@@ -193,7 +194,7 @@ async fn request_microphone_permission() -> Result<i32, String> {
         let _guard = PRIVACY_REQUEST
             .try_lock()
             .map_err(|_| "另一项授权正在进行，请完成后重试")?;
-        Ok(unsafe { hear_request_microphone_authorization() })
+        Ok(unsafe { loppi_request_microphone_authorization() })
     })
     .await
     .map_err(|error| error.to_string())?
@@ -205,10 +206,10 @@ async fn request_system_audio_permission() -> Result<i32, String> {
         let _guard = PRIVACY_REQUEST
             .try_lock()
             .map_err(|_| "另一项授权正在进行，请完成后重试")?;
-        if unsafe { hear_tap_required() } == 0 {
-            return Ok(unsafe { hear_request_screen_authorization() });
+        if unsafe { loppi_tap_required() } == 0 {
+            return Ok(unsafe { loppi_request_screen_authorization() });
         }
-        let directory = hear_protocol::data_dir()?;
+        let directory = loppi_protocol::data_dir()?;
         std::fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
         std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))
             .map_err(|error| error.to_string())?;
@@ -227,8 +228,8 @@ async fn request_system_audio_permission() -> Result<i32, String> {
         let contents = binary
             .parent()
             .and_then(|path| path.parent())
-            .ok_or("cannot locate hear application contents")?;
-        let helper = contents.join("Library/LoginItems/HearCore.app/Contents/MacOS/hear-core");
+            .ok_or("cannot locate loppi application contents")?;
+        let helper = contents.join("Library/LoginItems/LoppiCore.app/Contents/MacOS/loppi-core");
         let mut child = Command::new(&helper)
             .args([
                 "probe-system",
@@ -293,7 +294,7 @@ async fn request_screenshot_permission() -> Result<i32, String> {
         let _guard = PRIVACY_REQUEST
             .try_lock()
             .map_err(|_| "另一项授权正在进行，请完成后重试")?;
-        Ok(unsafe { hear_request_screen_authorization() })
+        Ok(unsafe { loppi_request_screen_authorization() })
     })
     .await
     .map_err(|e| e.to_string())?
@@ -301,14 +302,14 @@ async fn request_screenshot_permission() -> Result<i32, String> {
 
 #[tauri::command]
 fn login_item_status() -> i32 {
-    unsafe { hear_agent_status() }
+    unsafe { loppi_agent_status() }
 }
 
 #[tauri::command]
 fn register_login_item() -> Result<i32, String> {
-    let result = unsafe { hear_agent_register() };
+    let result = unsafe { loppi_agent_register() };
     if result == 0 {
-        Ok(unsafe { hear_agent_status() })
+        Ok(unsafe { loppi_agent_status() })
     } else {
         Err(format!(
             "login item registration failed with macOS code {result}"
@@ -318,9 +319,9 @@ fn register_login_item() -> Result<i32, String> {
 
 #[tauri::command]
 fn unregister_login_item() -> Result<i32, String> {
-    let result = unsafe { hear_agent_unregister() };
+    let result = unsafe { loppi_agent_unregister() };
     if result == 0 {
-        Ok(unsafe { hear_agent_status() })
+        Ok(unsafe { loppi_agent_status() })
     } else {
         Err(format!(
             "login item removal failed with macOS code {result}"
@@ -330,14 +331,14 @@ fn unregister_login_item() -> Result<i32, String> {
 
 fn show_exit_error(error: &str, native_exit: bool) {
     let instruction = if native_exit {
-        "后台尚未退出。请稍后重新打开 Hear，再选择退出。"
+        "后台尚未退出。请稍后重新打开 loppi，再选择退出。"
     } else {
-        "后台尚未退出。请稍后再次选择退出 Hear。"
+        "后台尚未退出。请稍后再次选择退出 loppi。"
     };
     // Error text is display data, never an AppleScript or shell program.
     let text = format!("{instruction}\n\n{error}").replace('\0', "�");
     if let Ok(text) = std::ffi::CString::new(text) {
-        unsafe { hear_show_exit_error(text.as_ptr()) };
+        unsafe { loppi_show_exit_error(text.as_ptr()) };
     }
 }
 
@@ -347,13 +348,13 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             app.manage(onboarding::Preferences::new(
-                std::env::var_os("HEAR_DATA_DIR")
+                std::env::var_os("LOPPI_DATA_DIR")
                     .map(|p| std::path::PathBuf::from(p).join("gui"))
                     .unwrap_or(app.path().app_config_dir()?)
                     .join("onboarding.json"),
             ));
             let runtime = EntryRuntime::new(
-                std::env::var_os("HEAR_DATA_DIR")
+                std::env::var_os("LOPPI_DATA_DIR")
                     .map(|p| std::path::PathBuf::from(p).join("gui"))
                     .unwrap_or(app.path().app_config_dir()?)
                     .join("entry-preferences.json"),
@@ -364,7 +365,7 @@ pub fn run() {
                 "float",
                 tauri::WebviewUrl::App("index.html".into()),
             )
-            .title("hear · 快速操作")
+            .title("loppi · 快速操作")
             .inner_size(68.0, 68.0)
             .decorations(false)
             .resizable(false)
@@ -420,19 +421,19 @@ pub fn run() {
             tauri::RunEvent::Exit => {
                 playback_output::shutdown();
                 app.state::<Arc<EntryRuntime>>().stop();
-                if let Err(error) = hear_protocol::quit_gui_core() {
-                    eprintln!("Hear native exit incomplete: {error}");
+                if let Err(error) = loppi_protocol::quit_gui_core() {
+                    eprintln!("loppi native exit incomplete: {error}");
                     show_exit_error(&error, true);
                 }
                 entry::dispose(app);
             }
             tauri::RunEvent::ExitRequested { api, .. } => {
                 app.state::<Arc<EntryRuntime>>().stop();
-                match hear_protocol::quit_gui_core() {
+                match loppi_protocol::quit_gui_core() {
                     Ok(()) => entry::dispose(app),
                     Err(error) => {
                         api.prevent_exit();
-                        eprintln!("Hear exit incomplete: {error}");
+                        eprintln!("loppi exit incomplete: {error}");
                         // Keep the GUI alive rather than silently abandoning a
                         // recording Core; the user can retry the Quit action.
                         show_exit_error(&error, false);

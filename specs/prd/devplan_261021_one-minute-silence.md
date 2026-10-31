@@ -32,7 +32,7 @@ updated: 2026-10-21
 - mode: repair；required lenses: requirements、adversarial、architecture。
 - base: `0b69be7617c90a8efb4ce897e5137294a14ffa7e`。
 - requirement source: 本计划与用户最新要求；保证、非目标、允许机制见上文。
-- in-scope: `crates/hear-core/src/events/asr.rs`、`crates/hear-core/src/events/asr/tests.rs`、`specs/tech_docs/algorithms.md`、本计划。
+- in-scope: `crates/loppi-core/src/events/asr.rs`、`crates/loppi-core/src/events/asr/tests.rs`、`specs/tech_docs/algorithms.md`、本计划。
 - out-of-scope: 上一轮已交付逻辑、其他所有共享工作树修改。旧计划作为历史交付记录保留。
 - 结束门槛及证据影响见上文。只审本次差异，不回卷上一轮。
 

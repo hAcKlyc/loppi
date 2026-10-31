@@ -1,4 +1,4 @@
-use hear_protocol::{
+use loppi_protocol::{
     CaptureBlocker as Blocker, ClientKind, MomentKind, Request, Response, ServiceState,
     SourcePhase as Phase,
 };
@@ -18,10 +18,10 @@ use uuid::Uuid;
 
 static HOST: OnceLock<tauri::AppHandle> = OnceLock::new();
 unsafe extern "C" {
-    fn hear_entry_active() -> i32;
-    fn hear_entry_geometry(window: *mut std::ffi::c_void) -> Geometry;
-    fn hear_entry_install(window: *mut std::ffi::c_void, callback: extern "C" fn(i32, i32, u64));
-    fn hear_entry_layout(
+    fn loppi_entry_active() -> i32;
+    fn loppi_entry_geometry(window: *mut std::ffi::c_void) -> Geometry;
+    fn loppi_entry_install(window: *mut std::ffi::c_void, callback: extern "C" fn(i32, i32, u64));
+    fn loppi_entry_layout(
         window: *mut std::ffi::c_void,
         mode: i32,
         view: i32,
@@ -30,16 +30,21 @@ unsafe extern "C" {
         suppress: i32,
         generation: u64,
     ) -> Geometry;
-    fn hear_entry_focus(
+    fn loppi_entry_focus(
         window: *mut std::ffi::c_void,
         acquire: i32,
         restore: i32,
         generation: u64,
     ) -> i32;
-    fn hear_entry_position(window: *mut std::ffi::c_void) -> *mut libc::c_char;
-    fn hear_entry_restore(window: *mut std::ffi::c_void, uuid: *const libc::c_char, x: f64, y: f64);
-    fn hear_entry_window_id(window: *mut std::ffi::c_void) -> u32;
-    fn hear_entry_dispose(window: *mut std::ffi::c_void);
+    fn loppi_entry_position(window: *mut std::ffi::c_void) -> *mut libc::c_char;
+    fn loppi_entry_restore(
+        window: *mut std::ffi::c_void,
+        uuid: *const libc::c_char,
+        x: f64,
+        y: f64,
+    );
+    fn loppi_entry_window_id(window: *mut std::ffi::c_void) -> u32;
+    fn loppi_entry_dispose(window: *mut std::ffi::c_void);
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -315,7 +320,7 @@ impl EntryRuntime {
             return;
         }
         let result =
-            hear_protocol::send_from(ClientKind::Gui, Request::AppOpened).and_then(|r| match r {
+            loppi_protocol::send_from(ClientKind::Gui, Request::AppOpened).and_then(|r| match r {
                 Response::Status { state, .. } => Ok(state),
                 Response::Error { code, message, .. } => Err(format!("{code}: {message}")),
                 _ => Err("unexpected status response".into()),
@@ -332,12 +337,19 @@ impl EntryRuntime {
                     != snapshot.state.as_ref().map(|s| s.revision);
             (snapshot, changed)
         };
+        // stop() runs on the main thread and drains IPC through this lock.
+        // Window queries can synchronously dispatch to that same main thread,
+        // so publishing must never keep the IPC drain lock held.
+        drop(_query);
+        if self.stopped.load(Ordering::Acquire) {
+            return;
+        }
         // Hidden WebViews recover the current snapshot on foreground. The
         // always-visible entry only needs semantic capture/control changes;
         // changing disk byte counts must not wake its renderer every five seconds.
         for (label, window) in app.webview_windows() {
             if window.is_visible().unwrap_or(false) && (label == "main" || changed) {
-                let _ = app.emit_to(&label, "hear-entry-snapshot", &snapshot);
+                let _ = app.emit_to(&label, "loppi-entry-snapshot", &snapshot);
             }
         }
     }
@@ -441,7 +453,7 @@ extern "C" fn native_event(kind: i32, value: i32, generation: u64) {
     let geometry = if kind == 3 || kind == 5 || kind == 8 {
         app.get_webview_window("float")
             .and_then(|w| w.ns_window().ok())
-            .map(|n| unsafe { hear_entry_geometry(n) })
+            .map(|n| unsafe { loppi_entry_geometry(n) })
     } else {
         None
     };
@@ -454,7 +466,7 @@ extern "C" fn native_event(kind: i32, value: i32, generation: u64) {
     };
     let _ = app.emit_to(
         "float",
-        "hear-entry-native",
+        "loppi-entry-native",
         serde_json::json!({"kind":kind,"value":value,"generation":generation,"geometry":geometry,"error":error}),
     );
 }
@@ -465,21 +477,21 @@ pub fn install(
 ) -> Result<(), String> {
     let _ = HOST.set(app.clone());
     window
-        .set_focusable(unsafe { hear_entry_active() != 0 })
+        .set_focusable(unsafe { loppi_entry_active() != 0 })
         .map_err(|e| e.to_string())?;
     let pointer = window.ns_window().map_err(|e| e.to_string())?;
     unsafe {
-        hear_entry_install(pointer, native_event);
+        loppi_entry_install(pointer, native_event);
     }
     let inner = runtime.inner.lock().unwrap();
     if let Some(p) = &inner.prefs.floating {
         let uuid = CString::new(p.display_uuid.as_str()).map_err(|e| e.to_string())?;
         unsafe {
-            hear_entry_restore(pointer, uuid.as_ptr(), p.x, p.y);
+            loppi_entry_restore(pointer, uuid.as_ptr(), p.x, p.y);
         }
     }
     unsafe {
-        hear_entry_layout(
+        loppi_entry_layout(
             pointer,
             if inner.prefs.mode == Mode::Top { 0 } else { 1 },
             0,
@@ -495,7 +507,7 @@ pub fn dispose(app: &tauri::AppHandle) {
     if let Some(w) = app.get_webview_window("float") {
         if let Ok(n) = w.ns_window() {
             unsafe {
-                hear_entry_dispose(n);
+                loppi_entry_dispose(n);
             }
         }
     }
@@ -529,14 +541,14 @@ pub async fn entry_mode(app: tauri::AppHandle, mode: Mode) -> Result<(), String>
             return Ok(());
         }
         unsafe {
-            hear_entry_focus(n, 0, 1, 0);
-            hear_entry_layout(n, if mode == Mode::Top { 0 } else { 1 }, 0, 0, 0, 0, 0);
+            loppi_entry_focus(n, 0, 1, 0);
+            loppi_entry_layout(n, if mode == Mode::Top { 0 } else { 1 }, 0, 0, 0, 0, 0);
         }
-        w.set_focusable(unsafe { hear_entry_active() != 0 })
+        w.set_focusable(unsafe { loppi_entry_active() != 0 })
             .map_err(|e| e.to_string())
     })
     .await?;
-    app.emit("hear-entry-snapshot", runtime.snapshot())
+    app.emit("loppi-entry-snapshot", runtime.snapshot())
         .map_err(|e| e.to_string())
 }
 #[derive(Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -576,7 +588,7 @@ pub async fn entry_layout(
             return Ok(None);
         }
         let geometry = unsafe {
-            hear_entry_layout(
+            loppi_entry_layout(
                 n,
                 if mode == Mode::Top { 0 } else { 1 },
                 match view {
@@ -631,9 +643,9 @@ pub async fn entry_focus(
         if acquire {
             w.set_focusable(true).map_err(|e| e.to_string())?;
         }
-        let okay = unsafe { hear_entry_focus(n, acquire as i32, restore as i32, generation) };
+        let okay = unsafe { loppi_entry_focus(n, acquire as i32, restore as i32, generation) };
         if !acquire {
-            w.set_focusable(unsafe { hear_entry_active() != 0 })
+            w.set_focusable(unsafe { loppi_entry_active() != 0 })
                 .map_err(|e| e.to_string())?;
         }
         Ok(okay != 0)
@@ -644,7 +656,7 @@ fn save_entry_position(app: &tauri::AppHandle) -> Result<(), String> {
     let window = app.get_webview_window("float").ok_or("entry unavailable")?;
     let n = window.ns_window().map_err(|error| error.to_string())?;
     let position = {
-        let p = unsafe { hear_entry_position(n) };
+        let p = unsafe { loppi_entry_position(n) };
         if p.is_null() {
             return Err("cannot read entry position".into());
         }
@@ -777,12 +789,12 @@ impl Inner {
     }
 }
 pub async fn screenshot_window(app: tauri::AppHandle) -> Result<u32, String> {
-    native(app, |_, n| Ok(unsafe { hear_entry_window_id(n) })).await
+    native(app, |_, n| Ok(unsafe { loppi_entry_window_id(n) })).await
 }
 #[tauri::command]
 pub async fn entry_action(app: tauri::AppHandle, action: Action) -> Result<ActionResult, String> {
     let window_id = if matches!(action.kind, ActionKind::Screenshot) {
-        Some(native(app.clone(), |_, n| Ok(unsafe { hear_entry_window_id(n) })).await?)
+        Some(native(app.clone(), |_, n| Ok(unsafe { loppi_entry_window_id(n) })).await?)
     } else {
         None
     };
@@ -818,7 +830,7 @@ pub async fn entry_action(app: tauri::AppHandle, action: Action) -> Result<Actio
     // All handling, including resetting the slot, belongs to this blocking job.
     // A disconnected WebView cannot leave an action permanently in flight.
     let result = tauri::async_runtime::spawn_blocking(move || {
-        let response = hear_protocol::send_from_with_id(ClientKind::Gui, request, id);
+        let response = loppi_protocol::send_from_with_id(ClientKind::Gui, request, id);
         {
             let mut inner = runtime.inner.lock().unwrap();
             if let Some(p) = inner.pending.get_mut(&key) {
@@ -830,7 +842,7 @@ pub async fn entry_action(app: tauri::AppHandle, action: Action) -> Result<Actio
         match response {
             Ok(response) => {
                 if matches!(response, Response::MomentSaved { .. }) {
-                    let _ = app.emit("hear-moment-changed", ());
+                    let _ = app.emit("loppi-moment-changed", ());
                 }
                 action_result(response)
             }
@@ -855,7 +867,7 @@ mod tests {
     #[test]
     fn mode_change_invalidates_even_an_old_collapsed_layout() {
         let runtime = EntryRuntime::new(
-            std::env::temp_dir().join(format!("hear-entry-{}.json", Uuid::new_v4())),
+            std::env::temp_dir().join(format!("loppi-entry-{}.json", Uuid::new_v4())),
         );
         let mut inner = runtime.inner.lock().unwrap();
         inner.layout_generation = 3;
@@ -870,7 +882,7 @@ mod tests {
     #[test]
     fn comment_focus_intent_survives_layout_but_never_a_cancellation() {
         let runtime = EntryRuntime::new(
-            std::env::temp_dir().join(format!("hear-entry-{}.json", Uuid::new_v4())),
+            std::env::temp_dir().join(format!("loppi-entry-{}.json", Uuid::new_v4())),
         );
         let mut inner = runtime.inner.lock().unwrap();
         inner.layout_generation = 4;
@@ -907,7 +919,7 @@ mod tests {
     #[test]
     fn lost_core_or_webview_reply_keeps_original_control_revision() {
         let runtime = EntryRuntime::new(
-            std::env::temp_dir().join(format!("hear-entry-{}.json", Uuid::new_v4())),
+            std::env::temp_dir().join(format!("loppi-entry-{}.json", Uuid::new_v4())),
         );
         let mut inner = runtime.inner.lock().unwrap();
         inner.observe(Ok(state()));
@@ -958,7 +970,7 @@ mod tests {
     #[test]
     fn uncertain_save_blocks_new_identity_but_does_not_block_pause() {
         let runtime = EntryRuntime::new(
-            std::env::temp_dir().join(format!("hear-entry-{}.json", Uuid::new_v4())),
+            std::env::temp_dir().join(format!("loppi-entry-{}.json", Uuid::new_v4())),
         );
         let mut inner = runtime.inner.lock().unwrap();
         inner.observe(Ok(state()));
@@ -1021,7 +1033,7 @@ mod tests {
     #[test]
     fn fault_reminds_once_and_only_normal_recovery_rearms() {
         let runtime = EntryRuntime::new(
-            std::env::temp_dir().join(format!("hear-entry-{}.json", Uuid::new_v4())),
+            std::env::temp_dir().join(format!("loppi-entry-{}.json", Uuid::new_v4())),
         );
         let mut inner = runtime.inner.lock().unwrap();
         let mut fault = state();
@@ -1046,7 +1058,7 @@ mod tests {
     #[test]
     fn unknown_initial_state_does_not_make_startup_fault_a_new_alert() {
         let runtime = EntryRuntime::new(
-            std::env::temp_dir().join(format!("hear-entry-{}.json", Uuid::new_v4())),
+            std::env::temp_dir().join(format!("loppi-entry-{}.json", Uuid::new_v4())),
         );
         let mut inner = runtime.inner.lock().unwrap();
         inner.observe(Err("unreachable".into()));

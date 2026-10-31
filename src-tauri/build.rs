@@ -11,7 +11,7 @@ fn main() {
         .flag("-fblocks")
         .flag("-mmacosx-version-min=13.0")
         .flag("-fobjc-arc")
-        .compile("hear_agent");
+        .compile("loppi_agent");
     println!("cargo:rustc-link-lib=framework=Foundation");
     println!("cargo:rustc-link-lib=framework=AppKit");
     println!("cargo:rustc-link-lib=framework=ServiceManagement");

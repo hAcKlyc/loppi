@@ -134,7 +134,7 @@
 
 按日时间线在“我记得就是今天下午”时有效。但使用数周之后，用户未必记得日期，也未必认得系统起的标题。一天的浏览成本可以接受，不代表在几十天里逐日尝试仍合理。
 
-更关键的是，源码已经提供检索底座，却只服务 CLI。对普通用户而言，“这个功能已经实现”几乎不可感知。这是当前最清晰、证据最充分的升级机会。[导航](../../src/App.tsx#L570)、[检索实现](../../crates/hear-core/src/knowledge.rs#L810)
+更关键的是，源码已经提供检索底座，却只服务 CLI。对普通用户而言，“这个功能已经实现”几乎不可感知。这是当前最清晰、证据最充分的升级机会。[导航](../../src/App.tsx#L570)、[检索实现](../../crates/loppi-core/src/knowledge.rs#L810)
 
 不过，升级不能简化成“把 CLI 包一层输入框”。现有搜索是短语/子串匹配与时间倒序，索引种类是粗转、精转、评论、OCR；它没有现成的语义排序，事件标题不在这四类索引中，Mark 本身也没有正文。结果对象没有直接的事件引用字段。标题、重点、结果分组、命中上下文和准确落点需要一起设计。
 
@@ -166,7 +166,7 @@
 
 ### 4.6 问题五：首次价值出现之前，用户先承担了配置成本
 
-0.1 要求本地模型及两项云能力准备就绪后首次开始；应用内出现 LLM、ASR、固定供应商、模型名、API Key。这是适合能力验证和技术用户的产品形态。[PRD 首次设置](../prd/prd_0.1.md#3-首次设置与启用)、[开始门槛](../../crates/hear-core/src/main.rs#L3730)
+0.1 要求本地模型及两项云能力准备就绪后首次开始；应用内出现 LLM、ASR、固定供应商、模型名、API Key。这是适合能力验证和技术用户的产品形态。[PRD 首次设置](../prd/prd_0.1.md#3-首次设置与启用)、[开始门槛](../../crates/loppi-core/src/main.rs#L3730)
 
 如果目标逐渐扩大到普通工作者，用户在尚未相信产品价值之前，需要理解两个云服务和付费关系，可能成为激活阻力。这里没有现成转化率，不能直接断言它是流失首因。
 
@@ -470,10 +470,10 @@ hear 可争取的差异化，是**电脑工作期间低操作成本的声音覆�
 | E02 | [兔子入口 PRD](../prd/prd_0.1_quiet-rabbit-entry.md)，第 1–4 节 | 安静常驻、暂停睡眠、顶部/悬浮入口不同主动作、异常不能伪装睡眠 |
 | E03 | [App.tsx](../../src/App.tsx#L570)，`Page` 与主导航 | GUI 四类页面；没有搜索页；详情导出/清理转入设置工作流 |
 | E04 | [TimelineView.tsx](../../src/TimelineView.tsx#L56) | 单日导航、日分布条、隐藏粗转、空状态、首句摘录、时刻记录计数 |
-| E05 | [knowledge.rs](../../crates/hear-core/src/knowledge.rs#L126)，`search` / `search_empty_reason`；[CLI](../../crates/hear-cli/src/main.rs#L111)；[SearchHit](../../crates/hear-protocol/src/lib.rs#L569) | 四类文字索引、关键词/时间/人物条件、短语与子串检索、时间倒序、去重、无结果状态与返回字段 |
+| E05 | [knowledge.rs](../../crates/loppi-core/src/knowledge.rs#L126)，`search` / `search_empty_reason`；[CLI](../../crates/loppi-cli/src/main.rs#L111)；[SearchHit](../../crates/loppi-protocol/src/lib.rs#L569) | 四类文字索引、关键词/时间/人物条件、短语与子串检索、时间倒序、去重、无结果状态与返回字段 |
 | E06 | [DetailDrawer.tsx](../../src/DetailDrawer.tsx#L630) | 实际时刻播放、双列详情、逐句修正、人物归属、按页加载、精转入口、现场笔记 |
 | E07 | [WorkspaceViews.tsx](../../src/WorkspaceViews.tsx#L58)；[cloud-task-status.ts](../../src/cloud-task-status.ts#L3) | 队列任务、错误文案、人物样例管理、权限/模型/密钥设置 |
-| E08 | [archive.rs](../../crates/hear-core/src/archive.rs#L300)；[cleanup.rs](../../crates/hear-core/src/cleanup.rs) | TAR/JSONL 与选定媒体导出；范围清理、预览与失效关系 |
+| E08 | [archive.rs](../../crates/loppi-core/src/archive.rs#L300)；[cleanup.rs](../../crates/loppi-core/src/cleanup.rs) | TAR/JSONL 与选定媒体导出；范围清理、预览与失效关系 |
 | E09 | [plan.md](../../plan.md#L44)；[README](../../README.md)；[架构](../ARCHITECTURE.md) | 发布状态、真实声音与资源验证、保留/人物/生命周期/公证等开放门槛；不把代码完成视为发行通过 |
 | E10 | [设计系统](../DESIGN.md)；[首页状态](../../src/capture-status.ts#L18)；[统一兔子台账](../prd/devplan_261006_main-capture-status.md) | 现行视觉与布局原则、明确文字状态、共享兔子与真实状态、专项验证及边界 |
 | E11 | [ASR 修复台账](../prd/devplan_261007_asr-timing-fix.md) | 2026-10-07 时间映射修复、历史失败保持、未自动重传、错误结果需要显式重转的边界 |

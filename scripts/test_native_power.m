@@ -1,9 +1,9 @@
 // Drive the production notification reducer without actually sleeping the host.
-#define IOAllowPowerChange hear_test_allow_power
-#include "../crates/hear-core/native/resources.m"
+#define IOAllowPowerChange loppi_test_allow_power
+#include "../crates/loppi-core/native/resources.m"
 #include <assert.h>
 static int acknowledgements;
-IOReturn hear_test_allow_power(io_connect_t connection, intptr_t token) { (void)connection;(void)token;acknowledgements++;return kIOReturnSuccess; }
+IOReturn loppi_test_allow_power(io_connect_t connection, intptr_t token) { (void)connection;(void)token;acknowledgements++;return kIOReturnSuccess; }
 int main(void) {
  power_changed(NULL,0,kIOMessageCanSystemSleep,NULL);
  assert(acknowledgements==1 && atomic_load(&powerSleeping)==0);

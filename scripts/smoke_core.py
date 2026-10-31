@@ -12,17 +12,17 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
-CLI = ROOT / "target/debug/hear"
-CORE = ROOT / "target/debug/hear-core"
+CLI = ROOT / "target/debug/loppi"
+CORE = ROOT / "target/debug/loppi-core"
 
 
 def main() -> None:
     if not CLI.is_file() or not CORE.is_file():
-        raise SystemExit("build hear-core and hear-cli before running this smoke test")
-    with tempfile.TemporaryDirectory(prefix="hear-smoke-") as directory:
-        environment = os.environ | {"HEAR_TEST_PARENT_PID": str(os.getpid()),
-            "HEAR_DATA_DIR": directory,
-            "HEAR_CORE_BIN": str(CORE),
+        raise SystemExit("build loppi-core and loppi-cli before running this smoke test")
+    with tempfile.TemporaryDirectory(prefix="loppi-smoke-") as directory:
+        environment = os.environ | {"LOPPI_TEST_PARENT_PID": str(os.getpid()),
+            "LOPPI_DATA_DIR": directory,
+            "LOPPI_CORE_BIN": str(CORE),
         }
 
         def command(*args: str) -> str:
@@ -48,7 +48,7 @@ def main() -> None:
             # 一条请求的接收与处理记录统一归属发起方；关联靠 request_id。
             assert [entry["client"] for entry in entries] == ["cli", "cli", "cli", "cli"]
             assert all(entry["correlation_id"] == entry["request_id"] for entry in entries)
-            archive_fifo = Path(directory, "logs/hear.01.jsonl")
+            archive_fifo = Path(directory, "logs/loppi.01.jsonl")
             os.mkfifo(archive_fifo)
             try:
                 unreadable_logs = subprocess.run(
@@ -98,11 +98,11 @@ def main() -> None:
         finally:
             command("quit")
 
-    with tempfile.TemporaryDirectory(prefix="hear-no-logs-") as directory:
+    with tempfile.TemporaryDirectory(prefix="loppi-no-logs-") as directory:
         Path(directory, "logs").write_text("blocking directory creation")
-        environment = os.environ | {"HEAR_TEST_PARENT_PID": str(os.getpid()),
-            "HEAR_DATA_DIR": directory,
-            "HEAR_CORE_BIN": str(CORE),
+        environment = os.environ | {"LOPPI_TEST_PARENT_PID": str(os.getpid()),
+            "LOPPI_DATA_DIR": directory,
+            "LOPPI_CORE_BIN": str(CORE),
         }
         try:
             result = subprocess.check_output(
@@ -118,13 +118,13 @@ def main() -> None:
         finally:
             subprocess.check_output((str(CLI), "quit"), env=environment)
 
-    with tempfile.TemporaryDirectory(prefix="hear-fifo-logs-") as directory:
+    with tempfile.TemporaryDirectory(prefix="loppi-fifo-logs-") as directory:
         logs = Path(directory, "logs")
         logs.mkdir()
-        os.mkfifo(logs / "hear.jsonl")
-        environment = os.environ | {"HEAR_TEST_PARENT_PID": str(os.getpid()),
-            "HEAR_DATA_DIR": directory,
-            "HEAR_CORE_BIN": str(CORE),
+        os.mkfifo(logs / "loppi.jsonl")
+        environment = os.environ | {"LOPPI_TEST_PARENT_PID": str(os.getpid()),
+            "LOPPI_DATA_DIR": directory,
+            "LOPPI_CORE_BIN": str(CORE),
         }
         try:
             result = subprocess.run(
@@ -137,10 +137,10 @@ def main() -> None:
         finally:
             subprocess.check_output((str(CLI), "quit"), env=environment)
 
-    with tempfile.TemporaryDirectory(prefix="hear-login-handoff-") as directory:
-        environment = os.environ | {"HEAR_TEST_PARENT_PID": str(os.getpid()),
-            "HEAR_DATA_DIR": directory,
-            "HEAR_CORE_BIN": str(CORE),
+    with tempfile.TemporaryDirectory(prefix="loppi-login-handoff-") as directory:
+        environment = os.environ | {"LOPPI_TEST_PARENT_PID": str(os.getpid()),
+            "LOPPI_DATA_DIR": directory,
+            "LOPPI_CORE_BIN": str(CORE),
         }
         on_demand = subprocess.Popen(
             (str(CORE), "serve", "--on-demand"), env=environment,

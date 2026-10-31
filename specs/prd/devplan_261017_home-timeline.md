@@ -37,7 +37,7 @@ updated: 2026-10-17
 
 ### Review 基线
 - Batch base：aa898ddd4565d487213c84ca1a1370d0e5740bc1
-- in-scope：src/TimelineView.tsx、src/timeline-view.ts、src/api.ts、src/App.css、crates/hear-core/src/events.rs、crates/hear-protocol/src/lib.rs、scripts/test_timeline_view.mjs、specs/DESIGN.md、本devplan。
+- in-scope：src/TimelineView.tsx、src/timeline-view.ts、src/api.ts、src/App.css、crates/loppi-core/src/events.rs、crates/loppi-protocol/src/lib.rs、scripts/test_timeline_view.mjs、specs/DESIGN.md、本devplan。
 - out-of-scope：既有未跟踪的design/playground/specs/research文件。
 - mode：repair；required lenses：requirements/adversarial先并行，最终architecture。
 

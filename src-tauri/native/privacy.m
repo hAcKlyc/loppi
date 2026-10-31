@@ -2,11 +2,11 @@
 #import <CoreGraphics/CoreGraphics.h>
 #import <Foundation/Foundation.h>
 
-int hear_microphone_authorization_status(void) {
+int loppi_microphone_authorization_status(void) {
   return (int)[AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio];
 }
 
-int hear_request_microphone_authorization(void) {
+int loppi_request_microphone_authorization(void) {
   AVAuthorizationStatus status = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio];
   if (status != AVAuthorizationStatusNotDetermined) return (int)status;
 
@@ -23,19 +23,19 @@ int hear_request_microphone_authorization(void) {
   return granted ? AVAuthorizationStatusAuthorized : AVAuthorizationStatusDenied;
 }
 
-int hear_screen_authorization_status(void) {
+int loppi_screen_authorization_status(void) {
   return CGPreflightScreenCaptureAccess() ? 1 : 0;
 }
 
-int hear_request_screen_authorization(void) {
+int loppi_request_screen_authorization(void) {
   return CGRequestScreenCaptureAccess() ? 1 : 0;
 }
 
-int hear_tap_required(void) {
+int loppi_tap_required(void) {
   NSOperatingSystemVersion version=[[NSProcessInfo processInfo] operatingSystemVersion];
   return version.majorVersion>14 || (version.majorVersion==14 && version.minorVersion>=2);
 }
 
-int hear_microphone_available(void) {
+int loppi_microphone_available(void) {
   return [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeAudio] != nil;
 }

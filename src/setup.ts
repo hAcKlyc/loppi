@@ -122,12 +122,12 @@ export const modelLabels: Record<string, string> = {
 	failed: "准备失败",
 };
 export const modelErrors: Record<string, string> = {
-	model_bundle_missing: "组件文件缺失，请重新安装完整的 Hear 应用",
-	model_bundle_unreadable: "无法读取组件文件，请检查应用权限或重新安装 Hear",
-	model_manifest: "组件版本不匹配，请重新安装完整的 Hear 应用",
-	model_checksum: "组件文件损坏，请重新安装完整的 Hear 应用",
+	model_bundle_missing: "组件文件缺失，请重新安装完整的 loppi 应用",
+	model_bundle_unreadable: "无法读取组件文件，请检查应用权限或重新安装 loppi",
+	model_manifest: "组件版本不匹配，请重新安装完整的 loppi 应用",
+	model_checksum: "组件文件损坏，请重新安装完整的 loppi 应用",
 	model_resources_busy: "电脑资源繁忙，请稍后重试加载检查",
-	model_worker_missing: "语音组件无法启动，请重新安装完整的 Hear 应用",
+	model_worker_missing: "语音组件无法启动，请重新安装完整的 loppi 应用",
 	model_load_timeout: "模型加载检查超时，请稍后重试",
-	model_load_failed: "模型加载检查未通过，请重试；如仍失败，请重新安装 Hear",
+	model_load_failed: "模型加载检查未通过，请重试；如仍失败，请重新安装 loppi",
 };

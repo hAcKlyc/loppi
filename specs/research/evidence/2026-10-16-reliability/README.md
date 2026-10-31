@@ -60,7 +60,7 @@ tempfile="3"
     shutil.copyfile(evidence / "media_bench.Cargo.lock", tmp / "Cargo.lock")
     shutil.copyfile(evidence / "media_seal_bench.rs", tmp / "src/main.rs")
     import subprocess
-    media = subprocess.check_output(["git", "show", "2c81ebd49601c85d89aa3529555aeddaa98d63f5:crates/hear-core/src/media.rs"], cwd=root)
+    media = subprocess.check_output(["git", "show", "2c81ebd49601c85d89aa3529555aeddaa98d63f5:crates/loppi-core/src/media.rs"], cwd=root)
     (tmp / "media.rs").write_bytes(media)
     env = dict(os.environ, HEAR_AUDIT_MEDIA_RS=str(tmp / "media.rs"))
     subprocess.run(["cargo", "run", "--offline", "--locked", "--release",

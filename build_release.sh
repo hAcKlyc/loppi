@@ -1,4 +1,4 @@
 #!/bin/zsh
 set -euo pipefail
-hear_root=${0:A:h}
-exec node "$hear_root/scripts/build.mjs" release "$@"
+loppi_root=${0:A:h}
+exec node "$loppi_root/scripts/build.mjs" release "$@"

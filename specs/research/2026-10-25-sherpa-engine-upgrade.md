@@ -20,8 +20,8 @@
 | 本次候选/运行产物 | SHA-256 |
 | --- | --- |
 | staged Cargo.lock（不含其它 session 的 0.1.6 变更） | `ab699d36f49d6ec58fcb540f08501ca278bc27744ad89be72b6162190b970c69` |
-| crates/hear-core/Cargo.toml | `90fa358eed2ca216d0de268432dc51394cba80b719791da2f2b01d37c6756944` |
-| crates/hear-worker/Cargo.toml | `7abb307328f5f5d83a3792b69639d439e6eb724af06c5c0602047e5f6b9faf4a` |
+| crates/loppi-core/Cargo.toml | `90fa358eed2ca216d0de268432dc51394cba80b719791da2f2b01d37c6756944` |
+| crates/loppi-worker/Cargo.toml | `7abb307328f5f5d83a3792b69639d439e6eb724af06c5c0602047e5f6b9faf4a` |
 | 完成 310 段/VAD/CampPlus 验证的 worker | `d17be2d6c03ee46b18fabd47d96b02bb4f5ebc66a88f9e40fe3c3efb5ea94d26` |
 
 本机 `build/sherpa-upgrade/` 的证据：`verification-isolated.json`（all、14 项通过）；`verification-combined.json`（如实记录默认 all 在既有提示词测试失败）；`preexisting-prompt-old-engine.log`（旧引擎复现）；`verification-combined-remaining.json` 与 `verification-combined-smoke.json`（其余回归/构建通过）；`model-load.log`（真实 Core 加载 ready）；`production-worker/summary.json`（310/10/192 结果及保全检查）。组合态运行二进制带工作区既有 0.1.6 版本，干净隔离构建验证本次提交的 0.1.5 基线；两种构建均使用同一精确引擎依赖。
@@ -31,7 +31,7 @@
 ## Review Contract
 
 - mode：repair；base：`e9463dc`。
-- in-scope：staged Cargo.lock 的依赖差异、crates/hear-core/Cargo.toml、crates/hear-worker/Cargo.toml、该 devplan 与本记录。
+- in-scope：staged Cargo.lock 的依赖差异、crates/loppi-core/Cargo.toml、crates/loppi-worker/Cargo.toml、该 devplan 与本记录。
 - out-of-scope：共享工作树全部其它 tracked/untracked 变更，尤其 0.1.6 版本与提示词/摘要修改；安装/发布、X-ASR 替换、模型训练或权重更新。
 - 必须保证：统一解析 sherpa-onnx / sherpa-onnx-sys 2.0.0、现有推理 API/模型和状态 owner 不变、隔离验证、本任务补丁不覆盖或提交其它工作；原模型/参考保全。
 - 允许新增机制：无；沿用现有 crate、模型管理、worker 协议和验证工具。

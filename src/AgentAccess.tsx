@@ -71,7 +71,7 @@ export function AgentAccess() {
 		<section className="agent-access" aria-labelledby="agent-access-title">
 			<header className="agent-page-heading" data-tauri-drag-region>
 				<h1 id="agent-access-title">Agent 接入</h1>
-				<p>让你的 Agent 找回 hear 里的谈话与日常。</p>
+				<p>让你的 Agent 找回 loppi 里的谈话与日常。</p>
 			</header>
 			<section
 				className="agent-connection"
@@ -86,7 +86,7 @@ export function AgentAccess() {
 								: error
 									? "状态未知"
 									: incompatible
-										? "需要重新打开 hear"
+										? "需要重新打开 loppi"
 										: online
 											? "本机可用"
 											: "后台未连接"}
@@ -128,12 +128,12 @@ export function AgentAccess() {
 						<p className="agent-muted">正在准备接入信息…</p>
 					) : !available ? (
 						<p className="agent-inline-error">
-							未找到随 App 安装的命令行工具。请使用完整的 hear 安装包。
+							未找到随 App 安装的命令行工具。请使用完整的 loppi 安装包。
 						</p>
 					) : mode === "mcp" ? (
 						<>
 							<div className="agent-method-intro">
-								<p>把 hear 加入 Agent 的 MCP 配置，即可检索与读取记录。</p>
+								<p>把 loppi 加入 Agent 的 MCP 配置，即可检索与读取记录。</p>
 								<SegmentedOptions
 									label="配置格式"
 									value={target}
@@ -199,8 +199,8 @@ export function AgentAccess() {
 				{connection && !online && !error && (
 					<p className="agent-connection-notice">
 						{incompatible
-							? "当前后台与命令行版本不同。重新打开 hear 后再连接 Agent。"
-							: "请保持 hear 运行，再从 Agent 读取记录。"}
+							? "当前后台与命令行版本不同。重新打开 loppi 后再连接 Agent。"
+							: "请保持 loppi 运行，再从 Agent 读取记录。"}
 					</p>
 				)}
 			</section>

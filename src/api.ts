@@ -36,7 +36,7 @@ const errorLabels: Record<string, string> = {
 	export_failed: "导出未完成，请检查目标位置后重试",
 	screenshot_unavailable: "暂时无法读取这张截图",
 	screenshot_failed: "截屏未完成，请重试",
-	protocol_version: "应用组件版本不一致，请重新打开 hear",
+	protocol_version: "应用组件版本不一致，请重新打开 loppi",
 	provider_transport: "无法连接云端服务，请检查网络后重试",
 	provider_verification_failed: "密钥验证未通过，请检查后重试",
 	provider_verification_timeout: "云端验证超时，请稍后重试",
@@ -63,7 +63,7 @@ export function userError(error: unknown): string {
 	if (message.startsWith("keychain_save_"))
 		return "无法将密钥保存到系统钥匙串，请稍后重试";
 	if (message.startsWith("keychain_read_"))
-		return "无法读取系统钥匙串中的密钥，请重新打开 hear；若仍失败，请在设置中重新保存密钥";
+		return "无法读取系统钥匙串中的密钥，请重新打开 loppi；若仍失败，请在设置中重新保存密钥";
 	if (code === "reorganization_invalid") {
 		if (message.includes("no_coarse_text")) return "这段时间暂无可整理的文字";
 		if (message.includes("future_range")) return "请选择已经发生的时间范围";
@@ -392,7 +392,7 @@ export async function core<T extends CoreResponse = CoreResponse>(
 	request: CoreRequest,
 	requestId?: string,
 ): Promise<T> {
-	if (!isTauri()) throw new Error("请在 hear 桌面应用中查看记录");
+	if (!isTauri()) throw new Error("请在 loppi 桌面应用中查看记录");
 	const id = requestId ?? crypto.randomUUID();
 	const started = performance.now();
 	try {
@@ -408,7 +408,7 @@ export async function core<T extends CoreResponse = CoreResponse>(
 		const message = error instanceof Error ? error.message : String(error);
 		const code = /^([a-z_0-9]+):/.exec(message)?.[1] ?? "core_transport";
 		// Only metadata: never dump request arguments, transcripts or provider bodies.
-		console.warn("hear_core_request_failed", {
+		console.warn("loppi_core_request_failed", {
 			command: request.type,
 			request_id: id,
 			code,

@@ -16,7 +16,7 @@ def inspect(paths):
         identities[component] = info
     shared = [{k: v for k,v in info.items() if k != 'component'} for info in identities.values()]
     if any(value != shared[0] for value in shared[1:]):
-        raise ValueError('mixed component builds; rebuild the complete bundle with one HEAR_BUILD_EPOCH')
+        raise ValueError('mixed component builds; rebuild the complete bundle with one LOPPI_BUILD_EPOCH')
     return {'schema': 1, 'components': identities}
 
 
@@ -28,11 +28,11 @@ def main():
     parser.add_argument('--output', type=Path)
     args = parser.parse_args()
     if args.bundle:
-        paths = {'gui':args.bundle/'Contents/MacOS/hear-desktop', 'cli':args.bundle/'Contents/MacOS/hear',
-                 'core':args.bundle/'Contents/Library/LoginItems/HearCore.app/Contents/MacOS/hear-core',
-                 'worker':args.bundle/'Contents/Library/LoginItems/HearCore.app/Contents/MacOS/hear-worker'}
+        paths = {'gui':args.bundle/'Contents/MacOS/loppi-desktop', 'cli':args.bundle/'Contents/MacOS/loppi',
+                 'core':args.bundle/'Contents/Library/LoginItems/LoppiCore.app/Contents/MacOS/loppi-core',
+                 'worker':args.bundle/'Contents/Library/LoginItems/LoppiCore.app/Contents/MacOS/loppi-worker'}
     else:
-        paths = {role:args.directory/name for role,name in [('gui','hear-desktop'),('core','hear-core'),('worker','hear-worker'),('cli','hear')]}
+        paths = {role:args.directory/name for role,name in [('gui','loppi-desktop'),('core','loppi-core'),('worker','loppi-worker'),('cli','loppi')]}
     data = json.dumps(inspect(paths), indent=2)+'\n'
     if args.output:
         args.output.write_text(data)

@@ -10,7 +10,7 @@ function host() {
  mockIPC(async(command,args)=>{
   assert.equal(command,'playback_output');const c=args.command;calls.push(c);
   if(c.type==='open') {
-   for(const id of buffers)await emit('hear-playback-ended',{context:current,epoch,buffer:id,status:-1});
+   for(const id of buffers)await emit('loppi-playback-ended',{context:current,epoch,buffer:id,status:-1});
    buffers.clear();current=++next;epoch=0;return {context:current};
   }
   if(c.context!==current||c.epoch<epoch)throw Error('playback_stale');
@@ -31,9 +31,9 @@ test('native output completion is scoped to context and epoch, and pause release
   await audio.resume();const buffer=await audio.decodeWav('synthetic');
   const node=audio.createBufferSource();node.buffer=buffer;node.onended=(...args)=>ended.push(args);
   assert.equal(await node.start(.1),.1);
-  await emit('hear-playback-ended',{context:h.context,epoch:h.epoch-1,buffer:buffer.buffer,status:1});await settle();
+  await emit('loppi-playback-ended',{context:h.context,epoch:h.epoch-1,buffer:buffer.buffer,status:1});await settle();
   assert.equal(ended.length,0);
-  await emit('hear-playback-ended',{context:h.context,epoch:h.epoch,buffer:buffer.buffer,status:1});await settle();
+  await emit('loppi-playback-ended',{context:h.context,epoch:h.epoch,buffer:buffer.buffer,status:1});await settle();
   assert.deepEqual(ended,[[true,false]]);
   await audio.suspend();assert.equal(h.buffers.size,0);
  } finally {await audio.close();clearMocks();}

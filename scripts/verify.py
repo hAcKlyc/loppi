@@ -21,15 +21,15 @@ def main():
     parser.add_argument('--report', type=Path)
     args = parser.parse_args()
     if sys.platform != 'darwin':
-        parser.error('hear currently requires macOS for Core/native builds')
+        parser.error('loppi currently requires macOS for Core/native builds')
     env = os.environ.copy()
     # Explicitly remove opt-in private fixtures/provider tests from normal verification.
     for key in list(env):
-        if key.startswith('HEAR_TEST_') or key in ['HEAR_DATA_DIR', 'HEAR_CORE_BIN']:
+        if key.startswith('LOPPI_TEST_') or key in ['LOPPI_DATA_DIR', 'LOPPI_CORE_BIN']:
             del env[key]
-    env['HEAR_TEST_PARENT_PID'] = str(os.getpid())
+    env['LOPPI_TEST_PARENT_PID'] = str(os.getpid())
     env['MACOSX_DEPLOYMENT_TARGET'] = '13.0'
-    env['HEAR_BUILD_EPOCH'] = str(int(time.time()))
+    env['LOPPI_BUILD_EPOCH'] = str(int(time.time()))
     checks = []
     result = 0
 
@@ -51,7 +51,7 @@ def main():
             run('frontend-regressions', ['node', '--test', *[str(p.relative_to(ROOT)) for p in sorted((ROOT/'scripts').glob('test_*.mjs'))]])
             run('rabbit-assets', ['node', 'scripts/test_rabbit_assets.cjs'])
             run('python-regressions', [sys.executable, '-m', 'unittest', 'discover', '-s', 'scripts', '-p', 'test_*.py'])
-            with tempfile.TemporaryDirectory(prefix='hear-native-policy-') as directory:
+            with tempfile.TemporaryDirectory(prefix='loppi-native-policy-') as directory:
                 binary = str(Path(directory)/'entry-policy')
                 run('native-policy-build', ['clang', '-fobjc-arc', '-fblocks', '-mmacosx-version-min=13.0', 'scripts/test_native_entry.m', '-framework', 'Cocoa', '-framework', 'QuartzCore', '-o', binary])
                 run('native-policy', [binary])

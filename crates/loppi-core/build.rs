@@ -1,0 +1,32 @@
+fn main() {
+    println!("cargo:rerun-if-changed=native/schedule.m");
+    println!("cargo:rerun-if-changed=native/system_audio.m");
+    println!("cargo:rerun-if-changed=native/system_audio_tap.m");
+    println!("cargo:rerun-if-changed=native/permissions.m");
+    println!("cargo:rerun-if-changed=native/resources.m");
+    println!("cargo:rerun-if-changed=native/audio_exclusions.h");
+    println!("cargo:rerun-if-changed=native/moments.m");
+    cc::Build::new()
+        .file("native/system_audio.m")
+        .file("native/schedule.m")
+        .file("native/system_audio_tap.m")
+        .file("native/permissions.m")
+        .file("native/resources.m")
+        .file("native/moments.m")
+        .flag("-fobjc-arc")
+        .flag("-fblocks")
+        .flag("-mmacosx-version-min=13.0")
+        .compile("loppi_system_audio");
+    println!("cargo:rustc-link-arg=-mmacosx-version-min=13.0");
+    println!("cargo:rustc-link-lib=framework=Foundation");
+    println!("cargo:rustc-link-lib=framework=AppKit");
+    println!("cargo:rustc-link-lib=framework=IOKit");
+    println!("cargo:rustc-link-lib=framework=ScreenCaptureKit");
+    println!("cargo:rustc-link-lib=framework=CoreMedia");
+    println!("cargo:rustc-link-lib=framework=AVFoundation");
+    println!("cargo:rustc-link-lib=framework=CoreAudio");
+    println!("cargo:rustc-link-lib=framework=CoreGraphics");
+    println!("cargo:rustc-link-lib=framework=ImageIO");
+    println!("cargo:rustc-link-lib=framework=CoreImage");
+    println!("cargo:rustc-link-lib=framework=Vision");
+}

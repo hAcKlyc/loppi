@@ -82,8 +82,8 @@
 - 7/30/90 天范围、两图独立隐藏序列、全隐藏、无数据/部分数据和键盘访问。
 
 ## 技术前提
-- 已核实：src/WorkspaceViews.tsx 当前队列展示两类 provider 状态与任务；crates/hear-core/src/events.rs cloud_tasks 有 model_id、音频范围、来源、状态、attempts、submit_attempts、remote_id、创建/更新时间，无逐次 token/费用账本。
-- 已核实：crates/hear-core/src/cloud.rs chat 只解析业务 JSON，未保留供应商 usage；ASR 完成解析提取句段，无计费用量投影。配置验证也调用云能力，若目标是全应用消耗必须计入并标记用途。
+- 已核实：src/WorkspaceViews.tsx 当前队列展示两类 provider 状态与任务；crates/loppi-core/src/events.rs cloud_tasks 有 model_id、音频范围、来源、状态、attempts、submit_attempts、remote_id、创建/更新时间，无逐次 token/费用账本。
+- 已核实：crates/loppi-core/src/cloud.rs chat 只解析业务 JSON，未保留供应商 usage；ASR 完成解析提取句段，无计费用量投影。配置验证也调用云能力，若目标是全应用消耗必须计入并标记用途。
 - 已核实：core 是持久化唯一 owner，统计应沿既有 IPC 对 UI 提供聚合。
 - 已核实（2026-10-17）：当前 LLM 默认 deepseek-flash，代码还允许 deepseek-v4-pro；供应商固定不等于只有一个模型。API usage 的 prompt_tokens = prompt_cache_hit_tokens + prompt_cache_miss_tokens；completion_tokens 是输出。
 - 已核实：DeepSeek 当前人民币价有高峰/空闲两档，模型别名可映射新版后端。按请求时刻选择档位是本地估算规则，供应商跨时段精确结算时点尚待核实。

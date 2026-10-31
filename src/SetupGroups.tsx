@@ -165,7 +165,9 @@ export function ModelPreparation({
 						</p>
 					)}
 					{models?.phase === "failed" && (
-						<p>组件随应用提供。可重新检查；文件损坏或缺失时请重新安装 Hear。</p>
+						<p>
+							组件随应用提供。可重新检查；文件损坏或缺失时请重新安装 loppi。
+						</p>
 					)}
 				</div>
 				{needed && (
@@ -488,7 +490,7 @@ export function SourcePreparation({
 					<summary>授权遇到问题</summary>
 					<p>
 						打开系统设置 → 隐私与安全性 → 麦克风或屏幕与系统音频录制，允许
-						Hear。受系统管理限制时需联系管理员。返回后会重新检查；电脑声音可点击重新验证。授权检查不保存或上传声音。
+						loppi。受系统管理限制时需联系管理员。返回后会重新检查；电脑声音可点击重新验证。授权检查不保存或上传声音。
 					</p>
 					<div className="setting-actions">
 						<Button

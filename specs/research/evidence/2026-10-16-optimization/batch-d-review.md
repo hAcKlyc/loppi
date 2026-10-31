@@ -15,20 +15,20 @@
 ## In-scope files
 
 - `Cargo.lock`
-- `crates/hear-core/Cargo.toml`
-- `crates/hear-core/src/archive.rs`
-- `crates/hear-core/src/capture.rs`
-- `crates/hear-core/src/cloud.rs`
-- `crates/hear-core/src/events.rs`
-- `crates/hear-core/src/knowledge.rs`
-- `crates/hear-core/src/main.rs`
-- `crates/hear-core/src/moments.rs`
-- `crates/hear-core/src/reads.rs`
-- `crates/hear-core/src/record.rs`
-- `crates/hear-core/src/recovery.rs`
-- `crates/hear-core/src/resources.rs`
-- `crates/hear-core/src/source_process.rs`
-- `crates/hear-core/src/storage.rs`
+- `crates/loppi-core/Cargo.toml`
+- `crates/loppi-core/src/archive.rs`
+- `crates/loppi-core/src/capture.rs`
+- `crates/loppi-core/src/cloud.rs`
+- `crates/loppi-core/src/events.rs`
+- `crates/loppi-core/src/knowledge.rs`
+- `crates/loppi-core/src/main.rs`
+- `crates/loppi-core/src/moments.rs`
+- `crates/loppi-core/src/reads.rs`
+- `crates/loppi-core/src/record.rs`
+- `crates/loppi-core/src/recovery.rs`
+- `crates/loppi-core/src/resources.rs`
+- `crates/loppi-core/src/source_process.rs`
+- `crates/loppi-core/src/storage.rs`
 - `scripts/audit_recording_coverage.py`
 - `scripts/macos_rusage.c`
 - `scripts/measure_macos.sh`
@@ -52,7 +52,7 @@
 - Requirements 初审：代码需求无已确认 blocker；365天与最后签名短链为 required evidence gap。
 - Adversarial A1/P2 blocking：下一块预取失败会立刻停止已成功排程的当前块，违反原播放失败顺序。主 Agent确认，修复归现有播放器owner；重跑前端取消/成功/错误测试与真实WK关键路径。
 - Adversarial A2/P2 blocking：来源在最后心跳后正常报错退出，最终Progress漏发已测的capture计数，可能隐藏最后overflow。主 Agent确认；修复归Progress最终快照；定向错误帧测试与签名native复验。
-- 主Agent E1/required evidence gap根因：365天timeline_day触发3秒SQL取消，不能放宽deadline。实际SQLite3.53.2 EXPLAIN显示OR-source导致audio_blocks_source_time扫旧历史。以同义有界来源集合表达保留范围语义；同谓词playback::chunk纳入直接修复范围（crates/hear-core/src/playback.rs），不新增owner/机制。重跑30/90/365天和读取/播放回归。
+- 主Agent E1/required evidence gap根因：365天timeline_day触发3秒SQL取消，不能放宽deadline。实际SQLite3.53.2 EXPLAIN显示OR-source导致audio_blocks_source_time扫旧历史。以同义有界来源集合表达保留范围语义；同谓词playback::chunk纳入直接修复范围（crates/loppi-core/src/playback.rs），不新增owner/机制。重跑30/90/365天和读取/播放回归。
 - 后续：以上为原契约的定向修复与证据闭环；最终架构审全部候选。
 
 - Adversarial定向代码PASS：A1/A2关闭，独立5项播放器测试及CASE/IN语义矩阵通过。177 core /21前端 /3采样，最终签名native与真实WK修复路径均通过；365天定向复测仍进行中。

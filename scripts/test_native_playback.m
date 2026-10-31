@@ -7,7 +7,7 @@ static void ended(uint64_t context,uint64_t buffer,uint64_t epoch,int status) {
 }
 static NSDictionary *perform(NSDictionary *request) {
   NSData *data=[NSJSONSerialization dataWithJSONObject:request options:0 error:nil];
-  char *response=hear_output_command(data.bytes,data.length,ended);
+  char *response=loppi_output_command(data.bytes,data.length,ended);
   NSCAssert(response,@"native response");
   NSDictionary *result=[NSJSONSerialization JSONObjectWithData:[NSData dataWithBytes:response length:strlen(response)] options:0 error:nil];
   free(response); return result;
@@ -35,7 +35,7 @@ int main() {@autoreleasepool {
  NSNumber *newContext=perform(@{@"type":@"open"})[@"data"][@"context"];
  NSCAssert(![perform(@{@"type":@"close",@"context":context,@"epoch":@4})[@"ok"] boolValue],@"late close cannot touch new context");
  NSCAssert([perform(@{@"type":@"close",@"context":newContext,@"epoch":@0})[@"ok"] boolValue],@"close current");
- hear_output_shutdown();
+ loppi_output_shutdown();
  puts("native playback: bounded buffers, hardware-clock scheduling, completion, pause and stale epochs passed");
  return 0;
 }}

@@ -168,7 +168,7 @@ flowchart LR
 
 - 研究：[技术核实](../research/2026-10-31-user-event-reorganization.md)。
 - GUI：`src/App.tsx`的openForm/saveEvent/mutate，`src/api.ts`的core，`src/WorkspaceViews.tsx`的QueueView，`src/cloud-task-status.ts`。
-- 协议/幂等：`crates/hear-protocol/src/lib.rs`的Request/PROTOCOL_VERSION，`crates/hear-core/src/main.rs`的Store::mutate_response/serve_one。
+- 协议/幂等：`crates/loppi-protocol/src/lib.rs`的Request/PROTOCOL_VERSION，`crates/loppi-core/src/main.rs`的Store::mutate_response/serve_one。
 - 主链路：`events.rs`的init_cloud_tasks/llm_input/fit_context/publish_fit_with_input/task_current，`events/fit_prompt.txt`，main.rs的process_cloud_task。
 - 内容和引用：`events/summary.rs`、`events/understanding.rs`、`events/asr.rs`的inherit/schedule，`knowledge.rs`、`moments.rs`、`cleanup.rs`。
 - 原人工工具和固定摘要重建只供比较边界：create_event_in/suppress_old/split_event_in/merge_events_in、`events/rebuild.rs`，不能直接串成模型重整实现。

@@ -3,7 +3,7 @@
 - Mode: repair。主 Agent 修改；reviewer 只读、不得派生 reviewer。
 - Requirement source: `specs/prd/devplan_261016_reliability-performance.md`；已接受研究 `specs/research/2026-10-16-hear-reliability-performance-optimization.md` 的 F01/F03/F04/F09、采集可靠日志/范围屏障与有界队列部分。P0/P1 是整体原子交付，本批为内部稳定提交点，不是可发布版本。
 - Exact baseline: `d9fbd5712de1cf94666cd9d68c54f65c0dc1aa44`，target = 本批当前工作树。
-- In scope: Cargo.lock；crates/hear-core/Cargo.toml；native/system_audio.m、system_audio_tap.m；src/capture.rs、cleanup.rs、events.rs（仅测试 fixture 显式列名）、main.rs、media.rs、microphone.rs、record.rs、system_audio.rs；新增 src/ingestion.rs、inventory.rs、source_process.rs；specs/ARCHITECTURE.md；上述 devplan；本目录 batch-b-review.md、batch-b-native.json。
+- In scope: Cargo.lock；crates/loppi-core/Cargo.toml；native/system_audio.m、system_audio_tap.m；src/capture.rs、cleanup.rs、events.rs（仅测试 fixture 显式列名）、main.rs、media.rs、microphone.rs、record.rs、system_audio.rs；新增 src/ingestion.rs、inventory.rs、source_process.rs；specs/ARCHITECTURE.md；上述 devplan；本目录 batch-b-review.md、batch-b-native.json。
 - Out of scope: 已提交 Batch A；其它未跟踪的兔子素材、playground、旧 research 报告/旧 evidence；worker/前端等未改代码，除非本批引入/显著放大缺陷。
 - Must guarantee: 现有功能/交互/来源和真实时间语义不变；单核心拥有业务事实；有声无字/未知/失败保留；用户暂停不被覆盖；不扩大云外发；迟到媒体与恢复不能复活被清理范围；已确认媒体耐久与幂等；有界内存/队列；来源原生异常与停止不能结束或卡住另一来源/核心；文件 IO 不在正常采集消费线程或主库锁中执行。
 - Non goals: 新 UI/模型/阈值、外部 DB 服务、删除历史人声、取消 fsync、定时重启 core。不能宣称 24h/72h、低版本/8GiB 或真实标注质量验收已通过；这些是最终组合态 mandatory 门槛，仍在台账。

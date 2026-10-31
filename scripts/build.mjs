@@ -49,7 +49,7 @@ function versionCheck() {
   const npmLock = JSON.parse(readFileSync('package-lock.json'));
   const tauri = JSON.parse(readFileSync('src-tauri/tauri.conf.json'));
   const cargo = readFileSync('Cargo.toml', 'utf8').match(/\[workspace.package\]\s+version = "([^"]+)"/)[1];
-  const plist = output('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleShortVersionString', 'src-tauri/native/HearCore-Info.plist']);
+  const plist = output('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleShortVersionString', 'src-tauri/native/LoppiCore-Info.plist']);
   if ([npmLock.version, npmLock.packages[''].version, tauri.version, cargo, plist].some(v => v !== version)) throw new Error('Project versions disagree');
   if (tauri.bundle.macOS.minimumSystemVersion !== settings.minimum_system_version) throw new Error('Minimum macOS versions disagree');
   const cargoLock = readFileSync('Cargo.lock', 'utf8');
@@ -96,12 +96,12 @@ const version = versionCheck();
 const source = output('git', ['rev-parse', 'HEAD']);
 const epoch = Math.floor(Date.now() / 1000).toString();
 const stage = resolve('build/macos', `${target}-${epoch}-${process.pid}`);
-const app = resolve('target', target, 'release/bundle/macos/hear.app');
+const app = resolve('target', target, 'release/bundle/macos/loppi.app');
 if (output('/bin/ps', ['-axo', 'comm=']).split('\n').some(p => p.trim().startsWith(`${app}/`))) {
   throw new Error('Quit the application running from this build output before rebuilding');
 }
 mkdirSync(stage, { recursive: true });
-const env = { ...process.env, MACOSX_DEPLOYMENT_TARGET: settings.minimum_system_version, HEAR_BUILD_EPOCH: epoch, CARGO_TARGET_DIR: resolve('target') };
+const env = { ...process.env, MACOSX_DEPLOYMENT_TARGET: settings.minimum_system_version, LOPPI_BUILD_EPOCH: epoch, CARGO_TARGET_DIR: resolve('target') };
 const local = existsSync('.env') ? parseEnv(readFileSync('.env', 'utf8')) : {};
 for (const key of ['APPLE_SIGNING_IDENTITY', 'APPLE_NOTARY_PROFILE', 'APPLE_API_KEY', 'APPLE_API_ISSUER', 'APPLE_API_KEY_PATH']) {
   if (env[key] === undefined && local[key] !== undefined) env[key] = local[key];
@@ -118,13 +118,13 @@ if (/target-cpu[= ]native/.test(env.RUSTFLAGS ?? '')) throw new Error('Do not us
 const assets = prepareAssets();
 env.SHERPA_ONNX_LIB_DIR = assets.lib;
 for (const rustTarget of platform.rust_targets) {
-  run('cargo', ['build', '--locked', '--release', '--target', rustTarget, '-p', 'hear-core', '-p', 'hear-cli', '-p', 'hear-worker'], env);
+  run('cargo', ['build', '--locked', '--release', '--target', rustTarget, '-p', 'loppi-core', '-p', 'loppi-cli', '-p', 'loppi-worker'], env);
 }
-const helper = join(stage, 'HearCore.app');
+const helper = join(stage, 'LoppiCore.app');
 mkdirSync(join(helper, 'Contents/MacOS'), { recursive: true });
-cpSync('src-tauri/native/HearCore-Info.plist', join(helper, 'Contents/Info.plist'));
-for (const name of ['hear-core', 'hear-worker', 'hear']) {
-  const destination = name === 'hear' ? join(stage, name) : join(helper, 'Contents/MacOS', name);
+cpSync('src-tauri/native/LoppiCore-Info.plist', join(helper, 'Contents/Info.plist'));
+for (const name of ['loppi-core', 'loppi-worker', 'loppi']) {
+  const destination = name === 'loppi' ? join(stage, name) : join(helper, 'Contents/MacOS', name);
   const inputs = platform.rust_targets.map(t => resolve('target', t, 'release', name));
   if (inputs.length === 1) cpSync(inputs[0], destination);
   else run('lipo', ['-create', ...inputs, '-output', destination]);
@@ -141,17 +141,17 @@ writeFileSync(join(bundledModels, 'models.lock.json'), lockBytes);
 cpSync('THIRD_PARTY_NOTICES.md', join(helper, 'Contents/Resources/THIRD_PARTY_NOTICES.md'));
 cpSync('licenses', join(helper, 'Contents/Resources/licenses'), { recursive: true });
 const override = join(stage, 'tauri.json');
-writeFileSync(override, JSON.stringify({ bundle: { macOS: { files: { 'Library/LoginItems/HearCore.app': helper, 'MacOS/hear': join(stage, 'hear') } } } }));
+writeFileSync(override, JSON.stringify({ bundle: { macOS: { files: { 'Library/LoginItems/LoppiCore.app': helper, 'MacOS/loppi': join(stage, 'loppi') } } } }));
 // Signing/notarizing is deliberately deferred until the entire bundle is final.
 const unsignedEnv = { ...env };
 for (const key of Object.keys(unsignedEnv).filter(k => k.startsWith('APPLE_'))) delete unsignedEnv[key];
 run('npm', ['run', 'tauri', 'build', '--', '--target', target, '--bundles', 'app', '--config', override], unsignedEnv);
-const paths = ['Contents/MacOS/hear-desktop', 'Contents/MacOS/hear', 'Contents/Library/LoginItems/HearCore.app/Contents/MacOS/hear-core', 'Contents/Library/LoginItems/HearCore.app/Contents/MacOS/hear-worker'];
+const paths = ['Contents/MacOS/loppi-desktop', 'Contents/MacOS/loppi', 'Contents/Library/LoginItems/LoppiCore.app/Contents/MacOS/loppi-core', 'Contents/Library/LoginItems/LoppiCore.app/Contents/MacOS/loppi-worker'];
 for (const path of paths) {
   architectures(join(app, path), platform.architectures);
   minimumOS(join(app, path));
 }
-const modelRoot = join(app, 'Contents/Library/LoginItems/HearCore.app/Contents/Resources/models');
+const modelRoot = join(app, 'Contents/Library/LoginItems/LoppiCore.app/Contents/Resources/models');
 for (const spec of models.files) if (!checked(join(modelRoot, spec.path), spec)) throw new Error(`Bundled asset mismatch: ${spec.path}`);
 if (!readFileSync(join(modelRoot, 'models.lock.json')).equals(lockBytes)) throw new Error('Bundled lock mismatch');
 const nativeArch = process.arch === 'arm64' ? 'arm64' : 'x86_64';
@@ -171,16 +171,16 @@ const report = {
   intel_native_test: 'not run; cross-compiled and slices verified', minimum_os_runtime_test: 'not run',
 };
 if (release) {
-  const bundledHelper = join(app, 'Contents/Library/LoginItems/HearCore.app');
-  const sign = (path, entitlements = false) => run('codesign', ['--force', '--options', 'runtime', '--timestamp', ...(entitlements ? ['--entitlements', 'src-tauri/native/HearCore.entitlements'] : []), '--sign', env.APPLE_SIGNING_IDENTITY, path]);
-  sign(join(bundledHelper, 'Contents/MacOS/hear-worker'));
+  const bundledHelper = join(app, 'Contents/Library/LoginItems/LoppiCore.app');
+  const sign = (path, entitlements = false) => run('codesign', ['--force', '--options', 'runtime', '--timestamp', ...(entitlements ? ['--entitlements', 'src-tauri/native/LoppiCore.entitlements'] : []), '--sign', env.APPLE_SIGNING_IDENTITY, path]);
+  sign(join(bundledHelper, 'Contents/MacOS/loppi-worker'));
   sign(bundledHelper, true);
-  sign(join(app, 'Contents/MacOS/hear'));
+  sign(join(app, 'Contents/MacOS/loppi'));
   sign(app, true);
   run('codesign', ['--verify', '--deep', '--strict', app]);
   const destination = resolve('build/releases', version, platform.name);
   mkdirSync(destination, { recursive: true });
-  const dmg = join(destination, `hear_${version}_${platform.name}.dmg`);
+  const dmg = join(destination, `loppi_${version}_${platform.name}.dmg`);
   run('/bin/zsh', ['scripts/package_macos.sh', app, dmg], env);
   report.dmg = dmg.split('/').pop();
   report.dmg_bytes = lstatSync(dmg).size;

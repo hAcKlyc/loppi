@@ -1,0 +1,15 @@
+[package]
+name = "loppi-cli"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "loppi"
+path = "src/main.rs"
+
+[dependencies]
+loppi-protocol = { path = "../loppi-protocol" }
+serde_json.workspace = true
+clap = { version = "4", features = ["derive"] }
+uuid = "1"
+rpassword = "7.5.4"

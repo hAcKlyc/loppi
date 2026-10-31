@@ -34,7 +34,7 @@ export function taskStatus(task: CloudTask): string {
 	)
 		return `${state} · 自动重试已停止，请检查网络或服务后手动重试`;
 	if (reason.startsWith("keychain_read_"))
-		return `${state} · 无法读取钥匙串密钥，请重新打开 hear；若仍失败，请在设置中重新保存密钥`;
+		return `${state} · 无法读取钥匙串密钥，请重新打开 loppi；若仍失败，请在设置中重新保存密钥`;
 	if (reason === "credential_missing" || reason === "provider_not_configured")
 		return `${state} · 请检查云端配置`;
 	if (reason === "audio_unavailable" || reason === "partial_audio")

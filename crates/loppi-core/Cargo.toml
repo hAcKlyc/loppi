@@ -1,0 +1,32 @@
+[package]
+name = "loppi-core"
+version.workspace = true
+edition.workspace = true
+build = "build.rs"
+
+[dependencies]
+cpal = "0.18.2"
+loppi-protocol = { path = "../loppi-protocol" }
+serde_json.workspace = true
+serde.workspace = true
+rusqlite = { version = "0.40", features = ["bundled", "hooks"] }
+fs2 = "0.4"
+libc = "0.2"
+uuid = "1"
+sherpa-onnx = "=2.0.0"
+opus2 = { version = "0.4.0", features = ["bundled"] }
+ogg = "0.9.2"
+ureq = "2.12.1"
+httpdate = "1.0.3"
+sha2 = "0.10"
+tar = "0.4"
+bzip2 = "0.5"
+base64 = "0.22"
+security-framework = "3.7.0"
+tempfile = "3"
+rtrb = "=0.4.0"
+
+[dev-dependencies]
+
+[build-dependencies]
+cc = "1"

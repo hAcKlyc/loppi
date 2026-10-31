@@ -52,7 +52,7 @@ mockIPC(async (command, args) => {
     layouts.push(args);
     if (mode === 'floating') return { width: 68, height: 68, band: 0, top_band: 0, top_shift: 0, rabbit_x: 8, rabbit_y: 8, menu_y: 8 };
     if (finishLayout && args.view === 'panel')
-      await emit('hear-entry-native', { kind: 8, value: 1, generation: args.generation });
+      await emit('loppi-entry-native', { kind: 8, value: 1, generation: args.generation });
     return { width: args.view === 'collapsed' ? 44 : 412, height: args.view === 'collapsed' ? 32 : 160, band: 32, top_band: 32, top_shift: args.feedback ? 178 : 296, rabbit_x: 8, rabbit_y: 2, menu_y: 8 };
   }
   if (command === 'entry_focus') { focus.push(args); return confirmFocus; }
@@ -62,7 +62,7 @@ mockIPC(async (command, args) => {
 }, { shouldMockEvents: true });
 const root = createRoot(document.getElementById('root'));
 const settle = async (fn = () => {}) => act(async () => { await fn(); await new Promise(resolve => setTimeout(resolve, 0)); });
-const native = (kind, value) => settle(() => emit('hear-entry-native', { kind, value }));
+const native = (kind, value) => settle(() => emit('loppi-entry-native', { kind, value }));
 const button = text => [...document.querySelectorAll('button')].find(b => b.textContent === text);
 const click = element => { assert(element, 'target exists'); return settle(() => element.click()); };
 const panel = () => document.querySelector('.notch-surface:not([data-view=collapsed])');
@@ -79,9 +79,9 @@ try {
   await escape();
   assert.equal(document.querySelector('.entry-top .entry-rabbit'), persistentRabbit);
   await click(document.querySelector('.entry-rabbit'));
-  await settle(() => emit('hear-entry-native', { kind: 8, value: 1, generation: oldLayout }));
+  await settle(() => emit('loppi-entry-native', { kind: 8, value: 1, generation: oldLayout }));
   assert.equal(panel().dataset.ready, 'false', 'canceled completion cannot reveal a newer panel');
-  await settle(() => emit('hear-entry-native', { kind: 8, value: 1, generation: layouts.at(-1).generation }));
+  await settle(() => emit('loppi-entry-native', { kind: 8, value: 1, generation: layouts.at(-1).generation }));
   assert.equal(panel().dataset.ready, 'true', 'matching native completion reveals content');
   finishLayout = true;
   assert(!focus.some(call => call.acquire), 'hover never acquires app focus');
@@ -111,7 +111,7 @@ try {
   await click(button('评论'));
   const firstIntent = focus.at(-1).generation;
   assert.notEqual(document.activeElement, document.querySelector('textarea'), 'unconfirmed activation does not focus editor');
-  await settle(() => emit('hear-entry-native', { kind: 9, value: 1, generation: firstIntent }));
+  await settle(() => emit('loppi-entry-native', { kind: 9, value: 1, generation: firstIntent }));
   const text = document.querySelector('textarea');
   assert.equal(document.activeElement, text, 'late actual activation focuses its editor');
   await settle(() => {
@@ -121,9 +121,9 @@ try {
   await click(button('取消'));
   await click(document.querySelector('.entry-rabbit'));
   await click(button('评论'));
-  await settle(() => emit('hear-entry-native', { kind: 9, value: 1, generation: firstIntent }));
+  await settle(() => emit('loppi-entry-native', { kind: 9, value: 1, generation: firstIntent }));
   assert.notEqual(document.activeElement, document.querySelector('textarea'), 'old focus confirmation cannot affect a new comment');
-  await settle(() => emit('hear-entry-native', { kind: 9, value: 1, generation: focus.at(-1).generation }));
+  await settle(() => emit('loppi-entry-native', { kind: 9, value: 1, generation: focus.at(-1).generation }));
   assert.equal(document.activeElement, document.querySelector('textarea'));
   confirmFocus = true;
   assert.equal(document.querySelector('textarea').value, '保留草稿', 'cancel preserves draft');
@@ -145,7 +145,7 @@ try {
   assert(panel(), 'explicit keyboard focus reopens after dismissal');
   assert(document.activeElement.matches('.notch-rabbit-control'), 'focus moves off hidden trigger');
   mode = 'floating';
-  await settle(() => emit('hear-entry-snapshot', { sequence: 2, state: null, error: null, mode, appearance: 'sleeping', control: 'resume', detail: null, notice: null }));
+  await settle(() => emit('loppi-entry-snapshot', { sequence: 2, state: null, error: null, mode, appearance: 'sleeping', control: 'resume', detail: null, notice: null }));
   const rabbit = document.querySelector('.entry-rabbit');
   const marks = actions.filter(a => a.kind === 'mark').length;
   await click(rabbit);
@@ -153,7 +153,7 @@ try {
   await native(7, 0);
   await native(1, 1);
   assert(document.querySelector('.rabbit-menu'));
-  await settle(() => emit('hear-entry-native', { kind: 5, value: 1, geometry: { width: 68, height: 68, rabbit_x: 8, rabbit_y: 8, menu_y: 8, band: 0, top_band: 0, top_shift: 0 } }));
+  await settle(() => emit('loppi-entry-native', { kind: 5, value: 1, geometry: { width: 68, height: 68, rabbit_x: 8, rabbit_y: 8, menu_y: 8, band: 0, top_band: 0, top_shift: 0 } }));
   assert(!document.querySelector('.rabbit-menu'), 'native drag collapses the menu');
   assert.equal(document.querySelector('.entry-floating').style.getPropertyValue('--entry-rabbit-y'), '8px', 'drag-start geometry keeps the rabbit visible even with feedback');
   await native(1, 1);
@@ -161,13 +161,13 @@ try {
   await click(rabbit);
   assert.equal(actions.filter(a => a.kind === 'mark').length, marks + 1, 'drag does not mark');
   assert.equal(drags.length, 0, 'pointer moves do not start asynchronous window dragging or write preferences');
-  await settle(() => emit('hear-entry-native', { kind: 5, value: 0, geometry: { width: 132, height: 230, rabbit_x: 8, rabbit_y: 8, menu_y: 55, band: 0, top_band: 0, top_shift: 0 } }));
+  await settle(() => emit('loppi-entry-native', { kind: 5, value: 0, geometry: { width: 132, height: 230, rabbit_x: 8, rabbit_y: 8, menu_y: 55, band: 0, top_band: 0, top_shift: 0 } }));
   assert.equal(drags.length, 0, 'native completion saves position without a WebView round trip');
   assert.equal(document.querySelector('.entry-floating').dataset.menuDown, 'true');
   assert.equal(document.querySelector('.entry-floating').style.getPropertyValue('--entry-rabbit-y'), '8px');
   await native(10, 0);
   assert.equal(actions.filter(a => a.kind === 'mark').length, marks + 2, 'native physical click uses the existing mark action');
-  await settle(() => emit('hear-entry-native', { kind: 5, value: 0, error: 'position save failed' }));
+  await settle(() => emit('loppi-entry-native', { kind: 5, value: 0, error: 'position save failed' }));
   assert.match(document.querySelector('[role=status]').textContent, /position save failed/, 'position save errors remain visible');
   console.log('PASS: hover/click, suppression, idempotence, comment focus/cancel/failure/retry, floating click/drag');
 } finally {

@@ -12,7 +12,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>hear · 隔离视觉样例</title>
+  <title>loppi · 隔离视觉样例</title>
 </head>
 <body>
   <div id="root"></div>
@@ -57,9 +57,9 @@
     const hasDetail = scene === 'detail' || scene === 'crossday';
     const evidence = document.getElementById('fixture-evidence');
     document.documentElement.dataset.designScene = scene;
-    document.title = `hear · ${scene} · 隔离视觉样例`;
+    document.title = `loppi · ${scene} · 隔离视觉样例`;
     const requests = [];
-    window.__HEAR_DESIGN_FIXTURE__ = { scene, fixedNow, requests };
+    window.__LOPPI_DESIGN_FIXTURE__ = { scene, fixedNow, requests };
 
     const state = {
       revision: 1, enabled_intent: true, paused_intent: !isRecording,

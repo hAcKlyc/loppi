@@ -35,7 +35,7 @@ updated: 2026-10-22
 
 ### 当前批次 Review 基线
 - 单批次，base: 83bc811。
-- 预计范围：crates/hear-core/src/{events.rs,events/asr/tests.rs,main.rs,ingestion.rs,diagnostic_tests.rs}；specs/tech_docs/{algorithms.md,diagnostics-and-verification.md}；本计划与本次研究/脱敏证据。
+- 预计范围：crates/loppi-core/src/{events.rs,events/asr/tests.rs,main.rs,ingestion.rs,diagnostic_tests.rs}；specs/tech_docs/{algorithms.md,diagnostics-and-verification.md}；本计划与本次研究/脱敏证据。
 - 排除：主工作树其他未跟踪材料、安装包与活跃数据；历史实验补丁仅证据，不作为最终生产代码。
 
 ### 待用户决策
@@ -49,7 +49,7 @@ updated: 2026-10-22
 ### Review Contract
 - Mode: repair；base 83bc811；target `/Users/zhihu/Documents/project/hear-asr-publication` 当前工作树完整差异。
 - Requirement source: 本计划完整契约，用户最新“优先保证数据可用，拒绝过度防御”。不再要求纯补入静默文字拒绝。
-- In-scope: `crates/hear-core/src/diagnostic_tests.rs`, `crates/hear-core/src/events.rs`, `crates/hear-core/src/events/asr/tests.rs`, `crates/hear-core/src/ingestion.rs`, `crates/hear-core/src/main.rs`, `specs/tech_docs/algorithms.md`, `specs/tech_docs/diagnostics-and-verification.md`, 本计划, `specs/research/2026-10-22-asr-publication-failures.md`, `specs/research/evidence/2026-10-22-asr-publication/summary.json`。
+- In-scope: `crates/loppi-core/src/diagnostic_tests.rs`, `crates/loppi-core/src/events.rs`, `crates/loppi-core/src/events/asr/tests.rs`, `crates/loppi-core/src/ingestion.rs`, `crates/loppi-core/src/main.rs`, `specs/tech_docs/algorithms.md`, `specs/tech_docs/diagnostics-and-verification.md`, 本计划, `specs/research/2026-10-22-asr-publication-failures.md`, `specs/research/evidence/2026-10-22-asr-publication/summary.json`。
 - Out-of-scope: 安装版、活跃 DB、主工作树调查实验补丁、其余代码与私有音频/供应商正文。禁止 reviewer 修改文件或派生子 agent。
 - Guarantees / non-goals / responsible defects: 严格采用上方开发契约，不提高保证等级。特别是没有自动恢复历史云任务、没有新付费调用承诺；安装真机验收为后续发布门槛，代码状态保持 in-progress。
 - Allowed mechanisms: 无新 owner/store/协议/queue/retry；复用 `source_session_id` 与 `core_migrations` 做真实旧数据的限定校正。删除过滤，不增加文字防御。

@@ -12,15 +12,15 @@ import threading
 import time
 
 ROOT = Path(__file__).resolve().parent.parent
-CLI = ROOT / "target/debug/hear"
-CORE = ROOT / "target/debug/hear-core"
+CLI = ROOT / "target/debug/loppi"
+CORE = ROOT / "target/debug/loppi-core"
 
 
 def main():
-    with tempfile.TemporaryDirectory(prefix="hear-agent-smoke-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="loppi-agent-smoke-") as temporary:
         root = Path(temporary)
         data = root / "data"
-        env = os.environ | {"HEAR_TEST_PARENT_PID": str(os.getpid()), "HEAR_DATA_DIR": str(data), "HEAR_CORE_BIN": str(CORE)}
+        env = os.environ | {"LOPPI_TEST_PARENT_PID": str(os.getpid()), "LOPPI_DATA_DIR": str(data), "LOPPI_CORE_BIN": str(CORE)}
 
         def cli(*args, code=0):
             p = subprocess.run([str(CLI), *args], env=env, capture_output=True, text=True, timeout=10)
@@ -45,11 +45,11 @@ def main():
         assert (skill / "SKILL.md").read_text() == "custom"
         command_dir = root / "bin"
         cli("integrations", "install-cli", "--directory", str(command_dir))
-        assert (command_dir / "hear").resolve() == CLI.resolve()
-        (command_dir / "hear").unlink()
-        (command_dir / "hear").write_text("keep")
+        assert (command_dir / "loppi").resolve() == CLI.resolve()
+        (command_dir / "loppi").unlink()
+        (command_dir / "loppi").write_text("keep")
         cli("integrations", "install-cli", "--directory", str(command_dir), code=2)
-        assert (command_dir / "hear").read_text() == "keep"
+        assert (command_dir / "loppi").read_text() == "keep"
         # Protocol-20 Core decodes the whole request before checking version:
         # Context closes with no reply; stable lifecycle inspection exposes its version.
         data.mkdir(exist_ok=True)
@@ -87,7 +87,7 @@ def main():
             lines = [
                 {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": {"name": "fixture", "version": "1"}}},
                 {"jsonrpc": "2.0", "method": "notifications/initialized"},
-                {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "hear_status"}},
+                {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "loppi_status"}},
             ]
             result = subprocess.run([str(CLI), "mcp", "serve"], input="".join(json.dumps(v)+"\n" for v in lines), env=env, text=True, capture_output=True, timeout=10)
             assert result.returncode == 0
@@ -145,23 +145,23 @@ def main():
             tools = rpc("tools/list")["result"]["tools"]
             assert len(tools) == 7 and all(t["annotations"]["readOnlyHint"] for t in tools)
             names = [t["name"] for t in tools]
-            inventory = rpc("tools/call", {"name": "hear_status", "arguments": {"client_tools": names}})["result"]["structuredContent"]["data"]["tool_inventory"]
+            inventory = rpc("tools/call", {"name": "loppi_status", "arguments": {"client_tools": names}})["result"]["structuredContent"]["data"]["tool_inventory"]
             assert inventory["state"] == "matched"
-            missing = cli("context", "status", "--client-tools", ",".join(n for n in names if n != "hear_search_context"))["data"]["tool_inventory"]
-            assert missing["state"] == "mismatch" and missing["missing"] == ["hear_search_context"]
+            missing = cli("context", "status", "--client-tools", ",".join(n for n in names if n != "loppi_search_context"))["data"]["tool_inventory"]
+            assert missing["state"] == "mismatch" and missing["missing"] == ["loppi_search_context"]
             for name, args, command in [
-                ("hear_list_context", {"time": {"date": "today"}}, ["list", "--date", "today"]),
-                ("hear_digest", {"time": {"date": "today"}}, ["digest", "--date", "today"]),
-                ("hear_search_context", {"query": "fixture"}, ["search", "fixture"]),
-                ("hear_read_context", {"selector": {"time": {"date": "today"}}}, ["read", "--date", "today"]),
-                ("hear_list_people", {}, ["people"]),
+                ("loppi_list_context", {"time": {"date": "today"}}, ["list", "--date", "today"]),
+                ("loppi_digest", {"time": {"date": "today"}}, ["digest", "--date", "today"]),
+                ("loppi_search_context", {"query": "fixture"}, ["search", "fixture"]),
+                ("loppi_read_context", {"selector": {"time": {"date": "today"}}}, ["read", "--date", "today"]),
+                ("loppi_list_people", {}, ["people"]),
             ]:
                 result = rpc("tools/call", {"name": name, "arguments": args})["result"]
                 assert result["isError"] is False
                 value = result["structuredContent"]
                 assert json.loads(result["content"][0]["text"]) == value
                 assert value["data"] == cli("context", *command)["data"]
-            invalid = rpc("tools/call", {"name": "hear_read_context", "arguments": {}})["result"]
+            invalid = rpc("tools/call", {"name": "loppi_read_context", "arguments": {}})["result"]
             assert invalid["isError"] is True
             assert invalid["structuredContent"]["error"]["code"] == "invalid_argument"
             with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:

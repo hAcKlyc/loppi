@@ -1,6 +1,6 @@
 # 开发工作流技能
 
-从 MyAgents 仓库的 `.claude/skills/` 原样复制，独立纳入 hear 的版本管理；不是指向原仓库的链接，不随源仓库自动更新。
+从 MyAgents 仓库的 `.claude/skills/` 原样复制，独立纳入 loppi 的版本管理；不是指向原仓库的链接，不随源仓库自动更新。
 
 | 技能 | 职责 |
 |---|---|
@@ -14,4 +14,4 @@
 
 调用关系：`prd-discuss → prd-writer → start-dev → cross-review-code`；审查协调器先执行 requirements / adversarial，再执行 architecture。
 
-本次仅复制技能，未启动开发或审查流程。正文保留了 MyAgents 的名称、架构文档路径、构建命令和示例；这些不是 hear 已存在的实现或工具链。正式使用前，应按 hear 的实际项目指令与文件核对并适配，不能为满足源项目示例而引入其架构。hear 当前 PRD 仍为 draft，复制技能不改变其就绪状态。
+本次仅复制技能，未启动开发或审查流程。正文保留了 MyAgents 的名称、架构文档路径、构建命令和示例；这些不是 loppi 已存在的实现或工具链。正式使用前，应按 loppi 的实际项目指令与文件核对并适配，不能为满足源项目示例而引入其架构。loppi 当前 PRD 仍为 draft，复制技能不改变其就绪状态。

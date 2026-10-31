@@ -19,8 +19,8 @@
 
 ## Batch 1 已执行验证
 
-- `cargo test -p hear-core -p hear-worker --no-fail-fast`：265 项通过、5 项 opt-in 测试跳过。下面两项本次新增 opt-in 测试已使用私有夹具分别实跑通过；另外 3 项是既有手动/规模测试，不在本次变更验收范围。
-- `cargo check -p hear-core -p hear-worker`、`cargo build -p hear-core -p hear-worker`：通过，包含原生桥接编译。
+- `cargo test -p loppi-core -p loppi-worker --no-fail-fast`：265 项通过、5 项 opt-in 测试跳过。下面两项本次新增 opt-in 测试已使用私有夹具分别实跑通过；另外 3 项是既有手动/规模测试，不在本次变更验收范围。
+- `cargo check -p loppi-core -p loppi-worker`、`cargo build -p loppi-core -p loppi-worker`：通过，包含原生桥接编译。
 - `npm run typecheck`、`npm run lint`、`npm run build`、`node --experimental-strip-types --test scripts/test_cloud_task_status.mjs`：通过。Vite 仍有大于 500 kB chunk 的体积提示，与本修复无关。
 - 对抗审查发现历史重试被 session 全局 coarse 水位吞掉、可能删除句首的缺陷，已在 coarse owner 改为按已有区间覆盖去重。回归覆盖 A 句首 / B 失败 / C 已完成后重试 B、多个覆盖区间之间补洞、重复回放、旧版本毫秒精度和清理墓碑；真实回放断言持久区间及媒体保留。
 - 原生 SCK probe：旧/新同机对照及系统日志确认；只短时读帧计数，不保存录音或图片。
@@ -30,23 +30,23 @@
 - 原请求查询：隔离 Core 测试 bundle 使用项目原签名身份与已有 Keychain ACL，禁止授权弹窗；未导出凭据、修改 ACL 或替换安装版。查询 10/10 个已提交失败 ID 的供应商原响应成功，严格映射均返回 `provider_unmapped_timing_word_in_separator`。部分词跨 2—3 个原声区间，无法靠裁剪词时间唯一还原。此前“历史 ASR 响应已丢失”的结论撤回。
 - 供应商合成 A/B：8 句自生成非私人中文、同一 PCM，旧接缝输入分别用默认分句和 VAD 分句提交，两者均映射失败；仅调分句参数不足以修根因。按新规划拆为 8 个连续请求后，8/8 时间映射通过，7/8 返回文字、1/8 为空结果。该探测额外断言全部有文字，**整项因此未通过**，不能当成完整识别质量验收；这里只支持映射修复。总计 10 个小请求、约 69 秒音频，无历史音频重送。
 - 本地回归：长静音/未知缺口/采集缺口/清理范围均分开；0—3 秒短停顿保留线性坐标，连续录音仍按 20 分钟上限切分；旧映射解析、任务去重/复用/迁移、清理与纠错测试继续执行。LLM 回归验证窗口交集、保留物理证据、越界发布拒绝，5 类坏输出均第 3 次终止且不改变任务 ID。
-- `cargo test -p hear-core -p hear-worker --no-fail-fast`：268 项通过、0 失败；6 项 opt-in 测试默认跳过，其中新原请求查询已单独实跑。`cargo check/build` 重验 Core 生产代码，前端/worker 未发生 Batch 2 实现变更，先前对应检查继续有效。
+- `cargo test -p loppi-core -p loppi-worker --no-fail-fast`：268 项通过、0 失败；6 项 opt-in 测试默认跳过，其中新原请求查询已单独实跑。`cargo check/build` 重验 Core 生产代码，前端/worker 未发生 Batch 2 实现变更，先前对应检查继续有效。
 - 采集历史：关联冻结库中的失败 session 和 `pmset -g log` 的显示器开关状态；851/34 为 system/microphone 失败总数，818/30 为**结束时**关屏，810/27 为**开始时**关屏。另查 04:15:15—35 的 WindowServer/replayd 原生日志确认关屏与停流的先后关系。相关性不能证明剩余 33/4 次或关屏期间全部失败的具体原生原因；未修改采集策略。
 
-原请求查询入口为忽略测试 `diagnostic_tests::query_original_failed_asr_without_resubmission`，需 `HEAR_QUERY_ORIGINAL_ASR=1`、`HEAR_TEST_DB`（只读冻结快照）、`HEAR_TEST_RESULTS`（私有输出目录）及项目签名身份。它只能查询原 ID，Meter 拒绝提交；原响应以 0600 新文件写入，包含私人转录，禁止提交仓库。没有同签名身份或已有 ACL 时直接失败，不放宽 Keychain 权限。
+原请求查询入口为忽略测试 `diagnostic_tests::query_original_failed_asr_without_resubmission`，需 `LOPPI_QUERY_ORIGINAL_ASR=1`、`LOPPI_TEST_DB`（只读冻结快照）、`LOPPI_TEST_RESULTS`（私有输出目录）及项目签名身份。它只能查询原 ID，Meter 拒绝提交；原响应以 0600 新文件写入，包含私人转录，禁止提交仓库。没有同签名身份或已有 ACL 时直接失败，不放宽 Keychain 权限。
 
 ## 本地复现入口
 
-先通过 SQLite backup 保存一致的数据库快照。`HEAR_TEST_DB` 指向冻结快照，**不要把活跃数据目录复制成开发服务目录并启动 serve**。测试在临时数据库副本写入，只读原音频，不启动采集、云队列或媒体删除器。
+先通过 SQLite backup 保存一致的数据库快照。`LOPPI_TEST_DB` 指向冻结快照，**不要把活跃数据目录复制成开发服务目录并启动 serve**。测试在临时数据库副本写入，只读原音频，不启动采集、云队列或媒体删除器。
 
 ```sh
-HEAR_TEST_DB=/private/path/snapshot.sqlite cargo test -p hear-core diagnostic_tests::snapshot_retention_and_event_projection -- --ignored --nocapture
+LOPPI_TEST_DB=/private/path/snapshot.sqlite cargo test -p loppi-core diagnostic_tests::snapshot_retention_and_event_projection -- --ignored --nocapture
 
-HEAR_TEST_DB=/private/path/snapshot.sqlite \
-HEAR_TEST_DATA=/private/path/hear-data \
-HEAR_TEST_WORKER="$PWD/target/debug/hear-worker" \
-HEAR_TEST_BLOCKS=block-uuid-1,block-uuid-2 \
-cargo test -p hear-core diagnostic_tests::replay_saved_vad_through_production_decoder_and_publication -- --ignored --nocapture
+LOPPI_TEST_DB=/private/path/snapshot.sqlite \
+LOPPI_TEST_DATA=/private/path/loppi-data \
+LOPPI_TEST_WORKER="$PWD/target/debug/loppi-worker" \
+LOPPI_TEST_BLOCKS=block-uuid-1,block-uuid-2 \
+cargo test -p loppi-core diagnostic_tests::replay_saved_vad_through_production_decoder_and_publication -- --ignored --nocapture
 ```
 
 VAD 回放使用生产的 Opus 解码、Sherpa 重采样、前块上下文、coarse 入队和发布事务。本次两例原来都没有 flush；入口按同样条件回放。它不重建历史进程的全部内存状态，但两例已在这个可恢复上下文下稳定复现并修复。
@@ -55,13 +55,13 @@ SCK 隔离检查（需已有屏幕采集授权；无授权退出 77，不发起�
 
 ```sh
 clang -fobjc-arc -fblocks -mmacosx-version-min=13.0 \
-  scripts/test_sck_audio.m crates/hear-core/native/system_audio.m \
+  scripts/test_sck_audio.m crates/loppi-core/native/system_audio.m \
   -framework Foundation -framework ScreenCaptureKit -framework CoreMedia -framework CoreGraphics \
-  -o /tmp/hear-sck-probe
-/tmp/hear-sck-probe
+  -o /tmp/loppi-sck-probe
+/tmp/loppi-sck-probe
 ```
 
-随后用 macOS Console 或 `log show` 按该 probe 进程名查看是否出现丢帧错误；不要把正在运行的旧 hear 采集子进程日志混入新 probe。测试结果只报告帧数/峰值，无声环境峰值为 0 是允许结果。
+随后用 macOS Console 或 `log show` 按该 probe 进程名查看是否出现丢帧错误；不要把正在运行的旧 loppi 采集子进程日志混入新 probe。测试结果只报告帧数/峰值，无声环境峰值为 0 是允许结果。
 
 ## 2026-10-20 合入 dev 前复核
 
@@ -86,6 +86,6 @@ Batch 2 已在保留上述 dev 收尾修复后提交 [PR #10](https://github.com
 - 1 条 contiguous-v2 的 5 秒输入返回 54 句、12 句零时长及大量相同文本，当前解析器整体拒绝正确。不能丢弃尾句后把剩余重复结果发布为可信转录，也不能承诺重新识别必然改善供应商质量。
 - 根因缺口是确定坏结果被普通重试反复查询。修复沿 Core 原事务和 planner，由用户明确重新识别失败范围，保留其它成功任务及人工修订；不改旧输入、ID 和用量，不自动重送。
 - opt-in `diagnostic_tests::query_original_failed_asr_without_resubmission` 现在覆盖映射子错误及无效句/时间/缺失句列表；仍拒绝提交音频。
-- opt-in `diagnostic_tests::snapshot_rejected_asr_recovery_preserves_history` 在 `HEAR_TEST_DB` 冻结库的临时副本重建失败任务，验证新输入线性时间、原输入/ID/错误历史不变、既有句段与用量条数不变；不访问网络、不写活动数据库。
+- opt-in `diagnostic_tests::snapshot_rejected_asr_recovery_preserves_history` 在 `LOPPI_TEST_DB` 冻结库的临时副本重建失败任务，验证新输入线性时间、原输入/ID/错误历史不变、既有句段与用量条数不变；不访问网络、不写活动数据库。
 
 原响应、数据库和音频均不进入仓库。自动验证不代表已安装新构建或已重新识别用户历史录音；这些付费操作必须由用户明确发起。

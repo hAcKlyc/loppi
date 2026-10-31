@@ -1,12 +1,12 @@
 // Exercise the production SCK discovery boundary without permission prompts or capture.
-#define CGPreflightScreenCaptureAccess hear_test_preflight
-#include "../crates/hear-core/native/system_audio.m"
+#define CGPreflightScreenCaptureAccess loppi_test_preflight
+#include "../crates/loppi-core/native/system_audio.m"
 #include <objc/runtime.h>
 #include <assert.h>
 
 static bool granted = true;
 static int discovery_code = 0;
-bool hear_test_preflight(void) { return granted; }
+bool loppi_test_preflight(void) { return granted; }
 
 static void content_result(id receiver, SEL selector, BOOL exclude, BOOL onscreen,
                            void (^completion)(SCShareableContent *, NSError *)) {
@@ -27,14 +27,14 @@ int main(void) {
     int context = 1, stage = -1, native = -1;
     for (int code = -3801; code <= -3800; code++) {
       discovery_code = code;
-      assert(hear_legacy_system_audio_start(&context, audio, &stage, &native) == NULL);
+      assert(loppi_legacy_system_audio_start(&context, audio, &stage, &native) == NULL);
       assert(stage == 2 && native == code);
     }
     discovery_code = 0;
-    assert(hear_legacy_system_audio_start(&context, audio, &stage, &native) == NULL);
+    assert(loppi_legacy_system_audio_start(&context, audio, &stage, &native) == NULL);
     assert(stage == 2 && native == SCStreamErrorNoCaptureSource);
     granted = false;
-    assert(hear_legacy_system_audio_start(&context, audio, &stage, &native) == NULL);
+    assert(loppi_legacy_system_audio_start(&context, audio, &stage, &native) == NULL);
     assert(stage == 7 && native == 0);
     method_setImplementation(method, original);
   }

@@ -118,9 +118,9 @@
 
 ## 源码入口
 
-- [事件拟合、摘要、发布、详情与失效](../../crates/hear-core/src/events.rs)：`FIT_SYSTEM`、`fit_summary`、`fit_context`、`publish_fit_with_input`、`event_detail`、`invalidate_summaries`。
-- [现有 LLM 调度](../../crates/hear-core/src/main.rs)：LLM 分支目前除截图任务外进入事件拟合。
-- [模型请求](../../crates/hear-core/src/cloud.rs)：`chat_content`。
-- [Rust 协议](../../crates/hear-protocol/src/lib.rs)与[前端接口](../../src/api.ts)：`TimelineItem`。
+- [事件拟合、摘要、发布、详情与失效](../../crates/loppi-core/src/events.rs)：`FIT_SYSTEM`、`fit_summary`、`fit_context`、`publish_fit_with_input`、`event_detail`、`invalidate_summaries`。
+- [现有 LLM 调度](../../crates/loppi-core/src/main.rs)：LLM 分支目前除截图任务外进入事件拟合。
+- [模型请求](../../crates/loppi-core/src/cloud.rs)：`chat_content`。
+- [Rust 协议](../../crates/loppi-protocol/src/lib.rs)与[前端接口](../../src/api.ts)：`TimelineItem`。
 - [列表摘要](../../src/timeline-view.ts)、[事件详情](../../src/DetailDrawer.tsx)、[样式](../../src/App.css)。
-- [修正与搜索](../../crates/hear-core/src/knowledge.rs)、[数据清理](../../crates/hear-core/src/cleanup.rs)、[归档导出](../../crates/hear-core/src/archive.rs)。
+- [修正与搜索](../../crates/loppi-core/src/knowledge.rs)、[数据清理](../../crates/loppi-core/src/cleanup.rs)、[归档导出](../../crates/loppi-core/src/archive.rs)。

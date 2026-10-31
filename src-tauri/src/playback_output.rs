@@ -39,18 +39,18 @@ pub enum Command {
     },
 }
 unsafe extern "C" {
-    fn hear_output_command(
+    fn loppi_output_command(
         bytes: *const u8,
         count: usize,
         ended: extern "C" fn(u64, u64, u64, i32),
     ) -> *mut std::ffi::c_char;
-    fn hear_output_shutdown();
+    fn loppi_output_shutdown();
 }
 extern "C" fn ended(context: u64, buffer: u64, epoch: u64, status: i32) {
     if let Some(app) = HOST.get() {
         let _ = app.emit_to(
             "main",
-            "hear-playback-ended",
+            "loppi-playback-ended",
             serde_json::json!({"context":context,"buffer":buffer,"epoch":epoch,"status":status}),
         );
     }
@@ -66,7 +66,7 @@ pub async fn playback_output(app: tauri::AppHandle, command: Command) -> Result<
         let (sender, receiver) = std::sync::mpsc::sync_channel(1);
         app.run_on_main_thread(move || {
             let result = unsafe {
-                let pointer = hear_output_command(bytes.as_ptr(), bytes.len(), ended);
+                let pointer = loppi_output_command(bytes.as_ptr(), bytes.len(), ended);
                 if pointer.is_null() {
                     Err("playback_device".into())
                 } else {
@@ -98,6 +98,6 @@ pub async fn playback_output(app: tauri::AppHandle, command: Command) -> Result<
 }
 pub fn shutdown() {
     unsafe {
-        hear_output_shutdown();
+        loppi_output_shutdown();
     }
 }

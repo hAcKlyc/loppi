@@ -4,7 +4,7 @@
 
 ## Owner 和记录边界
 
-`hear-core/src/usage.rs` 复用 Store 唯一写入者及 readers 快照。`cloud.rs` 在发起实际调用前登记身份、价格和待确认记录，在业务 JSON/时间轴校验之前保存响应中的白名单计量。网络 IO 不持 Store 锁，不改变队列调度和采集 owner。配置连接验证也纳入消耗，标记 verification，无业务任务 ID。
+`loppi-core/src/usage.rs` 复用 Store 唯一写入者及 readers 快照。`cloud.rs` 在发起实际调用前登记身份、价格和待确认记录，在业务 JSON/时间轴校验之前保存响应中的白名单计量。网络 IO 不持 Store 锁，不改变队列调度和采集 owner。配置连接验证也纳入消耗，标记 verification，无业务任务 ID。
 
 - `usage_models` 区分 capability（llm/asr）与 vendor（deepseek/volcengine），保存具体 API 模型/资源标识。
 - `usage_prices` 是不可变完整价格版本，包含官方来源、核实日期、币种、分母、峰谷及日历规则。新版只能新增 revision；旧记录继续引用旧版本。
@@ -21,7 +21,7 @@ LLM 每次实际外发新建记录；ASR 使用模型/连接身份/远端请求 
 
 ## 当前价格与计算（2026-10-17 核实）
 
-权威版本配置：`crates/hear-core/src/usage-prices.json`，`official-cny-2026-10-17-v1`，从本次核实日起适用。
+权威版本配置：`crates/loppi-core/src/usage-prices.json`，`official-cny-2026-10-17-v1`，从本次核实日起适用。
 
 | 服务 | 缓存输入 / 百万 Token | 非缓存输入 / 百万 Token | 输出 / 百万 Token | 音频 / 小时 |
 |---|---:|---:|---:|---:|
@@ -45,6 +45,6 @@ ASR 优先使用 `audio_info.duration` 毫秒；尚未返回时以已提交音�
 
 ## 查询与前端
 
-协议 v16：`usage_statistics { boundaries }`，边界为 UI 按本地自然日生成的 UTC 毫秒时间戳（8/31/91 个）；core 校验数量、单调性及 20–28h 日跨度，兼容 DST，不信任任意全表范围。使用时间索引逐日聚合，返回覆盖状态、已知小计和缺失数量。CLI `hear cloud usage --boundaries <逗号分隔时间戳>` 与 GUI 共用同一协议。
+协议 v16：`usage_statistics { boundaries }`，边界为 UI 按本地自然日生成的 UTC 毫秒时间戳（8/31/91 个）；core 校验数量、单调性及 20–28h 日跨度，兼容 DST，不信任任意全表范围。使用时间索引逐日聚合，返回覆盖状态、已知小计和缺失数量。CLI `loppi cloud usage --boundaries <逗号分隔时间戳>` 与 GUI 共用同一协议。
 
 前端不接触价格计算。统计页每 30 秒更新，切换范围或卸载后迟到响应不能覆盖新选择。日期切换保留图例状态；成本独立右轴，全部隐藏时提示选指标；图表键盘日期滑块提供对应数值和可访问提示。

@@ -40,7 +40,7 @@ def inspect(data):
 
 
 def gui_running(app):
-    executable = str(app / 'Contents/MacOS/hear-desktop')
+    executable = str(app / 'Contents/MacOS/loppi-desktop')
     lines = subprocess.check_output(['ps', '-axo', 'comm='], text=True).splitlines()
     return executable in (line.strip() for line in lines)
 
@@ -76,19 +76,19 @@ def readiness_errors(before, state, owner, gui, build, now_ms):
 
 def restore(args):
     session, app = args.session_dir.resolve(), args.app.resolve()
-    data = Path.home() / 'Library/Application Support/hear'
+    data = Path.home() / 'Library/Application Support/loppi'
     before = json.loads((session / 'original-status.json').read_text())['state']
     cloud = json.loads((session / 'original-cloud-status.json').read_text())['queues']
-    cli = app / 'Contents/MacOS/hear'
-    core = app / 'Contents/Library/LoginItems/HearCore.app/Contents/MacOS/hear-core'
+    cli = app / 'Contents/MacOS/loppi'
+    core = app / 'Contents/Library/LoginItems/LoppiCore.app/Contents/MacOS/loppi-core'
     build = json.loads(subprocess.check_output([str(core), '--build-info'], text=True))
     owner = inspect(data)
     if owner and owner['build'] != build:
-        debug = args.debug_core or session / 'hear-debug.app/Contents/Library/LoginItems/HearCore.app/Contents/MacOS/hear-core'
+        debug = args.debug_core or session / 'loppi-debug.app/Contents/Library/LoginItems/LoppiCore.app/Contents/MacOS/loppi-core'
         expected = json.loads(subprocess.check_output([str(debug), '--build-info'], text=True))
         if owner['build'] != expected:
             raise RuntimeError('Another Core owns this directory; refusing to stop it')
-        if gui_running(session / 'hear-debug.app'):
+        if gui_running(session / 'loppi-debug.app'):
             raise RuntimeError('Quit the debug GUI normally before restoring the installed app')
         rpc(data, {'type': 'lifecycle', 'action': 'quit'})
         deadline = time.monotonic() + 30
@@ -102,7 +102,7 @@ def restore(args):
                         raise RuntimeError('Debug Core has not released its owner lock')
             time.sleep(.1)
     # Use the installed application's real startup path. No synthetic GUI IPC.
-    clean_env = {k: v for k, v in os.environ.items() if not k.startswith('HEAR_')}
+    clean_env = {k: v for k, v in os.environ.items() if not k.startswith('LOPPI_')}
     subprocess.run(['open', '-a', str(app)], env=clean_env, check=True)
     deadline = time.monotonic() + 45
     result = {'ok': False}
@@ -122,7 +122,7 @@ def restore(args):
         if time.monotonic() >= deadline:
             return result
         time.sleep(.25)
-    env = clean_env | {'HEAR_DATA_DIR': str(data)}
+    env = clean_env | {'LOPPI_DATA_DIR': str(data)}
     current = json.loads(subprocess.check_output([str(cli), 'cloud', 'status'], env=env, text=True))['queues']
     for queue in cloud:
         actual = next(q for q in current if q['provider'] == queue['provider'])
@@ -134,7 +134,7 @@ def restore(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--session-dir', type=Path, required=True)
-    parser.add_argument('--app', type=Path, default=Path('/Applications/hear.app'))
+    parser.add_argument('--app', type=Path, default=Path('/Applications/loppi.app'))
     parser.add_argument('--debug-core', type=Path)
     args = parser.parse_args()
     try:

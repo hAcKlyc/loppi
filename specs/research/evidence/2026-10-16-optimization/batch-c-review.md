@@ -3,7 +3,7 @@
 - Mode: repair。主 Agent 修改；reviewer 只读，不得派生 reviewer。
 - Requirement source: `specs/prd/devplan_261016_reliability-performance.md` 与已接受研究的 F05/F06/F07/F08/F13；P0/P1 整体原子交付。本批内部稳定点不是发布完成。
 - Exact baseline: `27f9c2788be40376b201b14c4b01b7a7b270b941`，target = 当前本批工作树。
-- In scope: Cargo.lock；crates/hear-core/build.rs、native/resources.m、src/{analysis,coarse,resources,cleanup,knowledge,main,retention,source_process}.rs；crates/hear-worker/Cargo.toml、src/main.rs；specs/ARCHITECTURE.md、tech_docs/{algorithms,speaker-identity}.md；上述 devplan；本目录 batch-c-review.md、batch-c-quality.json。
+- In scope: Cargo.lock；crates/loppi-core/build.rs、native/resources.m、src/{analysis,coarse,resources,cleanup,knowledge,main,retention,source_process}.rs；crates/loppi-worker/Cargo.toml、src/main.rs；specs/ARCHITECTURE.md、tech_docs/{algorithms,speaker-identity}.md；上述 devplan；本目录 batch-c-review.md、batch-c-quality.json。
 - Out of scope: 已提交 A/B；无关未跟踪素材、playground、先前 research/旧 evidence；前端、播放、云公平调度与读连接属于 D。完整进程树和 GUI 峰值观测、长时/硬件/真实质量发布验收在 D/最终组合态继续，不能要求本批声称完成。
 - Must guarantee: 现有交互、模型、阈值、来源/真实时间、人工优先、暂停和云外发范围不变；core DB 业务唯一权威；有声无字、未知/失败保留；清理后迟到结果不能复活；VAD 独立于粗转耗时；逐源连续状态/重放不串源；持久粗转与声纹延期可恢复；输入、消息、缓存有界；模型故障/截止时间/父进程退出能回收；压力调节不主动暂停采集或删除历史人声。
 - Non goals: 新 UI、新模型、阈值调优、数据库服务化、定时重启核心、硬限制所有 OS 瞬时内存；不能把公开短样本/当前硬件模拟当成 24h/72h、macOS13/8GiB、真实标注质量通过。

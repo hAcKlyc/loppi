@@ -463,7 +463,7 @@ export function SettingsView({
 		void entryReload;
 		let disposed = false;
 		const subscription = listen<EntrySnapshot>(
-			"hear-entry-snapshot",
+			"loppi-entry-snapshot",
 			(event) => {
 				if (!disposed) {
 					setEntryMode(event.payload.mode);
@@ -642,8 +642,8 @@ export function SettingsView({
 	const chooseExportPath = async () => {
 		try {
 			const path = await save({
-				defaultPath: `hear-${localInput(dayStart).slice(0, 10)}.tar`,
-				filters: [{ name: "hear 归档", extensions: ["tar"] }],
+				defaultPath: `loppi-${localInput(dayStart).slice(0, 10)}.tar`,
+				filters: [{ name: "loppi 归档", extensions: ["tar"] }],
 			});
 			if (path) setExportPath(path);
 		} catch (error) {
@@ -704,7 +704,7 @@ export function SettingsView({
 												: "未开启"}
 								</span>
 							</div>
-							<p>登录电脑后自动启动 hear</p>
+							<p>登录电脑后自动启动 loppi</p>
 						</div>
 						<Switch
 							label="登录时启动"

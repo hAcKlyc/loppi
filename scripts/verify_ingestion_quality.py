@@ -30,8 +30,8 @@ for start in range(0,len(raw),240000*4):
  encoded.append((start//4,len(pcm)//4,opus))
 reports={};baseline=None
 for case in ['uninterrupted','delayed_close','delayed_crash']:
- with tempfile.TemporaryDirectory(prefix='myagents-verify-hear-delayed-') as tmp:
-  data=Path(tmp);env=os.environ|{'HEAR_TEST_PARENT_PID':str(os.getpid()),'HEAR_DATA_DIR':tmp,'HEAR_CORE_BIN':str(core),'HEAR_MODEL_ROOT':str(models)};locks=[];p=None;err=(data/'stderr').open('w')
+ with tempfile.TemporaryDirectory(prefix='myagents-verify-loppi-delayed-') as tmp:
+  data=Path(tmp);env=os.environ|{'LOPPI_TEST_PARENT_PID':str(os.getpid()),'LOPPI_DATA_DIR':tmp,'LOPPI_CORE_BIN':str(core),'LOPPI_MODEL_ROOT':str(models)};locks=[];p=None;err=(data/'stderr').open('w')
   def command(*args):return json.loads(subprocess.check_output([str(cli),*args],env=env,text=True,timeout=15))
   def boot():
    p=subprocess.Popen([str(core),'serve','--on-demand'],env=env,stdout=subprocess.DEVNULL,stderr=err,start_new_session=True)
@@ -42,7 +42,7 @@ for case in ['uninterrupted','delayed_close','delayed_crash']:
    raise RuntimeError('core socket timeout')
   try:
    p=boot();command('status');command('quit');p.wait(timeout=15)
-   anchor=int(time.time()*1000)-60000;db=sqlite3.connect(data/'hear.sqlite')
+   anchor=int(time.time()*1000)-60000;db=sqlite3.connect(data/'loppi.sqlite')
    for source in ['microphone','system']:
     sid=str(uuid.uuid4());run=str(uuid.uuid4());state='open' if case=='delayed_crash' else 'closed';delayed=case!='uninterrupted'
     db.execute('insert into recording_sessions values(?,?,?,?,?,?)',(sid,source,anchor,anchor+15000,anchor+(5000 if delayed else 15000),state))
@@ -63,17 +63,17 @@ for case in ['uninterrupted','delayed_close','delayed_crash']:
     time.sleep(.05)
    if delayed:
     time.sleep(3)
-    db=sqlite3.connect(data/'hear.sqlite');held=db.execute('select source,analysis_state,retention_decision,media_path is not null,analysis_attempts from audio_blocks order by source').fetchall();db.close()
+    db=sqlite3.connect(data/'loppi.sqlite');held=db.execute('select source,analysis_state,retention_decision,media_path is not null,analysis_attempts from audio_blocks order by source').fetchall();db.close()
     assert len(held)==2 and all(row[1:] == ('pending','pending_vad_v2',1,0) for row in held),held
     for fd in locks:os.close(fd)
     locks=[]
    else:held=[]
    terminal=False
    while time.monotonic()-begin<90:
-    time.sleep(.05);db=sqlite3.connect(data/'hear.sqlite');blocks=db.execute('select analysis_state,count(*) from audio_blocks group by analysis_state').fetchall();jobs=db.execute('select state,count(*) from coarse_jobs group by state').fetchall();db.close()
+    time.sleep(.05);db=sqlite3.connect(data/'loppi.sqlite');blocks=db.execute('select analysis_state,count(*) from audio_blocks group by analysis_state').fetchall();jobs=db.execute('select state,count(*) from coarse_jobs group by state').fetchall();db.close()
     if sum(n for s,n in blocks)==6 and all(s in ('complete','not_needed') for s,n in blocks) and jobs and all(s=='complete' for s,n in jobs):terminal=True;break
    assert terminal,(case,blocks,jobs)
-   db=sqlite3.connect(data/'hear.sqlite');segments={source:db.execute('select started_ms-?,ended_ms-?,text from coarse_segments where source=? order by started_ms,ended_ms',(anchor,anchor,source)).fetchall() for source in ['microphone','system']};retention=db.execute('select source,sample_start,retention_decision,media_path is not null from audio_blocks order by source,sample_start').fetchall();db.close()
+   db=sqlite3.connect(data/'loppi.sqlite');segments={source:db.execute('select started_ms-?,ended_ms-?,text from coarse_segments where source=? order by started_ms,ended_ms',(anchor,anchor,source)).fetchall() for source in ['microphone','system']};retention=db.execute('select source,sample_start,retention_decision,media_path is not null from audio_blocks order by source,sample_start').fetchall();db.close()
    if baseline is None:
     assert all(row[-1]==1 for row in retention if row[1]==0),retention
     baseline=(segments,retention)
@@ -87,4 +87,4 @@ for case in ['uninterrupted','delayed_close','delayed_crash']:
     try: command('quit');p.wait(timeout=15)
     except (OSError,subprocess.SubprocessError):os.killpg(p.pid,signal.SIGKILL);p.wait()
    err.close()
-args.output.write_text(json.dumps({'scope':'Public voiced inner phrase onset at 4.8s; two sources; actual models; delayed journal import held 3s after model-ready; no real holdout or native capture claim','core_sha256':hashlib.sha256(core.read_bytes()).hexdigest(),'worker_sha256':hashlib.sha256((core.parent/'hear-worker').read_bytes()).hexdigest(),'fixture_sha256':hashlib.sha256(args.wav.read_bytes()).hexdigest(),'cases':reports},indent=2)+'\n')
+args.output.write_text(json.dumps({'scope':'Public voiced inner phrase onset at 4.8s; two sources; actual models; delayed journal import held 3s after model-ready; no real holdout or native capture claim','core_sha256':hashlib.sha256(core.read_bytes()).hexdigest(),'worker_sha256':hashlib.sha256((core.parent/'loppi-worker').read_bytes()).hexdigest(),'fixture_sha256':hashlib.sha256(args.wav.read_bytes()).hexdigest(),'cases':reports},indent=2)+'\n')

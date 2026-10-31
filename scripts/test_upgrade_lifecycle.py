@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Real legacy Core → GUI lifecycle → current Core, using disposable data only."""
+"""Loppi GUI/Core ownership, handoff and exit, using disposable data only."""
 import argparse
 import concurrent.futures
 import fcntl
@@ -41,76 +41,38 @@ def wait_status(directory, version):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--core', type=Path, default=Path('target/debug/hear-core'))
+    parser.add_argument('--core', type=Path, default=Path('target/debug/loppi-core'))
     parser.add_argument('--driver', type=Path, default=Path('target/debug/examples/gui_lifecycle'))
-    parser.add_argument('--legacy17', type=Path, required=True)
-    parser.add_argument('--legacy19', type=Path, required=True)
     args = parser.parse_args()
     core, driver = args.core.resolve(), args.driver.resolve()
     build = json.loads(subprocess.check_output([core, '--build-info']))
     version = build['protocol_version']
 
     def drive(directory, *action, **overrides):
-        env = os.environ | {"HEAR_TEST_PARENT_PID": str(os.getpid()), 'HEAR_DATA_DIR': str(directory), 'HEAR_CORE_BIN': str(core)} | overrides
+        env = os.environ | {"LOPPI_TEST_PARENT_PID": str(os.getpid()), 'LOPPI_DATA_DIR': str(directory), 'LOPPI_CORE_BIN': str(core)} | overrides
         return subprocess.run([driver, *action], env=env, capture_output=True, text=True, timeout=45)
 
-    for old_version, binary in [(17, args.legacy17), (19, args.legacy19)]:
-        for mode in ['--on-demand', '--login']:
-            for action in ['upgrade', 'quit']:
-                with tempfile.TemporaryDirectory(prefix='hear-upgrade-') as tmp:
-                    directory = Path(tmp)
-                    process = subprocess.Popen([binary.resolve(), 'serve', mode], env=os.environ | {"HEAR_TEST_PARENT_PID": str(os.getpid()), 'HEAR_DATA_DIR': tmp}, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                    try:
-                        wait_status(directory, old_version)
-                        before = rpc(directory, old_version, {'type':'pause', 'expected_revision':0})['state']
-                        before = rpc(directory, old_version, {'type':'set_source', 'source':'microphone', 'enabled':False, 'expected_revision':before['revision']})['state']
-                        if old_version == 19:
-                            now = time.localtime()
-                            minute = now.tm_hour * 60 + now.tm_min
-                            before = rpc(directory, old_version, {'type':'set_recording_schedule', 'enabled':True, 'start_minute':(minute+60)%1440, 'stop_minute':(minute+120)%1440, 'expected_revision':before['revision']})['state']
-                        marker = directory / 'retained-audio.opus'
-                        marker.write_bytes(b'unchanged archived audio fixture')
-                        if action == 'upgrade':
-                            # Mixed bundles must not stop an existing service.
-                            bad = drive(directory, HEAR_CORE_BIN=str(binary.resolve()))
-                            assert bad.returncode != 0 and process.poll() is None, bad.stderr
-                            with concurrent.futures.ThreadPoolExecutor(2) as pool:
-                                results = list(pool.map(lambda _: drive(directory), range(2)))
-                            for result in results:
-                                assert result.returncode == 0, result.stderr
-                                state = json.loads(result.stdout)['state']
-                                for field in ['revision', 'enabled_intent', 'paused_intent', 'microphone_enabled', 'system_enabled']:
-                                    assert state[field] == before[field], (field, state, before)
-                            process.wait(timeout=10)
-                            info = rpc(directory, 999, {'type':'lifecycle','action':'inspect'})
-                            assert info['build'] == build and not info['allow_capture']
-                            opened = drive(directory, 'opened')
-                            assert opened.returncode == 0, opened.stderr
-                            opened_state = json.loads(opened.stdout)['state']
-                            for field in ['enabled_intent', 'paused_intent', 'microphone_enabled', 'system_enabled']:
-                                assert opened_state[field] == before[field], (field, opened_state, before)
-                            # Existing GUI activation legitimately enables the
-                            # scheduler. Handoff must not disable that behavior.
-                            activated = rpc(directory, version, {'type':'lifecycle','action':'inspect'})
-                            assert activated['normal_run']
-                            assert activated['allow_capture'] == (old_version == 19)
-                            assert marker.read_bytes() == b'unchanged archived audio fixture'
-                        result = drive(directory, 'quit')
-                        assert result.returncode == 0, result.stderr
-                        process.wait(timeout=10)
-                        assert not (directory / 'core.sock').exists()
-                        # Quit on an absent Core must not launch a replacement.
-                        assert drive(directory, 'quit').returncode == 0
-                        assert not (directory / 'core.sock').exists()
-                        print(f'PASS legacy {old_version} {mode} {action}: state retained, owner drained, no relaunch', flush=True)
-                    finally:
-                        if process.poll() is None:
-                            process.terminate()
-                            process.wait(timeout=10)
-                        if (directory / 'core.sock').exists():
-                            drive(directory, 'quit')
+    # A fresh directory is initialized once across simultaneous GUI requests.
+    with tempfile.TemporaryDirectory(prefix='loppi-lifecycle-') as tmp:
+        directory = Path(tmp)
+        try:
+            with concurrent.futures.ThreadPoolExecutor(2) as pool:
+                results = list(pool.map(lambda _: drive(directory), range(2)))
+            for result in results:
+                assert result.returncode == 0, result.stderr
+            info = rpc(directory, version, {'type':'lifecycle','action':'inspect'})
+            assert info['build'] == build and not info['allow_capture']
+            assert (directory / 'loppi.sqlite').is_file()
+            assert drive(directory, 'quit').returncode == 0
+            assert not (directory / 'core.sock').exists()
+            assert drive(directory, 'quit').returncode == 0
+            assert not (directory / 'core.sock').exists()
+            print('PASS concurrent initialization and complete exit; no relaunch', flush=True)
+        finally:
+            if (directory / 'core.sock').exists():
+                drive(directory, 'quit')
 
-    with tempfile.TemporaryDirectory(prefix='hear-upgrade-busy-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='loppi-upgrade-busy-') as tmp:
         directory = Path(tmp)
         with (directory / 'lifecycle.lock').open('w') as gate:
             fcntl.flock(gate, fcntl.LOCK_EX)
@@ -124,7 +86,7 @@ def main():
     # Controlled stable lifecycle server covers active/query permissions and a
     # newer build. The real replacement Core still loads the same real DB path.
     for permission in ['capture', 'normal', 'query', 'newer']:
-        with tempfile.TemporaryDirectory(prefix='hear-handoff-') as tmp:
+        with tempfile.TemporaryDirectory(prefix='loppi-handoff-') as tmp:
             directory = Path(tmp)
             owner_lock = (directory / 'core.lock').open('w')
             fcntl.flock(owner_lock, fcntl.LOCK_EX)

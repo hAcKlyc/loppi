@@ -72,9 +72,9 @@ try {
  let staleWasShown=false;
  const observer=new MutationObserver(()=>{staleWasShown ||= document.body.textContent.includes('stale-after-mutation');});
  observer.observe(document.getElementById('root'),{subtree:true,childList:true,characterData:true});
- await settle(()=>emit('hear-moment-changed'));
+ await settle(()=>emit('loppi-moment-changed'));
  const before=requests.length;
- await settle(()=>emit('hear-moment-changed'));
+ await settle(()=>emit('loppi-moment-changed'));
  assert.equal(requests.length,before,'second mutation queues one trailing read');
  await settle(()=>pending.shift()('stale-after-mutation'));
  assert.equal(requests.length,before+1,'mutation obtains a fresh snapshot after current query');
