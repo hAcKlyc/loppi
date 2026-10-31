@@ -110,6 +110,7 @@ scripts/test_design_assets.mjs
 scripts/test_design_forms.html
 scripts/test_design_scene.html
 scripts/test_detail_entry.html
+scripts/test_entry.mjs
 scripts/test_moment_sidebar.html
 scripts/test_people_settings.html
 scripts/test_settings_interactions.html
@@ -120,6 +121,7 @@ specs/research/evidence/2026-10-31-design-system/browser-regressions.txt
 specs/research/evidence/2026-10-31-design-system/cleanup-contrast.txt
 specs/research/evidence/2026-10-31-design-system/keyboard-and-pages.txt
 specs/research/evidence/2026-10-31-design-system/layout-boundaries.txt
+specs/research/evidence/2026-10-31-design-system/native-entry-policy.txt
 specs/research/evidence/2026-10-31-design-system/review-contract.md
 specs/research/evidence/2026-10-31-design-system/review-results.md
 specs/research/evidence/2026-10-31-design-system/review-scope.txt

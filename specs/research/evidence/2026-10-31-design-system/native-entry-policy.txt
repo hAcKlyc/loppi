@@ -1,0 +1,7 @@
+Post-commit native gate repair
+Before: top container CSS12/native26, floating menu CSS10/native20. Reviewer confirmed painted points(5,152)/(12,12) passed through.
+After: top26/26, menu20/20. Native code unchanged.
+Cross CSS/native corner-radii contract test: included in Node suite.
+clang -fobjc-arc -fblocks -mmacosx-version-min=13.0 scripts/test_native_entry.m -framework Cocoa -framework QuartzCore
+PASS: action/feedback reopen, stationary dismissal, click/keyboard, hit regions and animation. Harness stubs screen geometry; does not move desktop cursor.
+Installed-app visual/keyboard proof still pending final bundle.

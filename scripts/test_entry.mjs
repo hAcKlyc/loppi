@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { readFile } from 'node:fs/promises';
 import { mockIPC, clearMocks } from '@tauri-apps/api/mocks';
 import { EntryRequests, commentCanSubmit, commentEnterSubmits } from '../src/entry-api.ts';
 
@@ -84,4 +85,18 @@ test('top rabbit follows native width continuously and avoids the physical notch
       previous = globalX;
     }
   }
+});
+
+// A visual-only radius change must not expose painted corners outside the host mask.
+test('entry surface corner radii agree with the native pointer masks', async () => {
+ const css=await readFile(new URL('../src/entry.css',import.meta.url),'utf8');
+ const native=await readFile(new URL('../src-tauri/native/entry.m',import.meta.url),'utf8');
+ const top=css.match(/\.notch-surface \{[\s\S]*?border-radius:\s*0 0 (\d+)px (\d+)px;/);
+ const menu=css.match(/\.rabbit-menu \{[\s\S]*?border-radius:\s*(\d+)px;/);
+ const topMask=native.match(/double radius=MIN\((\d+),g.width\/2\)/);
+ const menuMask=native.match(/roundedRegion\(NSMakeRect\(8,g.menu_y,116,167\),(\d+),p\)/);
+ assert(top&&menu&&topMask&&menuMask,'Native/CSS geometry declarations must remain inspectable');
+ assert.equal(Number(top[1]),Number(topMask[1]),'top bottom-left corner');
+ assert.equal(Number(top[2]),Number(topMask[1]),'top bottom-right corner');
+ assert.equal(Number(menu[1]),Number(menuMask[1]),'floating menu corners');
 });

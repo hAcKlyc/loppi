@@ -81,7 +81,8 @@
 	transform: translateX(-50%);
 	overflow: hidden;
 	background: var(--entry-surface);
-	border-radius: 0 0 var(--radius-xl) var(--radius-xl);
+	/* Match the host hitRegion mask; these are native geometry, not panel tokens. */
+	border-radius: 0 0 26px 26px;
 	display: flex;
 	align-items: flex-start;
 	padding: calc(var(--entry-band) + 24px) 18px 26px 20px;
@@ -289,7 +290,8 @@
 	gap: 4px;
 	background: var(--entry-menu);
 	border: 1px solid transparent;
-	border-radius: var(--radius-lg);
+	/* Match the host roundedRegion mask. */
+	border-radius: 20px;
 	box-shadow: 0 4px 12px var(--entry-menu-shadow);
 }
 .rabbit-menu button {
