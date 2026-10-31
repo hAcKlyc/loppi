@@ -37,3 +37,10 @@ Windows[紧凑原始运行报告](native-repair-evidence.json)已通过公开CLI
 73f53d4完整Windows检查通过typecheck/lint/Rust check/全部Rust/Node/rabbit后，Python discovery发现两处顶层fcntl导入和一处Mac合成路径随宿主Path改写。分类required evidence gap；仅将OS依赖移到Mac操作函数，并用PurePosixPath固定Mac样例；不改产品源、不跳过既有断言。Mac9项通过；实际Windows运行9项、1个原有Mac native adapter跳过，其余8项通过。原始stdout及边界见[报告](python-portability-evidence.json)。
 
 两位需求/故障定向复核PASS，分别独立跑9项及拒绝fcntl导入模拟，均9通过0跳过；原架构审查者定向PASS，AST确认操作函数逻辑和13项样例断言保持。原最终架构结论继续适用，不机械重开全量。该修复提交后统一新SHA重建三端正式包；73f的两份Mac公证包仅是中间验证，不混为最终产物。
+
+
+## 安装器外层产品图标
+
+0fa完整发行包实际资源核对确认GUI七帧正确，但NSIS外层图标仍是默认值。分类产品ICON发行资源required gap；仅在Windows配置显式设置installerIcon/uninstallerIcon指向现有批准ICO，无像素/业务/退出逻辑改动。两位需求/故障及原final架构定向复核PASS，Tauri2.12 schema与官方同tag构建CWD/NSIS字段解析匹配。
+
+实际NSIS3.11小型harness同时使用Icon/UninstallIcon，编译和仅WriteUninstaller退出0；两EXE的16/24/32/48/64/128/256七帧PNG逐字节匹配批准ICO，真实安装与注册表未动。完整新包仍须统一新SHA构建并核对资源。0fa模型负向拒绝正确、原权重哈希不变；音频/转写/IPC等产品源未变，既有真实功能证据继续适用，不机械重跑。

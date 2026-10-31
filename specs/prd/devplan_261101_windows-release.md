@@ -92,3 +92,13 @@ scope: "完成 loppi Windows 支持、真实 Windows 安装验收，并将同版
 - 73f53d4的Mac两薄包均已签名、公证、装订、Gatekeeper和身份/模型验证通过，作为中间构建证据保留；不将它们混入最终不同源码的三端Release。因统一来源契约，新测试源码提交后重新构建全部正式包。
 
 - 三处工具修复经需求/故障/架构定向复核全部PASS，AST确认原Mac操作和13项样例断言保持；Mac9/9通过，真实Windows9项运行中1项原有Mac native adapter跳过，其余8项通过，无新增skip。报告已落盘；新内部checkpoint仅改变开发测试工具与事实记录，不改变产品源码，正式包继续按统一新SHA重建。
+
+
+### 最终安装器产品图标补齐
+
+- 0fa6e0e真实完整Windows发行构建退出0，四组件一致、dirty=false、epoch1793487528；388630959字节，SHA87533908…0bfc。19PE闭包、GUI七帧图标和完整NSIS只读检查通过，实际安装验收继续。Tauri会恢复上次测试安装目录，fixture不能假定返回默认目录；缺失/损坏模型start应非零，拒绝是正确产品行为。
+- 实际资源检查发现安装器外层仍是默认NSIS图标。裁决为本次产品ICON发行资源的required gap；Tauri CLI2.12本地权威schema明确`NsisConfig.installerIcon/uninstallerIcon`。仅在tauri.windows.conf.json将两项明确指向现有批准icons/icon.ico，不改变ICON像素、业务逻辑或安装生命周期。
+- 修复范围仅该Windows配置及本台账/审查记录，base0fa6e0e377ef64d86db6b44199044b367733507a。定向核对schema、路径/源ICO指纹与安装/卸载两种资源；两位及架构定向复核后新checkpoint，三端包仍统一新SHA。0fa的功能性音频/IPC/转写等证据继续适用；源未变不机械重跑，最终新安装器须实际安装/升级/卸载与资源核对。
+
+- 图标两项配置获需求/故障/原final架构定向PASS。真实NSIS3.11小型编译和写出卸载器均0，两个EXE的RT_GROUP_ICON/RT_ICON七尺寸PNG逐帧与批准ICO一致；无注册表写入、未改真实安装。源码路径/schema/兼容性门禁已关，正式新包资源与安装身份待重建验证。
+- 0fa模型负向实测：缺失model_bundle_missing、损坏model_checksum；start均退出2并提示model_not_ready，prepare-install退出0/forced=false，原模型校验值不变。失败的先前fixture期望不再混称产品缺陷。
