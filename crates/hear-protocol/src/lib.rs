@@ -16,7 +16,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
-pub const PROTOCOL_VERSION: u32 = 23;
+pub const PROTOCOL_VERSION: u32 = 24;
 const MAX_RESPONSE_BYTES: u64 = 48 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -154,6 +154,12 @@ pub enum Request {
         to_ms: i64,
         sources: EventSources,
         generation: i64,
+    },
+    ReorganizeEvents {
+        started_ms: i64,
+        ended_ms: i64,
+        title: String,
+        sources: EventSources,
     },
     CreateEvent {
         started_ms: i64,
@@ -356,6 +362,7 @@ impl Request {
             Self::RangeDetail { .. } => "range_detail",
             Self::PlaybackChunk { .. } => "playback_chunk",
             Self::PlaybackValid { .. } => "playback_valid",
+            Self::ReorganizeEvents { .. } => "reorganize_events",
             Self::CreateEvent { .. } => "create_event",
             Self::EditEvent { .. } => "edit_event",
             Self::RetranscribeEvent { .. } => "retranscribe_event",
@@ -578,6 +585,8 @@ pub struct CloudTaskView {
     pub target_kind: String,
     pub target_id: String,
     pub source: Option<AudioSource>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sources: Option<EventSources>,
     pub started_ms: i64,
     pub ended_ms: i64,
     pub state: String,
@@ -1328,6 +1337,7 @@ mod tests {
                 target_kind: "range".to_owned(),
                 target_id: range_id.to_string(),
                 source: Some(AudioSource::System),
+                sources: None,
                 started_ms: 1_000,
                 ended_ms: 6_000,
                 state: "pending".to_owned(),

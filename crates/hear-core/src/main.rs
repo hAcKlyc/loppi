@@ -3132,6 +3132,39 @@ fn handle_request(
                 });
                 read_response(envelope.id, result)
             }
+            Request::ReorganizeEvents {
+                started_ms,
+                ended_ms,
+                title,
+                sources,
+            } => {
+                let result = {
+                    let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                    store.mutate_response(envelope.id, &mutation_fingerprint, |tx| {
+                        let task_id = events::reorganization::enqueue(
+                            tx,
+                            envelope.id,
+                            started_ms,
+                            ended_ms,
+                            &title,
+                            sources,
+                            now_ms()?,
+                        )?;
+                        Ok(Response::Accepted {
+                            id: envelope.id,
+                            object_id: task_id,
+                        })
+                    })
+                };
+                match result {
+                    Ok(response) => response,
+                    Err(error) => Response::Error {
+                        id: envelope.id,
+                        code: "reorganization_invalid".into(),
+                        message: error,
+                    },
+                }
+            }
             Request::CreateEvent {
                 started_ms,
                 ended_ms,
@@ -5404,6 +5437,7 @@ impl Store {
             | Request::CalendarDays { .. }
             | Request::EventDetail { .. }
             | Request::RangeDetail { .. }
+            | Request::ReorganizeEvents { .. }
             | Request::CreateEvent { .. }
             | Request::EditEvent { .. }
             | Request::RetranscribeEvent { .. }

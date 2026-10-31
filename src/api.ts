@@ -64,6 +64,11 @@ export function userError(error: unknown): string {
 		return "无法将密钥保存到系统钥匙串，请稍后重试";
 	if (message.startsWith("keychain_read_"))
 		return "无法读取系统钥匙串中的密钥，请重新打开 hear；若仍失败，请在设置中重新保存密钥";
+	if (code === "reorganization_invalid") {
+		if (message.includes("no_coarse_text")) return "这段时间暂无可整理的文字";
+		if (message.includes("future_range")) return "请选择已经发生的时间范围";
+		return "无法提交整理，请检查名称、时间和声音来源";
+	}
 	if (code === "event_invalid") {
 		if (isEventStale(error)) {
 			return "事件已更新，请在时间线查看最新内容后再试";
@@ -337,6 +342,7 @@ export interface CloudTask {
 	target_kind: string;
 	target_id: string;
 	source: Source | null;
+	sources?: Sources;
 	started_ms: number;
 	ended_ms: number;
 	state: string;

@@ -93,6 +93,8 @@ LLM 收到粗文字、与当前 candidate 相交的真实时间、来源、人�
 
 ### 5.3 时间线投影与人工边界
 
+用户主动`ReorganizeEvents`走既有LLM队列和FIT_SYSTEM，带本次user_instruction、相关旧事件完整范围与有限前后文。新增一次性请求载荷，不建立长期指示或另一队列。模型通过event_id明确更新及retire_event_ids退役，遗漏仍不删除；发布事务复用事件、摘要、理解规范化及ASR引用。模型决定语义，Core校验结构、音源/对象归属、修订和最终非重叠；此模式可以调整相关人工事件且不新增人工锁。它与固定边界的RebuildUnderstanding、原人工CreateEvent/拆合命令语义不同，GUI新建表单改用此模式，CLI提供event reorganize。原声/句段/人物和笔记事实不因重组改变。
+
 [`timeline`](../../crates/hear-core/src/events.rs) 以当天真实时间范围查询命名事件，再按来源从有效素材范围减去已被命名覆盖的范围，形成未整理块；静默间隔可以包含在大块中。用户对未整理区间手动精转时，`manual_ranges` 为该**连续真实时间范围**建立独立、可追踪的未命名精转事件，前后剩余部分继续显示粗转未整理块。手动新建/调整命名事件会更新 ASR 待办，不改写原声。日期列表的“隐藏粗转”仅影响 UI 投影，不删除数据；失败、重试和凭据受阻的素材仍显示时间和状态入口，粗转正文继续遵守隐藏设置。命名事件的整理异常与精转进度并列显示，不覆盖已有精转完成状态。[`transcribe_range_in`、`timeline`](../../crates/hear-core/src/events.rs)；[日期界面](../../src/TimelineView.tsx)。
 
 ## 6. 两条云队列与精转

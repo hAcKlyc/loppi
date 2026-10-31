@@ -896,6 +896,7 @@ pub fn apply(
         )
         .map_err(|error| error.to_string())?;
     } else {
+        crate::events::reorganization::clear(tx, scope.start, scope.end, scope.mask, now)?;
         crate::events::invalidate_event_understanding(tx, scope.start, scope.end, scope.mask)?;
         // Text cleanup removes whole overlapping sentences, which can extend
         // beyond the requested interval and be evidence for a neighboring event.

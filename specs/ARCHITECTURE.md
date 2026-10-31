@@ -137,6 +137,8 @@ cloud_queues.blocked_reason 独立表达 402 账号阻塞，用户显式继续/�
 
 ## 5. 外发、修订与清理边界
 
+“新建事件”表单通过`ReorganizeEvents`提交一次性用户指示。Core在同一事务保存`event_reorganization_requests`载荷和现有LLM队列的`reorganization`任务；状态只由`cloud_tasks`拥有。名称、大致时间、音源和相关旧事件完整材料进入同一FIT_SYSTEM，模型明确提出event_id修改、新建及retire_event_ids。共用发布事务检查当前输入、对象/音源权限与最终非重叠后执行；旧人工事件可按此次最新意图重组，新结果不新增人工锁，指示不再参与后续自动整理。ASR继承物理请求引用，只规划未覆盖原声；文字纠错、人物确认、绝对时刻笔记保留。模型退役不调用带永久抑制的人工删除/拆合高层命令。GUI等待时保留旧事件，状态与重试复用处理队列。
+
 - DeepSeek 事件整理任务只见候选区间的粗文字、时间、来源及“检测到人声但无可用文字”等状态；其 JSON 仅是建议，核心检查边界、来源、冲突、人工优先级及任务版本。[`llm_input` / `publish_fit`](../crates/hear-core/src/events.rs)。
 - 火山 ASR 只见被判定或人工指定需精转的音频；事件稳定后按来源及编码时长上限建持久任务，新物理请求保持连续时间坐标；不超过一分钟且有完整同源无人声证据的空档按真实时长编码静默，超过上限、未知、采集或清理缺口分开请求，不再插入压缩接缝；旧持久输入和远端请求 ID 不变。当前适配器是 `volc.seedasr.auc`，请求 speaker 信息、分句及 `ssd_version=300`。Keychain 的 LLM/ASR 凭据分别设置、分别暂停队列。[`cloud.rs`](../crates/hear-core/src/cloud.rs)。
 - 人工确认人物后，Core 在既有声纹循环中筛选单句/相邻短句组合样例，按质量、近似去重和每场/每人物限额入库。每个组合成员保留人工绑定证据；自动命名不回流训练。内部取样任务及证据表由 `knowledge/enrollment.rs` 管理，复用本地 worker 和清理屏障，详见[声纹入库策略](tech_docs/speaker-identity.md#短句组合与音质)。

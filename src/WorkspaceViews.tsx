@@ -59,12 +59,15 @@ function taskRange(task: CloudTask): string {
 		started.toDateString() === ended.toDateString()
 			? ""
 			: `${ended.getMonth() + 1}/${ended.getDate()} `;
+	const sources = task.sources ?? task.source;
 	const source =
-		task.source === "microphone"
-			? " · 麦克风"
-			: task.source === "system"
-				? " · 电脑声音"
-				: "";
+		sources === "both"
+			? " · 双路声音"
+			: sources === "microphone"
+				? " · 麦克风"
+				: sources === "system"
+					? " · 电脑声音"
+					: "";
 	return `${date} ${time(task.started_ms)}—${endDate}${time(task.ended_ms)}${source}`;
 }
 
@@ -305,11 +308,13 @@ export function QueueView({
 								<div className="task-row" key={task.id}>
 									<div>
 										<strong>
-											{task.target_kind === "screenshot"
-												? "图片理解"
-												: task.provider === "llm"
-													? "事件整理"
-													: "精确转录"}{" "}
+											{task.target_kind === "reorganization"
+												? "用户发起的事件整理"
+												: task.target_kind === "screenshot"
+													? "图片理解"
+													: task.provider === "llm"
+														? "事件整理"
+														: "精确转录"}{" "}
 											· {taskRange(task)}
 										</strong>
 										<p title={task.error_code ?? undefined}>

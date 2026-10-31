@@ -17,6 +17,7 @@ pub(crate) mod asr;
 #[cfg(test)]
 mod gui_read_tests;
 pub mod rebuild;
+pub mod reorganization;
 mod summary;
 mod understanding;
 #[cfg(test)]
@@ -60,7 +61,7 @@ fn init_cloud_tasks(db: &Connection) -> Result<(), String> {
     const SCHEMA: &str = r#"CREATE TABLE IF NOT EXISTS cloud_tasks (
             id TEXT PRIMARY KEY,
             provider TEXT NOT NULL CHECK(provider IN ('llm','asr')),
-            target_kind TEXT NOT NULL CHECK(target_kind IN ('candidate','event','range','screenshot')),
+            target_kind TEXT NOT NULL CHECK(target_kind IN ('candidate','event','range','screenshot','reorganization')),
             target_id TEXT NOT NULL,
             target_version TEXT NOT NULL,
             model_id TEXT NOT NULL,
@@ -83,7 +84,7 @@ fn init_cloud_tasks(db: &Connection) -> Result<(), String> {
     let old: bool = db
         .query_row(
             "SELECT instr(sql, ?1)=0 FROM sqlite_master WHERE type='table' AND name='cloud_tasks'",
-            ["'screenshot'"],
+            ["'reorganization'"],
             |r| r.get(0),
         )
         .map_err(|e| e.to_string())?;
@@ -100,11 +101,19 @@ fn init_cloud_tasks(db: &Connection) -> Result<(), String> {
             .map_err(|e| e.to_string())?;
         db.pragma_update(None, "legacy_alter_table", true)
             .map_err(|e| e.to_string())?;
+        let has_retry_budget: bool = db
+            .query_row("SELECT EXISTS(SELECT 1 FROM pragma_table_info('cloud_tasks') WHERE name='retry_failures')", [], |r| r.get(0))
+            .map_err(|e| e.to_string())?;
+        let retry_column = if has_retry_budget {
+            "ALTER TABLE cloud_tasks_new ADD COLUMN retry_failures INTEGER NOT NULL DEFAULT 0;"
+        } else {
+            ""
+        };
         let result = crate::storage::migrate(
             db,
-            "screenshot_cloud_tasks_v1",
+            "reorganization_cloud_tasks_v1",
             &format!(
-                "{} INSERT INTO cloud_tasks_new SELECT * FROM cloud_tasks; DROP TABLE cloud_tasks; ALTER TABLE cloud_tasks_new RENAME TO cloud_tasks;",
+                "{} {retry_column} INSERT INTO cloud_tasks_new SELECT * FROM cloud_tasks; DROP TABLE cloud_tasks; ALTER TABLE cloud_tasks_new RENAME TO cloud_tasks;",
                 SCHEMA.replace("IF NOT EXISTS cloud_tasks", "cloud_tasks_new")
             ),
         );
@@ -119,6 +128,7 @@ fn init_cloud_tasks(db: &Connection) -> Result<(), String> {
 
 pub fn init(db: &Connection) -> Result<(), String> {
     init_cloud_tasks(db)?;
+    reorganization::init(db)?;
     db.execute_batch(
         "CREATE TABLE IF NOT EXISTS cloud_queues (
             provider TEXT PRIMARY KEY CHECK(provider IN ('llm','asr')),
@@ -389,7 +399,8 @@ pub fn task_views(
             "SELECT id,target_kind,target_id,source,started_ms,ended_ms,
         CASE WHEN state='complete' AND provider='asr'
           AND NOT EXISTS(SELECT 1 FROM precise_segments p WHERE p.task_id=cloud_tasks.id)
-          THEN 'no_transcript' ELSE state END,error_code,manual
+          THEN 'no_transcript' ELSE state END,error_code,manual,
+        (SELECT source_mask FROM event_reorganization_requests r WHERE target_kind='reorganization' AND r.id=cloud_tasks.target_id)
         FROM cloud_tasks WHERE provider=?1 AND coalesce(error_code,'')!='data_cleared'
         ORDER BY CASE
           WHEN state='failed' THEN 0
@@ -399,7 +410,13 @@ pub fn task_views(
         .map_err(|e| e.to_string())?;
     stmt.query_map(
         params![provider_name(provider), limit.clamp(1, 200)],
-        |row| task_view_from_row(row, provider),
+        |row| {
+            task_view_from_row(
+                row,
+                provider,
+                row.get::<_, Option<i64>>(9)?.map(sources_for),
+            )
+        },
     )
     .map_err(|e| e.to_string())?
     .collect::<Result<Vec<_>, _>>()
@@ -409,6 +426,7 @@ pub fn task_views(
 fn task_view_from_row(
     row: &rusqlite::Row<'_>,
     provider: CloudProvider,
+    sources: Option<EventSources>,
 ) -> rusqlite::Result<CloudTaskView> {
     let id: String = row.get(0)?;
     let source: Option<String> = row.get(3)?;
@@ -424,6 +442,7 @@ fn task_view_from_row(
         target_kind: row.get(1)?,
         target_id: row.get(2)?,
         source,
+        sources,
         started_ms: row.get(4)?,
         ended_ms: row.get(5)?,
         state: row.get(6)?,
@@ -1397,7 +1416,7 @@ pub fn transcribe_range_in(
         .map_err(|error| error.to_string())?;
     let tasks = statement
         .query_map(params![id.to_string()], |row| {
-            task_view_from_row(row, CloudProvider::Asr)
+            task_view_from_row(row, CloudProvider::Asr, None)
         })
         .map_err(|error| error.to_string())?
         .collect::<Result<Vec<_>, _>>()
@@ -2753,6 +2772,13 @@ pub fn task_current(db: &Connection, task: &CloudTask) -> Result<bool, String> {
         return Ok(active);
     }
     let current: Option<String> = match task.target_kind.as_str() {
+        "reorganization" => db
+            .query_row(
+                "SELECT '1' FROM event_reorganization_requests WHERE id=?1",
+                [&task.target_id],
+                |r| r.get(0),
+            )
+            .optional(),
         "candidate" => db
             .query_row(
                 "SELECT input_hash FROM candidate_windows WHERE id=?1",
@@ -2945,7 +2971,7 @@ pub fn task_failed_with_retry(
     // can retry in the existing queue. Keep a finite total attempt budget;
     // deterministic ASR mapping failures must never enter this paid path.
     let invalid_fit_output = task.provider == CloudProvider::Llm
-        && task.target_kind == "candidate"
+        && matches!(task.target_kind.as_str(), "candidate" | "reorganization")
         && (error == "provider_incomplete_output"
             || error == "provider_invalid_json_content"
             || error.starts_with("provider_invalid_json_content_")
@@ -3042,6 +3068,9 @@ pub fn mark_submit_intent(db: &Connection, task: &CloudTask, now: i64) -> Result
 }
 
 pub fn llm_input(db: &Connection, task: &CloudTask) -> Result<String, String> {
+    if task.target_kind == "reorganization" {
+        return reorganization::input(db, task);
+    }
     if task.target_kind == "event" {
         return rebuild::input(db, task);
     }
@@ -3259,6 +3288,22 @@ fn validate_fit_ranges(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
+fn insert_generated_event(
+    tx: &Transaction<'_>,
+    id: &str,
+    start: i64,
+    end: i64,
+    mask: i64,
+    title: &str,
+    summary: Option<String>,
+    understanding: Option<String>,
+    now: i64,
+) -> Result<(), String> {
+    tx.execute("INSERT INTO named_events (id,started_ms,ended_ms,title,source_mask,revision,origin,boundary_locked,title_locked,asr_required,deleted_ms,created_ms,summary,understanding_json) VALUES (?1,?2,?3,?4,?5,1,'automatic',0,0,1,NULL,?6,?7,?8)",params![id,start,end,title,mask,now,summary,understanding]).map_err(|e|e.to_string())?;
+    Ok(())
+}
+
 pub fn publish_fit_with_input(
     db: &mut Connection,
     task: &CloudTask,
@@ -3288,6 +3333,19 @@ pub fn publish_fit_with_input(
     let current: serde_json::Value =
         serde_json::from_str(&llm_input(&tx, task)?).map_err(|_| "invalid_fit_input")?;
     let context_current = sent == current;
+    if task.target_kind == "reorganization" {
+        if !context_current {
+            return Err("reorganization_revision_conflict".into());
+        }
+        let count = reorganization::apply(&tx, task, &sent, &result, now)?;
+        tx.execute(
+            "UPDATE cloud_tasks SET state='complete',error_code=NULL,updated_ms=?2 WHERE id=?1",
+            params![task.id.to_string(), now],
+        )
+        .map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())?;
+        return Ok(count);
+    }
     validate_fit_ranges(events, task.start, task.end)?;
     // A stale semantic response must not erase a newer, still valid snapshot
     // (for example after a title-only edit). Compare actual observation anchors
@@ -3636,11 +3694,17 @@ pub fn publish_fit_with_input(
         };
         let understanding = interpretation_for_scope(&tx, start, end, mask, understanding)?;
         let id = Uuid::new_v4().to_string();
-        tx.execute(
-            "INSERT INTO named_events (id,started_ms,ended_ms,title,source_mask,revision,origin,boundary_locked,title_locked,asr_required,deleted_ms,created_ms,summary,understanding_json) VALUES (?1,?2,?3,?4,?5,1,'automatic',0,0,1,NULL,?6,?7,?8)",
-            params![id, start, end, title.unwrap_or("普通会话"), mask, now, summary, understanding],
-        )
-        .map_err(|e| e.to_string())?;
+        insert_generated_event(
+            &tx,
+            &id,
+            start,
+            end,
+            mask,
+            title.unwrap_or("普通会话"),
+            summary,
+            understanding,
+            now,
+        )?;
         tx.execute(
             "INSERT INTO event_candidate_links VALUES (?1,?2,?3)",
             params![task.target_id, slot as i64, id],

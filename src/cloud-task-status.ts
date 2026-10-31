@@ -16,6 +16,11 @@ export function taskStatus(task: CloudTask): string {
 	const state = retrying ? "等待重试" : (states[task.state] ?? "状态待确认");
 	if ((!retrying && task.state !== "failed") || !task.error_code) return state;
 	const reason = task.error_code;
+	if (reason === "reorganization_revision_conflict")
+		return `${state} · 内容已变化，可重试按最新内容整理`;
+	if (reason === "reorganization_input_too_large")
+		return `${state} · 相关内容过多，请缩小时间范围后重新提交`;
+	if (reason === "no_coarse_text") return `${state} · 这段时间暂无可整理的文字`;
 	if (reason === "provider_http_402")
 		return `${state} · 云端余额不足，请充值后手动重试`;
 	if (

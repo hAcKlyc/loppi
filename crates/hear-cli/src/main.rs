@@ -283,6 +283,14 @@ enum CloudCommand {
 
 #[derive(Subcommand)]
 enum EventCommand {
+    /// Reorganize existing events with a one-time user instruction.
+    Reorganize {
+        started_ms: i64,
+        ended_ms: i64,
+        title: String,
+        #[arg(long, default_value = "both")]
+        sources: Sources,
+    },
     Show {
         event_id: Uuid,
         #[arg(long, default_value_t = 0)]
@@ -775,6 +783,17 @@ fn main() {
             limit,
         },
         Command::Event { action } => match action {
+            EventCommand::Reorganize {
+                started_ms,
+                ended_ms,
+                title,
+                sources,
+            } => Request::ReorganizeEvents {
+                started_ms,
+                ended_ms,
+                title,
+                sources: sources.into(),
+            },
             EventCommand::Show {
                 event_id,
                 offset,

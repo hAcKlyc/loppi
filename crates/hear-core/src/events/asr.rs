@@ -529,6 +529,18 @@ pub fn inherit(tx: &Transaction<'_>, old: &str, new: &str) -> Result<(), String>
     Ok(())
 }
 
+/// Share existing physical recognition, including manual ranges, with a new event.
+pub fn inherit_coverage(
+    tx: &Transaction<'_>,
+    event: &str,
+    start: i64,
+    end: i64,
+    mask: i64,
+) -> Result<(), String> {
+    tx.execute("INSERT INTO event_asr_refs SELECT ?1,t.id,t.started_ms,t.ended_ms FROM transcript_tasks t WHERE t.provider='asr' AND t.state!='superseded' AND t.started_ms<?3 AND t.ended_ms>?2 AND ((t.source='microphone' AND ?4&1!=0) OR(t.source='system' AND ?4&2!=0)) AND (t.target_kind='event' OR(t.target_kind='range' AND EXISTS(SELECT 1 FROM manual_ranges m WHERE m.id=t.target_id AND t.target_version=cast(m.revision AS TEXT)))) ON CONFLICT(event_id,task_id) DO UPDATE SET started_ms=min(event_asr_refs.started_ms,excluded.started_ms),ended_ms=max(event_asr_refs.ended_ms,excluded.ended_ms)",params![event,start,end,mask]).map_err(|e|e.to_string())?;
+    Ok(())
+}
+
 pub fn current(db: &Connection, task: &CloudTask) -> Result<Option<bool>, String> {
     if task.target_kind != "event" || task.provider != CloudProvider::Asr {
         return Ok(None);

@@ -115,6 +115,7 @@ function App() {
 	} | null>(null);
 	const selected = selection?.item ?? null;
 	const [form, setForm] = useState<EventForm | null>(null);
+	const eventSubmission = useRef<{ id: string; key: string } | null>(null);
 	const [tool, setTool] = useState<EventTool | null>(null);
 	const [splitAt, setSplitAt] = useState("");
 	const [leftTitle, setLeftTitle] = useState("");
@@ -584,11 +585,12 @@ function App() {
 	const mutate = async (
 		request: { type: string; [key: string]: unknown },
 		success: string,
+		requestId?: string,
 	) => {
 		setDialogError("");
 		setBusy(true);
 		try {
-			await core(request);
+			await core(request, requestId);
 			message(success);
 			await Promise.all([
 				refreshStatus(),
@@ -603,6 +605,11 @@ function App() {
 				setSelection(null);
 				await refreshTimeline(false, true);
 			}
+			if (
+				request.type === "reorganize_events" &&
+				!(cause instanceof Error && cause.message.startsWith("core_transport:"))
+			)
+				eventSubmission.current = null;
 			setDialogError(errorText(cause));
 			message(errorText(cause));
 			return false;
@@ -612,6 +619,7 @@ function App() {
 	};
 
 	const openForm = (next: EventForm) => {
+		eventSubmission.current = null;
 		const [day] = dayBounds(date);
 		setDialogError("");
 		setForm(next);
@@ -650,13 +658,30 @@ function App() {
 						sources,
 					}
 				: {
-						type: "create_event",
+						type: "reorganize_events",
 						started_ms,
 						ended_ms,
 						title: title.trim(),
 						sources,
 					};
-		if (await mutate(request, "事件已保存")) {
+		const reorganize = request.type === "reorganize_events";
+		const key = JSON.stringify(request);
+		if (reorganize && !eventSubmission.current)
+			eventSubmission.current = { id: crypto.randomUUID(), key };
+		if (reorganize && eventSubmission.current?.key !== key) {
+			setDialogError("上次提交结果待确认，请先确认原提交或在处理队列查看");
+			return;
+		}
+		if (
+			await mutate(
+				request,
+				reorganize
+					? "已提交，正在重新整理事件，可在处理队列查看"
+					: "事件已保存",
+				reorganize ? eventSubmission.current?.id : undefined,
+			)
+		) {
+			eventSubmission.current = null;
 			setSelection(null);
 			setForm(null);
 		}
