@@ -1,0 +1,106 @@
+   Compiling loppi-protocol v0.1.18 (/Users/ethan/Projects/hear/crates/loppi-protocol)
+   Compiling sherpa-onnx-sys v2.0.0
+   Compiling sherpa-onnx v2.0.0
+   Compiling loppi-worker v0.1.18 (/Users/ethan/Projects/hear/crates/loppi-worker)
+   Compiling loppi-core v0.1.18 (/Users/ethan/Projects/hear/crates/loppi-core)
+   Compiling loppi-cli v0.1.18 (/Users/ethan/Projects/hear/crates/loppi-cli)
+    Finished `release` profile [optimized] target(s) in 1m 12s
+
+> loppi@0.1.18 tauri
+> tauri build --target aarch64-apple-darwin --bundles app --config /Users/ethan/Projects/hear/build/macos/aarch64-apple-darwin-1793470217-11744/tauri.json
+
+        Info Looking up installed tauri packages to check mismatched versions...
+     Running beforeBuildCommand `npm run build`
+
+> loppi@0.1.18 build
+> npm run typecheck && vite build
+
+
+> loppi@0.1.18 typecheck
+> tsc --noEmit
+
+vite v8.3.1 building client environment for production...
+transforming...
+✓ 323 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                             0.39 kB │ gzip:   0.26 kB
+dist/assets/sleeping-BgVXm_5y.png           7.58 kB
+dist/assets/listening-BAMb9n6n.png          7.84 kB
+dist/assets/sprite-atlas-CJmSGthc.png      60.44 kB
+dist/assets/app-icon-square-DV-awzxf.png  827.74 kB
+dist/assets/index-BC7w9ctC.css             96.08 kB │ gzip:  16.23 kB
+dist/assets/index-0ijNG7u7.js             571.56 kB │ gzip: 175.07 kB
+
+✓ built in 105ms
+[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+   Compiling loppi-protocol v0.1.18 (/Users/ethan/Projects/hear/crates/loppi-protocol)
+   Compiling loppi-desktop v0.1.18 (/Users/ethan/Projects/hear/src-tauri)
+    Finished `release` profile [optimized] target(s) in 1m 39s
+       Built application at: /Users/ethan/Projects/hear/target/aarch64-apple-darwin/release/loppi-desktop
+    Bundling loppi.app (/Users/ethan/Projects/hear/target/aarch64-apple-darwin/release/bundle/macos/loppi.app)
+    Finished 1 bundle at:
+        /Users/ethan/Projects/hear/target/aarch64-apple-darwin/release/bundle/macos/loppi.app (233.85 MiB)
+
+PASS: bundled read-only models, renamed Unicode path, automatic VAD/ASR readiness + retry; no model copy, capture or cloud tasks
+PASS: bundled read-only models, renamed Unicode path, automatic VAD/ASR readiness + retry; no model copy, capture or cloud tasks
+/Users/ethan/Projects/hear/build/dev/0.1.18/macos-arm64/loppi_0.1.18_macos-arm64-dev.dmg
+   Compiling loppi-protocol v0.1.18 (/Users/ethan/Projects/hear/crates/loppi-protocol)
+   Compiling sherpa-onnx-sys v2.0.0
+   Compiling sherpa-onnx v2.0.0
+   Compiling loppi-core v0.1.18 (/Users/ethan/Projects/hear/crates/loppi-core)
+   Compiling loppi-cli v0.1.18 (/Users/ethan/Projects/hear/crates/loppi-cli)
+   Compiling loppi-worker v0.1.18 (/Users/ethan/Projects/hear/crates/loppi-worker)
+    Finished `release` profile [optimized] target(s) in 56.29s
+
+> loppi@0.1.18 tauri
+> tauri build --target x86_64-apple-darwin --bundles app --config /Users/ethan/Projects/hear/build/macos/x86_64-apple-darwin-1793470217-11744/tauri.json
+
+        Info Looking up installed tauri packages to check mismatched versions...
+     Running beforeBuildCommand `npm run build`
+
+> loppi@0.1.18 build
+> npm run typecheck && vite build
+
+
+> loppi@0.1.18 typecheck
+> tsc --noEmit
+
+vite v8.3.1 building client environment for production...
+transforming...
+✓ 323 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                             0.39 kB │ gzip:   0.26 kB
+dist/assets/sleeping-BgVXm_5y.png           7.58 kB
+dist/assets/listening-BAMb9n6n.png          7.84 kB
+dist/assets/sprite-atlas-CJmSGthc.png      60.44 kB
+dist/assets/app-icon-square-DV-awzxf.png  827.74 kB
+dist/assets/index-BC7w9ctC.css             96.08 kB │ gzip:  16.23 kB
+dist/assets/index-0ijNG7u7.js             571.56 kB │ gzip: 175.07 kB
+
+✓ built in 123ms
+[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+   Compiling loppi-desktop v0.1.18 (/Users/ethan/Projects/hear/src-tauri)
+   Compiling loppi-protocol v0.1.18 (/Users/ethan/Projects/hear/crates/loppi-protocol)
+    Finished `release` profile [optimized] target(s) in 1m 12s
+       Built application at: /Users/ethan/Projects/hear/target/x86_64-apple-darwin/release/loppi-desktop
+    Bundling loppi.app (/Users/ethan/Projects/hear/target/x86_64-apple-darwin/release/bundle/macos/loppi.app)
+    Finished 1 bundle at:
+        /Users/ethan/Projects/hear/target/x86_64-apple-darwin/release/bundle/macos/loppi.app (239.37 MiB)
+
+PASS: bundled read-only models, renamed Unicode path, automatic VAD/ASR readiness + retry; no model copy, capture or cloud tasks
+PASS: bundled read-only models, renamed Unicode path, automatic VAD/ASR readiness + retry; no model copy, capture or cloud tasks
+/Users/ethan/Projects/hear/build/dev/0.1.18/macos-x86_64/loppi_0.1.18_macos-x86_64-dev.dmg
+
+Development packages ready:
+/Users/ethan/Projects/hear/build/dev/0.1.18/macos-arm64/loppi_0.1.18_macos-arm64-dev.dmg
+/Users/ethan/Projects/hear/build/dev/0.1.18/macos-x86_64/loppi_0.1.18_macos-x86_64-dev.dmg

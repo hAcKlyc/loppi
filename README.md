@@ -43,20 +43,33 @@ npm ci # 首次构建或依赖更新后执行
 ./build_release.sh
 ```
 
-默认生成 **Universal2**：GUI、CLI、Core 和 worker 都同时包含 ARM 与 Intel 代码；X-ASR、VAD 和声纹模型只在 Core 的资源目录保留一份，约 **204.64 MB（195.16 MiB）**。安装后自动检查和加载本地组件，无需额外下载。模型在构建时按固定清单获取并校验，运行时只读，不复制到用户数据目录。
+默认顺序生成 **Apple Silicon（ARM64）和 Intel（x86_64）两份独立安装包**。每个包的 GUI、CLI、Core 和 worker 都只含对应架构；每包各带一份约 **204.64 MB（195.16 MiB）** 的 X-ASR、VAD 和声纹模型。安装后自动检查和加载本地组件，无需额外下载。
 
-安装两个 Rust target：`rustup target add aarch64-apple-darwin x86_64-apple-darwin`。发行须从干净且已提交的源码构建，依次完成编译、资源与启动检查、签名、DMG、公证和装订。产物在 `build/releases/<版本>/macos-universal2/`，包含 DMG、`release-info.json` 和 `SHA256SUMS`。通过 `APPLE_SIGNING_IDENTITY` 指定证书，未指定时选择本机 Developer ID Application 证书。
+先安装两个 Rust target：`rustup target add aarch64-apple-darwin x86_64-apple-darwin`。发行须从干净且已提交的源码构建，分别完成编译、资源与启动检查、签名、DMG、公证和装订。输出为：
 
-仅构建内部候选或指定架构：
+- `build/releases/<版本>/macos-arm64/loppi_<版本>_macos-arm64.dmg`
+- `build/releases/<版本>/macos-x86_64/loppi_<版本>_macos-x86_64.dmg`
+
+各目录附 `release-info.json` 和 `SHA256SUMS`。同次执行的两包使用同一版本、源码和构建时间；按架构分发即可。签名证书通过 `APPLE_SIGNING_IDENTITY` 指定，未指定时选择本机 Developer ID Application 证书。
+
+开发候选也默认生成两份 DMG，允许未提交源码，不要求 Developer ID 或公证：
 
 ```sh
-node scripts/build.mjs build --target universal-apple-darwin
-node scripts/build.mjs build --target aarch64-apple-darwin
-node scripts/build.mjs build --target x86_64-apple-darwin
+./build_dev.sh
+# scripts/build_macos.sh 也是同一个开发构建入口
+```
+
+输出在 `build/dev/<版本>/macos-arm64/` 和 `macos-x86_64/`，文件名带 `-dev`，各附 `build-info.json` 和 `SHA256SUMS`。开发候选使用优化编译，供内部安装测试；`npm run dev` 仍只启动前端开发服务。
+
+需要只构建一个架构，或显式生成 Universal2 时：
+
+```sh
+./build_dev.sh --target aarch64-apple-darwin
+./build_release.sh --target x86_64-apple-darwin
 ./build_release.sh --target universal-apple-darwin
 ```
 
-App 位于 `target/<target>/release/bundle/macos/loppi.app`。单架构候选在异架构宿主上只做编译和结构检查，不声称通过原生启动验证。脚本不会更新 `/Applications/loppi.app`。完整布局、升级与验证边界见[离线资源与 Mac 打包说明](specs/tech_docs/offline-macos-packaging.md)。
+中间 App 位于 `target/<target>/release/bundle/macos/loppi.app`。宿主架构执行原生检查；ARM Mac 已有 Rosetta 时也执行 Intel 包的翻译环境检查。无法执行的异架构仅验证编译、切片、最低系统版本和资源哈希，报告明确标记，不冒充原生验收。脚本不会更新 `/Applications/loppi.app`。完整布局与验证边界见[离线资源与 Mac 打包说明](specs/tech_docs/offline-macos-packaging.md)。
 
 对外分发前需要完成 Apple 公证。`build_release.sh` 自动读取根目录 `.env` 中的以下配置（已有环境变量优先），不会把 `.env` 或私钥文件放进安装包：
 
@@ -75,7 +88,7 @@ APPLE_API_KEY_PATH=/absolute/path/to/AuthKey_YOUR_KEY_ID.p8
 APPLE_NOTARY_PROFILE=loppi-notary ./build_release.sh
 ```
 
-`APPLE_NOTARY_PROFILE` 是钥匙串中的配置名，也可写入 `.env`；设置后优先使用钥匙串认证。缺少签名或公证配置时，发行入口在编译前退出。仅构建 App 可运行 `zsh scripts/build_macos.sh`；单独重新打包须显式传入 App 和输出 DMG 路径：`zsh scripts/package_macos.sh /absolute/loppi.app /absolute/output.dmg`，并自行传入签名、公证环境变量。
+`APPLE_NOTARY_PROFILE` 是钥匙串中的配置名，也可写入 `.env`；设置后优先使用钥匙串认证。缺少签名或公证配置时，发行入口在编译前退出。`scripts/build_macos.sh` 同样默认生成两架构开发 DMG；单独重新打包须显式传入 App 和输出 DMG 路径：`zsh scripts/package_macos.sh /absolute/loppi.app /absolute/output.dmg`，并自行传入签名、公证环境变量。内部未公证包可在该命令后加 `--dev`（放在两个路径之前）。
 
 长时资源观测可运行 `zsh scripts/measure_macos.sh 600 /tmp/loppi-process-usage.csv /Applications/loppi.app new /tmp/loppi-resource-report.html`。脚本每分钟记录安装版核心、worker 与界面的实际可执行路径/PID、CPU 累计时间、物理内存足迹、常驻内存、磁盘 IO 和进程能耗计数；允许短暂重叠的 worker，并在重启或进程缺席时留下可追溯样本。报告每 15 次采样自动更新一次，同时生成同名 `.html.json` 摘要；`LOPPI_REPORT_EVERY` 可调整频率。意外停止后以 `resume` 代替 `new` 续写同一个 CSV，先校验表头，不覆盖原曲线。也可用 `python3 scripts/report_macos_resources.py <一个或多个 CSV> --output /tmp/loppi-resource-report.html --summary /tmp/loppi-resource-report.json` 合并重叠采样。报告按 PID 分段显示内存和单核 CPU 曲线、峰值、P95、末值与超过 150 秒的采样空档；空档内的峰值未知。进程能耗计数只能用于同机趋势，不能替代整机电池续航实测。录音覆盖、可回放性与来源缺口仍须以核心状态和媒体清单单独核对。
 

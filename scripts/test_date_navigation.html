@@ -7,7 +7,9 @@ import {createRoot} from 'react-dom/client';
 import {flushSync} from 'react-dom';
 import {mockIPC} from '@tauri-apps/api/mocks';
 import App from '/src/App.tsx';
-const NativeDate=Date, fixedNow=new NativeDate(2026,9,17,12).getTime();
+const NativeDate=Date;
+const baseMatch=/^(\d{4})-(\d{2})-(\d{2})$/.exec(new URLSearchParams(location.search).get('base')??'');
+const fixedNow=(baseMatch?new NativeDate(Number(baseMatch[1]),Number(baseMatch[2])-1,Number(baseMatch[3]),12):new NativeDate(2026,9,17,12)).getTime();
 window.Date=class extends NativeDate {
   constructor(...args){super(...(args.length?args:[fixedNow]));}
   static now(){return fixedNow;}
@@ -28,11 +30,11 @@ mockIPC(async(command,args)=>{
   if(command==='login_item_status') return 1;
   if(command!=='core_request') return null;
   const r=args.request;
-  if(r.type==='calendar_days') {await wait(80);if(failCalendar){failCalendar=false;throw Error('simulated calendar failure')}return {type:r.type,days};}
+  if(r.type==='calendar_days') {await wait(80);if(failCalendar){failCalendar=false;throw Error('simulated calendar failure')}return {type:r.type,days:days.filter(d=>d>=r.boundaries[0]&&d<r.boundaries.at(-1))};}
   if(r.type==='timeline') {
     await wait(r.from_ms===day(older)?700:150);
     const d=new Date(r.from_ms).getDate();
-    return {type:'timeline',gaps:[],items:[{id:`fixture-${d}`,manual_range_id:null,title:`日期 ${d} 的记录`,summary:'测试记录，用来核对日期与内容是否一致。',started_ms:r.from_ms+3600000,ended_ms:r.from_ms+7200000,sources:'microphone',revision:1,processing_state:'transcribed',recording_sources:[],preview:null,coarse_segments:[],precise_segments:[]}]};
+    return {type:'timeline',gaps:[],items:days.includes(r.from_ms)?[{id:`fixture-${d}`,manual_range_id:null,title:`日期 ${d} 的记录`,summary:'测试记录，用来核对日期与内容是否一致。',started_ms:r.from_ms+3600000,ended_ms:r.from_ms+7200000,sources:'microphone',revision:1,processing_state:'transcribed',recording_sources:[],preview:null,coarse_segments:[],precise_segments:[]}]:[]};
   }
   if(r.type==='moments') return {type:r.type,moments:[]};
   if(r.type==='cloud_status') return {type:r.type,queues:[]};
@@ -42,51 +44,35 @@ mockIPC(async(command,args)=>{
 },{shouldMockEvents:true});
 createRoot(document.getElementById('root')).render(React.createElement(App));
 const assert=(condition,message)=>{if(!condition)throw Error(message)};
-const button=n=>[...document.querySelectorAll('.date-choice')].find(b=>b.querySelector('strong').textContent===`${m+1}月${n}日`);
-const frame=()=>Promise.race([new Promise(requestAnimationFrame),wait(1500).then(()=>{throw Error("浏览器未提供动画帧，请在可见的前台标签页运行")})]);
+const q=s=>document.querySelector(s);
+const selected=()=>q('.date-choice').dataset.date;
+const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const previous=()=>q('[aria-label="前一天"]'),next=()=>q('[aria-label="后一天"]');
+const click=async el=>{assert(el,'缺少操作');el.click();await wait(80)};
+const closeCalendar=async()=>{q('.calendar-popover').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await wait(50)};
 document.getElementById('run').onclick=async()=>{
-  const output=document.getElementById('result');output.textContent='检查中…';
-  document.getElementById('run').disabled=true;
-  let falseEmpty=false;
-  const observer=new MutationObserver(()=>{if(document.querySelector('.date-track')?.textContent.includes('暂无记录'))falseEmpty=true;});
-  observer.observe(document.getElementById('root'),{subtree:true,childList:true,characterData:true});
-  try {
-    await wait(900);
-    assert(button(current)?.getAttribute('aria-current')==='date','初始选中日期错误');
-    const target=button(older), rect=n=>n.querySelector('strong').getBoundingClientRect();
-    const initial=rect(target), width=initial.width;
-    const gap=initial.left-rect(button(current)).right;
-    assert(gap<=21&&gap>=7,'日期之间存在多余占位空白');
-    target.click();await frame();await wait(70);
-    assert(button(older)===target,'选中时替换了日期 DOM');
-    assert(button(current)&&button(oldest),'加载时清空了月导航');
-    const during=rect(target), middle=during.width;
-    if(!matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      assert(middle>width&&middle<target.offsetWidth,'没有连续的中间尺寸');
-      assert(during.left<initial.left-2,'没有自然的横向移动');
-    }
-    const sliding=button(oldest), before=rect(sliding), beforeLeft=before.left;
-    flushSync(()=>sliding.click());
-    const first=rect(sliding), firstLeft=first.left;
-    if(!matchMedia('(prefers-reduced-motion: reduce)').matches) { assert(Math.abs(firstLeft-beforeLeft)<3,'三日窗口滚动时出现位置跳变'); assert(Math.abs(first.width-before.width)<3&&Math.abs(first.top-before.top)<3,'连续点击时文字尺寸或纵坐标跳变'); }
-    await wait(900);
-    assert(button(oldest).getAttribute('aria-current')==='date','快速切换被旧请求覆盖');
-    assert(document.querySelector('.date-track').getAnimations({subtree:true}).length===0,'完成后存在残留动画');
-    const settled=rect(button(oldest));
-    if(!matchMedia('(prefers-reduced-motion: reduce)').matches) assert(Math.abs(settled.left-firstLeft)>5,'窗口切换没有最终横向位移');
-    else assert(Math.abs(settled.left-firstLeft)<1,'减少动态效果时未直接定位');
-    const reverse=button(older), reverseBefore=rect(reverse);
-    flushSync(()=>reverse.click());
-    if(!matchMedia('(prefers-reduced-motion: reduce)').matches) assert(Math.abs(rect(reverse).left-reverseBefore.left)<3,'反向切换首帧跳变');
-    await wait(400);button(oldest).click();await wait(900);
-    assert(document.querySelector('.event-list h3')?.textContent===`日期 ${oldest} 的记录`,'内容与日期不一致');
-    failCalendar=true;button(older).click();await wait(900);
-    assert(document.querySelectorAll('.date-choice').length===3,'月请求失败丢失已有日期');
-    document.querySelector('.calendar-button').click();await frame();await wait(50);
-    document.querySelector(`[aria-label="${y}年${m+1}月${oldest}日"]`).click();await wait(900);
-    assert(button(oldest).getAttribute('aria-current')==='date','日历选日未保留选中日期');
-    assert(!falseEmpty,'出现暂无记录闪烁');
-    output.textContent=`PASS：DOM 连续；尺寸 ${width.toFixed(1)} → ${middle.toFixed(1)}；紧凑间距、双向窗口位移、快速切换、过期响应、月请求失败、日历选日均通过。`;
-  } catch(error){output.textContent=`FAIL：${error.message}`;} finally{observer.disconnect();document.getElementById('run').disabled=false;}
+ const output=q('#result');output.textContent='检查中…';q('#run').disabled=true;
+ try {
+  await wait(600);const anchor=q('.date-choice');
+  assert(selected()===iso(now)&&next().disabled&&!q('.date-today'),'今天的边界或快捷入口错误');
+  await click(previous());assert(selected()===iso(new Date(y,m,current-1))&&q('.date-choice')===anchor,'没有逐日切换或替换了日期DOM');
+  await wait(250);assert(q('.list-empty')&&!next().disabled&&q('.date-today'),'没有记录的日期不可浏览或返回入口缺失');
+  assert(!q('.day-map-clock'),'历史日期显示了当前时刻');
+  await click(next());assert(selected()===iso(now)&&next().disabled&&document.activeElement===anchor,'回到今天后焦点留在禁用箭头');
+  await wait(250);assert(q('.day-map-clock')?.textContent===new Date(fixedNow).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}),'当天时间不是纯HH:MM');
+  const pointerClick=async el=>{el.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}));await wait(0);await click(el)};
+  await pointerClick(anchor);assert(q('.calendar-popover'),'日期不能打开月历');await pointerClick(anchor);assert(!q('.calendar-popover'),'再次点击日期不能关闭月历');
+  await pointerClick(anchor);await closeCalendar();assert(document.activeElement===anchor,'月历未返回日期触发点');
+  const icon=q('.calendar-button');await pointerClick(icon);await pointerClick(icon);assert(!q('.calendar-popover'),'再次点击图标不能关闭月历');await pointerClick(icon);await closeCalendar();assert(document.activeElement===icon,'月历未返回图标触发点');
+  await click(icon);await click(q(`[aria-label="${y}年${m+1}月${older}日"]`));assert(selected()===iso(new Date(y,m,older)),'月历未选择目标日期');
+  await click(previous());await wait(850);assert(selected()===iso(new Date(y,m,oldest))&&q('.event-list h3')?.textContent===`日期 ${oldest} 的记录`,'迟到响应覆盖快速切换');
+  failCalendar=true;await click(previous());await wait(250);assert(selected()===iso(new Date(y,m,oldest-1))&&!next().disabled,'日期可用性读取失败破坏了导航');
+  for(let i=0;i<oldest-1;i++){flushSync(()=>previous().click());await wait(0)}
+  assert(selected()===iso(new Date(y,m,0)),'前一天不能跨月');
+  await click(next());assert(selected()===iso(new Date(y,m,1)),'后一天不能跨月');
+  await click(q('.date-today'));assert(selected()===iso(now)&&document.activeElement===anchor&&next().disabled,'回到今天或焦点错误');
+  assert(q('.date-track').getAnimations({subtree:true}).length===0,'稳定日期仍有滚动缩放动画');
+  output.textContent='PASS：逐日/空日、今天边界、稳定DOM、跨月、快速切换/迟到响应、月历跳转/失败、双触发焦点返回、回到今天与纯时间标签。';
+ }catch(error){output.textContent='FAIL：'+error.message}finally{q('#run').disabled=false}
 };
 </script></html>

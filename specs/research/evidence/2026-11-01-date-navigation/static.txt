@@ -1,0 +1,33 @@
+
+> loppi@0.1.18 lint
+> biome check src
+
+Checked 49 files in 42ms. No fixes applied.
+   Compiling loppi-protocol v0.1.18 (/Users/ethan/Projects/hear/crates/loppi-protocol)
+   Compiling loppi-desktop v0.1.18 (/Users/ethan/Projects/hear/src-tauri)
+   Compiling loppi-core v0.1.18 (/Users/ethan/Projects/hear/crates/loppi-core)
+    Checking loppi-worker v0.1.18 (/Users/ethan/Projects/hear/crates/loppi-worker)
+    Checking loppi-cli v0.1.18 (/Users/ethan/Projects/hear/crates/loppi-cli)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 13.39s
+
+> loppi@0.1.18 build
+> npm run typecheck && vite build
+
+
+> loppi@0.1.18 typecheck
+> tsc --noEmit
+
+vite v8.3.1 building client environment for production...
+transforming...
+✓ 323 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                             0.39 kB │ gzip:   0.26 kB
+dist/assets/sleeping-BgVXm_5y.png           7.58 kB
+dist/assets/listening-BAMb9n6n.png          7.84 kB
+dist/assets/sprite-atlas-CJmSGthc.png      60.44 kB
+dist/assets/app-icon-square-DV-awzxf.png  827.74 kB
+dist/assets/index-D1sBpCHE.css             96.07 kB │ gzip:  16.23 kB
+dist/assets/index-CFyt5x6v.js             571.60 kB │ gzip: 175.07 kB
+
+✓ built in 102ms

@@ -80,13 +80,13 @@
     },
     {
       "path": "components.md",
-      "bytes": 3231,
-      "sha256": "87dd2f81b24c23dccb4f3f116ff7cd484ade917d9acb732437e2932ad2e24939"
+      "bytes": 3308,
+      "sha256": "068955e502a0b5e76c66fa14018dcae6c7f1d834f78f37ab27773fd0c0b9271c"
     },
     {
       "path": "DESIGN.md",
-      "bytes": 16734,
-      "sha256": "bd939fcec85eb1773e1d41c1a562b15ba9b13ec5605984f110c5e78605a594ca"
+      "bytes": 17094,
+      "sha256": "652cbfd3803ac9acb285f78173bf6a39241d9813d6d570fce6f51c4119d2dd45"
     },
     {
       "path": "icons/app-1024.png",
@@ -200,8 +200,8 @@
     },
     {
       "path": "preview.html",
-      "bytes": 1853085,
-      "sha256": "a4ef372aaa31aa3f496cdaf4034546d49c572bf1347e12d6d6daf29b355b1206"
+      "bytes": 1853141,
+      "sha256": "8b282ac3b69dec83cbc6f77caef385f3ce1ec352216b3010c87cd0aced4e6bbe"
     },
     {
       "path": "rabbit/animations/listening.gif",
@@ -330,13 +330,13 @@
     },
     {
       "path": "release/screenshots/detail-1120.jpg",
-      "bytes": 99261,
-      "sha256": "11dcffa687813719811417cccd8ce2bff1e80b669a8cb7611db392ecf83ee3f7"
+      "bytes": 100909,
+      "sha256": "4f37af4ad6bf7fd1d340c33a83b070853ce7f68e6ac5b3adff7dfbcdd59a5751"
     },
     {
       "path": "release/screenshots/detail-760.jpg",
-      "bytes": 52207,
-      "sha256": "a299961efed98bddb4cfed5f6309b30d13df397adae18b1cda5d5a67c34381a2"
+      "bytes": 52333,
+      "sha256": "165f1d02b9fe054146565e949d111d82756b8ffb29b656affff12b44c98289fd"
     },
     {
       "path": "release/screenshots/onboarding-1120.jpg",
@@ -390,13 +390,13 @@
     },
     {
       "path": "release/screenshots/timeline-recording-1120.jpg",
-      "bytes": 55111,
-      "sha256": "8d1a1adf2e9a74649cb8a955f25b6f66c69097f961901cf4c66a11bf5946cc45"
+      "bytes": 53069,
+      "sha256": "8d9f50dc88e0c07640c6649407a99c32282e6ae83b591c5ca0749737c67f0a02"
     },
     {
       "path": "release/screenshots/timeline-recording-760.jpg",
-      "bytes": 21141,
-      "sha256": "0eefcaea1beb326fbbaa012fd49c8d3ddc6fe57afffefea79d362a8d412f24e8"
+      "bytes": 30988,
+      "sha256": "4283884b90706c166f74eba3f7a3584b279ad184b4bb80f54816af3519c81b31"
     },
     {
       "path": "release/social-cover.png",
@@ -420,13 +420,13 @@
     },
     {
       "path": "tokens.css",
-      "bytes": 11065,
-      "sha256": "9da576be2e3d04a70c055e9fa6d1133bbf559233b7e8295017e93b7726eb971b"
+      "bytes": 11211,
+      "sha256": "35dfeb72cbb32618fdbbbcee8f6cabac1bc155eeee570e6fa847b67d1c605e05"
     },
     {
       "path": "tokens.json",
-      "bytes": 20184,
-      "sha256": "e4d94931b6f22ea32f9ca780711aa67362a0479b8a2bd3547760b17d00956af7"
+      "bytes": 20429,
+      "sha256": "09c259328bf2785d668b07bd8eb3a3ae925f2e1967ac5a4dc3954df435b0e3c2"
     },
     {
       "path": "usage.png",

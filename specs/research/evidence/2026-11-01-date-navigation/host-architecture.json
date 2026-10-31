@@ -1,0 +1,10 @@
+[
+  {
+    "node": "arm64",
+    "hardware": "arm64"
+  },
+  {
+    "node": "x64",
+    "hardware": "arm64"
+  }
+]

@@ -98,17 +98,6 @@ export function monthBoundaries(date: Date): number[] {
 	);
 }
 
-/** The selected date is an anchor, even before availability arrives or on an empty day. */
-export function headerDays(days: number[], selected: number): number[] {
-	const sorted = [...new Set([...days, selected])].sort((a, b) => b - a);
-	const index = sorted.indexOf(selected);
-	const start = Math.min(
-		Math.max(0, index - 1),
-		Math.max(0, sorted.length - 3),
-	);
-	return sorted.slice(start, start + 3);
-}
-
 export function liveCard(
 	items: TimelineItem[],
 	state: import("./api").ServiceState | null,

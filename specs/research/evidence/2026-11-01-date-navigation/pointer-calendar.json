@@ -1,0 +1,20 @@
+{
+  "open": true,
+  "bounds": {
+    "height": 540,
+    "rect": {
+      "bottom": 401.9453125,
+      "height": 283.9453125,
+      "left": 128,
+      "right": 424,
+      "top": 118,
+      "width": 296,
+      "x": 128,
+      "y": 118
+    },
+    "width": 760
+  },
+  "closed": true,
+  "escapeFocus": "2026年10月22日，选择日期",
+  "titleToggle": "real pointer open/close PASS as preceding observations"
+}

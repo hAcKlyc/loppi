@@ -1,0 +1,158 @@
+[
+  {
+    "version": "0.1.18",
+    "source": "9c8b0678eb0a7274bc92994e9d5fbfc269ae4ae0",
+    "dirty": true,
+    "target": "aarch64-apple-darwin",
+    "architectures": [
+      "arm64"
+    ],
+    "built_at_epoch": 1793470217,
+    "models_lock_sha256": "e0320694c4f75c3c545886ae3439079c0f9d68fc536f30d8cbc07d1287470519",
+    "models_bytes": 204642977,
+    "native": {
+      "version": "2.0.0",
+      "sha256": "8ed41bf3b27ce55d6527bbc0f7754598c5afbb18e814ff0bddbc9ecd50fb09c5"
+    },
+    "toolchain": {
+      "node": "v24.15.0",
+      "rust": "rustc 1.98.1 (48a229cea 2026-09-01)",
+      "xcode": "Xcode 27.2\nBuild version 27B52",
+      "sdk": "27.2"
+    },
+    "identity": {
+      "schema": 1,
+      "components": {
+        "gui": {
+          "component": "gui",
+          "version": "0.1.18",
+          "protocol_version": 24,
+          "git_sha": "9c8b0678eb0a7274bc92994e9d5fbfc269ae4ae0",
+          "dirty": true,
+          "built_at_epoch": 1793470217
+        },
+        "cli": {
+          "component": "cli",
+          "version": "0.1.18",
+          "protocol_version": 24,
+          "git_sha": "9c8b0678eb0a7274bc92994e9d5fbfc269ae4ae0",
+          "dirty": true,
+          "built_at_epoch": 1793470217
+        },
+        "core": {
+          "component": "core",
+          "version": "0.1.18",
+          "protocol_version": 24,
+          "git_sha": "9c8b0678eb0a7274bc92994e9d5fbfc269ae4ae0",
+          "dirty": true,
+          "built_at_epoch": 1793470217
+        },
+        "worker": {
+          "component": "worker",
+          "version": "0.1.18",
+          "protocol_version": 24,
+          "git_sha": "9c8b0678eb0a7274bc92994e9d5fbfc269ae4ae0",
+          "dirty": true,
+          "built_at_epoch": 1793470217
+        }
+      }
+    },
+    "runtime": {
+      "architecture": "aarch64",
+      "onnxruntime": "1.28.2",
+      "provider": "cpu",
+      "sherpa_onnx": "2.0.0"
+    },
+    "runtime_execution": "native",
+    "runtime_checked_architecture": "arm64",
+    "intel_native_test": "not run on Intel hardware",
+    "minimum_os_runtime_test": "not run",
+    "dmg": "loppi_0.1.18_macos-arm64-dev.dmg",
+    "dmg_bytes": 182705294,
+    "dmg_sha256": "685a24babf291d71e9111dc69f6bb3d182b226bb28c00f72c389cb481098b219",
+    "checked_slices": {
+      "Contents/MacOS/loppi-desktop": "arm64",
+      "Contents/MacOS/loppi": "arm64",
+      "Contents/Library/LoginItems/LoppiCore.app/Contents/MacOS/loppi-core": "arm64",
+      "Contents/Library/LoginItems/LoppiCore.app/Contents/MacOS/loppi-worker": "arm64"
+    }
+  },
+  {
+    "version": "0.1.18",
+    "source": "9c8b0678eb0a7274bc92994e9d5fbfc269ae4ae0",
+    "dirty": true,
+    "target": "x86_64-apple-darwin",
+    "architectures": [
+      "x86_64"
+    ],
+    "built_at_epoch": 1793470217,
+    "models_lock_sha256": "e0320694c4f75c3c545886ae3439079c0f9d68fc536f30d8cbc07d1287470519",
+    "models_bytes": 204642977,
+    "native": {
+      "version": "2.0.0",
+      "sha256": "8ed41bf3b27ce55d6527bbc0f7754598c5afbb18e814ff0bddbc9ecd50fb09c5"
+    },
+    "toolchain": {
+      "node": "v24.15.0",
+      "rust": "rustc 1.98.1 (48a229cea 2026-09-01)",
+      "xcode": "Xcode 27.2\nBuild version 27B52",
+      "sdk": "27.2"
+    },
+    "identity": {
+      "schema": 1,
+      "components": {
+        "gui": {
+          "component": "gui",
+          "version": "0.1.18",
+          "protocol_version": 24,
+          "git_sha": "9c8b0678eb0a7274bc92994e9d5fbfc269ae4ae0",
+          "dirty": true,
+          "built_at_epoch": 1793470217
+        },
+        "cli": {
+          "component": "cli",
+          "version": "0.1.18",
+          "protocol_version": 24,
+          "git_sha": "9c8b0678eb0a7274bc92994e9d5fbfc269ae4ae0",
+          "dirty": true,
+          "built_at_epoch": 1793470217
+        },
+        "core": {
+          "component": "core",
+          "version": "0.1.18",
+          "protocol_version": 24,
+          "git_sha": "9c8b0678eb0a7274bc92994e9d5fbfc269ae4ae0",
+          "dirty": true,
+          "built_at_epoch": 1793470217
+        },
+        "worker": {
+          "component": "worker",
+          "version": "0.1.18",
+          "protocol_version": 24,
+          "git_sha": "9c8b0678eb0a7274bc92994e9d5fbfc269ae4ae0",
+          "dirty": true,
+          "built_at_epoch": 1793470217
+        }
+      }
+    },
+    "runtime": {
+      "architecture": "x86_64",
+      "onnxruntime": "1.28.2",
+      "provider": "cpu",
+      "sherpa_onnx": "2.0.0"
+    },
+    "runtime_execution": "rosetta",
+    "runtime_checked_architecture": "x86_64",
+    "intel_native_test": "not run on Intel hardware",
+    "minimum_os_runtime_test": "not run",
+    "dmg": "loppi_0.1.18_macos-x86_64-dev.dmg",
+    "dmg_bytes": 184993671,
+    "dmg_sha256": "03b19b2644ada5f5c656e3bdd7b03d22ec2a90222f29b4c055ef7855d4a8eac5",
+    "checked_slices": {
+      "Contents/MacOS/loppi-desktop": "x86_64",
+      "Contents/MacOS/loppi": "x86_64",
+      "Contents/Library/LoginItems/LoppiCore.app/Contents/MacOS/loppi-core": "x86_64",
+      "Contents/Library/LoginItems/LoppiCore.app/Contents/MacOS/loppi-worker": "x86_64"
+    }
+  }
+]

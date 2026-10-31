@@ -1,6 +1,9 @@
 {
   "schema": 1,
-  "default_release_target": "universal-apple-darwin",
+  "default_targets": [
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin"
+  ],
   "minimum_system_version": "13.0",
   "targets": {
     "aarch64-apple-darwin": {

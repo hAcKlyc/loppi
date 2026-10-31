@@ -1,0 +1,17 @@
+[
+  {
+    "today": "2026-01-01",
+    "previous": "2025-12-31",
+    "return": true
+  },
+  {
+    "today": "2024-03-01",
+    "previous": "2024-02-29",
+    "return": true
+  },
+  {
+    "today": "2025-03-01",
+    "previous": "2025-02-28",
+    "return": true
+  }
+]

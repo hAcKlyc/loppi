@@ -38,16 +38,12 @@ test('empty and legacy summaries use honest placeholders; screenshot text remain
   assert.equal(result.label,'截图文字');
 });
 
-const { monthBoundaries, headerDays, liveCard } = await import('../src/timeline-view.ts');
-test('monthly dates respect leap years, year boundaries and recorded-day-only navigation', () => {
+const { monthBoundaries, liveCard } = await import('../src/timeline-view.ts');
+test('monthly boundaries respect leap years and year boundaries', () => {
   assert.equal(monthBoundaries(new Date(2024,1,12)).length,30);
   assert.equal(monthBoundaries(new Date(2025,1,12)).length,29);
   const dec=monthBoundaries(new Date(2025,11,12));
   assert.equal(new Date(dec.at(-1)).getFullYear(),2026);
-  assert.deepEqual(headerDays([1,4,7,10,10],4),[7,4,1]);
-  assert.deepEqual(headerDays([],4),[4]);
-  assert.deepEqual(headerDays([1,4,7],1),[7,4,1]);
-  assert.deepEqual(headerDays([1,4,7],5),[7,5,4]);
 });
 test('only newest matching live card glows; pause, errors, history and other sources do not', () => {
   const date=new Date(2026,9,17), now=date.getTime()+18*3600000;

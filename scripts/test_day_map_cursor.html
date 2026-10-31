@@ -8,6 +8,8 @@ import {createRoot} from 'react-dom/client';
 import {flushSync} from 'react-dom';
 import {TimelineView} from '/src/TimelineView.tsx';
 import '/src/App.css';
+const NativeDate=Date,fixedNow=new NativeDate(2026,9,17,18,30).getTime();
+window.Date=class extends NativeDate{constructor(...args){super(...(args.length?args:[fixedNow]))}static now(){return fixedNow}};
 const root=createRoot(document.getElementById('root'));
 let date=new Date(2026,9,17), selected=0;
 function render(){
@@ -27,13 +29,14 @@ document.getElementById('run').onclick=async()=>{
  const output=document.getElementById('result');output.textContent='检查中…';
  try{
   await frames();
-  await move(0);assert(label().textContent==='00:00','左端时间错误');contained();
+  assert(document.querySelector('.day-map-clock').textContent==='18:30','当前时间标签错误');
+  await move(0);assert(getComputedStyle(document.querySelector('.day-map-clock')).visibility==='hidden','悬停时间与当前时间重叠');assert(label().textContent==='00:00','左端时间错误');contained();
   await move(1);assert(label().textContent==='24:00','右端显示成次日');contained();
   await move((17*60+54)/1440);assert(label().textContent==='17:54','位置与时间不一致');
   const box=track().getBoundingClientRect(),line=document.querySelector('.day-map-cursor-line').getBoundingClientRect();
   assert(Math.abs(line.left-(box.left+box.width*(17*60+54)/1440))<1,'竖线与时间位置不一致');
   document.elementFromPoint(line.left,box.top+8).click();assert(selected===1,'光标挡住了记录点击');
-  plot().dispatchEvent(new PointerEvent('pointerleave'));await frames();assert(!track().dataset.visible,'离开后未消失');
+  plot().dispatchEvent(new PointerEvent('pointerleave'));await frames();assert(!track().dataset.visible,'离开后未消失');assert(getComputedStyle(document.querySelector('.day-map-clock')).visibility==='visible','离开后未恢复当前时间');
   await move(.5);date=new Date(2026,9,16);render();await frames();assert(!track().dataset.visible,'切日保留旧光标');
   await move(.5);document.getElementById('fixture').style.maxWidth='760px';await frames();assert(!track().dataset.visible,'宽度变化保留旧位置');
   await move(0);contained();await move(1);contained();

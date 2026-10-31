@@ -1,7 +1,7 @@
 import {
+	type CSSProperties,
 	type ReactNode,
 	useCallback,
-	useLayoutEffect,
 	useRef,
 	useState,
 } from "react";
@@ -17,17 +17,11 @@ import {
 	type TimelineItem,
 	time,
 } from "./api";
-import { Button } from "./Controls";
+import { Button, Icon, IconButton } from "./Controls";
 import { DayMapCursor } from "./DayMapCursor";
 import { LoadBoundary } from "./LoadingState";
 import { RecordCalendar } from "./RecordCalendar";
-import {
-	cardExcerpt,
-	dayMapPoint,
-	daySpan,
-	headerDays,
-	liveCard,
-} from "./timeline-view";
+import { cardExcerpt, dayMapPoint, daySpan, liveCard } from "./timeline-view";
 
 type Props = {
 	captureStatus: ReactNode;
@@ -101,99 +95,27 @@ export function TimelineView({
 	const todayKey = dateInput(today);
 	const selectedKey = dateInput(date);
 	const [from, to] = dayBounds(date);
-	const dates = headerDays(
-		recordedDays ?? (items.length ? [from] : []),
-		from,
-	).map((ms) => new Date(ms));
-	const dateTrack = useRef<HTMLElement>(null);
-	const datePositions = useRef<{
-		target: string;
-		direction: number;
-		positions: Map<string, { left: number; title: DOMRect }>;
-	} | null>(null);
+	const previousDate = new Date(
+		date.getFullYear(),
+		date.getMonth(),
+		date.getDate() - 1,
+	);
+	const nextDate = new Date(
+		date.getFullYear(),
+		date.getMonth(),
+		date.getDate() + 1,
+	);
+	const todayStart = dayBounds(today)[0];
+	const dateButton = useRef<HTMLButtonElement>(null);
 	const chooseDate = (next: Date) => {
-		// Read painted geometry before React changes the layout, including any
-		// animation in flight. A second click continues from that exact frame.
-		const positions = new Map<string, { left: number; title: DOMRect }>();
-		for (const node of dateTrack.current?.querySelectorAll<HTMLElement>(
-			"[data-date]",
-		) ?? []) {
-			const title = node.querySelector("strong");
-			if (title)
-				positions.set(node.dataset.date ?? "", {
-					left: node.getBoundingClientRect().left,
-					title: title.getBoundingClientRect(),
-				});
-		}
-		datePositions.current = {
-			target: dateInput(next),
-			direction: dateInput(next) < selectedKey ? 1 : -1,
-			positions,
-		};
+		setCalendarOpen(false);
 		onDate(next);
 	};
-	useLayoutEffect(() => {
-		const previous = datePositions.current;
-		datePositions.current = null;
-		if (
-			!previous ||
-			previous.target !== selectedKey ||
-			window.matchMedia("(prefers-reduced-motion: reduce)").matches
-		)
-			return;
-		const animations: Animation[] = [];
-		const motion = getComputedStyle(document.documentElement);
-		const options = {
-			duration: Number.parseFloat(motion.getPropertyValue("--motion-layout")),
-			easing: motion.getPropertyValue("--ease-standard").trim(),
-		};
-		// Natural widths establish the destination once. Animate positions and
-		// text geometry together instead of competing with flex/width transitions.
-		for (const node of dateTrack.current?.querySelectorAll<HTMLElement>(
-			"[data-date]",
-		) ?? []) {
-			const before = previous.positions.get(node.dataset.date ?? "");
-			const title = node.querySelector("strong");
-			if (!title) continue;
-			const after = title.getBoundingClientRect();
-			const dx = before
-				? before.left - node.getBoundingClientRect().left
-				: previous.direction *
-					Number.parseFloat(motion.getPropertyValue("--space-9"));
-			if (before) {
-				const base = getComputedStyle(title).transform;
-				const dy = before.title.top - after.top;
-				animations.push(
-					title.animate(
-						[
-							{
-								transform: `translate(${before.title.left - after.left - dx}px, ${dy}px) ${base} scale(${before.title.width / after.width}, ${before.title.height / after.height})`,
-							},
-							{ transform: base },
-						],
-						options,
-					),
-				);
-			}
-			animations.push(
-				node.animate(
-					[
-						{ transform: `translateX(${dx}px)`, opacity: before ? 1 : 0 },
-						{ transform: "translateX(0)", opacity: 1 },
-					],
-					options,
-				),
-			);
-		}
-		return () => {
-			for (const animation of animations) animation.cancel();
-		};
-	}, [selectedKey]);
 	const activeItem = liveCard(items, recordingState, date, today.getTime());
-	const calendarButton = useRef<HTMLButtonElement>(null);
+	const calendarTrigger = useRef<HTMLButtonElement>(null);
 	const closeCalendar = useCallback(() => {
 		setCalendarOpen(false);
-		calendarButton.current?.focus();
+		calendarTrigger.current?.focus();
 	}, []);
 	const position = (ms: number) =>
 		`${Math.max(0, Math.min(100, ((ms - from) / (to - from)) * 100))}%`;
@@ -247,62 +169,99 @@ export function TimelineView({
 	return (
 		<div className="timeline-page">
 			<header className="timeline-header" data-tauri-drag-region>
-				<div className="date-header" data-tauri-drag-region>
-					<div className="calendar-anchor">
-						<button
-							ref={calendarButton}
-							aria-expanded={calendarOpen}
-							aria-haspopup="dialog"
-							className="calendar-button"
-							type="button"
-							title="选择日期"
-							aria-label="选择日期"
-							onClick={() => setCalendarOpen(!calendarOpen)}
-						>
-							<svg viewBox="0 0 24 24" aria-hidden="true">
-								<rect x="3" y="5" width="18" height="16" rx="2" />
-								<path d="M7 3v4M17 3v4M3 10h18" />
-							</svg>
-						</button>
-						{calendarOpen && (
-							<RecordCalendar
-								date={date}
-								days={recordedDays}
-								onDate={chooseDate}
-								onClose={closeCalendar}
-							/>
-						)}
-					</div>
+				<div className="date-header calendar-anchor" data-tauri-drag-region>
+					<Button
+						aria-expanded={calendarOpen}
+						aria-haspopup="dialog"
+						className="calendar-button"
+						type="button"
+						title="选择日期"
+						aria-label="选择日期"
+						onClick={(event) => {
+							calendarTrigger.current = event.currentTarget;
+							setCalendarOpen(!calendarOpen);
+						}}
+					>
+						<svg viewBox="0 0 24 24" aria-hidden="true">
+							<rect x="3" y="5" width="18" height="16" rx="2" />
+							<path d="M7 3v4M17 3v4M3 10h18" />
+						</svg>
+					</Button>
+					{calendarOpen && (
+						<RecordCalendar
+							date={date}
+							days={recordedDays}
+							onDate={chooseDate}
+							onClose={closeCalendar}
+						/>
+					)}
 					<nav
-						ref={dateTrack}
 						className="date-track"
 						aria-label="按日期浏览"
 						data-tauri-drag-region
 					>
-						{dates.map((day) => {
-							const key = dateInput(day);
-							const selected = key === selectedKey;
-							return (
-								<button
-									key={key}
-									data-date={key}
-									type="button"
-									className={`date-choice ${selected ? "date-current" : "date-neighbor"}`}
-									aria-current={selected ? "date" : undefined}
-									aria-label={`${dateTitle(day)}${selected ? "，已选中" : ""}`}
-									onClick={() => {
-										if (!selected) chooseDate(day);
-									}}
-									disabled={key > todayKey}
+						<div className="date-main-row">
+							<Button
+								ref={dateButton}
+								data-date={selectedKey}
+								type="button"
+								className="date-choice date-current"
+								aria-current="date"
+								aria-label={`${date.getFullYear()}年${dateTitle(date)}，选择日期`}
+								aria-haspopup="dialog"
+								aria-expanded={calendarOpen}
+								onClick={(event) => {
+									calendarTrigger.current = event.currentTarget;
+									setCalendarOpen(!calendarOpen);
+								}}
+							>
+								<strong>{dateTitle(date)}</strong>
+							</Button>
+							<div className="date-step-controls">
+								<IconButton
+									label="前一天"
+									size="compact"
+									className="date-step"
+									onClick={() => chooseDate(previousDate)}
 								>
-									<strong>{dateTitle(day)}</strong>
-									<span aria-hidden={!selected}>
-										{weekdays[day.getDay()]}
-										{key === todayKey ? " · 今天" : ""}
-									</span>
-								</button>
-							);
-						})}
+									<Icon name="back" />
+								</IconButton>
+								<IconButton
+									label="后一天"
+									size="compact"
+									className="date-step"
+									disabled={from >= todayStart}
+									onClick={() => {
+										chooseDate(nextDate);
+										if (nextDate.getTime() === todayStart)
+											dateButton.current?.focus();
+									}}
+								>
+									<Icon name="next" />
+								</IconButton>
+							</div>
+						</div>
+						<div className="date-context">
+							<span>
+								{date.getFullYear() !== today.getFullYear()
+									? `${date.getFullYear()}年 · `
+									: ""}
+								{weekdays[date.getDay()]}
+								{selectedKey === todayKey ? " · 今天" : ""}
+							</span>
+							{selectedKey !== todayKey && (
+								<Button
+									size="compact"
+									className="date-today"
+									onClick={() => {
+										chooseDate(new Date(todayStart));
+										dateButton.current?.focus();
+									}}
+								>
+									回到今天
+								</Button>
+							)}
+						</div>
 					</nav>
 				</div>
 				{captureStatus}
@@ -326,9 +285,6 @@ export function TimelineView({
 								未记录
 							</span>
 						</div>
-						{selectedKey === todayKey && (
-							<span className="day-map-clock">现在 {time(now)}</span>
-						)}
 					</div>
 				</div>
 				<LoadBoundary
@@ -421,8 +377,20 @@ export function TimelineView({
 							</div>
 						)}
 						{selectedKey === todayKey && (
-							<div className="day-map-now-track">
-								<span className="day-map-now" style={{ left: position(now) }} />
+							<div
+								className="day-map-now-track"
+								style={
+									{ "--day-map-now-position": position(now) } as CSSProperties
+								}
+							>
+								<span className="day-map-now" />
+								<time
+									className="day-map-clock"
+									dateTime={today.toISOString()}
+									title="当前时间"
+								>
+									{time(now)}
+								</time>
 							</div>
 						)}
 						<DayMapCursor from={from} to={to} />

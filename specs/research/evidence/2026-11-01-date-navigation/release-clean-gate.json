@@ -1,0 +1,5 @@
+{
+  "exit_code": 1,
+  "message": "Release needs a clean checkout; commit your intended source changes first",
+  "result": "PASS: refuses dirty release before compilation"
+}

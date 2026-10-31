@@ -1,4 +1,4 @@
-# 离线资源与 Mac 打包（0.1.8）
+# 离线资源与 Mac 打包
 
 ## 运行架构
 
@@ -12,17 +12,24 @@ Core 保持 ModelState / PrepareModels / Governor 的既有职责。后台首检
 
 ## 构建
 
-入口为 `node scripts/build.mjs build|release [--target <target>]`，默认 `universal-apple-darwin`。根目录 `build_release.sh` 仅转发 release；`scripts/build_macos.sh` 转发内部 build。支持单架构 aarch64 / x86_64 和 Universal2。后者对 Core/worker/CLI 分别编译两个真实 Rust target，再 lipo 合并；GUI 由 Tauri 的 Universal 目标组合。
+入口为 `node scripts/build.mjs build|release [--target <target>]`。`config/build-targets.json` 的 `default_targets` 固定顺序为 aarch64、x86_64，默认分别生成两个单架构包。根目录 `build_dev.sh` 和 `scripts/build_macos.sh` 转发内部 build；`build_release.sh` 转发 release。显式 `--target` 只构建对应目标，保留 Universal2：对 Core/worker/CLI 分别编译两 target 再 lipo，GUI 由 Tauri Universal 目标组合。
 
-`config/build-targets.json` 固定最低 macOS 13.0、支持目标及 sherpa-onnx 2.0.0 Universal 静态库的 URL/大小/SHA。工具链实际版本记录在产物报告；本次未承诺字节级可复现构建。Node/npm、Rust 两 target、Xcode 和 `npm ci` 是开发机前提。资源缓存按 SHA 分开，临时 helper 与配置位于每次独立 stage；不会共用固定 `build/macos/LoppiCore.app`。通过 `SHERPA_ONNX_LIB_DIR` 明确传入已核验原生库，禁止 `target-cpu=native`。
+默认两包顺序构建，避免共享 Cargo/前端输出竞争。一次入口执行共用版本、源码 SHA 与 epoch；每目标单独 stage、App 与输出目录。四个执行组件必须与目标架构完全相同，不能误带另一 slice；单架构不使用 lipo 合并。每包独立包含一份同样的模型。
 
-build 产生内部候选，不承诺 Developer ID 或公证。release 要求干净源码及签名公证配置；四组件版本/源码/epoch 一致、两 slice 及最低 OS、模型哈希和宿主架构离线启动检查通过后，先签 worker、helper、CLI，最后签 App。随后 DMG 签名、公证、装订、Gatekeeper、只读挂载与内容比对；全部成功才写 release-info 和最终校验和。私钥和 `.env` 不入包，不替换已安装应用，不远端发布。
+`config/build-targets.json` 同时固定最低 macOS 13.0、目标及 sherpa-onnx 2.0.0 Universal 静态库的 URL/大小/SHA。Node/npm、Rust 两 target、Xcode 和 `npm ci` 是开发机前提；实际版本写入报告，不承诺字节级可复现。资源缓存按 SHA 分开，临时 helper/配置属于各 stage。`SHERPA_ONNX_LIB_DIR` 指向核验后的原生库；禁止 `target-cpu=native`。
+
+- build：允许脏源码，优化编译，生成 `build/dev/<版本>/<平台>/loppi_<版本>_<平台>-dev.dmg`，附 `build-info.json` 与 `SHA256SUMS`。内部候选不要求 Developer ID、公证或 Gatekeeper 分发验收；仍验证实际 DMG 挂载、Applications 链接、完整内容和可执行时的离线模型加载。
+- release：要求干净源码及签名/公证配置，生成 `build/releases/<版本>/<平台>/loppi_<版本>_<平台>.dmg`，附 `release-info.json` 与 `SHA256SUMS`。逐包先签 worker、helper、CLI，最后签 App，再签 DMG、公证、装订、Gatekeeper、只读挂载与内容比对。全部成功才写该包报告和校验和；两包均成功后才打印批次完成。
+
+平台名为 `macos-arm64` / `macos-x86_64`，显式 Universal2 为 `macos-universal2`。四组件编译身份先验证一致，再与入口版本/源码/dirty/epoch 核对。通过系统查询实际硬件架构，避免把 Rosetta 下的 Intel Node 当成 Intel 硬件；运行报告的架构取自实际 worker。检查执行能力：宿主架构原生；ARM 宿主已有 Rosetta 时允许 Intel 翻译执行，报告 `runtime_execution: rosetta`；不可执行时报告 `not_available`、运行数据为 null，不生成伪造的已核验身份。各情况下仍必须通过架构、最低 OS、资源/lock 哈希检查。最终挂载 DMG 的运行检查同样按实际能力执行。
+
+私钥和 `.env` 不入包；脚本不替换已安装应用、不远端发布。`package_macos.sh [--dev] <App> <DMG>` 的缺省模式仍要求签名和公证，`--dev` 仅用于内部未公证候选。
 
 权重首次构建需下载约 205 MB，之后使用校验缓存；原生库下载约 41 MB。模型与原生组件许可随包保存，来源在模型 lock 和 `licenses/sources.json`。
 
-## 本次验证边界
+## 验证边界
 
-用户要求跳过额外流程，本次不新增 CI、多轮独立评审或 682 段完整重跑。保留资源缺失/损坏/路径与并发重检单测、前端检查、双架构编译、真实 Core 模型加载和实际 DMG 验证。ARM 是当前宿主，可实际执行；Intel 仅完成交叉编译和 slice 检查，原生及 macOS 13 实机运行未验证。
+保留资源缺失/损坏/路径与并发重检单测、前端检查、双架构编译、真实 Core 模型加载和实际 DMG 验证。当前 ARM 宿主可执行原生和已有 Rosetta 下的 Intel 检查；这不等价于 Intel 硬件或 macOS 13 实机验收。每次产物的实际覆盖以报告为准，不新增 CI 或重跑历史音频评测集。
 
 历史音频保持本机；若将来补 Intel 原生 CI，按用户决定使用公开音频，未经授权不上传历史录音。原始评测集和参考答案不变。最终体积、签名与本轮实际结果见 release-info 和执行台账。
 

@@ -46,7 +46,8 @@
     const requested = new URLSearchParams(location.search).get('scene') ?? 'timeline';
     const scene = scenes.includes(requested) ? requested : 'timeline';
     const NativeDate = Date;
-    const fixedNow = new NativeDate(2026, 9, 22, 18, 30).getTime();
+    const clock = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(new URLSearchParams(location.search).get('clock') ?? '');
+    const fixedNow = new NativeDate(2026, 9, 22, clock ? Number(clock[1]) : 18, clock ? Number(clock[2]) : 30).getTime();
     window.Date = class extends NativeDate {
       constructor(...args) { super(...(args.length ? args : [fixedNow])); }
       static now() { return fixedNow; }

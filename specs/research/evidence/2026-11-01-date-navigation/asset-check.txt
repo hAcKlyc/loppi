@@ -1,0 +1,13 @@
+✔ semantic text colors remain readable on their actual surfaces (0.923833ms)
+✔ source assets and exported token definitions agree (7.975459ms)
+✔ formal asset manifest hashes correspond to the shipped files (10.831209ms)
+✔ tokens are acyclic, complete, and preserve the approved foundations (0.541708ms)
+✔ the whole frontend consumes tokens without private palettes or undefined references (6.359125ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 58.784584

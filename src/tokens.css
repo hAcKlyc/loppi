@@ -239,6 +239,8 @@
 	--timeline-row-gap: var(--space-7);
 	--timeline-meta-row-height: var(--space-9);
 	--timeline-meta-leading: var(--space-8);
+	--map-label-lane-height: var(--control-height-compact);
+	--map-time-label-width: 5ch;
 	--map-track-height: 24px;
 	--map-event-height: 18px;
 	--entry-top-radius: 26px;
@@ -254,9 +256,10 @@
 	--capture-status-feedback-width: 300px;
 	--cloud-provider-row-columns: minmax(190px, 1fr) minmax(290px, 1.35fr);
 	--comment-input-min-height: 130px;
-	--date-choice-height: 72px;
+	--date-navigation-height: 72px;
+	--date-step-size: var(--space-10);
+	--date-title-width: calc(var(--type-date) * 4.5);
 	--date-header-min-height: 92px;
-	--date-track-min-height: 72px;
 	--detail-columns: minmax(0, 1fr) clamp(260px, 30%, 360px);
 	--detail-columns-medium: minmax(0, 1fr) 260px;
 	--detail-columns-compact: minmax(0, 1fr) 240px;

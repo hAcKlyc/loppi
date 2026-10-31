@@ -1,0 +1,330 @@
+[
+  {
+    "width": 1120,
+    "height": 760,
+    "clock": "00:00",
+    "axis": {
+      "left": 313,
+      "right": 1067,
+      "top": 211.5,
+      "bottom": 269.5,
+      "width": 754
+    },
+    "first": {
+      "left": 313,
+      "right": 1067,
+      "top": 211.5,
+      "bottom": 235.5,
+      "width": 754
+    },
+    "heading": {
+      "left": 237,
+      "right": 1067,
+      "top": 149,
+      "bottom": 167.5,
+      "width": 830
+    },
+    "label": {
+      "left": 312.99609375,
+      "right": 349.11328125,
+      "top": 185.5,
+      "bottom": 205.5,
+      "width": 36.1171875
+    },
+    "line": {
+      "left": 313,
+      "right": 314,
+      "top": 211.5,
+      "bottom": 269.5,
+      "width": 1
+    },
+    "text": "00:00"
+  },
+  {
+    "width": 1120,
+    "height": 760,
+    "clock": "01:17",
+    "axis": {
+      "left": 313,
+      "right": 1067,
+      "top": 211.5,
+      "bottom": 269.5,
+      "width": 754
+    },
+    "first": {
+      "left": 313,
+      "right": 1067,
+      "top": 211.5,
+      "bottom": 235.5,
+      "width": 754
+    },
+    "heading": {
+      "left": 237,
+      "right": 1067,
+      "top": 149,
+      "bottom": 167.5,
+      "width": 830
+    },
+    "label": {
+      "left": 335.25390625,
+      "right": 371.37109375,
+      "top": 185.5,
+      "bottom": 205.5,
+      "width": 36.1171875
+    },
+    "line": {
+      "left": 353.3125,
+      "right": 354.3125,
+      "top": 211.5,
+      "bottom": 269.5,
+      "width": 1
+    },
+    "text": "01:17"
+  },
+  {
+    "width": 1120,
+    "height": 760,
+    "clock": "12:00",
+    "axis": {
+      "left": 313,
+      "right": 1067,
+      "top": 211.5,
+      "bottom": 269.5,
+      "width": 754
+    },
+    "first": {
+      "left": 313,
+      "right": 1067,
+      "top": 211.5,
+      "bottom": 235.5,
+      "width": 754
+    },
+    "heading": {
+      "left": 237,
+      "right": 1067,
+      "top": 149,
+      "bottom": 167.5,
+      "width": 830
+    },
+    "label": {
+      "left": 671.94140625,
+      "right": 708.05859375,
+      "top": 185.5,
+      "bottom": 205.5,
+      "width": 36.1171875
+    },
+    "line": {
+      "left": 690,
+      "right": 691,
+      "top": 211.5,
+      "bottom": 269.5,
+      "width": 1
+    },
+    "text": "12:00"
+  },
+  {
+    "width": 1120,
+    "height": 760,
+    "clock": "23:59",
+    "axis": {
+      "left": 313,
+      "right": 1067,
+      "top": 211.5,
+      "bottom": 269.5,
+      "width": 754
+    },
+    "first": {
+      "left": 313,
+      "right": 1067,
+      "top": 211.5,
+      "bottom": 235.5,
+      "width": 754
+    },
+    "heading": {
+      "left": 237,
+      "right": 1067,
+      "top": 149,
+      "bottom": 167.5,
+      "width": 830
+    },
+    "label": {
+      "left": 1030.87890625,
+      "right": 1066.99609375,
+      "top": 185.5,
+      "bottom": 205.5,
+      "width": 36.1171875
+    },
+    "line": {
+      "left": 1066.46875,
+      "right": 1067.46875,
+      "top": 211.5,
+      "bottom": 269.5,
+      "width": 1
+    },
+    "text": "23:59"
+  },
+  {
+    "width": 760,
+    "height": 540,
+    "clock": "00:00",
+    "axis": {
+      "left": 225,
+      "right": 715,
+      "top": 211.5,
+      "bottom": 269.5,
+      "width": 490
+    },
+    "first": {
+      "left": 225,
+      "right": 715,
+      "top": 211.5,
+      "bottom": 235.5,
+      "width": 490
+    },
+    "heading": {
+      "left": 149,
+      "right": 715,
+      "top": 149,
+      "bottom": 167.5,
+      "width": 566
+    },
+    "label": {
+      "left": 224.99609375,
+      "right": 261.11328125,
+      "top": 185.5,
+      "bottom": 205.5,
+      "width": 36.1171875
+    },
+    "line": {
+      "left": 225,
+      "right": 226,
+      "top": 211.5,
+      "bottom": 269.5,
+      "width": 1
+    },
+    "text": "00:00"
+  },
+  {
+    "width": 760,
+    "height": 540,
+    "clock": "01:17",
+    "axis": {
+      "left": 225,
+      "right": 715,
+      "top": 211.5,
+      "bottom": 269.5,
+      "width": 490
+    },
+    "first": {
+      "left": 225,
+      "right": 715,
+      "top": 211.5,
+      "bottom": 235.5,
+      "width": 490
+    },
+    "heading": {
+      "left": 149,
+      "right": 715,
+      "top": 149,
+      "bottom": 167.5,
+      "width": 566
+    },
+    "label": {
+      "left": 233.13671875,
+      "right": 269.25390625,
+      "top": 185.5,
+      "bottom": 205.5,
+      "width": 36.1171875
+    },
+    "line": {
+      "left": 251.1953125,
+      "right": 252.1953125,
+      "top": 211.5,
+      "bottom": 269.5,
+      "width": 1
+    },
+    "text": "01:17"
+  },
+  {
+    "width": 760,
+    "height": 540,
+    "clock": "12:00",
+    "axis": {
+      "left": 225,
+      "right": 715,
+      "top": 211.5,
+      "bottom": 269.5,
+      "width": 490
+    },
+    "first": {
+      "left": 225,
+      "right": 715,
+      "top": 211.5,
+      "bottom": 235.5,
+      "width": 490
+    },
+    "heading": {
+      "left": 149,
+      "right": 715,
+      "top": 149,
+      "bottom": 167.5,
+      "width": 566
+    },
+    "label": {
+      "left": 451.94140625,
+      "right": 488.05859375,
+      "top": 185.5,
+      "bottom": 205.5,
+      "width": 36.1171875
+    },
+    "line": {
+      "left": 470,
+      "right": 471,
+      "top": 211.5,
+      "bottom": 269.5,
+      "width": 1
+    },
+    "text": "12:00"
+  },
+  {
+    "width": 760,
+    "height": 540,
+    "clock": "23:59",
+    "axis": {
+      "left": 225,
+      "right": 715,
+      "top": 211.5,
+      "bottom": 269.5,
+      "width": 490
+    },
+    "first": {
+      "left": 225,
+      "right": 715,
+      "top": 211.5,
+      "bottom": 235.5,
+      "width": 490
+    },
+    "heading": {
+      "left": 149,
+      "right": 715,
+      "top": 149,
+      "bottom": 167.5,
+      "width": 566
+    },
+    "label": {
+      "left": 678.87890625,
+      "right": 714.99609375,
+      "top": 185.5,
+      "bottom": 205.5,
+      "width": 36.1171875
+    },
+    "line": {
+      "left": 714.65625,
+      "right": 715.65625,
+      "top": 211.5,
+      "bottom": 269.5,
+      "width": 1
+    },
+    "text": "23:59"
+  }
+]

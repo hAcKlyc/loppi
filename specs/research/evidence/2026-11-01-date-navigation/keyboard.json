@@ -1,0 +1,33 @@
+{
+  "previous": {
+    "active": "前一天",
+    "outline": "rgb(98, 94, 87) solid 2px",
+    "steps": [
+      {
+        "x": 424,
+        "y": 38.9921875
+      },
+      {
+        "x": 462,
+        "y": 38.9921875
+      }
+    ]
+  },
+  "returnToToday": {
+    "active": "2026年10月22日，选择日期",
+    "nextDisabled": true,
+    "outline": "rgb(98, 94, 87) solid 2px",
+    "steps": [
+      {
+        "label": "前一天",
+        "x": 424,
+        "y": 38.9921875
+      },
+      {
+        "label": "后一天",
+        "x": 462,
+        "y": 38.9921875
+      }
+    ]
+  }
+}
