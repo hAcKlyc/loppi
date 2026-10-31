@@ -1,0 +1,7 @@
+2026-11-01 timeline alignment final integration candidate, version0.1.17.
+12 affected Node assets/entry checks PASS; canonical/export/ICON/manifest/contrast/native26/20 coupling unchanged guarantees pass.
+lint/typecheck/frontend build PASS; cargo check --workspace --locked PASS (version only).
+geometry.json: 8 width/count/state cases share dot + external first time line + card first time center within0.1 CSSpx,6px dot/no border/no shadow, symmetric gaps. Connecting line shares node axis and stops at next node center; single/last have none.2 empty cases have no line.
+layout.txt:9 widths PASS. visual.txt:18 scenes + reduced-motion PASS. focus.json: actual Tab focus remains solid2px.
+Original .16 full11-suite/73Node and45native-input regression results cover unchanged behavior; current batch is CSS geometry/tokens/docs/exports/version only.
+Signed0.1.16 sourcebcf52c0 was installed, main viewed and baseline settings preserved before this correction. It is superseded as final candidate.0.1.17 clean signed/notarized package, actual install/restart/native main+both entry modes/preferences remain mandatory post-commit; do not claim these from .16 or browser evidence.

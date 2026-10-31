@@ -80,13 +80,13 @@
     },
     {
       "path": "components.md",
-      "bytes": 3174,
-      "sha256": "c5d052591b2ce210d38c9ed6fb8bfa1d102284b21bfbbaada9e0c2b09e709bf4"
+      "bytes": 3231,
+      "sha256": "87dd2f81b24c23dccb4f3f116ff7cd484ade917d9acb732437e2932ad2e24939"
     },
     {
       "path": "DESIGN.md",
-      "bytes": 16518,
-      "sha256": "5c3102d6b5a4e464180cfdd42775584ffb38f33c23f1eb62daebb577569003c2"
+      "bytes": 16734,
+      "sha256": "bd939fcec85eb1773e1d41c1a562b15ba9b13ec5605984f110c5e78605a594ca"
     },
     {
       "path": "icons/app-1024.png",
@@ -200,8 +200,8 @@
     },
     {
       "path": "preview.html",
-      "bytes": 1852733,
-      "sha256": "b4c5d8f28477ba91e54019278bb3af0828ec1c2698947f7f45df509afed3aa41"
+      "bytes": 1853085,
+      "sha256": "a4ef372aaa31aa3f496cdaf4034546d49c572bf1347e12d6d6daf29b355b1206"
     },
     {
       "path": "rabbit/animations/listening.gif",
@@ -390,13 +390,13 @@
     },
     {
       "path": "release/screenshots/timeline-recording-1120.jpg",
-      "bytes": 55430,
-      "sha256": "5d093827788c01b0f8ea3e0da017d3238f8ce707335cc7bd7f3e990bbbe8e711"
+      "bytes": 55111,
+      "sha256": "8d1a1adf2e9a74649cb8a955f25b6f66c69097f961901cf4c66a11bf5946cc45"
     },
     {
       "path": "release/screenshots/timeline-recording-760.jpg",
-      "bytes": 33097,
-      "sha256": "0bae87a812b1436c09f5f8eaaff9320429b55dd02427267535d4d8aa79b48602"
+      "bytes": 21141,
+      "sha256": "0eefcaea1beb326fbbaa012fd49c8d3ddc6fe57afffefea79d362a8d412f24e8"
     },
     {
       "path": "release/social-cover.png",
@@ -420,13 +420,13 @@
     },
     {
       "path": "tokens.css",
-      "bytes": 10828,
-      "sha256": "ce67d9ff6185327e94fc2e0036cc4f088ae673e94453e4a586953ebeb884a90b"
+      "bytes": 11065,
+      "sha256": "9da576be2e3d04a70c055e9fa6d1133bbf559233b7e8295017e93b7726eb971b"
     },
     {
       "path": "tokens.json",
-      "bytes": 19761,
-      "sha256": "bb9eb7d07253bfeba342899ba39cf367dd0127836119bd11a721b137dd7a7b13"
+      "bytes": 20184,
+      "sha256": "e4d94931b6f22ea32f9ca780711aa67362a0479b8a2bd3547760b17d00956af7"
     },
     {
       "path": "usage.png",

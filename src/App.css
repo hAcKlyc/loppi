@@ -622,54 +622,60 @@ p {
 .event-list {
 	position: relative;
 }
-.event-list:before {
-	content: "";
-	position: absolute;
-	left: var(--layout-timeline-rail);
-	top: var(--space-9);
-	bottom: var(--space-8);
-	border-left: var(--stroke-hairline) solid var(--color-border-strong);
-}
 .event-line {
+	--timeline-anchor: calc(
+		var(--timeline-card-padding-block) +
+		var(--timeline-meta-row-height) /
+		2
+	);
 	position: relative;
 	display: grid;
 	grid-template-columns: var(--layout-timeline-gutter) minmax(0, 1fr);
 	gap: 0;
-	margin: 0 0 var(--space-7);
+	margin: 0 0 var(--timeline-row-gap);
 }
-.event-line:after {
+/* A thread connects adjacent records. Single/last/empty rows have no tail. */
+.event-line:has(+ .event-line)::before {
 	content: "";
 	position: absolute;
-	left: calc(var(--layout-timeline-rail) - var(--space-2));
-	top: var(--space-9);
-	width: calc(var(--space-4) + var(--stroke-hairline));
-	height: calc(var(--space-4) + var(--stroke-hairline));
-	border: var(--space-1) solid var(--color-canvas);
+	left: calc(var(--layout-timeline-rail) - var(--stroke-hairline) / 2);
+	top: var(--timeline-anchor);
+	bottom: calc(-1 * (var(--timeline-row-gap) + var(--timeline-anchor)));
+	width: var(--stroke-hairline);
+	background: var(--color-border);
+	pointer-events: none;
+}
+.event-line::after {
+	content: "";
+	position: absolute;
+	left: calc(var(--layout-timeline-rail) - var(--timeline-marker-size) / 2);
+	top: calc(var(--timeline-anchor) - var(--timeline-marker-size) / 2);
+	width: var(--timeline-marker-size);
+	height: var(--timeline-marker-size);
 	background: var(--color-complete);
 	border-radius: var(--radius-circle);
-	box-shadow: 0 0 0 var(--stroke-hairline) var(--color-border-strong);
-}
-.event-line:has(.named):after {
-	background: var(--color-complete);
+	pointer-events: none;
 }
 .event-line > time {
+	width: var(--timeline-time-width);
+	padding-top: var(--timeline-card-padding-block);
 	font-family: var(--font-time);
-	padding-top: calc(var(--space-7) + var(--space-1));
-	line-height: var(--leading-body);
+	font-size: var(--type-caption);
+	line-height: var(--timeline-meta-row-height);
 	color: var(--color-text-muted);
-	font-size: var(--type-meta);
 	font-variant-numeric: tabular-nums;
 }
-.event-line:has(.is-recording):after {
+.event-line:has(.is-recording)::after {
 	background: var(--color-live);
 }
 .event-card {
 	width: 100%;
 	text-align: left;
-	border: var(--stroke-hairline) solid transparent;
+	border: 0;
 	border-radius: var(--radius-md);
 	background: var(--color-surface);
-	padding: var(--space-7) var(--space-8);
+	padding: var(--timeline-card-padding-block)
+		var(--timeline-card-padding-inline);
 	transition: background-color var(--motion-fast) var(--ease-standard);
 	color: inherit;
 }
@@ -677,6 +683,8 @@ p {
 	background: var(--color-surface-card-hover);
 }
 .event-card-meta {
+	min-height: var(--timeline-meta-row-height);
+	line-height: var(--timeline-meta-leading);
 	display: flex;
 	flex-wrap: wrap;
 	gap: var(--space-2) var(--space-6);
@@ -705,13 +713,17 @@ p {
 	overflow-wrap: anywhere;
 	margin: 0;
 }
+.event-card-time {
+	font-family: var(--font-time);
+}
 .event-card-meta > span {
+	line-height: var(--timeline-meta-row-height);
 	flex-shrink: 0;
 }
 .event-card-meta .event-card-state {
 	margin-left: auto;
 	font-size: var(--type-caption);
-	line-height: var(--leading-body);
+	line-height: var(--timeline-meta-leading);
 	padding: var(--space-1) var(--space-3);
 	border-radius: var(--radius-xs);
 }
@@ -1931,25 +1943,13 @@ body.floating-body .float-wrap {
 	}
 }
 @media (max-width: 850px) {
-	.event-card {
-		padding: var(--space-6) var(--space-7);
+	.timeline-page {
+		--timeline-card-padding-block: var(--space-6);
+		--timeline-card-padding-inline: var(--space-7);
+		--timeline-row-gap: var(--space-6);
 	}
 	.event-card h3 {
 		margin-top: var(--space-3);
-	}
-	.event-line {
-		margin-bottom: var(--space-6);
-	}
-	.event-line > time {
-		padding-top: calc(var(--space-6) + var(--space-1));
-	}
-	.event-line:after,
-	.event-list:before {
-		top: var(--space-8);
-	}
-	.timeline-page {
-		--layout-timeline-gutter: var(--compact-timeline-gutter);
-		--layout-timeline-rail: var(--compact-timeline-rail);
 	}
 	.timeline-header {
 		gap: var(--space-6);
