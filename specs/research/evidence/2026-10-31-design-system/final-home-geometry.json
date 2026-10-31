@@ -1,0 +1,16 @@
+{
+  "date": "32px",
+  "overview": {
+    "background": "rgb(255, 253, 249)",
+    "radius": "16px"
+  },
+  "range": "18:10 — 至今",
+  "record": {
+    "background": "rgb(255, 240, 231)",
+    "radius": "12px"
+  },
+  "sidebar": "184px",
+  "time": "18:10",
+  "track": "24px",
+  "wordmark": "96px"
+}

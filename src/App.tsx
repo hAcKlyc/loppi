@@ -898,7 +898,7 @@ function App() {
 									viewBox="0 0 24 24"
 									fill="none"
 									stroke="currentColor"
-									strokeWidth="1.6"
+									strokeWidth="var(--stroke-icon)"
 									strokeLinecap="round"
 									strokeLinejoin="round"
 								>

@@ -1,0 +1,248 @@
+{
+  "scope": "Default recording scene, 3 records, 1120x760. CSS paint values; no raster/antialias/native widget pixels.",
+  "mainCount": 16,
+  "shellCount": 9,
+  "wholeCount": 18,
+  "shellExtra": [
+    {
+      "color": "#d6d1c7",
+      "tokens": [],
+      "uses": [
+        "button border",
+        "select border",
+        "div.viewport border",
+        "ul border"
+      ]
+    },
+    {
+      "color": "#f2f0eb",
+      "tokens": [],
+      "uses": [
+        "body background"
+      ]
+    }
+  ],
+  "main": [
+    {
+      "color": "#292c28",
+      "tokens": [
+        "--palette-ink",
+        "--color-text",
+        "--color-text-strong",
+        "--color-brand",
+        "--color-audio"
+      ],
+      "uses": [
+        "img.brand-wordmark vector",
+        "svg stroke",
+        "path stroke",
+        "span text",
+        "rect stroke",
+        "strong text",
+        "span.capture-status-announcement text",
+        "h2 text",
+        "button.secondary-button.control-button.control-default.create-event text",
+        "h3 text"
+      ]
+    },
+    {
+      "color": "#625e57",
+      "tokens": [
+        "--color-text-secondary"
+      ],
+      "uses": [
+        "svg stroke",
+        "path stroke",
+        "span text",
+        "p text"
+      ]
+    },
+    {
+      "color": "#6c675f",
+      "tokens": [
+        "--color-text-muted",
+        "--color-switch-off",
+        "--color-placeholder"
+      ],
+      "uses": [
+        "strong text",
+        "span text",
+        "span.day-map-source text",
+        "span.record-count text",
+        "time text",
+        "span.event-card-source text",
+        "span.event-card-state text"
+      ]
+    },
+    {
+      "color": "#8bbda1",
+      "tokens": [
+        "--palette-mint",
+        "--color-complete",
+        "--color-positive",
+        "--color-comment"
+      ],
+      "uses": [
+        "i.raw shadow",
+        "i.organized background",
+        "button.day-map-event.organized background",
+        "div.event-line::after background"
+      ]
+    },
+    {
+      "color": "#a6533c",
+      "tokens": [
+        "--color-live-text"
+      ],
+      "uses": [
+        "strong text",
+        "span.day-map-clock text",
+        "span.day-map-now background",
+        "span.event-card-state.recording-label text"
+      ]
+    },
+    {
+      "color": "#b65b42",
+      "tokens": [
+        "--palette-rust",
+        "--color-logo-dot"
+      ],
+      "uses": [
+        "img.brand-wordmark vector"
+      ]
+    },
+    {
+      "color": "#c9c2b6",
+      "tokens": [
+        "--color-border-strong"
+      ],
+      "uses": [
+        "div.event-list::before border",
+        "div.event-line::after shadow"
+      ]
+    },
+    {
+      "color": "#ded9d0",
+      "tokens": [
+        "--color-border"
+      ],
+      "uses": [
+        "i.gap gradient"
+      ]
+    },
+    {
+      "color": "#e7e2d9",
+      "tokens": [
+        "--color-surface-selected"
+      ],
+      "uses": [
+        "button.secondary-button.control-button.control-default.create-event background"
+      ]
+    },
+    {
+      "color": "#e9f2eb",
+      "tokens": [
+        "--color-complete-soft",
+        "--color-positive-soft"
+      ],
+      "uses": [
+        "i.raw background"
+      ]
+    },
+    {
+      "color": "#ede9e1",
+      "tokens": [
+        "--palette-stone",
+        "--color-sidebar",
+        "--color-control"
+      ],
+      "uses": [
+        "aside.sidebar background"
+      ]
+    },
+    {
+      "color": "#f2efe8",
+      "tokens": [
+        "--color-surface-subtle"
+      ],
+      "uses": [
+        "div.day-map-track background"
+      ]
+    },
+    {
+      "color": "#f4a686",
+      "tokens": [
+        "--palette-coral",
+        "--color-live",
+        "--color-recording-light",
+        "--entry-accent"
+      ],
+      "uses": [
+        "button.day-map-event.raw.is-recording background",
+        "div.event-line::after background",
+        "span.event-card-state.recording-label::before background"
+      ]
+    },
+    {
+      "color": "#faf8f2",
+      "tokens": [
+        "--palette-paper",
+        "--color-canvas",
+        "--entry-text",
+        "--entry-control-ink",
+        "--entry-feedback-ink"
+      ],
+      "uses": [
+        "html background",
+        "main.main-area background",
+        "div.event-line::after border"
+      ]
+    },
+    {
+      "color": "#fff0e7",
+      "tokens": [
+        "--color-live-soft",
+        "--color-recording-surface"
+      ],
+      "uses": [
+        "span.capture-status-rabbit::before background",
+        "button.event-card.is-recording background",
+        "span.event-card-state.recording-label background"
+      ]
+    },
+    {
+      "color": "#fffdf9",
+      "tokens": [
+        "--color-surface",
+        "--color-on-brand"
+      ],
+      "uses": [
+        "button.nav-button.active background",
+        "button.calendar-button background",
+        "section.day-map background",
+        "i.gap gradient",
+        "button.event-card.named background"
+      ]
+    }
+  ],
+  "all": [
+    "#292c28",
+    "#625e57",
+    "#6c675f",
+    "#8bbda1",
+    "#a6533c",
+    "#b65b42",
+    "#c9c2b6",
+    "#d6d1c7",
+    "#ded9d0",
+    "#e7e2d9",
+    "#e9f2eb",
+    "#ede9e1",
+    "#f2efe8",
+    "#f2f0eb",
+    "#f4a686",
+    "#faf8f2",
+    "#fff0e7",
+    "#fffdf9"
+  ]
+}

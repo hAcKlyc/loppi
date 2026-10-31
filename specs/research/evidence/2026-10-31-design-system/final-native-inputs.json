@@ -1,0 +1,21 @@
+{
+  "radioArrowDown": [
+    {
+      "accent": "rgb(41, 44, 40)",
+      "checked": false
+    },
+    {
+      "accent": "rgb(41, 44, 40)",
+      "checked": true
+    }
+  ],
+  "exportBefore": {
+    "accent": "rgb(41, 44, 40)",
+    "checked": false
+  },
+  "exportAfter": {
+    "accent": "rgb(41, 44, 40)",
+    "checked": true
+  },
+  "restored": true
+}

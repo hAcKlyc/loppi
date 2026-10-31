@@ -80,13 +80,13 @@
     },
     {
       "path": "components.md",
-      "bytes": 3156,
-      "sha256": "33e2191831f97cd8bdb74fcaa24a3a257813ed5efbbb60553047f61518bf6642"
+      "bytes": 3174,
+      "sha256": "c5d052591b2ce210d38c9ed6fb8bfa1d102284b21bfbbaada9e0c2b09e709bf4"
     },
     {
       "path": "DESIGN.md",
-      "bytes": 14296,
-      "sha256": "1ffddbb382afea9ddf423dbff4f12f15f44c92db572ead9ac0fbaa6e92248ac0"
+      "bytes": 16518,
+      "sha256": "5c3102d6b5a4e464180cfdd42775584ffb38f33c23f1eb62daebb577569003c2"
     },
     {
       "path": "icons/app-1024.png",
@@ -200,8 +200,8 @@
     },
     {
       "path": "preview.html",
-      "bytes": 1840670,
-      "sha256": "b18f97a1b3c5eda6876f2087d439527a852bdce9eb8609d0c71617e1e0d563d5"
+      "bytes": 1852733,
+      "sha256": "b4c5d8f28477ba91e54019278bb3af0828ec1c2698947f7f45df509afed3aa41"
     },
     {
       "path": "rabbit/animations/listening.gif",
@@ -320,83 +320,83 @@
     },
     {
       "path": "release/screenshots/agent-1120.jpg",
-      "bytes": 36151,
-      "sha256": "8694f28dea793d28b84191511afb7e7eef38e7b03e5998b0d1d20b6b15f240e2"
+      "bytes": 36199,
+      "sha256": "73a478e33f8e2b3433c213468ee6c0976388efa5bd74d47cc9fe197118e019f2"
     },
     {
       "path": "release/screenshots/agent-760.jpg",
-      "bytes": 24138,
-      "sha256": "606add845fcaf15091dff28de3d034e27fa64c3dd30ca1b5a6bfd59775d19e5c"
+      "bytes": 24140,
+      "sha256": "d5a25b6c44b47856e7f831dd5acec7dfd377ce7c3b35c1c877eee68f1e820f08"
     },
     {
       "path": "release/screenshots/detail-1120.jpg",
-      "bytes": 101277,
-      "sha256": "333d2be762108593887b8aee7b68c5e9e0ac5fae407b8ad3e679e49bd3f39eed"
+      "bytes": 99261,
+      "sha256": "11dcffa687813719811417cccd8ce2bff1e80b669a8cb7611db392ecf83ee3f7"
     },
     {
       "path": "release/screenshots/detail-760.jpg",
-      "bytes": 51790,
-      "sha256": "67bbbb620dde38f05ca17533175297508b69d797f968d8afc27b3d87ce5167a9"
+      "bytes": 52207,
+      "sha256": "a299961efed98bddb4cfed5f6309b30d13df397adae18b1cda5d5a67c34381a2"
     },
     {
       "path": "release/screenshots/onboarding-1120.jpg",
-      "bytes": 22944,
-      "sha256": "37e769fc5b37fcdb3cc1b90f3ecc10e54de641433f521aee1f3addbf0e4621d6"
+      "bytes": 23450,
+      "sha256": "974e1da779be3f9fd3941e914a61631f7b0b2f6099b2858943789927a0c3639e"
     },
     {
       "path": "release/screenshots/onboarding-760.jpg",
-      "bytes": 19487,
-      "sha256": "e6d61c6c274f0af53eceaf725f472ee9769c2052a016edb59499f816f194017f"
+      "bytes": 19894,
+      "sha256": "34759a64f38705afc9fa1fafbcf5cc1bf03cfc6442a285f2f21e664e99dbf693"
     },
     {
       "path": "release/screenshots/people-1120.jpg",
-      "bytes": 21382,
-      "sha256": "c376b233f407e3ff7c074b3e4f01761b7c9371640a929f5d89819e41b59cf840"
+      "bytes": 19659,
+      "sha256": "1976b008b43e5e3baa35d34b901a95bcee06ba55402455886ba9d6a7a1f026ed"
     },
     {
       "path": "release/screenshots/people-760.jpg",
-      "bytes": 14631,
-      "sha256": "72b80233ea2d1ce4bbb4863206b42ffcbf1cf7d1ebebd19129464ff17c9a7798"
+      "bytes": 13332,
+      "sha256": "509023b4da22596df9eba008ba66a6fedbb0141700f4441a6843eff752b338f1"
     },
     {
       "path": "release/screenshots/queue-1120.jpg",
-      "bytes": 26999,
-      "sha256": "bbdc744214983e732a28d8cf73e63173d0b8b6faea5c972614a5ab41cf974256"
+      "bytes": 26993,
+      "sha256": "cc621e51324b70925f02b642c56bd9367089b334c027f3c50ed9e0f753c254a5"
     },
     {
       "path": "release/screenshots/queue-760.jpg",
-      "bytes": 17549,
-      "sha256": "755f79ecd2b6f3e23410dec3de3db91ebb1327a2fca8c8ad0da4c927423fd41a"
+      "bytes": 16535,
+      "sha256": "7dad8a51dc664bd58654bd5f719953bd23238154b19d8c64370a4d5cd44416e2"
     },
     {
       "path": "release/screenshots/settings-1120.jpg",
-      "bytes": 36006,
-      "sha256": "6e194acd05725d6470d73cd3dae104d684f057293cff20a1679ce7c8c8537074"
+      "bytes": 34436,
+      "sha256": "e1f83d63c35dc6dc2a369cb4388617abea40d4d675a3f42a6e5630c44efd7e8c"
     },
     {
       "path": "release/screenshots/settings-760.jpg",
-      "bytes": 19946,
-      "sha256": "13ce696197cbe9788947612cfac7a373412bd727eb88b35d31b3e2e008e32ac9"
+      "bytes": 17944,
+      "sha256": "899c6d5891a20812c4a4f1506e3df887125cf3a3dcac7ace64972be2063db010"
     },
     {
       "path": "release/screenshots/statistics-1120.jpg",
-      "bytes": 36177,
-      "sha256": "d5b22bcf5918eb209f3790938051e8f56597d4b5c2794c699fedccbac29eaaf9"
+      "bytes": 36850,
+      "sha256": "536b212a904e4b9b32a053db73ea41856901c7943b8ccb7ddf8e028c3ef8c346"
     },
     {
       "path": "release/screenshots/statistics-760.jpg",
-      "bytes": 19033,
-      "sha256": "65cee9a221a5aeabf76ac8685d6f495ef6983cbe7eb690c6b5f2a7ace146ee89"
+      "bytes": 18905,
+      "sha256": "6ffcb92d2d4b675d69de2237eca33687ebd65cfbad179aa030ac4b4bd3507913"
     },
     {
       "path": "release/screenshots/timeline-recording-1120.jpg",
-      "bytes": 56099,
-      "sha256": "3e0233e9698e117dbfaaae9b39810f0bdc7f1287314b0713460e69ead4bd0c59"
+      "bytes": 55430,
+      "sha256": "5d093827788c01b0f8ea3e0da017d3238f8ce707335cc7bd7f3e990bbbe8e711"
     },
     {
       "path": "release/screenshots/timeline-recording-760.jpg",
-      "bytes": 32813,
-      "sha256": "36d8694a2015c69384ac8c56065ee7c66d1bc14d914b4f6d9588b456c4e1bb82"
+      "bytes": 33097,
+      "sha256": "0bae87a812b1436c09f5f8eaaff9320429b55dd02427267535d4d8aa79b48602"
     },
     {
       "path": "release/social-cover.png",
@@ -420,13 +420,13 @@
     },
     {
       "path": "tokens.css",
-      "bytes": 5662,
-      "sha256": "607962026f4b9cf16a5a6cd3e51c2d1ee27ac1dd9306b5094ba71cf28b27f3b7"
+      "bytes": 10828,
+      "sha256": "ce67d9ff6185327e94fc2e0036cc4f088ae673e94453e4a586953ebeb884a90b"
     },
     {
       "path": "tokens.json",
-      "bytes": 6212,
-      "sha256": "8b11c6c29cd730378c94f593b03d72214f603721c63602c225a67ee9d20f974f"
+      "bytes": 19761,
+      "sha256": "bb9eb7d07253bfeba342899ba39cf367dd0127836119bd11a721b137dd7a7b13"
     },
     {
       "path": "usage.png",

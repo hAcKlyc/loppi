@@ -1,0 +1,963 @@
+- complementary:
+  - img "loppi"
+  - navigation "主导航":
+    - button "时间线":
+      - generic: 时间线
+    - button "处理队列":
+      - generic: 处理队列
+    - button "人物库":
+      - generic: 人物库
+    - button "Agent 接入":
+      - generic: Agent 接入
+    - button "设置":
+      - generic: 设置
+- main:
+  - button "选择日期":
+  -
+
+1120/queue
+- complementary:
+  - img "loppi"
+  - navigation "主导航":
+    - button "时间线":
+      - generic: 时间线
+    - button "处理队列" [active]:
+      - generic: 处理队列
+    - button "人物库":
+      - generic: 人物库
+    - button "Agent 接入":
+      - generic: Agent 接入
+    - button "设置":
+      - generic: 设置
+- main:
+  - heading "处理队列" [level=1]
+  - button "刷新"
+  - tablist "处理队列页面":
+    - tab "队列" [selected]
+    - tab "统计数据"
+  - tabpanel "队列":
+    - heading "事件与图片理解" [level=2]
+    - paragraph: 运行中
+    - button "暂停事件与图片理解"
+    - text: "0"
+    - generic: 待处理
+    - text: "0"
+    - generic: 处理中
+    - text: "0"
+    - generic: 失败
+    - heading "精确转录" [level=2]
+    - paragraph: 运行中
+    - button "暂停精确转录"
+    - text: "0"
+    - generic: 待处理
+    - text: "0"
+    - generic: 处理中
+    - text: "0"
+    - generic: 失败
+    - heading "任务" [level=2]
+    - generic: 暂无任务
+    - heading "待核对" [level=2]
+    - generic: 0 条
+    - generic: 没有待核对的修正
+
+1120/statistics
+- complementary:
+  - img "loppi"
+  - navigation "主导航":
+    - button "时间线":
+      - generic: 时间线
+    - button "处理队列":
+      - generic: 处理队列
+    - button "人物库":
+      - generic: 人物库
+    - button "Agent 接入":
+      - generic: Agent 接入
+    - button "设置":
+      - generic: 设置
+- main:
+  - heading "处理队列" [level=1]
+  - button "刷新"
+  - tablist "处理队列页面":
+    - tab "队列"
+    - tab "统计数据" [active] [selected]
+  - tabpanel "统计数据":
+    - group "统计时间范围":
+      - button "近 7 天"
+      - button "近 30 天" [pressed]
+      - button "近 90 天"
+    - generic: 按日统计 · 本地时间
+    - region "语音转录使用量":
+      - heading "语音转录使用量" [level=2]
+      - paragraph: 次数按独立受理请求统计 · 成本按音频时长计算
+      - group "语音转录指标":
+        - button "次数" [pressed]: 次数
+        - button "成本" [pressed]: 成本
+      - img "语音转录使用量":
+        - generic: "0"
+        - generic: ¥0.00
+        - generic: "1"
+        - generic: ¥0.00029
+        - generic: "2"
+        - generic: ¥0.00058
+        - generic: "3"
+        - generic: ¥0.00086
+        - generic: "4"
+        - generic: ¥0.00115
+      - slider "查看每日统计，使用左右方向键切换日期": "0"
+      - generic: 这段时间暂无使用记录
+      - generic: 聚焦图表后可用左右方向键查看每日数值。
+    - region "LLM 使用量":
+      - heading "LLM 使用量" [level=2]
+      - paragraph: 缓存 Token 包含在输入 Token 中
+      - group "LLM指标":
+        - button "输入 Token" [pressed]: 输入 Token
+        - button "输出 Token" [pressed]: 输出 Token
+        - button "缓存 Token" [pressed]: 缓存 Token
+        - button "成本" [pressed]: 成本
+      - img "LLM 使用量":
+        - generic: "0"
+        - generic: ¥0.00
+        - generic: "1"
+        - generic: ¥0.00029
+        - generic: "2"
+        - generic: ¥0.00058
+        - generic: "3"
+        - generic: ¥0.00086
+        - generic: "4"
+        - generic: ¥0.00115
+      - slider "查看每日统计，使用左右方向键切换日期": "0"
+      - generic: 这段时间暂无使用记录
+      - generic: 聚焦图表后可用左右方向键查看每日数值。
+    - paragraph: 从 2026/10/22 18:30:00 开始统计，之前的用量不补算。成本按调用时记录的人民币单价估算，未抵扣套餐或赠送额度。
+
+1120/people
+- complementary:
+  - img "loppi"
+  - navigation "主导航":
+    - button "时间线":
+      - generic: 时间线
+    - button "处理队列":
+      - generic: 处理队列
+    - button "人物库" [active]:
+      - generic: 人物库
+    - button "Agent 接入":
+      - generic: Agent 接入
+    - button "设置":
+      - generic: 设置
+- main:
+  - heading "人物库" [level=1]
+  - button "新建人物":
+    - text: 新建人物
+  - button "陈 陈以宁 3 个声纹样例":
+    - generic: 陈
+    - strong: 陈以宁
+    - generic: 3 个声纹样例
+  - button "欧 欧阳若宁（产品体验与长期记录研究） 2 个声纹样例":
+    - generic: 欧
+    - strong: 欧阳若宁（产品体验与长期记录研究）
+    - generic: 2 个声纹样例
+
+1120/agent
+- complementary:
+  - img "loppi"
+  - navigation "主导航":
+    - button "时间线":
+      - generic: 时间线
+    - button "处理队列":
+      - generic: 处理队列
+    - button "人物库":
+      - generic: 人物库
+    - button "Agent 接入" [active]:
+      - generic: Agent 接入
+    - button "设置":
+      - generic: 设置
+- main:
+  - region "Agent 接入":
+    - heading "Agent 接入" [level=1]
+    - paragraph: 让你的 Agent 找回 loppi 里的谈话与日常。
+    - region "选择接入方式":
+      - heading "选择接入方式" [level=2]
+      - status: 本机可用
+      - button "重新检查连接": 刷新
+      - tablist "接入方式":
+        - tab "MCP" [selected]
+        - tab "CLI + Skill"
+      - tabpanel "MCP":
+        - paragraph: 把 loppi 加入 Agent 的 MCP 配置，即可检索与读取记录。
+        - group "配置格式":
+          - radio "通用 JSON" [checked]
+          - generic: 通用 JSON
+          - radio "Codex"
+          - generic: Codex
+        - code: "{ \"mcpServers\": { \"loppi\": { \"command\": \"/Applications/loppi.app/Contents/MacOS/loppi\", \"args\": [ \"mcp\", \"serve\" ] } } }"
+        - button "复制配置"
+        - generic: 合并到 Agent 的 MCP 配置后重连。
+        - status
+    - text: 只读已有记录 · 不启动录音 · 无需联网端口
+    - paragraph: 使用云端模型的 Agent 时，取出的内容会进入该 Agent 的上下文。
+
+1120/settings
+- complementary:
+  - img "loppi"
+  - navigation "主导航":
+    - button "时间线":
+      - generic: 时间线
+    - button "处理队列":
+      - generic: 处理队列
+    - button "人物库":
+      - generic: 人物库
+    - button "Agent 接入":
+      - generic: Agent 接入
+    - button "设置" [active]:
+      - generic: 设置
+- main:
+  - heading "设置" [level=1]
+  - heading "通用" [level=2]
+  - strong: 兔子的位置
+  - paragraph: 切换入口，保留当前倾听状态
+  - group "常驻入口模式":
+    - radio "顶部" [checked]
+    - generic: 顶部
+    - radio "悬浮兔子"
+    - generic: 悬浮兔子
+  - strong: 登录时启动
+  - generic: 已开启
+  - paragraph: 登录电脑后自动启动 loppi
+  - switch "登录时启动" [checked]
+  - heading "录制" [level=2]
+  - strong: 麦克风
+  - generic: 已授权
+  - paragraph: 你和身边的声音
+  - switch "麦克风" [checked]
+  - strong: 电脑声音
+  - generic: 已授权
+  - paragraph: 会议、课程和电脑播放的声音
+  - switch "电脑声音" [checked]
+  - generic "授权遇到问题"
+  - strong: 定时录制
+  - status: 定时录制未启用
+  - paragraph: 每天到点开始或停止，仍可随时手动控制
+  - switch "定时录制"
+  - strong: 每天 08:00 开始，23:00 停止
+  - paragraph: 跟随电脑本地时间，从下一个时间点执行，不改变当前录制状态。
+  - button "编辑时间"
+  - heading "识别与整理" [level=2]
+  - strong: 本地语音组件
+  - generic: 已就绪
+  - paragraph: 组件已包含在应用中，启动时自动检查，无需额外下载。
+  - strong: 内容整理 · DeepSeek
+  - status: 已配置
+  - paragraph: 整理事件与新截图
+  - button "修改密钥"
+  - strong: 语音精转 · 火山引擎
+  - status: 已配置
+  - paragraph: 将录音转为更准确的文字
+  - button "修改密钥"
+  - heading "存储与数据" [level=2]
+  - strong: 音频存储上限 · 10 GB
+  - status: 已用 1.00 GB
+  - paragraph: 达到上限后暂停录音；释放空间或提高上限后，请手动继续录音。
+  - button "修改上限"
+  - strong: 导出记录
+  - paragraph: 导出 10月22日 的文字和选定音频
+  - button "导出"
+  - strong: 清理记录
+  - paragraph: 默认清除原始音频
+  - button "清理"
+
+1120/detail
+- complementary:
+  - img "loppi"
+  - navigation "主导航":
+    - button "时间线":
+      - generic: 时间线
+    - button "处理队列":
+      - generic: 处理队列
+    - button "人物库":
+      - generic: 人物库
+    - button "Agent 接入":
+      - generic: Agent 接入
+    - button "设置":
+      - generic: 设置
+- main:
+  - button "选择日期":
+  - navigation "按日期浏览":
+    - button "10月22日，已选中":
+      - strong: 10月22日
+      - generic: 周四 · 今天
+    - button "10月21日":
+      - strong: 10月21日
+      - generic: 周三
+    - button "10月20日":
+      - strong: 10月20日
+      - generic: 周二
+  - region "声音记录状态":
+    - button "继续记录":
+      - strong: 已暂停
+      - generic: 声音记录已暂停
+      - generic: 继续记录
+    - status: 已暂停，声音记录已暂停
+  - region "当天内容范围与未记录时段":
+    - strong: 记录分布
+    - generic: 未整理
+    - generic: 事件 / 精转范围
+    - generic: 未记录
+    - generic: 现在 18:30
+    - generic: 麦克风
+    - button "16:30—17:45 · 产品讨论与下一步安排 · 麦克风"
+    - button "14:00—15:12 · 下午的阅读与灵感 · 麦克风"
+    - button "10:00—11:30 · 关于声音记录、人物识别与长期使用体验的设计讨论 · 麦克风"
+    - generic: 电脑声音
+    - button "16:30—17:45 · 产品讨论与下一步安排 · 电脑声音"
+    - button "10:00—11:30 · 关于声音记录、人物识别与长期使用体验的设计讨论 · 电脑声音"
+    - generic: 现场记录
+    - generic "16:33 · 笔记"
+    - generic "16:33 · 重点"
+    - generic "16:34 · 截图"
+    - generic "16:52 · 笔记"
+    - generic "17:09 · 重点"
+    - generic "17:21 · 笔记"
+    - generic: 00:00
+    - generic: 06:00
+    - generic: 12:00
+    - generic: 18:00
+    - generic: 24:00
+  - heading "当天记录 3" [level=2]
+  - button "＋ 新建事件"
+  - time: 16:30
+  - button "16:30 — 17:45 内容摘要 · 双路声音 6 条现场记录 精转完成 产品讨论与下一步安排 确认首页的信息层级与回看路径。下一轮先完善事件详情，再统一设置与反馈。":
+    - generic: 16:30 — 17:45
+    - generic: 内容摘要 · 双路声音
+    - generic: 6 条现场记录
+    - generic: 精转完成
+    - heading "产品讨论与下一步安排" [level=3]
+    - paragraph: 确认首页的信息层级与回看路径。下一轮先完善事件详情，再统一设置与反馈。
+  - time: 14:00
+  - button "14:00 — 15:12 内容摘要 · 麦克风 精转完成 下午的阅读与灵感 从声音、文字和现场笔记中，留下今天值得回看的片段。":
+    - generic: 14:00 — 15:12
+    - generic: 内容摘要 · 麦克风
+    - generic: 精转完成
+    - heading "下午的阅读与灵感" [level=3]
+    - paragraph: 从声音、文字和现场笔记中，留下今天值得回看的片段。
+  - time: 10:00
+  - button "10:00 — 11:30 内容摘要 · 双路声音 精转完成 关于声音记录、人物识别与长期使用体验的设计讨论 围绕真实使用场景梳理录音、精转和整理之间的关系。保持信息来源清楚，让处理状态退到内容之后。":
+    - generic: 10:00 — 11:30
+    - generic: 内容摘要 · 双路声音
+    - generic: 精转完成
+    - heading "关于声音记录、人物识别与长期使用体验的设计讨论" [level=3]
+    - paragraph: 围绕真实使用场景梳理录音、精转和整理之间的关系。保持信息来源清楚，让处理状态退到内容之后。
+- dialog "产品讨论与下一步安排":
+  - region "事件详情":
+    - generic: 16:30 — 17:45
+    - heading "产品讨论与下一步安排" [active] [level=2]
+    - button "导出"
+    - button "清理"
+    - button "编辑"
+    - button "更多事件操作":
+      - text: 更多事件操作
+    - button "关闭详情":
+      - text: 关闭详情
+    - button "播放录音":
+    - slider "定位录音": "1792657800000"
+    - generic: 当前位置 16:30:00 / 17:45:00
+    - combobox "播放来源":
+      - option "混合" [selected]
+      - option "麦克风"
+      - option "电脑声音"
+    - tablist "详情内容":
+      - tab "文本转录" [selected]
+      - tab "音频信息"
+    - tabpanel "文本转录":
+      - button "16:30:00"
+      - button "陈以宁⌄"
+      - generic: 麦克风 · 已确认
+      - button "修正"
+      - paragraph: 我们先从一个具体的回看场景开始。昨天讨论的内容很多，今天再打开记录时，我希望先知道这是哪一段对话，再决定是阅读摘要、查看原话，还是从某个时刻重新听一遍。
+      - button "16:34:00"
+      - button "欧阳若宁（产品体验与长期记录研究）⌄"
+      - generic: 电脑声音 · 自动匹配
+      - button "修正"
+      - paragraph: 我同意把内容放在最前面，不过来源也需要容易找到。例如有些话来自麦克风，有些来自电脑里的会议声音；两路文字同时出现时，来源标签应该清楚，但不必比正文更醒目。
+      - button "16:38:00"
+      - button "陈以宁⌄"
+      - generic: 麦克风 · 已确认
+      - button "修正"
+      - paragraph: 时间可以作为稳定的阅读锚点。用户向下浏览时，句子的长度会变化，说话人的名字也可能很长。只要时间和正文的起始位置保持一致，找到上一句或下一句就会轻松一些。
+      - button "16:42:00"
+      - button "欧阳若宁（产品体验与长期记录研究）⌄"
+      - generic: 电脑声音 · 自动匹配
+      - button "修正"
+      - paragraph: 关于现场记录，我更希望它像当时留下的便签。记下来的重点、随手写的一句话和一张截图，应该都能回到原来的时刻，而不是在整理完成后才被重新解释成另外一种内容。
+      - button "16:46:00"
+      - button "陈以宁⌄"
+      - generic: 麦克风 · 已确认
+      - button "修正"
+      - paragraph: 这里还有一个实际问题：如果我们在深夜开始讨论，过了零点才结束，播放器显示的时间和左边的句子时间都需要带上日期。不然两天里相同的时刻很容易让人误以为播放位置发生了跳动。
+      - button "16:50:00"
+      - button "欧阳若宁（产品体验与长期记录研究）⌄"
+      - generic: 电脑声音 · 自动匹配
+      - button "修正"
+      - paragraph: 窄窗口里也需要保留连续阅读的感觉。我们可以让名字自然换行，让修改操作跟随这句话，但不要为了放下所有标签，把主要文字缩得太小。阅读时看清句子比一行放满信息更重要。
+      - button "16:54:00"
+      - button "陈以宁⌄"
+      - generic: 麦克风 · 已确认
+      - button "修正"
+      - paragraph: 当前正在播放的句子可以有一层浅暖红色背景，时间稍微加重就够了。暂停后，如果用户是从概览里的某个时间点进入，也应该看得出定位到了哪里，然后允许他自己继续向下阅读。
+      - button "16:58:00"
+      - button "欧阳若宁（产品体验与长期记录研究）⌄"
+      - generic: 电脑声音 · 自动匹配
+      - button "修正"
+      - paragraph: 截图的识别文字默认折叠是合适的。用户先看到当时留下的截图入口，需要核对内容时再展开。即使识别失败，截图本身仍然存在，界面也应该把这两个结果分别说明。
+      - button "17:02:00"
+      - button "陈以宁⌄"
+      - generic: 麦克风 · 已确认
+      - generic: 已修正
+      - button "修正"
+      - paragraph: 我们把这句话稍微修正一下：内容摘要是一段整理后的概括，精转文字则是对原始声音的记录。两种内容可以互相帮助，但不应该用局部原话代替摘要，再让用户误判它的来源。
+      - generic "查看原识别文字"
+      - button "17:06:00"
+      - button "欧阳若宁（产品体验与长期记录研究）⌄"
+      - generic: 电脑声音 · 自动匹配
+      - button "修正"
+      - paragraph: 如果这次处理没有完成，最好直接告诉用户是哪一步失败了，以及能在哪里重试。已经读到的内容应当继续留在原处，不能因为一次后台刷新，就把整页替换成空白或重新跳回顶部。
+      - button "17:10:00"
+      - button "陈以宁⌄"
+      - generic: 麦克风 · 已确认
+      - button "修正"
+      - paragraph: 对于人物名称，先显示已经确认的姓名，再说明这是自动匹配还是人工确认。较长的名字需要真实占据空间，这样我们才能看出来源文字、修正按钮和正文之间是否还保留了清楚的顺序。
+      - button "17:14:00"
+      - button "欧阳若宁（产品体验与长期记录研究）⌄"
+      - generic: 电脑声音 · 自动匹配
+      - button "修正"
+      - paragraph: 最后再看一下底部的输入区。写笔记的时候，当前选定的时间应该一直可见；如果保存失败，刚刚输入的文字要留下来。用户可以修改后重试，不需要记住原句再输入一遍。
+      - button "17:18:00"
+      - button "陈以宁⌄"
+      - generic: 麦克风 · 已确认
+      - button "修正"
+      - paragraph: 这一轮我们先把时间线和详情的阅读节奏确认下来，再把相同的间距和文字规则应用到其他页面。不要一次改变太多变量，否则很难知道视觉上的改善究竟来自哪一处调整。
+      - button "17:22:00"
+      - button "欧阳若宁（产品体验与长期记录研究）⌄"
+      - generic: 电脑声音 · 自动匹配
+      - button "修正"
+      - paragraph: 下一步安排已经清楚了：保留同一组样例，分别检查常规窗口、最小窗口和大窗口。除了第一屏，还要滚动到长段落、跨日句子和最后一条现场记录，确认完整任务都可以继续完成。
+    - complementary:
+      - heading "现场记录" [level=3]
+      - generic: 6 条
+      - paragraph: 点击时间回听，点击截图查看画面
+      - list "现场记录，按时间排列":
+        - text: 笔记
+        - button "从 16:33:07 回听": 16:33:07 ↗
+        - paragraph: 回看时先读到内容，再按需要核对时间和声音来源。 下一轮重点检查长段落与窄窗口。
+        - text: 重点
+        - button "从 16:33:30 回听": 16:33:30 ↗
+        - text: 截图
+        - button "从 16:34:57 回听": 16:34:57 ↗
+        - button "查看 16:34:57 的截图":
+          - generic: 查看截图
+          - generic: ↗
+        - generic "识别文字"
+        - text: 笔记
+        - button "从 16:52:00 回听": 16:52:00 ↗
+        - paragraph: 保留来源与处理状态，但不要让辅助标签挤压正文。较长的人名允许换行，原始时间仍然可以回听。
+        - text: 重点
+        - button "从 17:09:00 回听": 17:09:00 ↗
+        - text: 笔记
+        - button "从 17:21:00 回听": 17:21:00 ↗
+        - paragraph: 验收时记得滚动到最后一条记录，并确认底部输入和保存笔记仍然可达。
+      - textbox "写一条笔记":
+        - /placeholder: 写一条笔记…
+      - generic "笔记关联到当前选择的回听位置": 笔记时间 16:30:00
+      - button "保存笔记" [disabled]
+
+1120/onboarding
+- main:
+  - heading "准备 loppi" [level=1]
+  - heading "① 检查本地组件" [level=2]
+  - status: ✓ 已就绪
+  - heading "② 授权声音访问" [level=2]
+  - status: 麦克风 · 已授权 ✓
+  - status: 电脑声音 · 已准备 ✓
+  - button "选择声音来源与授权帮助": 调整
+  - heading "③ 配置云服务" [level=2]
+  - generic: DeepSeek整理
+  - generic: API Key
+  - textbox "DeepSeek API Key":
+    - /placeholder: API Key
+    - text: <redacted>
+  - generic: ✓
+  - generic: 已保存 · 选中后输入可替换
+  - generic: 火山引擎转录
+  - generic: API Key
+  - textbox "火山引擎 API Key":
+    - /placeholder: API Key
+    - text: <redacted>
+  - generic: ✓
+  - generic: 已保存 · 选中后输入可替换
+  - generic "获取密钥 ↗"
+  - generic "云端处理 · 按量付费"
+  - button "稍后"
+  - button "完成设置 →"
+  - status: 进入首页后可主动开始记录
+
+- complementary:
+  - navigation "主导航":
+    - button "时间线":
+    - button "处理队列":
+    - button "人物库":
+    - button "Agent 接入":
+    - button "设置":
+- main:
+  - button "选择日期":
+  - navigation "按日期浏览":
+    - button "10月22日，已选中":
+      - strong: 10月22日
+      - generic: 周四 · 今天
+    - button "10月21日":
+      -
+
+760/queue
+- complementary:
+  - navigation "主导航":
+    - button "时间线":
+    - button "处理队列" [active]:
+    - button "人物库":
+    - button "Agent 接入":
+    - button "设置":
+- main:
+  - heading "处理队列" [level=1]
+  - button "刷新"
+  - tablist "处理队列页面":
+    - tab "队列" [selected]
+    - tab "统计数据"
+  - tabpanel "队列":
+    - heading "事件与图片理解" [level=2]
+    - paragraph: 运行中
+    - button "暂停事件与图片理解"
+    - text: "0"
+    - generic: 待处理
+    - text: "0"
+    - generic: 处理中
+    - text: "0"
+    - generic: 失败
+    - heading "精确转录" [level=2]
+    - paragraph: 运行中
+    - button "暂停精确转录"
+    - text: "0"
+    - generic: 待处理
+    - text: "0"
+    - generic: 处理中
+    - text: "0"
+    - generic: 失败
+    - heading "任务" [level=2]
+    - generic: 暂无任务
+    - heading "待核对" [level=2]
+    - generic: 0 条
+    - generic: 没有待核对的修正
+
+760/statistics
+- complementary:
+  - navigation "主导航":
+    - button "时间线":
+    - button "处理队列":
+    - button "人物库":
+    - button "Agent 接入":
+    - button "设置":
+- main:
+  - heading "处理队列" [level=1]
+  - button "刷新"
+  - tablist "处理队列页面":
+    - tab "队列"
+    - tab "统计数据" [active] [selected]
+  - tabpanel "统计数据":
+    - group "统计时间范围":
+      - button "近 7 天"
+      - button "近 30 天" [pressed]
+      - button "近 90 天"
+    - region "语音转录使用量":
+      - heading "语音转录使用量" [level=2]
+      - paragraph: 次数按独立受理请求统计 · 成本按音频时长计算
+      - group "语音转录指标":
+        - button "次数" [pressed]: 次数
+        - button "成本" [pressed]: 成本
+      - img "语音转录使用量":
+        - generic: "0"
+        - generic: ¥0.00
+        - generic: "1"
+        - generic: ¥0.00029
+        - generic: "2"
+        - generic: ¥0.00058
+        - generic: "3"
+        - generic: ¥0.00086
+        - generic: "4"
+        - generic: ¥0.00115
+      - slider "查看每日统计，使用左右方向键切换日期": "0"
+      - generic: 这段时间暂无使用记录
+      - generic: 聚焦图表后可用左右方向键查看每日数值。
+    - region "LLM 使用量":
+      - heading "LLM 使用量" [level=2]
+      - paragraph: 缓存 Token 包含在输入 Token 中
+      - group "LLM指标":
+        - button "输入 Token" [pressed]: 输入 Token
+        - button "输出 Token" [pressed]: 输出 Token
+        - button "缓存 Token" [pressed]: 缓存 Token
+        - button "成本" [pressed]: 成本
+      - img "LLM 使用量":
+        - generic: "0"
+        - generic: ¥0.00
+        - generic: "1"
+        - generic: ¥0.00029
+        - generic: "2"
+        - generic: ¥0.00058
+        - generic: "3"
+        - generic: ¥0.00086
+        - generic: "4"
+        - generic: ¥0.00115
+      - slider "查看每日统计，使用左右方向键切换日期": "0"
+      - generic: 这段时间暂无使用记录
+      - generic: 聚焦图表后可用左右方向键查看每日数值。
+    - paragraph: 从 2026/10/22 18:30:00 开始统计，之前的用量不补算。成本按调用时记录的人民币单价估算，未抵扣套餐或赠送额度。
+
+760/people
+- complementary:
+  - navigation "主导航":
+    - button "时间线":
+    - button "处理队列":
+    - button "人物库" [active]:
+    - button "Agent 接入":
+    - button "设置":
+- main:
+  - heading "人物库" [level=1]
+  - button "新建人物":
+    - text: 新建人物
+  - button "陈 陈以宁 3 个声纹样例":
+    - generic: 陈
+    - strong: 陈以宁
+    - generic: 3 个声纹样例
+  - button "欧 欧阳若宁（产品体验与长期记录研究） 2 个声纹样例":
+    - generic: 欧
+    - strong: 欧阳若宁（产品体验与长期记录研究）
+    - generic: 2 个声纹样例
+
+760/agent
+- complementary:
+  - navigation "主导航":
+    - button "时间线":
+    - button "处理队列":
+    - button "人物库":
+    - button "Agent 接入" [active]:
+    - button "设置":
+- main:
+  - region "Agent 接入":
+    - heading "Agent 接入" [level=1]
+    - paragraph: 让你的 Agent 找回 loppi 里的谈话与日常。
+    - region "选择接入方式":
+      - heading "选择接入方式" [level=2]
+      - status: 本机可用
+      - button "重新检查连接": 刷新
+      - tablist "接入方式":
+        - tab "MCP" [selected]
+        - tab "CLI + Skill"
+      - tabpanel "MCP":
+        - paragraph: 把 loppi 加入 Agent 的 MCP 配置，即可检索与读取记录。
+        - group "配置格式":
+          - radio "通用 JSON" [checked]
+          - generic: 通用 JSON
+          - radio "Codex"
+          - generic: Codex
+        - code: "{ \"mcpServers\": { \"loppi\": { \"command\": \"/Applications/loppi.app/Contents/MacOS/loppi\", \"args\": [ \"mcp\", \"serve\" ] } } }"
+        - button "复制配置"
+        - generic: 合并到 Agent 的 MCP 配置后重连。
+        - status
+    - text: 只读已有记录 · 不启动录音 · 无需联网端口
+    - paragraph: 使用云端模型的 Agent 时，取出的内容会进入该 Agent 的上下文。
+
+760/settings
+- complementary:
+  - navigation "主导航":
+    - button "时间线":
+    - button "处理队列":
+    - button "人物库":
+    - button "Agent 接入":
+    - button "设置" [active]:
+- main:
+  - heading "设置" [level=1]
+  - heading "通用" [level=2]
+  - strong: 兔子的位置
+  - paragraph: 切换入口，保留当前倾听状态
+  - group "常驻入口模式":
+    - radio "顶部" [checked]
+    - generic: 顶部
+    - radio "悬浮兔子"
+    - generic: 悬浮兔子
+  - strong: 登录时启动
+  - generic: 已开启
+  - paragraph: 登录电脑后自动启动 loppi
+  - switch "登录时启动" [checked]
+  - heading "录制" [level=2]
+  - strong: 麦克风
+  - generic: 已授权
+  - paragraph: 你和身边的声音
+  - switch "麦克风" [checked]
+  - strong: 电脑声音
+  - generic: 已授权
+  - paragraph: 会议、课程和电脑播放的声音
+  - switch "电脑声音" [checked]
+  - generic "授权遇到问题"
+  - strong: 定时录制
+  - status: 定时录制未启用
+  - paragraph: 每天到点开始或停止，仍可随时手动控制
+  - switch "定时录制"
+  - strong: 每天 08:00 开始，23:00 停止
+  - paragraph: 跟随电脑本地时间，从下一个时间点执行，不改变当前录制状态。
+  - button "编辑时间"
+  - heading "识别与整理" [level=2]
+  - strong: 本地语音组件
+  - generic: 已就绪
+  - paragraph: 组件已包含在应用中，启动时自动检查，无需额外下载。
+  - strong: 内容整理 · DeepSeek
+  - status: 已配置
+  - paragraph: 整理事件与新截图
+  - button "修改密钥"
+  - strong: 语音精转 · 火山引擎
+  - status: 已配置
+  - paragraph: 将录音转为更准确的文字
+  - button "修改密钥"
+  - heading "存储与数据" [level=2]
+  - strong: 音频存储上限 · 10 GB
+  - status: 已用 1.00 GB
+  - paragraph: 达到上限后暂停录音；释放空间或提高上限后，请手动继续录音。
+  - button "修改上限"
+  - strong: 导出记录
+  - paragraph: 导出 10月22日 的文字和选定音频
+  - button "导出"
+  - strong: 清理记录
+  - paragraph: 默认清除原始音频
+  - button "清理"
+
+760/detail
+- complementary:
+  - navigation "主导航":
+    - button "时间线":
+    - button "处理队列":
+    - button "人物库":
+    - button "Agent 接入":
+    - button "设置":
+- main:
+  - button "选择日期":
+  - navigation "按日期浏览":
+    - button "10月22日，已选中":
+      - strong: 10月22日
+      - generic: 周四 · 今天
+    - button "10月21日":
+      - strong: 10月21日
+      - generic: 周三
+    - button "10月20日":
+      - strong: 10月20日
+      - generic: 周二
+  - region "声音记录状态":
+    - button "继续记录":
+      - strong: 已暂停
+      - generic: 声音记录已暂停
+      - generic: 继续记录
+    - status: 已暂停，声音记录已暂停
+  - region "当天内容范围与未记录时段":
+    - strong: 记录分布
+    - generic: 未整理
+    - generic: 事件 / 精转范围
+    - generic: 未记录
+    - generic: 现在 18:30
+    - generic: 麦克风
+    - button "16:30—17:45 · 产品讨论与下一步安排 · 麦克风"
+    - button "14:00—15:12 · 下午的阅读与灵感 · 麦克风"
+    - button "10:00—11:30 · 关于声音记录、人物识别与长期使用体验的设计讨论 · 麦克风"
+    - generic: 电脑声音
+    - button "16:30—17:45 · 产品讨论与下一步安排 · 电脑声音"
+    - button "10:00—11:30 · 关于声音记录、人物识别与长期使用体验的设计讨论 · 电脑声音"
+    - generic: 现场记录
+    - generic "16:33 · 笔记"
+    - generic "16:33 · 重点"
+    - generic "16:34 · 截图"
+    - generic "16:52 · 笔记"
+    - generic "17:09 · 重点"
+    - generic "17:21 · 笔记"
+    - generic: 00:00
+    - generic: 06:00
+    - generic: 12:00
+    - generic: 18:00
+    - generic: 24:00
+  - heading "当天记录 3" [level=2]
+  - button "＋ 新建事件"
+  - time: 16:30
+  - button "16:30 — 17:45 内容摘要 · 双路声音 6 条现场记录 精转完成 产品讨论与下一步安排 确认首页的信息层级与回看路径。下一轮先完善事件详情，再统一设置与反馈。":
+    - generic: 16:30 — 17:45
+    - generic: 内容摘要 · 双路声音
+    - generic: 6 条现场记录
+    - generic: 精转完成
+    - heading "产品讨论与下一步安排" [level=3]
+    - paragraph: 确认首页的信息层级与回看路径。下一轮先完善事件详情，再统一设置与反馈。
+  - time: 14:00
+  - button "14:00 — 15:12 内容摘要 · 麦克风 精转完成 下午的阅读与灵感 从声音、文字和现场笔记中，留下今天值得回看的片段。":
+    - generic: 14:00 — 15:12
+    - generic: 内容摘要 · 麦克风
+    - generic: 精转完成
+    - heading "下午的阅读与灵感" [level=3]
+    - paragraph: 从声音、文字和现场笔记中，留下今天值得回看的片段。
+  - time: 10:00
+  - button "10:00 — 11:30 内容摘要 · 双路声音 精转完成 关于声音记录、人物识别与长期使用体验的设计讨论 围绕真实使用场景梳理录音、精转和整理之间的关系。保持信息来源清楚，让处理状态退到内容之后。":
+    - generic: 10:00 — 11:30
+    - generic: 内容摘要 · 双路声音
+    - generic: 精转完成
+    - heading "关于声音记录、人物识别与长期使用体验的设计讨论" [level=3]
+    - paragraph: 围绕真实使用场景梳理录音、精转和整理之间的关系。保持信息来源清楚，让处理状态退到内容之后。
+- dialog "产品讨论与下一步安排":
+  - region "事件详情":
+    - generic: 16:30 — 17:45
+    - heading "产品讨论与下一步安排" [active] [level=2]
+    - button "导出"
+    - button "清理"
+    - button "编辑"
+    - button "更多事件操作":
+      - text: 更多事件操作
+    - button "关闭详情":
+      - text: 关闭详情
+    - button "播放录音":
+    - slider "定位录音": "1792657800000"
+    - generic: 当前位置 16:30:00 / 17:45:00
+    - combobox "播放来源":
+      - option "混合" [selected]
+      - option "麦克风"
+      - option "电脑声音"
+    - tablist "详情内容":
+      - tab "文本转录" [selected]
+      - tab "音频信息"
+    - tabpanel "文本转录":
+      - button "16:30:00"
+      - button "陈以宁⌄"
+      - generic: 麦克风 · 已确认
+      - button "修正"
+      - paragraph: 我们先从一个具体的回看场景开始。昨天讨论的内容很多，今天再打开记录时，我希望先知道这是哪一段对话，再决定是阅读摘要、查看原话，还是从某个时刻重新听一遍。
+      - button "16:34:00"
+      - button "欧阳若宁（产品体验与长期记录研究）⌄"
+      - generic: 电脑声音 · 自动匹配
+      - button "修正"
+      - paragraph: 我同意把内容放在最前面，不过来源也需要容易找到。例如有些话来自麦克风，有些来自电脑里的会议声音；两路文字同时出现时，来源标签应该清楚，但不必比正文更醒目。
+      - button "16:38:00"
+      - button "陈以宁⌄"
+      - generic: 麦克风 · 已确认
+      - button "修正"
+      - paragraph: 时间可以作为稳定的阅读锚点。用户向下浏览时，句子的长度会变化，说话人的名字也可能很长。只要时间和正文的起始位置保持一致，找到上一句或下一句就会轻松一些。
+      - button "16:42:00"
+      - button "欧阳若宁（产品体验与长期记录研究）⌄"
+      - generic: 电脑声音 · 自动匹配
+      - button "修正"
+      - paragraph: 关于现场记录，我更希望它像当时留下的便签。记下来的重点、随手写的一句话和一张截图，应该都能回到原来的时刻，而不是在整理完成后才被重新解释成另外一种内容。
+      - button "16:46:00"
+      - button "陈以宁⌄"
+      - generic: 麦克风 · 已确认
+      - button "修正"
+      - paragraph: 这里还有一个实际问题：如果我们在深夜开始讨论，过了零点才结束，播放器显示的时间和左边的句子时间都需要带上日期。不然两天里相同的时刻很容易让人误以为播放位置发生了跳动。
+      - button "16:50:00"
+      - button "欧阳若宁（产品体验与长期记录研究）⌄"
+      - generic: 电脑声音 · 自动匹配
+      - button "修正"
+      - paragraph: 窄窗口里也需要保留连续阅读的感觉。我们可以让名字自然换行，让修改操作跟随这句话，但不要为了放下所有标签，把主要文字缩得太小。阅读时看清句子比一行放满信息更重要。
+      - button "16:54:00"
+      - button "陈以宁⌄"
+      - generic: 麦克风 · 已确认
+      - button "修正"
+      - paragraph: 当前正在播放的句子可以有一层浅暖红色背景，时间稍微加重就够了。暂停后，如果用户是从概览里的某个时间点进入，也应该看得出定位到了哪里，然后允许他自己继续向下阅读。
+      - button "16:58:00"
+      - button "欧阳若宁（产品体验与长期记录研究）⌄"
+      - generic: 电脑声音 · 自动匹配
+      - button "修正"
+      - paragraph: 截图的识别文字默认折叠是合适的。用户先看到当时留下的截图入口，需要核对内容时再展开。即使识别失败，截图本身仍然存在，界面也应该把这两个结果分别说明。
+      - button "17:02:00"
+      - button "陈以宁⌄"
+      - generic: 麦克风 · 已确认
+      - generic: 已修正
+      - button "修正"
+      - paragraph: 我们把这句话稍微修正一下：内容摘要是一段整理后的概括，精转文字则是对原始声音的记录。两种内容可以互相帮助，但不应该用局部原话代替摘要，再让用户误判它的来源。
+      - generic "查看原识别文字"
+      - button "17:06:00"
+      - button "欧阳若宁（产品体验与长期记录研究）⌄"
+      - generic: 电脑声音 · 自动匹配
+      - button "修正"
+      - paragraph: 如果这次处理没有完成，最好直接告诉用户是哪一步失败了，以及能在哪里重试。已经读到的内容应当继续留在原处，不能因为一次后台刷新，就把整页替换成空白或重新跳回顶部。
+      - button "17:10:00"
+      - button "陈以宁⌄"
+      - generic: 麦克风 · 已确认
+      - button "修正"
+      - paragraph: 对于人物名称，先显示已经确认的姓名，再说明这是自动匹配还是人工确认。较长的名字需要真实占据空间，这样我们才能看出来源文字、修正按钮和正文之间是否还保留了清楚的顺序。
+      - button "17:14:00"
+      - button "欧阳若宁（产品体验与长期记录研究）⌄"
+      - generic: 电脑声音 · 自动匹配
+      - button "修正"
+      - paragraph: 最后再看一下底部的输入区。写笔记的时候，当前选定的时间应该一直可见；如果保存失败，刚刚输入的文字要留下来。用户可以修改后重试，不需要记住原句再输入一遍。
+      - button "17:18:00"
+      - button "陈以宁⌄"
+      - generic: 麦克风 · 已确认
+      - button "修正"
+      - paragraph: 这一轮我们先把时间线和详情的阅读节奏确认下来，再把相同的间距和文字规则应用到其他页面。不要一次改变太多变量，否则很难知道视觉上的改善究竟来自哪一处调整。
+      - button "17:22:00"
+      - button "欧阳若宁（产品体验与长期记录研究）⌄"
+      - generic: 电脑声音 · 自动匹配
+      - button "修正"
+      - paragraph: 下一步安排已经清楚了：保留同一组样例，分别检查常规窗口、最小窗口和大窗口。除了第一屏，还要滚动到长段落、跨日句子和最后一条现场记录，确认完整任务都可以继续完成。
+    - complementary:
+      - heading "现场记录" [level=3]
+      - generic: 6 条
+      - paragraph: 点击时间回听，点击截图查看画面
+      - list "现场记录，按时间排列":
+        - text: 笔记
+        - button "从 16:33:07 回听": 16:33:07 ↗
+        - paragraph: 回看时先读到内容，再按需要核对时间和声音来源。 下一轮重点检查长段落与窄窗口。
+        - text: 重点
+        - button "从 16:33:30 回听": 16:33:30 ↗
+        - text: 截图
+        - button "从 16:34:57 回听": 16:34:57 ↗
+        - button "查看 16:34:57 的截图":
+          - generic: 查看截图
+          - generic: ↗
+        - generic "识别文字"
+        - text: 笔记
+        - button "从 16:52:00 回听": 16:52:00 ↗
+        - paragraph: 保留来源与处理状态，但不要让辅助标签挤压正文。较长的人名允许换行，原始时间仍然可以回听。
+        - text: 重点
+        - button "从 17:09:00 回听": 17:09:00 ↗
+        - text: 笔记
+        - button "从 17:21:00 回听": 17:21:00 ↗
+        - paragraph: 验收时记得滚动到最后一条记录，并确认底部输入和保存笔记仍然可达。
+      - textbox "写一条笔记":
+        - /placeholder: 写一条笔记…
+      - generic "笔记关联到当前选择的回听位置": 笔记时间 16:30:00
+      - button "保存笔记" [disabled]
+
+760/onboarding
+- main:
+  - heading "准备 loppi" [level=1]
+  - heading "① 检查本地组件" [level=2]
+  - status: ✓ 已就绪
+  - heading "② 授权声音访问" [level=2]
+  - status: 麦克风 · 已授权 ✓
+  - status: 电脑声音 · 已准备 ✓
+  - button "选择声音来源与授权帮助": 调整
+  - heading "③ 配置云服务" [level=2]
+  - generic: DeepSeek整理
+  - generic: API Key
+  - textbox "DeepSeek API Key":
+    - /placeholder: API Key
+    - text: <redacted>
+  - generic: ✓
+  - generic: 已保存 · 选中后输入可替换
+  - generic: 火山引擎转录
+  - generic: API Key
+  - textbox "火山引擎 API Key":
+    - /placeholder: API Key
+    - text: <redacted>
+  - generic: ✓
+  - generic: 已保存 · 选中后输入可替换
+  - generic "获取密钥 ↗"
+  - generic "云端处理 · 按量付费"
+  - button "稍后"
+  - button "完成设置 →"
+  - status: 进入首页后可主动开始记录

@@ -1,5 +1,5 @@
 <!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Loppi 布局断点验证</title>
-<style>body{margin:0;background:#f0f3ee;font:14px/1.6 system-ui;color:#25352e}header{padding:20px}button,select{font:inherit;padding:6px}iframe{border:0;display:block;transform-origin:top left}#frame{overflow:hidden}pre{white-space:pre-wrap}</style>
+<style>@import "/src/tokens.css";body{margin:0;background:var(--color-canvas);font:14px/1.6 system-ui;color:var(--color-text)}header{padding:20px}button,select{font:inherit;padding:6px}iframe{border:0;display:block;transform-origin:top left}#frame{overflow:hidden}pre{white-space:pre-wrap}</style>
 <header><button id="run">运行布局边界检查</button> <label>窗口 <select id="size"><option>1120</option><option>760</option><option>849</option><option>850</option><option>851</option><option>1099</option><option>1100</option><option>1101</option><option>1440</option></select></label> <button id="detail">查看长标题详情</button><pre id="result">使用真实 App 和隔离数据，检查可达性与几何。</pre></header><div id="frame"><iframe id="preview" title="布局样例"></iframe></div>
 <script>
 const frame=document.getElementById('preview'),size=document.getElementById('size'),result=document.getElementById('result'),wait=ms=>new Promise(r=>setTimeout(r,ms));

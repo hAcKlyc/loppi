@@ -1,6 +1,6 @@
 [package]
 name = "loppi-desktop"
-version = "0.1.15"
+version = "0.1.16"
 description = "A private, continuous context recorder for macOS"
 edition = "2024"
 

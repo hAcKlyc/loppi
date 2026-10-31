@@ -512,13 +512,7 @@ export function TimelineView({
 									className="event-line"
 									key={`${item.id ?? item.manual_range_id ?? "unorganized"}-${item.started_ms}-${item.ended_ms}-${item.sources}`}
 								>
-									<time aria-hidden="true">
-										<span>{time(item.started_ms)}</span>
-										{(item.ended_ms - item.started_ms >= 60_000 ||
-											item.processing_state !== "moment_only") && (
-											<small>— {live ? "至今" : time(item.ended_ms)}</small>
-										)}
-									</time>
+									<time>{time(item.started_ms)}</time>
 									<button
 										type="button"
 										className={`event-card ${item.id || item.manual_range_id ? "named" : ""} ${live ? "is-recording" : ""}`}

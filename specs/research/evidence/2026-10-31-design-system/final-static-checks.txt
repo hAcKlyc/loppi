@@ -1,0 +1,11 @@
+2026-11-01 final token/card-layout candidate
+73/73 Node checks PASS (scripts/test_*.mjs), including tokens/contrast/exports/original ICON/native mask coupling and real entry interactions.
+npm run lint PASS; npm run typecheck PASS; npm run build PASS.
+cargo check --workspace --locked PASS (version 0.1.16 only; no backend behavior change).
+Native entry harness PASS (clang -fobjc-arc -fblocks -mmacosx-version-min=13.0 scripts/test_native_entry.m -framework Cocoa -framework QuartzCore); tests geometry/hit/click/keyboard policy without moving desktop cursor.
+11 browser interaction suites PASS; 9 width boundaries PASS; 18 visual scenes plus reduced-motion PASS.
+Keyboard actual Tab → SUMMARY with solid 2px outline; Shift+Tab → TEXTAREA; Esc closes and returns to trigger.
+16 synthetic-data screenshots regenerated from final production components at 1120x760 and 760x540. No real records/credentials in assets.
+Native signed package, installed restart, preference comparison and actual entry/main-window proof remain post-commit gates because the release requires clean committed source. Do not infer them from browser results.
+
+Architecture-owned native input repair: shared input accent-color consumes color-brand. No geometry or state transition changed. 45 focused settings assertions PASS; real native radio ArrowDown/ArrowUp and checkbox Space toggle/restore PASS; computed accent rgb(41,44,40). 13 affected Node assets/entry/React checks PASS; lint/typecheck/build PASS. All previously completed unrelated checks remain applicable. See final-native-inputs*.

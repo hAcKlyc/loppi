@@ -10,14 +10,14 @@
 }
 .entry-root button {
 	border: 0;
-	outline-offset: -2px;
+	outline-offset: calc(-1 * var(--space-1));
 }
 .entry-root button:focus-visible {
-	outline: 2px solid var(--entry-accent);
+	outline: var(--space-1) solid var(--entry-accent);
 }
 .entry-root button:disabled {
 	cursor: default;
-	opacity: 0.5;
+	opacity: var(--opacity-disabled);
 }
 .rabbit-pixels,
 .rabbit-fallback,
@@ -41,9 +41,9 @@
 /* The shared 96px atlas renders at 48px, keeping integer pixels at 1x/2x.
    Keep the existing 52px interaction target around the artwork. */
 .entry-floating .rabbit-art {
-	width: 48px;
-	height: 48px;
-	margin: 2px;
+	width: var(--space-12);
+	height: var(--space-12);
+	margin: var(--space-1);
 }
 .rabbit-fallback img {
 	object-fit: contain;
@@ -55,21 +55,21 @@
 	background: var(--entry-warning);
 	color: var(--entry-warning-ink);
 	line-height: 1;
-	padding: 0 2px;
+	padding: 0 var(--space-1);
 }
 .entry-rabbit {
 	position: absolute;
 	padding: 0;
 	background: transparent;
 	display: block;
-	border-radius: 50%;
+	border-radius: var(--radius-circle);
 	touch-action: none;
 }
 .entry-floating .entry-rabbit {
-	filter: drop-shadow(0 2px 3px var(--entry-rabbit-shadow));
+	filter: drop-shadow(var(--entry-rabbit-shadow-style));
 }
 .entry-rabbit:hover {
-	filter: drop-shadow(0 2px 4px var(--entry-rabbit-hover-shadow));
+	filter: drop-shadow(var(--entry-rabbit-hover-shadow-style));
 }
 .notch-surface {
 	position: absolute;
@@ -82,18 +82,20 @@
 	overflow: hidden;
 	background: var(--entry-surface);
 	/* Match the host hitRegion mask; these are native geometry, not panel tokens. */
-	border-radius: 0 0 26px 26px;
+	border-radius: 0 0 var(--entry-top-radius) var(--entry-top-radius);
 	display: flex;
 	align-items: flex-start;
-	padding: calc(var(--entry-band) + 24px) 18px 26px 20px;
-	gap: 22px;
+	padding: calc(var(--entry-band) + var(--space-9))
+		calc(var(--space-7) + var(--space-1)) calc(var(--space-9) + var(--space-1))
+		var(--space-8);
+	gap: calc(var(--space-8) + var(--space-1));
 }
 .notch-rabbit-space {
-	flex: 0 0 72px;
+	flex: 0 0 calc(var(--space-14) + var(--space-4));
 }
 .notch-rabbit-control {
-	width: 72px;
-	height: 72px;
+	width: var(--notch-rabbit-control-width);
+	height: var(--notch-rabbit-control-height);
 	padding: 0;
 	position: relative;
 	background: transparent;
@@ -109,7 +111,7 @@
 	background: var(--entry-control-overlay);
 	color: var(--entry-control-ink);
 	opacity: 0;
-	transition: opacity 120ms;
+	transition: opacity var(--motion-fast);
 }
 .notch-rabbit-control:hover .rabbit-control-overlay,
 .notch-rabbit-control:focus-visible .rabbit-control-overlay {
@@ -117,24 +119,31 @@
 }
 .notch-actions {
 	display: flex;
-	gap: 8px;
+	gap: var(--space-4);
 	align-items: center;
 	margin-top: 0;
-	flex: 0 0 280px;
+	flex: 0 0
+		calc(
+			var(--space-14) +
+			calc(
+				var(--space-14) +
+				calc(var(--space-14) + calc(var(--space-14) + var(--space-9)))
+			)
+		);
 }
 .notch-actions button {
 	display: flex;
 	flex: 1;
 	min-width: 0;
-	height: 76px;
+	height: var(--notch-actions-button-height);
 	flex-direction: column;
 	align-items: center;
 	justify-content: center;
-	gap: 9px;
+	gap: calc(var(--space-4) + var(--stroke-hairline));
 	border-radius: var(--radius-lg);
 	color: var(--entry-text);
 	background: var(--entry-action);
-	transition: background 120ms;
+	transition: background var(--motion-fast);
 }
 .notch-actions button:hover,
 .rabbit-menu button:hover {
@@ -146,16 +155,16 @@
 }
 .entry-detail {
 	position: absolute;
-	left: 20px;
-	right: 20px;
-	bottom: 18px;
+	left: var(--space-8);
+	right: var(--space-8);
+	bottom: calc(var(--space-7) + var(--space-1));
 	display: flex;
 	justify-content: space-between;
 	text-align: left;
 	background: transparent;
 	color: var(--entry-warning);
 	font-size: var(--type-caption);
-	line-height: 18px;
+	line-height: calc(var(--space-7) + var(--space-1));
 	padding: 0;
 }
 .notch-surface:not(.comment-surface) > .notch-actions,
@@ -165,7 +174,7 @@
 .notch-surface[data-ready="true"] > .notch-actions,
 .notch-surface[data-ready="true"] > .entry-detail {
 	visibility: visible;
-	animation: notch-content-in 60ms ease-out both;
+	animation: notch-content-in var(--motion-instant) var(--ease-out) both;
 }
 @keyframes notch-content-in {
 	from {
@@ -176,7 +185,8 @@
 	}
 }
 .comment-surface {
-	padding: calc(var(--entry-band) + 18px) 20px 16px;
+	padding: calc(var(--entry-band) + calc(var(--space-7) + var(--space-1)))
+		var(--space-8) var(--space-7);
 }
 .notch-composer {
 	width: 100%;
@@ -185,24 +195,24 @@
 	display: block;
 	resize: none;
 	width: 100%;
-	height: 86px;
-	min-height: 86px;
-	max-height: 86px;
+	height: var(--entry-root-notch-composer-textarea-height);
+	min-height: var(--entry-root-notch-composer-textarea-min-height);
+	max-height: var(--entry-root-notch-composer-textarea-max-height);
 	overflow-y: auto;
-	border: 1px solid transparent;
-	border-radius: 14px;
-	padding: 10px 12px;
+	border: var(--stroke-hairline) solid transparent;
+	border-radius: calc(var(--radius-md) + var(--space-1));
+	padding: var(--space-5) var(--space-6);
 	background: var(--entry-action);
 	color: var(--entry-text);
 	outline: none;
 	box-shadow: none;
-	line-height: 21px;
+	line-height: calc(var(--space-8) + var(--stroke-hairline));
 	font-size: var(--type-control);
 	user-select: text;
 }
 .entry-root .notch-composer textarea:focus {
-	outline: 2px solid var(--entry-accent);
-	outline-offset: 1px;
+	outline: var(--space-1) solid var(--entry-accent);
+	outline-offset: var(--stroke-hairline);
 	border-color: var(--entry-comment-focus-border);
 	box-shadow: none;
 }
@@ -213,17 +223,17 @@
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	margin-top: 7px;
+	margin-top: calc(var(--space-3) + var(--stroke-hairline));
 	color: var(--entry-text-secondary);
 	font-size: var(--type-micro);
-	min-height: 24px;
+	min-height: var(--space-9);
 }
 .comment-footer button {
 	background: var(--entry-action);
 	color: var(--entry-accent);
-	border-radius: 8px;
-	height: 24px;
-	padding: 0 12px;
+	border-radius: var(--radius-sm);
+	height: var(--space-9);
+	padding: 0 var(--space-6);
 	font-size: var(--type-caption);
 }
 .comment-footer button:hover:not(:disabled) {
@@ -240,82 +250,82 @@
 }
 .entry-feedback {
 	position: absolute;
-	top: calc(var(--entry-band) + 4px);
-	left: 8px;
-	right: 8px;
+	top: calc(var(--entry-band) + var(--space-2));
+	left: var(--space-4);
+	right: var(--space-4);
 	background: var(--entry-feedback);
 	color: var(--entry-feedback-ink);
-	border: 1px solid transparent;
-	border-radius: 12px;
-	padding: 8px 10px;
+	border: var(--stroke-hairline) solid transparent;
+	border-radius: var(--radius-md);
+	padding: var(--space-4) var(--space-5);
 	text-align: center;
 	font-size: var(--type-caption);
-	line-height: 17px;
+	line-height: calc(var(--space-7) + var(--stroke-hairline));
 	pointer-events: none;
 }
 .entry-floating .entry-feedback {
 	top: auto;
-	bottom: 76px;
-	left: 5px;
-	right: 5px;
+	bottom: calc(var(--space-14) + var(--space-6));
+	left: calc(var(--space-2) + var(--stroke-hairline));
+	right: calc(var(--space-2) + var(--stroke-hairline));
 }
 .entry-floating .menu-feedback {
-	bottom: 68px;
-	z-index: 2;
+	bottom: calc(var(--space-14) + var(--space-2));
+	z-index: var(--layer-map-marker);
 }
 .entry-floating[data-menu-down="true"] .entry-feedback {
-	top: 76px;
+	top: calc(var(--space-14) + var(--space-6));
 	bottom: auto;
 }
 .entry-floating[data-menu-down="true"] .menu-feedback {
-	top: 68px;
+	top: calc(var(--space-14) + var(--space-2));
 }
 .entry-top:has(.notch-surface:not([data-view="collapsed"])) .entry-feedback {
 	top: auto;
-	bottom: 6px;
-	left: 110px;
-	right: 18px;
-	padding: 4px 8px;
+	bottom: var(--space-3);
+	left: calc(var(--space-14) + calc(var(--space-12) - var(--space-1)));
+	right: calc(var(--space-7) + var(--space-1));
+	padding: var(--space-2) var(--space-4);
 	font-size: var(--type-micro);
 }
 .rabbit-menu {
 	position: absolute;
-	top: var(--entry-menu-y, 8px);
-	left: 8px;
-	right: 8px;
-	height: 167px;
-	padding: 5px;
+	top: var(--entry-menu-y, var(--space-4));
+	left: var(--space-4);
+	right: var(--space-4);
+	height: var(--rabbit-menu-height);
+	padding: calc(var(--space-2) + var(--stroke-hairline));
 	display: flex;
 	flex-direction: column;
-	gap: 4px;
+	gap: var(--space-2);
 	background: var(--entry-menu);
-	border: 1px solid transparent;
+	border: var(--stroke-hairline) solid transparent;
 	/* Match the host roundedRegion mask. */
-	border-radius: 20px;
-	box-shadow: 0 4px 12px var(--entry-menu-shadow);
+	border-radius: var(--entry-menu-radius);
+	box-shadow: var(--entry-menu-shadow-style);
 }
 .rabbit-menu button {
 	display: flex;
 	align-items: center;
-	gap: 13px;
-	height: 49px;
-	padding: 0 13px;
+	gap: calc(var(--space-6) + var(--stroke-hairline));
+	height: calc(var(--space-12) + var(--stroke-hairline));
+	padding: 0 calc(var(--space-6) + var(--stroke-hairline));
 	background: transparent;
-	border-radius: 13px;
+	border-radius: calc(var(--radius-md) + var(--stroke-hairline));
 	color: var(--entry-text);
 	font-size: var(--type-entry-menu);
 }
 .rabbit-menu svg {
-	width: 20px;
-	height: 20px;
+	width: var(--space-8);
+	height: var(--space-8);
 }
 .floating-detail {
 	position: absolute;
 	left: var(--entry-detail-x);
 	top: var(--entry-detail-y);
-	width: 23px;
-	height: 23px;
-	border-radius: 8px;
+	width: calc(var(--space-9) - var(--stroke-hairline));
+	height: calc(var(--space-9) - var(--stroke-hairline));
+	border-radius: var(--radius-sm);
 	background: var(--entry-warning-ink);
 	color: var(--entry-warning);
 }
@@ -334,7 +344,7 @@
 	width: var(--entry-rabbit-size);
 	height: var(--entry-rabbit-size);
 	opacity: 1;
-	z-index: 1;
+	z-index: var(--layer-base);
 }
 .entry-floating .entry-rabbit {
 	left: var(--entry-rabbit-x);

@@ -91,12 +91,14 @@ test('top rabbit follows native width continuously and avoids the physical notch
 test('entry surface corner radii agree with the native pointer masks', async () => {
  const css=await readFile(new URL('../src/entry.css',import.meta.url),'utf8');
  const native=await readFile(new URL('../src-tauri/native/entry.m',import.meta.url),'utf8');
- const top=css.match(/\.notch-surface \{[\s\S]*?border-radius:\s*0 0 (\d+)px (\d+)px;/);
- const menu=css.match(/\.rabbit-menu \{[\s\S]*?border-radius:\s*(\d+)px;/);
+ const tokens=await readFile(new URL('../src/tokens.css',import.meta.url),'utf8');
+ const px=name=>Number(tokens.match(new RegExp('--'+name+':\\s*(\\d+)px;'))?.[1]);
+ const top=css.match(/\.notch-surface \{[\s\S]*?border-radius:\s*0 0 var\(--entry-top-radius\) var\(--entry-top-radius\);/);
+ const menu=css.match(/\.rabbit-menu \{[\s\S]*?border-radius:\s*var\(--entry-menu-radius\);/);
  const topMask=native.match(/double radius=MIN\((\d+),g.width\/2\)/);
  const menuMask=native.match(/roundedRegion\(NSMakeRect\(8,g.menu_y,116,167\),(\d+),p\)/);
  assert(top&&menu&&topMask&&menuMask,'Native/CSS geometry declarations must remain inspectable');
- assert.equal(Number(top[1]),Number(topMask[1]),'top bottom-left corner');
- assert.equal(Number(top[2]),Number(topMask[1]),'top bottom-right corner');
- assert.equal(Number(menu[1]),Number(menuMask[1]),'floating menu corners');
+ assert.equal(px('entry-top-radius'),Number(topMask[1]),'top bottom-left corner');
+ assert.equal(px('entry-top-radius'),Number(topMask[1]),'top bottom-right corner');
+ assert.equal(px('entry-menu-radius'),Number(menuMask[1]),'floating menu corners');
 });

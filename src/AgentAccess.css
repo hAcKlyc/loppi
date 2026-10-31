@@ -1,5 +1,5 @@
 .agent-access {
-	max-width: 960px;
+	max-width: var(--agent-access-max-width);
 	margin: 0 auto;
 	padding: var(--space-11) var(--space-10) var(--space-12);
 	color: var(--color-text);
@@ -46,10 +46,10 @@
 .agent-online::before {
 	content: "";
 	display: inline-block;
-	width: 6px;
-	height: 6px;
+	width: var(--space-3);
+	height: var(--space-3);
 	margin-right: var(--space-3);
-	border-radius: 50%;
+	border-radius: var(--radius-circle);
 	background: currentColor;
 	vertical-align: middle;
 }
@@ -86,7 +86,7 @@
 	color: var(--color-text);
 }
 .agent-code code {
-	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-family: var(--font-time);
 }
 .agent-actions {
 	display: flex;
@@ -99,7 +99,7 @@
 	line-height: var(--leading-body);
 }
 .agent-copy-feedback {
-	min-height: 28px;
+	min-height: calc(var(--space-9) + var(--space-2));
 	margin-top: var(--space-4);
 	font-size: var(--type-caption);
 	color: var(--color-text-secondary);

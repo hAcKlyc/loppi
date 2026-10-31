@@ -35,8 +35,8 @@
    live status outside the button, and expose it as its description as well. */
 .capture-status-announcement {
 	position: absolute;
-	width: 1px;
-	height: 1px;
+	width: var(--stroke-hairline);
+	height: var(--stroke-hairline);
 	overflow: hidden;
 	clip-path: inset(50%);
 	white-space: nowrap;
@@ -55,11 +55,11 @@
 .capture-status-rabbit:before {
 	content: "";
 	position: absolute;
-	left: 14px;
-	right: 14px;
-	bottom: 6px;
-	height: 8px;
-	border-radius: 50%;
+	left: calc(var(--space-6) + var(--space-1));
+	right: calc(var(--space-6) + var(--space-1));
+	bottom: var(--space-3);
+	height: var(--space-4);
+	border-radius: var(--radius-circle);
 	background: var(--capture-wash);
 }
 .capture-status-rabbit .rabbit-art,
@@ -75,11 +75,11 @@
 }
 .capture-status-rabbit .rabbit-warning {
 	position: absolute;
-	right: 4px;
-	top: 4px;
-	width: 18px;
-	height: 18px;
-	border-radius: 50%;
+	right: var(--space-2);
+	top: var(--space-2);
+	width: calc(var(--space-7) + var(--space-1));
+	height: calc(var(--space-7) + var(--space-1));
+	border-radius: var(--radius-circle);
 	background: var(--color-warning-soft);
 	color: var(--color-warning-strong);
 	font-size: var(--type-meta);
@@ -89,7 +89,7 @@
 	display: grid;
 	justify-items: start;
 	gap: var(--space-2);
-	min-width: 112px;
+	min-width: var(--capture-status-copy-min-width);
 	transition: opacity var(--motion-fast);
 }
 .capture-status-control:hover .capture-status-copy,
@@ -101,10 +101,10 @@
 .capture-status.recording .capture-status-copy strong::before {
 	content: "";
 	display: inline-block;
-	width: 6px;
-	height: 6px;
+	width: var(--space-3);
+	height: var(--space-3);
 	margin-right: var(--space-3);
-	border-radius: 2px;
+	border-radius: var(--space-1);
 	background: var(--color-live);
 }
 .capture-status-copy strong {
@@ -131,7 +131,7 @@
 	font-size: var(--type-meta);
 	font-weight: var(--weight-semibold);
 	opacity: 0;
-	transition: opacity 120ms;
+	transition: opacity var(--motion-fast);
 }
 .capture-status-control:hover .capture-control-overlay,
 .capture-status-control:focus-visible .capture-control-overlay,
@@ -139,17 +139,17 @@
 	opacity: 1;
 }
 .capture-control-overlay svg {
-	width: 28px;
-	height: 28px;
+	width: calc(var(--space-9) + var(--space-2));
+	height: calc(var(--space-9) + var(--space-2));
 }
 .capture-status-feedback {
 	position: absolute;
 	right: 0;
 	top: calc(100% + var(--space-4));
 	z-index: var(--layer-floating-menu);
-	width: 300px;
+	width: var(--capture-status-feedback-width);
 	padding: var(--space-6) var(--space-7);
-	border: 1px solid transparent;
+	border: var(--stroke-hairline) solid transparent;
 	border-radius: var(--radius-md);
 	background: var(--color-warning-surface);
 	color: var(--color-warning-strong);

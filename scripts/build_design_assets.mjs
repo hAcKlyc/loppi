@@ -38,7 +38,7 @@ await mkdir(join(out,'rabbit/animations'),{recursive:true});
 for(const name of ['listening','sleeping'])await cp(join(root,'design/rabbit/upright-sleep-v2/animations',`${name}.gif`),join(out,'rabbit/animations',`${name}.gif`));
 const tokenCSS=(await read('src/tokens.css')).toString();
 const tokens=Object.fromEntries([...tokenCSS.matchAll(/--([\w-]+):\s*([^;]+);/g)].map(m=>[m[1],m[2].trim()]));
-await save(join(out,'tokens.json'),JSON.stringify({schema:1,source:'src/tokens.css',tokens},null,2)+'\n');
+await save(join(out,'tokens.json'),JSON.stringify({schema:2,source:'src/tokens.css',groups:Object.fromEntries([...['palette','color','entry','font','type','weight','tracking','leading','space','stroke','radius','shadow','ring','motion','ease','opacity','layer','control','icon','brand','layout','map'].map(group=>[group,Object.keys(tokens).filter(name=>name.startsWith(group+'-'))]),['component',Object.keys(tokens).filter(name=>! /^(palette|color|entry|font|type|weight|tracking|leading|space|stroke|radius|shadow|ring|motion|ease|opacity|layer|control|icon|brand|layout|map)-/.test(name))]] ),tokens},null,2)+'\n');
 await save(join(out,'tokens.css'),tokenCSS);
 const designSource=(await read('specs/DESIGN.md')).toString();
 const offlineDesign=designSource.replace(/\[([^\]]+)\]\(([^)]+)\)/g,(_,label,target)=>target.startsWith('http')?`[${label}](${target})`:`${label}（仓库：\`${relative(root,resolve(root,'specs',target))}\`）`);

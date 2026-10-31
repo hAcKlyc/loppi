@@ -12,8 +12,8 @@
 	outline: none;
 }
 .dialog-surface summary:focus-visible {
-	outline: 2px solid var(--color-focus);
-	outline-offset: 2px;
+	outline: var(--space-1) solid var(--color-focus);
+	outline-offset: var(--space-1);
 	border-radius: var(--radius-xs);
 }
 .dialog-surface::backdrop {
@@ -24,8 +24,8 @@
 }
 
 .control-icon {
-	width: 18px;
-	height: 18px;
+	width: calc(var(--space-7) + var(--space-1));
+	height: calc(var(--space-7) + var(--space-1));
 	flex: none;
 }
 .button-with-icon {
@@ -46,7 +46,7 @@
 @keyframes dialog-enter {
 	from {
 		opacity: 0;
-		transform: translateY(8px) scale(0.98);
+		transform: translateY(var(--space-4)) scale(0.98);
 	}
 	to {
 		opacity: 1;
@@ -57,7 +57,7 @@
 .secondary-button,
 .quiet-button,
 .danger-button {
-	border: 1px solid transparent;
+	border: var(--stroke-hairline) solid transparent;
 	border-radius: var(--radius-control);
 	min-height: var(--control-height-default);
 	padding: var(--space-3) var(--space-6);
@@ -112,7 +112,7 @@
 	border: 0;
 	background: none;
 	padding: var(--space-5) 0;
-	border-bottom: 2px solid transparent;
+	border-bottom: var(--space-1) solid transparent;
 	color: var(--color-text-muted);
 	font-size: var(--type-body);
 	font-weight: var(--weight-strong);
@@ -172,7 +172,7 @@
 	align-items: start;
 	gap: var(--space-4);
 	padding: var(--space-6);
-	border: 1px solid transparent;
+	border: var(--stroke-hairline) solid transparent;
 	background: var(--color-surface-subtle);
 	border-radius: var(--radius-control);
 	cursor: pointer;
@@ -219,7 +219,7 @@
 	visibility: hidden;
 }
 .control-button:active:not(:disabled) {
-	box-shadow: inset 0 0 0 1px currentColor;
+	box-shadow: inset 0 0 0 var(--stroke-hairline) currentColor;
 }
 .control-compact {
 	min-height: var(--control-height-compact);
@@ -245,7 +245,7 @@
 	right: 0;
 	z-index: var(--layer-toast);
 	width: max-content;
-	max-width: 220px;
+	max-width: var(--icon-button-max-width);
 	padding: var(--space-2) var(--space-4);
 	border-radius: var(--radius-xs);
 	background: var(--color-brand-hover);
@@ -293,7 +293,7 @@ textarea::placeholder {
 	position: absolute;
 	bottom: var(--space-4);
 	left: var(--space-8);
-	max-width: min(460px, 60vw);
+	max-width: var(--drawer-feedback-max-width);
 	z-index: var(--layer-toast);
 	box-shadow: var(--shadow-popover);
 }

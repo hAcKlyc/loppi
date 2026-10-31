@@ -173,7 +173,7 @@ export function UsageChart({
 							d={path(metric)}
 							fill="none"
 							stroke={metrics[metric].color}
-							strokeWidth="2.5"
+							strokeWidth="var(--stroke-chart)"
 							strokeLinecap="round"
 							strokeLinejoin="round"
 						/>
@@ -225,8 +225,8 @@ export function UsageChart({
 										cy={y(day[kind][metric], metric === "cost_nano")}
 										r="4"
 										fill={metrics[metric].color}
-										stroke="white"
-										strokeWidth="2"
+										stroke="var(--color-surface)"
+										strokeWidth="var(--stroke-icon-emphasis)"
 									/>
 								))}
 						</g>

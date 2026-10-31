@@ -25,7 +25,7 @@ function ControlIcon({ pause }: { pause: boolean }) {
 				<path
 					d="M7 5v10M13 5v10"
 					stroke="currentColor"
-					strokeWidth="2"
+					strokeWidth="var(--stroke-icon-emphasis)"
 					strokeLinecap="round"
 				/>
 			) : (

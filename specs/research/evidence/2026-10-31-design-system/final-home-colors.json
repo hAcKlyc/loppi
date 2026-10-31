@@ -1,0 +1,18 @@
+{
+  "colors": [
+    "#292c28",
+    "#625e57",
+    "#8bbda1",
+    "#968d7e",
+    "#a6533c",
+    "#b65b42",
+    "#e9f2eb",
+    "#ede9e1",
+    "#f4a686",
+    "#faf8f2",
+    "#fff0e7",
+    "#fffdf9"
+  ],
+  "count": 12,
+  "scope": "Production homepage, recording, 3 records, 1120px. Computed CSS and inline SVG plus approved wordmark asset. Excludes raster pixels and antialiasing. Includes the timeline rail and node shadow from ::before/::after."
+}

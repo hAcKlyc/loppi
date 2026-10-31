@@ -3,14 +3,14 @@
 	gap: var(--space-8);
 }
 .queue-tabs {
-	margin: -12px 0 24px;
+	margin: calc(-1 * var(--space-6)) 0 var(--space-9);
 }
 .usage-toolbar,
 .usage-chart-heading {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	gap: 16px;
+	gap: var(--space-7);
 }
 .usage-toolbar > span,
 .usage-footnote {
@@ -19,14 +19,14 @@
 }
 .usage-range {
 	display: flex;
-	padding: 4px;
+	padding: var(--space-2);
 	border-radius: var(--radius-control);
 	background: var(--color-control);
 }
 .usage-range button {
 	border: 0;
 	border-radius: var(--radius-sm);
-	padding: 8px 16px;
+	padding: var(--space-4) var(--space-7);
 	background: transparent;
 	color: var(--color-text-secondary);
 	font-size: var(--type-meta);
@@ -38,7 +38,7 @@
 }
 .usage-chart {
 	min-width: 0;
-	padding-bottom: 16px;
+	padding-bottom: var(--space-7);
 }
 .usage-chart-heading {
 	align-items: flex-start;
@@ -48,7 +48,7 @@
 	font-size: var(--type-lead);
 }
 .usage-chart-heading p {
-	margin: 6px 0 0;
+	margin: var(--space-3) 0 0;
 	font-size: var(--type-caption);
 	color: var(--color-text-muted);
 }
@@ -56,15 +56,16 @@
 	display: flex;
 	flex-wrap: wrap;
 	justify-content: flex-end;
-	gap: 6px;
+	gap: var(--space-3);
 }
 .usage-legend button {
 	display: flex;
 	align-items: center;
-	gap: 6px;
+	gap: var(--space-3);
 	background: var(--color-surface-subtle);
 	color: var(--color-text-secondary);
-	padding: 7px 9px;
+	padding: calc(var(--space-3) + var(--stroke-hairline))
+		calc(var(--space-4) + var(--stroke-hairline));
 	border: 0;
 	border-radius: var(--radius-sm);
 	font-size: var(--type-caption);
@@ -73,13 +74,13 @@
 .usage-legend :where(button) span,
 .usage-tooltip i {
 	display: inline-block;
-	width: 8px;
-	height: 8px;
-	border-radius: 50%;
+	width: var(--space-4);
+	height: var(--space-4);
+	border-radius: var(--radius-circle);
 	flex-shrink: 0;
 }
 .usage-legend button[aria-pressed="false"] {
-	opacity: 0.5;
+	opacity: var(--opacity-disabled);
 	text-decoration: line-through;
 }
 .usage-legend button:hover {
@@ -87,18 +88,18 @@
 }
 .usage-plot-wrap {
 	position: relative;
-	margin: 8px -12px 0;
+	margin: var(--space-4) calc(-1 * var(--space-6)) 0;
 }
 .usage-plot-wrap svg {
 	display: block;
 	width: 100%;
-	min-height: 190px;
+	min-height: var(--usage-plot-wrap-svg-min-height);
 	overflow: visible;
-	border-radius: 8px;
+	border-radius: var(--radius-sm);
 }
 .usage-grid line {
 	stroke: var(--color-border-subtle);
-	stroke-width: 1;
+	stroke-width: var(--stroke-hairline);
 }
 .usage-grid text,
 .usage-date {
@@ -119,26 +120,26 @@
 }
 .usage-tooltip {
 	position: absolute;
-	top: 12px;
+	top: var(--space-6);
 	right: 7%;
 	display: grid;
-	gap: 8px;
-	padding: 14px 16px;
+	gap: var(--space-4);
+	padding: calc(var(--space-6) + var(--space-1)) var(--space-7);
 	background: var(--color-surface);
 	box-shadow: var(--shadow-popover);
 	border-radius: var(--radius-control);
-	min-width: 200px;
+	min-width: var(--usage-tooltip-min-width);
 	font-size: var(--type-caption);
 	pointer-events: none;
 }
 .usage-tooltip > span {
 	display: flex;
 	align-items: center;
-	gap: 7px;
+	gap: calc(var(--space-3) + var(--stroke-hairline));
 }
 .usage-tooltip b {
 	margin-left: auto;
-	padding-left: 18px;
+	padding-left: calc(var(--space-7) + var(--space-1));
 	font-weight: var(--weight-medium);
 	font-variant-numeric: tabular-nums;
 }
@@ -148,7 +149,7 @@
 	font-size: var(--type-caption);
 }
 .usage-incomplete {
-	margin: 8px 0 0;
+	margin: var(--space-4) 0 0;
 }
 .usage-footnote {
 	margin: 0;
@@ -156,8 +157,8 @@
 }
 .usage-accessible {
 	position: absolute;
-	width: 1px;
-	height: 1px;
+	width: var(--stroke-hairline);
+	height: var(--stroke-hairline);
 	overflow: hidden;
 	clip-path: inset(50%);
 }

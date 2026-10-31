@@ -11,6 +11,17 @@ const { JSDOM } = requireTest('jsdom');
 const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost/' });
 for (const name of ['window', 'document', 'HTMLElement', 'HTMLTextAreaElement', 'Event', 'MouseEvent', 'KeyboardEvent']) globalThis[name] = dom.window[name];
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+// JSDOM exposes custom properties rather than resolving CSS lengths. Resolve
+// only the numeric endpoint checked here; native/browser checks cover rendering.
+const tokenSource=readFileSync(new URL('../src/tokens.css',import.meta.url),'utf8');
+const visualTokens=Object.fromEntries([...tokenSource.matchAll(/--([\w-]+):\s*([^;]+);/g)].map(m=>[m[1],m[2].trim()]));
+function computedLeft(element){
+ let value=window.getComputedStyle(element).left;
+ for(let i=0;i<20&&value.includes('var(');i++)value=value.replace(/var\(--([\w-]+)\)/g,(_,name)=>visualTokens[name]??'INVALID');
+ value=value.replaceAll('calc','').replaceAll('px','');
+ assert.match(value,/^[\d\s()+*\-/.]+$/,'Only resolved numeric geometry is evaluated');
+ return Function('return ('+value+')')()+'px';
+}
 const style = document.createElement('style');
 style.textContent = readFileSync(new URL('../src/entry.css', import.meta.url), 'utf8');
 document.head.append(style);
@@ -89,11 +100,11 @@ try {
   assert(!panel(), 'action immediately collapses');
   assert.equal(document.querySelector('.entry-top .entry-rabbit'), persistentRabbit, 'rabbit keeps its DOM identity while closing');
   assert(document.querySelector('[role=status]').textContent.includes('已标记'), 'confirmed feedback');
-  assert.equal(window.getComputedStyle(document.querySelector('[role=status]')).left, '8px', 'collapsed feedback retains the full-width endpoint');
+  assert.equal(computedLeft(document.querySelector('[role=status]')), '8px', 'collapsed feedback retains the full-width endpoint');
   // No kind 7 release: a direct/keyboard-generated click must override the guard.
   await click(document.querySelector('.entry-rabbit'));
   assert(panel(), 'explicit click reopens while inhibited');
-  assert.equal(window.getComputedStyle(document.querySelector('[role=status]')).left, '110px', 'expanded feedback retains its separate endpoint');
+  assert.equal(computedLeft(document.querySelector('[role=status]')), '110px', 'expanded feedback retains its separate endpoint');
   assert.equal(layouts.at(-1).suppress, false, 'native open is also unsuppressed');
   const count = layouts.length;
   await native(1, 1);

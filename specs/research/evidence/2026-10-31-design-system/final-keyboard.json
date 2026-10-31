@@ -1,0 +1,16 @@
+{
+  "forward": {
+    "outline": "solid",
+    "outlineWidth": "2px",
+    "tag": "SUMMARY",
+    "text": "更多说明"
+  },
+  "back": {
+    "label": null,
+    "tag": "TEXTAREA"
+  },
+  "return": {
+    "dialogs": 0,
+    "text": "打开编辑"
+  }
+}
