@@ -2,12 +2,13 @@
 // Static design exports only. Runtime assets stay ordinary SVG/PNG and existing atlas data.
 import sharp from 'sharp';
 import {readFile, writeFile, mkdir, cp, readdir, stat} from 'node:fs/promises';
-import {resolve, join, relative, dirname} from 'node:path';
+import {resolve, join, relative, dirname, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const out=join(root,'design/system-v1');
+const portableRelative=(from,to)=>relative(from,to).split(sep).join('/');
 const read=p=>readFile(join(root,p));
 const save=async(p,data)=>{await mkdir(dirname(p),{recursive:true});await writeFile(p,data);};
 const svg=await read('src/assets/brand/wordmark.svg');
@@ -32,6 +33,7 @@ await cp(join(root,'design/rabbit/b4-i4-v1/icons/rounded-1024.png'),join(out,'ic
 for(const size of [16,24,32,48,64,128,256,512,1024])await cp(join(root,'design/rabbit/b4-i4-v1/icons',`app-${size}.png`),join(out,'icons',`app-${size}.png`));
 await cp(join(root,'design/rabbit/b4-i4-v1/icons/loppi.iconset'),join(out,'icons/loppi.iconset'),{recursive:true});
 await cp(join(root,'src-tauri/icons/icon.icns'),join(out,'icons/loppi.icns'));
+await cp(join(root,'src-tauri/icons/icon.ico'),join(out,'icons/loppi.ico'));
 await cp(join(root,'assets/loppi-icon-source.png'),join(out,'source/product-icon-original.png'));
 await cp(join(root,'src/assets/rabbit'),join(out,'rabbit'),{recursive:true});
 await mkdir(join(out,'rabbit/animations'),{recursive:true});
@@ -41,7 +43,7 @@ const tokens=Object.fromEntries([...tokenCSS.matchAll(/--([\w-]+):\s*([^;]+);/g)
 await save(join(out,'tokens.json'),JSON.stringify({schema:2,source:'src/tokens.css',groups:Object.fromEntries([...['palette','color','entry','font','type','weight','tracking','leading','space','stroke','radius','shadow','ring','motion','ease','opacity','layer','control','icon','brand','layout','map'].map(group=>[group,Object.keys(tokens).filter(name=>name.startsWith(group+'-'))]),['component',Object.keys(tokens).filter(name=>! /^(palette|color|entry|font|type|weight|tracking|leading|space|stroke|radius|shadow|ring|motion|ease|opacity|layer|control|icon|brand|layout|map)-/.test(name))]] ),tokens},null,2)+'\n');
 await save(join(out,'tokens.css'),tokenCSS);
 const designSource=(await read('specs/DESIGN.md')).toString();
-const offlineDesign=designSource.replace(/\[([^\]]+)\]\(([^)]+)\)/g,(_,label,target)=>target.startsWith('http')?`[${label}](${target})`:`${label}（仓库：\`${relative(root,resolve(root,'specs',target))}\`）`);
+const offlineDesign=designSource.replace(/\[([^\]]+)\]\(([^)]+)\)/g,(_,label,target)=>target.startsWith('http')?`[${label}](${target})`:`${label}（仓库：\`${portableRelative(root,resolve(root,'specs',target))}\`）`);
 await save(join(out,'DESIGN.md'),'<!-- Generated from specs/DESIGN.md; edit the source and rebuild. Repository paths are references, not bundled files. -->\n'+offlineDesign);
 const cover=(width,height,copy)=>`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="${width}" height="${height}" fill="#FAF8F2"/><g transform="translate(88 ${height/2-100}) scale(1.25)">${logoInner}</g><text x="92" y="${height/2+86}" fill="#625E57" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="24">${copy}</text><image href="${rabbitURL}" x="${width-320}" y="${height/2-96}" width="192" height="192" style="image-rendering:pixelated"/><rect x="88" y="${height-48}" width="${width-176}" height="1" fill="#DED9D0"/></svg>`;
 for(const [name,width,height,copy] of [['readme-header',1280,360,'声音留在这里。'],['social-cover',1280,640,'A quiet companion for your everyday audio.']]){
@@ -78,7 +80,7 @@ await save(join(out,'usage.svg'),usage);
 await save(join(out,'usage.png'),await sharp(Buffer.from(usage)).png().toBuffer());
 execFileSync(process.execPath,[join(root,'scripts/build_design_preview.mjs')],{cwd:root,stdio:'inherit'});
 const files=[];
-async function walk(dir){for(const entry of await readdir(dir,{withFileTypes:true})){const path=join(dir,entry.name);if(entry.isDirectory())await walk(path);else if(entry.isFile()&&path!==join(out,'manifest.json')){const bytes=await readFile(path);files.push({path:relative(out,path),bytes:(await stat(path)).size,sha256:createHash('sha256').update(bytes).digest('hex')});}}}
+async function walk(dir){for(const entry of await readdir(dir,{withFileTypes:true})){const path=join(dir,entry.name);if(entry.isDirectory())await walk(path);else if(entry.isFile()&&path!==join(out,'manifest.json')){const bytes=await readFile(path);files.push({path:portableRelative(out,path),bytes:(await stat(path)).size,sha256:createHash('sha256').update(bytes).digest('hex')});}}}
 await walk(out);files.sort((a,b)=>a.path.localeCompare(b.path));
 await save(join(out,'manifest.json'),JSON.stringify({schema:1,designVersion:1,sources:{wordmark:'src/assets/brand/wordmark.svg',icon:'assets/loppi-icon-source.png',rabbit:'src/assets/rabbit/manifest.json',tokens:'src/tokens.css'},files},null,2)+'\n');
 console.log(`Exported ${files.length} assets to design/system-v1`);

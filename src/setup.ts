@@ -6,6 +6,7 @@ import {
 	core,
 	type ServiceState,
 } from "./api.ts";
+import { desktopPlatform } from "./platform.ts";
 export interface ModelState {
 	phase: string;
 	speaker_phase: string;
@@ -17,8 +18,17 @@ export interface PrivacyStatus {
 	microphone: number;
 	microphone_available: boolean;
 	screen_and_system_audio: number;
+	system_audio?: number;
 	tap_required: boolean;
 	tap_ready: boolean;
+}
+export function systemAudioPrepared(privacy: PrivacyStatus | null): boolean {
+	if (!privacy) return false;
+	return desktopPlatform() === "windows"
+		? privacy.system_audio === 1
+		: privacy.tap_required
+			? privacy.tap_ready
+			: privacy.screen_and_system_audio === 1;
 }
 export function setupBlocker(
 	state: ServiceState | null,
@@ -47,12 +57,11 @@ export function setupBlocker(
 		return "请授权或取消选择麦克风";
 	if (
 		state.system_enabled &&
-		(!(privacy.tap_required
-			? privacy.tap_ready
-			: privacy.screen_and_system_audio === 1) ||
-			state.system_phase === "unavailable")
+		(!systemAudioPrepared(privacy) || state.system_phase === "unavailable")
 	)
-		return "请授权或取消选择电脑声音";
+		return desktopPlatform() === "windows"
+			? "请检查或取消选择电脑声音"
+			: "请授权或取消选择电脑声音";
 	if (
 		!["llm", "asr"].every((p) =>
 			queues.some((q) => q.provider === p && q.configured),

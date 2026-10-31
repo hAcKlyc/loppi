@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, access } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { basename, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
+import sharp from 'sharp';
 
 const root = resolve(import.meta.dirname, '..');
 const css = await readFile(resolve(root, 'src/tokens.css'), 'utf8');
@@ -45,6 +46,7 @@ test('source assets and exported token definitions agree', async () => {
     assert.equal(createHash('sha256').update(bytes).digest('hex'), file.sha256, `Product ICON changed: ${file.path}`);
   }
   assert.deepEqual(await readFile(resolve(root, 'design/system-v1/icons/loppi.icns')), await readFile(resolve(root, 'src-tauri/icons/icon.icns')));
+  assert.deepEqual(await readFile(resolve(root, 'design/system-v1/icons/loppi.ico')), await readFile(resolve(root, 'src-tauri/icons/icon.ico')));
   assert.deepEqual(await readFile(resolve(root, 'design/system-v1/icons/app-square-1024.png')), await readFile(resolve(root, 'src/assets/rabbit/app-icon-square.png')));
   const svg = await readFile(resolve(root, 'src/assets/brand/wordmark.svg'), 'utf8');
   assert(!/<(?:text|image)\b/.test(svg), 'Wordmark must be real vector outlines');
@@ -62,6 +64,27 @@ test('formal asset manifest hashes correspond to the shipped files', async () =>
     assert.equal(bytes.length, file.bytes, file.path);
     assert.equal(createHash('sha256').update(bytes).digest('hex'), file.sha256, file.path);
   }
+});
+
+test('Windows ICO frames preserve the approved folded-ear product artwork', async () => {
+ const ico=await readFile(resolve(root,'src-tauri/icons/icon.ico'));
+ const master=await readFile(resolve(root,'src/assets/rabbit/app-icon-square.png'));
+ const approved=JSON.parse(await readFile(resolve(root,'design/system-v1/source/product-icon.json'))).windows_ico;
+ assert.equal(createHash('sha256').update(master).digest('hex'),approved.source_sha256);
+ assert.equal(ico.readUInt16LE(0),0);assert.equal(ico.readUInt16LE(2),1);
+ const sizes=[];
+ for(let i=0;i<ico.readUInt16LE(4);i++){
+  const at=6+i*16,size=ico[at]||256;
+  assert.equal(ico[at+1]||256,size);
+  const length=ico.readUInt32LE(at+8),offset=ico.readUInt32LE(at+12);
+  assert(offset>=6+16*ico.readUInt16LE(4)&&offset+length<=ico.length);
+  const frame=ico.subarray(offset,offset+length);
+  const {data:actual,info}=await sharp(frame).ensureAlpha().raw().toBuffer({resolveWithObject:true});
+  assert.equal(info.width,size);assert.equal(info.height,size);
+  assert.equal(createHash('sha256').update(actual).digest('hex'),approved.rgba_sha256[size],`Changed approved product artwork at ${size}px`);
+  sizes.push(size);
+ }
+ assert.deepEqual(sizes,[16,24,32,48,64,128,256]);
 });
 
 test('tokens are acyclic, complete, and preserve the approved foundations', async () => {
@@ -83,7 +106,7 @@ test('the whole frontend consumes tokens without private palettes or undefined r
   const files=await sources(resolve(root,'src'));
   const declared=new Set(files.flatMap(([,s])=>[...s.matchAll(/--([\w-]+)["']?\s*:/g)].map(m=>m[1])));
   for(const [path,s] of files){
-    if(path.endsWith('/tokens.css'))continue;
+    if(basename(path)==='tokens.css')continue;
     const source=s.replace(/\/\*[\s\S]*?\*\//g,'');
     assert(!/#[a-f\d]{3,8}\b|\b(?:rgb|hsl|oklch|lab)a?\(/i.test(source),`Private palette: ${path}`);
     for(const m of source.matchAll(/var\(--([\w-]+)/g))assert(declared.has(m[1]),`Undefined --${m[1]} in ${path}`);

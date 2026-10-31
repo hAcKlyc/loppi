@@ -3,11 +3,13 @@ import { useRef, useState } from "react";
 import { core, type ServiceState, userError } from "./api";
 import { Button, Switch } from "./Controls";
 import { LoadBoundary } from "./LoadingState";
+import { audioPermissionHelp, desktopPlatform } from "./platform";
 import {
 	type ModelState,
 	modelErrors,
 	modelLabels,
 	type PrivacyStatus,
+	systemAudioPrepared,
 } from "./setup";
 import { useSettingMutation } from "./useSettingMutation";
 
@@ -224,6 +226,7 @@ export function SourcePreparation({
 		}
 	};
 	const sourceMutation = useSettingMutation(onRefresh);
+	const windows = desktopPlatform() === "windows";
 	const sourceLocked =
 		!!busy || sourceMutation.busy || sourceMutation.uncertain;
 	const [sourceOptionsOpen, setSourceOptionsOpen] = useState(false);
@@ -254,23 +257,22 @@ export function SourcePreparation({
 							: state?.system_enabled;
 						const ready = mic
 							? privacy?.microphone === 3
-							: privacy?.tap_required
-								? privacy.tap_ready
-								: privacy?.screen_and_system_audio === 1;
+							: systemAudioPrepared(privacy);
 						const unavailable = mic
 							? privacy?.microphone_available === false ||
 								state?.microphone_phase === "unavailable"
 							: state?.system_phase === "unavailable";
 						const denied = mic && [1, 2].includes(privacy?.microphone ?? -1);
 						const label = mic ? "麦克风" : "电脑声音";
+						const readyLabel =
+							!mic && (windows || privacy?.tap_required) ? "已准备" : "已授权";
 						if (compact) {
 							if (!enabled) return null;
 							return (
 								<div className="setup-permission-item" key={source}>
 									{ready && !unavailable ? (
 										<span className="setup-permission-ready" role="status">
-											{label} ·{" "}
-											{mic || !privacy?.tap_required ? "已授权" : "已准备"} ✓
+											{label} · {readyLabel} ✓
 										</span>
 									) : (
 										<Button
@@ -294,7 +296,9 @@ export function SourcePreparation({
 												? "正在处理…"
 												: denied || unavailable
 													? `${label} · 系统设置 ↗`
-													: `授权${label}`}
+													: windows && !mic
+														? "检查电脑声音"
+														: `授权${label}`}
 										</Button>
 									)}
 									{(denied || unavailable) && (
@@ -320,10 +324,12 @@ export function SourcePreparation({
 												: unavailable
 													? "来源不可用 · 尚不能录制"
 													: !ready
-														? "待授权 · 尚不能录制"
+														? windows && !mic
+															? "待检查 · 尚不能录制"
+															: "待授权 · 尚不能录制"
 														: !mic && privacy?.tap_required
 															? "已完成授权准备"
-															: "已授权"}
+															: readyLabel}
 										</span>
 									</div>
 									<p>
@@ -359,7 +365,9 @@ export function SourcePreparation({
 												? "正在处理…"
 												: denied || unavailable
 													? "打开系统设置"
-													: "允许访问"}
+													: windows && !mic
+														? "检查电脑声音"
+														: "允许访问"}
 										</Button>
 									)}
 								</div>
@@ -461,14 +469,13 @@ export function SourcePreparation({
 							</button>
 						)}
 					</div>
+					<p>{audioPermissionHelp()}</p>
 					<p>
-						系统设置 → 隐私与安全性 →
-						麦克风或屏幕与系统音频录制。返回后自动复查；受系统限制时联系管理员。
-					</p>
-					<p>
-						{privacy?.tap_required
-							? "电脑声音“已准备”表示完成过授权检查，实际可用性以开始记录为准。"
-							: "屏幕相关许可用于采集电脑声音，不保存屏幕画面。"}
+						{windows
+							? "电脑声音从输出设备获取，不保存屏幕画面；实际可用性以开始记录为准。"
+							: privacy?.tap_required
+								? "电脑声音“已准备”表示完成过授权检查，实际可用性以开始记录为准。"
+								: "屏幕相关许可用于采集电脑声音，不保存屏幕画面。"}
 						授权检查不保存或上传声音。
 					</p>
 				</div>
@@ -489,8 +496,8 @@ export function SourcePreparation({
 				<details className="setup-help">
 					<summary>授权遇到问题</summary>
 					<p>
-						打开系统设置 → 隐私与安全性 → 麦克风或屏幕与系统音频录制，允许
-						loppi。受系统管理限制时需联系管理员。返回后会重新检查；电脑声音可点击重新验证。授权检查不保存或上传声音。
+						{audioPermissionHelp()}
+						电脑声音可点击重新验证。授权检查不保存或上传声音。
 					</p>
 					<div className="setting-actions">
 						<Button

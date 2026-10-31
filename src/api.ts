@@ -36,6 +36,10 @@ const errorLabels: Record<string, string> = {
 	export_failed: "导出未完成，请检查目标位置后重试",
 	screenshot_unavailable: "暂时无法读取这张截图",
 	screenshot_failed: "截屏未完成，请重试",
+	screenshot_desktop_unavailable:
+		"当前桌面无法截图，请解锁 Windows 并保持桌面可见后重试",
+	screenshot_window_owner: "截图窗口已变化，请重新打开入口后重试",
+	screenshot_timeout: "截屏超时，请重试",
 	protocol_version: "应用组件版本不一致，请重新打开 loppi",
 	provider_transport: "无法连接云端服务，请检查网络后重试",
 	provider_verification_failed: "密钥验证未通过，请检查后重试",
@@ -60,10 +64,10 @@ export function userError(error: unknown): string {
 	if (code === "provider_http_429") return "云端服务请求过多，请稍后重试";
 	if (code?.startsWith("provider_http_"))
 		return "云端服务暂时无法验证，请稍后重试";
-	if (message.startsWith("keychain_save_"))
-		return "无法将密钥保存到系统钥匙串，请稍后重试";
-	if (message.startsWith("keychain_read_"))
-		return "无法读取系统钥匙串中的密钥，请重新打开 loppi；若仍失败，请在设置中重新保存密钥";
+	if (/^(keychain|credential)_save_/.test(message))
+		return "无法将密钥保存到系统安全存储，请稍后重试";
+	if (/^(keychain|credential)_read_/.test(message))
+		return "无法读取系统安全存储中的密钥，请重新打开 loppi；若仍失败，请在设置中重新保存密钥";
 	if (code === "reorganization_invalid") {
 		if (message.includes("no_coarse_text")) return "这段时间暂无可整理的文字";
 		if (message.includes("future_range")) return "请选择已经发生的时间范围";

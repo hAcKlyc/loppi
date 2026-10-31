@@ -2022,7 +2022,7 @@ body.floating-body .float-wrap {
 		min-width: 0;
 		width: 100vw;
 	}
-	.detail-header {
+	.app-shell:not([data-platform="windows"]) .detail-header {
 		/* The full-width drawer sits below native macOS window controls. */
 		padding-top: calc(var(--space-11) + var(--space-2));
 	}

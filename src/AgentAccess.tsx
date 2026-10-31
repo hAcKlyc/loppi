@@ -1,6 +1,7 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, SegmentedOptions, Tabs } from "./Controls";
+import { desktopPlatform } from "./platform";
 import "./AgentAccess.css";
 
 type Connection = {
@@ -156,7 +157,9 @@ export function AgentAccess() {
 								</Button>
 								<span>
 									{target === "codex"
-										? "添加到 ~/.codex/config.toml 后重连。"
+										? desktopPlatform() === "windows"
+											? "添加到 Codex 配置文件后重连。"
+											: "添加到 ~/.codex/config.toml 后重连。"
 										: "合并到 Agent 的 MCP 配置后重连。"}
 								</span>
 							</div>
@@ -176,7 +179,10 @@ export function AgentAccess() {
 								>
 									复制安装命令
 								</Button>
-								<span>在终端运行一次。已有自定义 Skill 不会被覆盖。</span>
+								<span>
+									在{desktopPlatform() === "windows" ? " PowerShell " : "终端"}
+									运行一次。已有自定义 Skill 不会被覆盖。
+								</span>
 							</div>
 							<details className="agent-cli-example">
 								<summary>试一条读取命令</summary>

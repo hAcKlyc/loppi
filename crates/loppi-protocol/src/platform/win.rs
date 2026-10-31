@@ -534,13 +534,45 @@ fn process_image(pid: u32) -> io::Result<std::path::PathBuf> {
     std::fs::canonicalize(std::ffi::OsString::from_wide(&bytes))
 }
 
-/// Ask only this installation's same-user/session GUI to take its normal exit
-/// route. Never kills a process or accepts a request-supplied process identity.
+fn installed_process_ids(wanted: &[std::path::PathBuf]) -> io::Result<Vec<u32>> {
+    let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
+    if snapshot == INVALID_HANDLE_VALUE {
+        return Err(io::Error::last_os_error());
+    }
+    // Own the snapshot across every enumeration/error return.
+    let snapshot = unsafe { std::os::windows::io::OwnedHandle::from_raw_handle(snapshot.cast()) };
+    let mut entry: PROCESSENTRY32W = unsafe { mem::zeroed() };
+    entry.dwSize = mem::size_of_val(&entry) as u32;
+    let mut pids = Vec::new();
+    let mut ok = unsafe { Process32FirstW(snapshot.as_raw_handle().cast(), &mut entry) };
+    while ok != 0 {
+        let name = String::from_utf16_lossy(&entry.szExeFile);
+        let name = name.trim_end_matches('\0');
+        if wanted.iter().any(|path| {
+            path.file_name()
+                .is_some_and(|file| file.to_string_lossy().eq_ignore_ascii_case(name))
+        }) && verify_process(entry.th32ProcessID).is_ok()
+            && process_image(entry.th32ProcessID).is_ok_and(|image| wanted.contains(&image))
+        {
+            pids.push(entry.th32ProcessID);
+        }
+        ok = unsafe { Process32NextW(snapshot.as_raw_handle().cast(), &mut entry) };
+    }
+    let error = unsafe { GetLastError() };
+    if error != ERROR_NO_MORE_FILES {
+        return Err(io::Error::from_raw_os_error(error as i32));
+    }
+    Ok(pids)
+}
+
+/// Process discovery precedes window discovery: a starting GUI may not have
+/// registered its entry window yet. One deadline bounds all GUI instances.
 pub fn stop_installed_gui(directory: &Path) -> io::Result<()> {
     use windows_sys::Win32::UI::WindowsAndMessaging::*;
     struct Search {
+        pid: u32,
         image: std::path::PathBuf,
-        windows: Vec<(u32, HWND)>,
+        window: Option<HWND>,
     }
     unsafe extern "system" fn each(hwnd: HWND, param: LPARAM) -> i32 {
         let search = unsafe { &mut *(param as *mut Search) };
@@ -551,75 +583,101 @@ pub fn stop_installed_gui(directory: &Path) -> io::Result<()> {
         unsafe {
             GetWindowThreadProcessId(hwnd, &mut pid);
         }
-        if verify_process(pid).is_ok() && process_image(pid).ok().as_ref() == Some(&search.image) {
-            search.windows.push((pid, hwnd));
+        if pid == search.pid
+            && verify_process(pid).is_ok()
+            && process_image(pid).ok().as_ref() == Some(&search.image)
+        {
+            search.window = Some(hwnd);
         }
         1
     }
     let image = std::fs::canonicalize(directory.join("loppi-desktop.exe"))?;
-    let mut search = Search {
-        image,
-        windows: Vec::new(),
-    };
-    if unsafe { EnumWindows(Some(each), (&mut search as *mut Search) as isize) } == 0 {
-        return Err(io::Error::last_os_error());
-    }
-    for (pid, hwnd) in search.windows {
-        let handle = unsafe { OpenProcess(SYNCHRONIZE, 0, pid) };
-        if handle.is_null() {
-            continue;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+    loop {
+        let pids = installed_process_ids(std::slice::from_ref(&image))?;
+        if pids.is_empty() {
+            return Ok(());
         }
-        let posted = unsafe { PostMessageW(hwnd, WM_APP + 43, 0, 0) };
-        let stopped = if posted != 0 {
-            (unsafe { WaitForSingleObject(handle, 15000) }) == WAIT_OBJECT_0
-        } else {
-            false
-        };
-        unsafe {
-            CloseHandle(handle);
-        }
-        if !stopped {
+        if std::time::Instant::now() >= deadline {
             return Err(io::Error::new(
                 io::ErrorKind::TimedOut,
                 "loppi GUI did not complete normal shutdown; installation was not changed",
             ));
         }
+        for pid in pids {
+            let handle = unsafe { OpenProcess(SYNCHRONIZE, 0, pid) };
+            if handle.is_null() {
+                let error = io::Error::last_os_error();
+                // A process may finish between the snapshot and OpenProcess.
+                // Rescan rather than treating an inaccessible live GUI as gone.
+                if process_image(pid).ok().as_ref() == Some(&image) {
+                    return Err(error);
+                }
+                continue;
+            }
+            let handle =
+                unsafe { std::os::windows::io::OwnedHandle::from_raw_handle(handle.cast()) };
+            loop {
+                let state = unsafe { WaitForSingleObject(handle.as_raw_handle().cast(), 0) };
+                if state == WAIT_OBJECT_0 {
+                    break;
+                }
+                if state == WAIT_FAILED {
+                    return Err(io::Error::last_os_error());
+                }
+                let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+                if remaining.is_zero() {
+                    return Err(io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        "loppi GUI did not complete normal shutdown; installation was not changed",
+                    ));
+                }
+                let mut search = Search {
+                    pid,
+                    image: image.clone(),
+                    window: None,
+                };
+                if unsafe { EnumWindows(Some(each), (&mut search as *mut Search) as isize) } == 0 {
+                    return Err(io::Error::last_os_error());
+                }
+                if let Some(hwnd) = search.window {
+                    unsafe {
+                        PostMessageW(hwnd, WM_APP + 43, 0, 0);
+                    }
+                    // Even a disappearing window is not proof of process exit.
+                    let millis = deadline
+                        .saturating_duration_since(std::time::Instant::now())
+                        .as_millis()
+                        .min(u32::MAX as u128) as u32;
+                    let state =
+                        unsafe { WaitForSingleObject(handle.as_raw_handle().cast(), millis) };
+                    if state == WAIT_OBJECT_0 {
+                        break;
+                    }
+                    return Err(if state == WAIT_FAILED {
+                        io::Error::last_os_error()
+                    } else {
+                        io::Error::new(
+                            io::ErrorKind::TimedOut,
+                            "loppi GUI did not complete normal shutdown; installation was not changed",
+                        )
+                    });
+                }
+                std::thread::sleep(remaining.min(std::time::Duration::from_millis(25)));
+            }
+        }
+        // Catch a GUI that started while another instance was exiting.
     }
-    Ok(())
 }
 
 pub fn wait_installed_helpers(directory: &Path) -> io::Result<()> {
-    let wanted = ["loppi-core.exe", "loppi-worker.exe"]
-        .map(|name| std::fs::canonicalize(directory.join(name)));
+    let wanted = ["loppi-desktop.exe", "loppi-core.exe", "loppi-worker.exe"]
+        .into_iter()
+        .filter_map(|name| std::fs::canonicalize(directory.join(name)).ok())
+        .collect::<Vec<_>>();
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
     loop {
-        let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
-        if snapshot == INVALID_HANDLE_VALUE {
-            return Err(io::Error::last_os_error());
-        }
-        let mut entry: PROCESSENTRY32W = unsafe { mem::zeroed() };
-        entry.dwSize = mem::size_of_val(&entry) as u32;
-        let mut busy = false;
-        let mut ok = unsafe { Process32FirstW(snapshot, &mut entry) };
-        while ok != 0 {
-            let name = String::from_utf16_lossy(&entry.szExeFile)
-                .trim_end_matches('\0')
-                .to_lowercase();
-            if matches!(name.as_str(), "loppi-core.exe" | "loppi-worker.exe")
-                && verify_process(entry.th32ProcessID).is_ok()
-            {
-                if let Ok(image) = process_image(entry.th32ProcessID) {
-                    busy |= wanted
-                        .iter()
-                        .any(|path| path.as_ref().is_ok_and(|path| path == &image));
-                }
-            }
-            ok = unsafe { Process32NextW(snapshot, &mut entry) };
-        }
-        unsafe {
-            CloseHandle(snapshot);
-        }
-        if !busy {
+        if installed_process_ids(&wanted)?.is_empty() {
             return Ok(());
         }
         if std::time::Instant::now() >= deadline {

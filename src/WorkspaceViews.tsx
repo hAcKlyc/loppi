@@ -36,6 +36,7 @@ import {
 	getEntrySnapshot,
 } from "./entry-api";
 import { LoadBoundary, LoadingSkeleton } from "./LoadingState";
+import { desktopPlatform } from "./platform";
 import { RecordingScheduleSettings } from "./RecordingScheduleSettings";
 import { ModelPreparation, SourcePreparation } from "./SetupGroups";
 import type { ModelState, PrivacyStatus } from "./setup";
@@ -674,7 +675,11 @@ export function SettingsView({
 								label="常驻入口模式"
 								value={entryMode ?? "top"}
 								options={[
-									{ value: "top", label: "顶部" },
+									{
+										value: "top",
+										label:
+											desktopPlatform() === "windows" ? "系统托盘" : "顶部",
+									},
 									{ value: "floating", label: "悬浮兔子" },
 								]}
 								disabled={switchingEntry}

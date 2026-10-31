@@ -80,13 +80,13 @@
     },
     {
       "path": "components.md",
-      "bytes": 3308,
-      "sha256": "068955e502a0b5e76c66fa14018dcae6c7f1d834f78f37ab27773fd0c0b9271c"
+      "bytes": 3680,
+      "sha256": "4f27144ac0b926ebc8aeda49324377eee665126e064334f6e5b6090fe65e649a"
     },
     {
       "path": "DESIGN.md",
-      "bytes": 17094,
-      "sha256": "652cbfd3803ac9acb285f78173bf6a39241d9813d6d570fce6f51c4119d2dd45"
+      "bytes": 18601,
+      "sha256": "282fa58177c03436cced07e7a21b5b879467b325a3d801d3cb0f47a7a99d5e3a"
     },
     {
       "path": "icons/app-1024.png",
@@ -149,6 +149,11 @@
       "sha256": "26a29addba67cfb6d527bdbb7a69b9ceb07b84f1a3042a31c930cc387494f920"
     },
     {
+      "path": "icons/loppi.ico",
+      "bytes": 96331,
+      "sha256": "478b1c5d6f75fdc8780c9bbc9a1d77a92f42eef06ff4bd7a5d6feb43cc053603"
+    },
+    {
       "path": "icons/loppi.iconset/icon_128x128.png",
       "bytes": 18242,
       "sha256": "ba30d10d8210b66215eba7b269366ec3f1b944b9863b24ea55bbfc4d1c2db656"
@@ -200,8 +205,8 @@
     },
     {
       "path": "preview.html",
-      "bytes": 1853141,
-      "sha256": "8b282ac3b69dec83cbc6f77caef385f3ce1ec352216b3010c87cd0aced4e6bbe"
+      "bytes": 1854769,
+      "sha256": "562e5c047a083432f7304e7af1193c4876552cfab658e1095075fa691a7a0dfb"
     },
     {
       "path": "rabbit/animations/listening.gif",
@@ -300,8 +305,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 3358,
-      "sha256": "88d168bf8b6f81a1f1d8fe39489acb17a81f2d8d66eba5d4f1b92e27a3629d79"
+      "bytes": 3944,
+      "sha256": "2c0d1c1ec117b43074cc2daa7cbfd9189b8684c39955d49c433162298dcb89be"
     },
     {
       "path": "release/copy.md",
@@ -415,18 +420,18 @@
     },
     {
       "path": "source/product-icon.json",
-      "bytes": 1359,
-      "sha256": "40dfef3c5db08ac54bc300b47cead7441bf6cc902c5f049deafd9a1681d9612d"
+      "bytes": 2182,
+      "sha256": "887e4c35440351730beae70e627d23fce7c3137eb98d82283315b1fee24d8206"
     },
     {
       "path": "tokens.css",
-      "bytes": 11211,
-      "sha256": "35dfeb72cbb32618fdbbbcee8f6cabac1bc155eeee570e6fa847b67d1c605e05"
+      "bytes": 11255,
+      "sha256": "73e7d52433735a66f50f4ac13dc157dae4ea00ccdaec80efe4c518e6376aa90a"
     },
     {
       "path": "tokens.json",
-      "bytes": 20429,
-      "sha256": "09c259328bf2785d668b07bd8eb3a3ae925f2e1967ac5a4dc3954df435b0e3c2"
+      "bytes": 20477,
+      "sha256": "ab2545ef73205efc168b4724bdb63ab6af45cce1ef2e1a6cfa63813e3b77d8aa"
     },
     {
       "path": "usage.png",

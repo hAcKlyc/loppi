@@ -25,6 +25,7 @@ import { Button, Field, Modal } from "./Controls";
 import { DetailDrawer } from "./DetailDrawer";
 import { type EntrySnapshot, getEntrySnapshot } from "./entry-api";
 import { PeopleView } from "./PeopleView";
+import { desktopPlatform } from "./platform";
 import { TimelineView } from "./TimelineView";
 import { monthBoundaries } from "./timeline-view";
 import { QueueView, SettingsView } from "./WorkspaceViews";
@@ -839,7 +840,7 @@ function App() {
 			/>
 		);
 	return (
-		<div className="app-shell">
+		<div className="app-shell" data-platform={desktopPlatform()}>
 			<aside className="sidebar" data-tauri-drag-region>
 				<div className="brand" data-tauri-drag-region>
 					<img

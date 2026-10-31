@@ -128,8 +128,8 @@
 	/* Type, spacing, shape, stroke, motion and depth scales. */
 	--font-ui:
 		-apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC",
-		sans-serif;
-	--font-time: ui-monospace, "SFMono-Regular", Menlo, monospace;
+		"Segoe UI", "Microsoft YaHei UI", sans-serif;
+	--font-time: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
 	--type-micro: 11px;
 	--type-caption: 12px;
 	--type-meta: 13px;

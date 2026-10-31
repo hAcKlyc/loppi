@@ -84,16 +84,19 @@ static LRESULT CALLBACK procedure(HWND w, UINT msg, WPARAM wp, LPARAM lp,
       notify(e, 1, 1);
       return 0;
     }
-    if (event == WM_RBUTTONUP) {
+    if (event == WM_CONTEXTMENU || event == WM_RBUTTONUP) {
       HMENU menu = CreatePopupMenu();
       AppendMenuW(menu, MF_STRING, 1, L"Open loppi");
       AppendMenuW(menu, MF_STRING, 2, L"Quit loppi");
-      POINT p;
-      GetCursorPos(&p);
+      // Version 4 supplies the tray anchor here, including keyboard activation.
+      POINT p = {GET_X_LPARAM(wp), GET_Y_LPARAM(wp)};
+      if (event == WM_RBUTTONUP)
+        GetCursorPos(&p);
       SetForegroundWindow(w);
       int chosen = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_NONOTIFY, p.x, p.y,
                                   0, w, nullptr);
       DestroyMenu(menu);
+      PostMessageW(w, WM_NULL, 0, 0);
       if (chosen == 1)
         notify(e, 11, 1);
       if (chosen == 2)

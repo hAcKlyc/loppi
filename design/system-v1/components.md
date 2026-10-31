@@ -22,3 +22,5 @@
 | 常驻入口 | 兔子收起、暖黑展开；沿用顶部/悬浮各自操作 | 保存反馈依据结果；不抢主窗；草稿、透明命中和屏幕边缘沿用宿主契约 |
 
 实现复用仓库 `src/Controls.tsx`、`TimelineView.tsx`、`CaptureStatus.tsx`、`DetailDrawer.tsx`、`MomentList.tsx`、`FloatingWidget.tsx` 及相应页面。`preview.html` 展示真实组件和合成资料；发布截图位于 `release/screenshots/`。浏览器检查说明 Web 行为，原生入口与安装结果另见仓库交付台账。
+
+平台呈现遵守主规范：macOS 顶部入口、Windows 系统托盘复用持久模式top，悬浮模式不变；Windows 面板四角使用既有26px入口轮廓，悬浮菜单20px。Windows声音来源区分设备准备和实际记录，权限指引对应Windows设置；安全存储文案不依赖macOS钥匙串。mock平台样板不代替原生/DPI/安装验收。

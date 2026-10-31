@@ -29,6 +29,12 @@
     import { mockIPC } from '@tauri-apps/api/mocks';
     import App from '/src/App.tsx';
 
+    const requestedPlatform = new URLSearchParams(location.search).get('platform');
+    const isWindows = requestedPlatform === 'windows' || (!requestedPlatform && /^Win/i.test(navigator.platform));
+    if (requestedPlatform === 'windows' || requestedPlatform === 'macos') {
+      Object.defineProperty(navigator, 'platform', { configurable: true, value: isWindows ? 'Win32' : 'MacIntel' });
+    }
+
     // Simulate only this fixture's preference; never change the user's OS setting.
     if (new URLSearchParams(location.search).has('reduce')) {
       const originalMatchMedia = window.matchMedia.bind(window);
@@ -182,14 +188,15 @@
       requests.push({ command, type: args?.request?.type ?? null });
       if (command === 'gui_ready') return null;
       if (command === 'agent_access_info') {
-        const cli = '/Applications/loppi.app/Contents/MacOS/loppi';
+        const cli = isWindows ? 'C:\\Users\\example\\AppData\\Local\\loppi\\loppi.exe' : '/Applications/loppi.app/Contents/MacOS/loppi';
+        const runCli = `${isWindows ? '& ' : ''}'${cli}'`;
         return {
           cli_path: cli, cli_available: true,
-          codex_config: `[mcp_servers.loppi]\ncommand = "${cli}"\nargs = ["mcp", "serve"]`,
+          codex_config: `[mcp_servers.loppi]\ncommand = ${JSON.stringify(cli)}\nargs = ["mcp", "serve"]`,
           mcp_config: {mcpServers: {loppi: {command: cli, args: ['mcp', 'serve']}}},
           codex_command: `codex mcp add loppi -- '${cli}' mcp serve`,
-          skill_command: `'${cli}' integrations install-skill --destination '/Users/example/.agents/skills/loppi-context'`,
-          example_command: `'${cli}' context list --date today`,
+          skill_command: `${runCli} integrations install-skill --destination '${isWindows ? 'C:\\Users\\example\\.agents\\skills\\loppi-context' : '/Users/example/.agents/skills/loppi-context'}'`,
+          example_command: `${runCli} context list --date today`,
           status: {ok: true, data: {online: true}},
         };
       }
@@ -200,7 +207,7 @@
         appearance: isRecording ? 'listening' : 'sleeping', detail: null,
         control: isRecording ? 'pause' : 'resume', notice: null,
       };
-      if (command === 'privacy_status') return { microphone: 3, screen_and_system_audio: 1, tap_required: false, tap_ready: true };
+      if (command === 'privacy_status') return { microphone: 3, microphone_available: true, screen_and_system_audio: 1, system_audio: isWindows ? 1 : undefined, tap_required: false, tap_ready: true };
       if (command === 'login_item_status') return 1;
       if (command !== 'core_request') throw Error(`隔离样例未执行原生命令：${command}`);
       const request = args.request;

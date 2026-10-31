@@ -1,0 +1,5 @@
+Mac IAB, explicit macOS presentation; synthetic data.
+- heading "时间线 · 未开始录音" [level=1]
+- status: "[{\"command\":\"core_request\",\"type\":\"configure_cloud\",\"provider\":\"llm\"},{\"command\":\"core_request\",\"type\":\"set_source\",\"source\":\"microphone\"},{\"command\":\"complete_onboarding\"}]"
+- button "运行首次引导回归"
+- status: PASS · 4 项首次引导检查

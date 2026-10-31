@@ -14,6 +14,7 @@ import {
 	getEntrySnapshot,
 	topRabbitMotion,
 } from "./entry-api";
+import { desktopPlatform } from "./platform";
 import { Rabbit } from "./Rabbit";
 import "./App.css";
 import "./entry.css";
@@ -357,7 +358,11 @@ export function FloatingWidget() {
 				if (privacy.screen_and_system_audio !== 1) {
 					const granted = await invoke<number>("request_screenshot_permission");
 					if (granted !== 1) {
-						showFeedback("请在系统设置中允许截屏后重试");
+						showFeedback(
+							desktopPlatform() === "windows"
+								? "当前桌面无法截图，请解锁 Windows 并保持桌面可见后重试"
+								: "截屏暂不可用，请检查屏幕访问设置后重试",
+						);
 						return;
 					}
 				}
@@ -441,6 +446,7 @@ export function FloatingWidget() {
 		<div
 			role="toolbar"
 			aria-label="loppi 常驻入口"
+			data-platform={desktopPlatform()}
 			className={`entry-root ${isTop ? "entry-top" : "entry-floating"}`}
 			data-menu-down={geometry.menu_y > 8}
 			style={

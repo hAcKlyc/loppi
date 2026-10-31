@@ -18,7 +18,10 @@ export async function main(argv=process.argv.slice(2)){
   const release=command==='release';
   if(release&&output('git',['status','--porcelain']))throw new Error('Release requires a clean committed checkout');
   const version=JSON.parse(readFileSync('package.json')).version;
-  if(version!==JSON.parse(readFileSync('src-tauri/tauri.conf.json')).version)throw new Error('package versions disagree');
+  const tauri=JSON.parse(readFileSync('src-tauri/tauri.conf.json'));
+  const npmLock=JSON.parse(readFileSync('package-lock.json'));
+  const cargoVersion=readFileSync('Cargo.toml','utf8').match(/\[workspace.package\]\s+version = "([^"]+)"/)?.[1];
+  if([tauri.version,npmLock.version,npmLock.packages[''].version,cargoVersion].some(v=>v!==version))throw new Error('Project versions disagree');
   const cache=resolve('build/cache/windows');mkdirSync(cache,{recursive:true});
   const archive=join(cache,'sherpa-onnx-2.0.0.tar.bz2');asset(archive,spec.native);run('tar',['-xjf',archive,'-C',cache]);
   const native=join(cache,spec.native.directory,'lib');
@@ -61,8 +64,10 @@ export async function main(argv=process.argv.slice(2)){
   run('python',['scripts/verify_windows_dependencies.py',stage,'--report',resolve('build/windows/pe-dependencies-final.json')]);
   const identities={};for(const[role,name]of Object.entries({gui:'loppi-desktop.exe',core:'loppi-core.exe',worker:'loppi-worker.exe',cli:'loppi.exe'}))identities[role]=JSON.parse(output(join(stage,name),[role==='cli'?'build-info':'--build-info']));
   const source=output('git',['rev-parse','HEAD']);const expected={...identities.core};delete expected.component;
-  for(const[role,info]of Object.entries(identities)){const actual={...info};delete actual.component;if(JSON.stringify(actual)!==JSON.stringify(expected)||info.git_sha!==source||(release && info.dirty!==false))throw new Error(`mixed component identity: ${role}`);}
-  const artifacts=files(resolve('target',spec.target,'release/bundle/nsis')).filter(p=>p.endsWith('.exe'));
+  for(const[role,info]of Object.entries(identities)){const actual={...info};delete actual.component;if(info.component!==role||info.version!==version||info.built_at_epoch!==Number(epoch)||JSON.stringify(actual)!==JSON.stringify(expected)||info.git_sha!==source||(release && info.dirty!==false))throw new Error(`mixed component identity: ${role}`);}
+  const installer=resolve('target',spec.target,'release/bundle/nsis',`${tauri.productName}_${version}_x64-setup.exe`);
+  if(!existsSync(installer)||!statSync(installer).isFile())throw new Error('Current-version NSIS installer missing');
+  const artifacts=[installer];
   const report={schema:1,version,source,epoch,dirty:expected.dirty,platform:'windows-x64',minimum_build:spec.minimum_build,authenticode:'unsigned',stage,components:identities,artifacts:artifacts.map(path=>({path,bytes:statSync(path).size,sha256:hash(path)}))};
   writeFileSync(resolve('build/windows/release-info-windows-x64.json'),JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report,null,2));
 }

@@ -1,12 +1,12 @@
 # loppi 0.1 整体架构
 
-> 口径：2026-10-22 工作树当前实现；稳定性与性能优化仍在开发和整体验收中。产品目标见 [PRD](prd/prd_0.1.md)，算法与具体阈值见 [核心处理算法](tech_docs/algorithms.md)和[说话人和全局人物](tech_docs/speaker-identity.md)。本机已安装 `.app` 的能力须以安装版实测区分，不能由本文件推定。
+> 口径：2026-11-01 工作树当前实现；Windows 支持与组合态验收见 [执行台账](prd/devplan_261101_windows-release.md)。产品目标见 [PRD](prd/prd_0.1.md)，算法与具体阈值见 [核心处理算法](tech_docs/algorithms.md)和[说话人和全局人物](tech_docs/speaker-identity.md)。本机已安装 `.app` 的能力须以安装版实测区分，不能由本文件推定。
 
 ## 1. 系统边界与进程
 
 ```mermaid
 flowchart LR
-  subgraph Mac[用户的 Mac]
+  subgraph Desktop[用户的桌面设备]
     UI[Tauri 桌面窗口与悬浮窗] -->|版本化本机 IPC| Core[loppi-core 唯一状态 owner]
     CLI[loppi CLI] -->|相同 IPC| Core
     MIC[麦克风] --> CaptureMic[受监督麦克风来源进程]
@@ -17,7 +17,7 @@ flowchart LR
     Core --> DB[(loppi.sqlite / WAL)]
     Core --> Files[(Opus 原声 / 截图 / 日志)]
     Core -->|有界 stdin/stdout| Worker[loppi-worker 本地模型]
-    Core --> KC[macOS Keychain]
+    Core --> KC[系统安全凭据存储]
   end
   Core -->|粗文字与时间 / 主动新截图| LLM[DeepSeek LLM]
   Core -->|事件范围音频| ASR[火山 ASR]
@@ -32,20 +32,21 @@ flowchart LR
 | 本地推理 | [`crates/loppi-worker/src/main.rs`](../crates/loppi-worker/src/main.rs) | 轻量 `vad` 与重型 `recognize` 独立进程；`embed` 按需复用 CampPlus。三者共用有界帧协议，父 core 消失退出；只计算，不拥有数据库。 |
 | IPC 协议 | [`crates/loppi-protocol/src/lib.rs`](../crates/loppi-protocol/src/lib.rs) | 请求/响应、稳定 ID、预期修订、重复提交标识和协议版本。当前工作树版本为 24；只读 Agent 接口见 [Agent Context 契约](tech_docs/agent-context.md)。 |
 | macOS 桥接 | [`src-tauri/native/`](../src-tauri/native/privacy.m)、[`crates/loppi-core/native/`](../crates/loppi-core/native/system_audio.m) | 登录项、权限、截图/OCR、系统声 API 等原生操作；业务数据仍由核心裁决。 |
+| Windows 桥接 | [`protocol::platform`](../crates/loppi-protocol/src/platform.rs)、[`protocol::ipc`](../crates/loppi-protocol/src/ipc.rs)、Core/GUI 的 `native/windows.cpp` | 本机安全/文件/进程、WASAPI、截图/OCR、资源/电源、播放与托盘。业务 owner 与协议保持共用；细节见 [Windows 支持](tech_docs/windows-support.md)。 |
 
-没有长期运行的 Node 服务，也没有局域网/HTTP 管理接口。模型权重按哈希随包保存在 LoppiCore.app 资源目录，只读使用；`.env` 仅供开发，不打进客户端。正式凭据由设置页交给核心验证并存在 Keychain。[模型包实现](../crates/loppi-core/src/model_pack.rs)；[云端凭据和请求](../crates/loppi-core/src/cloud.rs)。
+没有长期运行的 Node 服务，也没有局域网/HTTP 管理接口。模型权重按锁定哈希随安装包提供，只读使用；macOS 放在 LoppiCore.app 资源目录。`.env` 仅供开发，不打进客户端。正式凭据由设置页交给核心验证并存在系统安全存储（macOS Keychain / Windows Credential Manager）。[模型包实现](../crates/loppi-core/src/model_pack.rs)；[云端凭据和请求](../crates/loppi-core/src/cloud.rs)。
 
 ## 2. 所有权与数据层
 
 ### 2.1 唯一事实源
 
-核心通过受限 Unix socket 接受 GUI/CLI 请求，检查本机对端和版本；数据库打开 WAL 模式，只有核心拥有写连接。[启动、锁与 socket](../crates/loppi-core/src/main.rs)位于 `run`、`acquire_owner_lock`、`verify_peer`；请求身份与幂等回执见 `serve_one`、`mutation_receipts`。查询唤起的按需核心不据保存的记录意图偷偷开麦；登录项启动才按本次登录会话的退出标志和持久意图评估采集。
+核心通过受限本机 IPC（macOS Unix socket、Windows 命名管道）接受 GUI/CLI 请求，检查本机对端和版本；Windows 还约束同用户/登录会话并读取实际对端 PID。数据库打开 WAL 模式，只有核心拥有写连接。[启动、锁与 socket](../crates/loppi-core/src/main.rs)位于 `run`、`acquire_owner_lock`、`verify_peer`；请求身份与幂等回执见 `serve_one`、`mutation_receipts`。查询唤起的按需核心不据保存的记录意图偷偷开麦；登录项启动才按本次登录会话的退出标志和持久意图评估采集。
 
-GUI 首次 IPC 经协议库 `lifecycle` 的会话屏障核对实际 Core 与随包构建身份；`lifecycle.lock` 串行化多个 GUI 的交接。稳定的 `Status` / `Lifecycle` 控制消息不受业务协议版本限制；业务命令仍严格检查。新版先验证随包 helper，再请求旧 owner 优雅交接，等待 `core.lock` 释放（采集线程已 join、socket 已删除），随后在原目录启动新版并传递原内存采集/正常运行许可。不提供 hear 历史协议 17–19 的适配。更新不降级较新构建，不直接写 SQLite，不强杀或删除活跃 socket。
+GUI 首次 IPC 经协议库 `lifecycle` 的会话屏障核对实际 Core 与随包构建身份；`lifecycle.lock` 串行化多个 GUI 的交接。稳定的 `Status` / `Lifecycle` 控制消息不受业务协议版本限制；业务命令仍严格检查。新版先验证随包 helper，再请求旧 owner 优雅交接，等待 `core.lock` 释放（采集线程已 join、本机 IPC 端点已关闭），随后在原目录启动新版并传递原内存采集/正常运行许可。不提供 hear 历史协议 17–19 的适配。更新不降级较新构建，不直接写 SQLite，不强杀或移除活跃 IPC 端点。
 
 显式退出 GUI 先排空本会话 IPC、封闭后续请求，再向现存 Core 发跨版本退出指令并等待 owner 锁释放；没有后台时不为退出而启动一个后台。程序请求退出失败时保留 GUI 并提示实际错误；macOS 原生 terminate（菜单、Cmd-Q、Dock）绕过 ExitRequested，必须在最终 Exit 事件同样执行幂等清理，此阶段系统已决定退出，失败显示实际错误及重新打开后重试的说明，不强杀 Core。关闭主窗口仍只是隐藏窗口。新 Core 的交接不写用户退出标记，正常退出则仍记录当前登录会话的退出状态；新后台保留来源、暂停与容量限制，运行许可不能绕过这些条件。交接初始化后的 AppOpened 仍按既有语义启用定时运行。
 
-权威数据位于 `~/Library/Application Support/loppi/`（测试可用 `LOPPI_DATA_DIR` 隔离）：
+权威数据在 macOS 位于 `~/Library/Application Support/loppi/`，Windows 位于 `%LOCALAPPDATA%\app.loppi.core`（测试可用 `LOPPI_DATA_DIR` 隔离）。安装程序与 GUI 路由配置另有目录，默认卸载保留 Core 资料：
 
 | 层 | 实际对象 | 性质 |
 | --- | --- | --- |
@@ -127,13 +128,17 @@ VAD 先事务提交 `coarse_jobs` 的来源/session/16 kHz 样本区间与 `spee
 
 手动暂停、定时停止、容量暂停与来源关闭产生的意图缺口，复用 `media_gaps.source_session_id` 归属当时的来源 session。创建时考虑已确认尾部；最终块或迟到 journal 入库时，与封块/回执同一事务按该 session 的 `last_confirmed_ms` 缩短缺口，关闭区间保持有效边界。历史无归属缺口仅在同源封块明确覆盖起点且 session 唯一时关联；升级迁移及之后的旧 journal 均能校正。清理分片保留归属且不会被重新创建；callback/source-failure 等物理缺口继续各自处理。修正由既有 ingestion owner 完成，不分散到时间线、文字、声纹读取方。
 
-每个 journal 的单发布者在目录 inode 排他锁下修改名称；核心仅在枚举最多 128 个名称时尝试共享锁，忙则让出，读取媒体、数据库和推理均在释放目录锁后执行。来源写线程最多等 2 秒，回调不接触该锁。这样获得已发布记录的前缀，不能先分析后来块再补入此前块。journal 未排空时，分析领取必须有相邻块（含数字静音/已清理元数据）、归属同一来源 session 的真实缺口，或匹配代次的清理边界；会话关闭或墙钟已过去 8 秒不能单独证明流结束。media_gaps.source_session_id 表示原始采集归属，与生命周期补尾的 tail_session_id 含义分开，部分清理后两者仍保留。
+每个 journal 的单发布者在平台发布锁下修改名称（macOS 为目录 inode，Windows 为 `.publication.lock`）；核心仅在枚举最多 128 个名称时尝试共享锁，忙则让出，读取媒体、数据库和推理均在释放目录锁后执行。来源写线程最多等 2 秒，回调不接触该锁。这样获得已发布记录的前缀，不能先分析后来块再补入此前块。journal 未排空时，分析领取必须有相邻块（含数字静音/已清理元数据）、归属同一来源 session 的真实缺口，或匹配代次的清理边界；会话关闭或墙钟已过去 8 秒不能单独证明流结束。media_gaps.source_session_id 表示原始采集归属，与生命周期补尾的 tail_session_id 含义分开，部分清理后两者仍保留。
 
 云请求复用进程内 `ureq::Agent` 连接池，凭据仍逐请求附加。LLM 使用 SSE 读取进展，单任务共享 180 秒总预算；ASR 共享 60 秒预算，每次网络请求只获剩余时间（含响应体）；底层系统 DNS、Keychain 和不可取消文件 IO 是平台例外，预算耗尽后不再发起新请求。响应读取/截止失败作为瞬态错误保留原远端请求 ID，退避后先查询原请求。内部 Failure 只携带脱敏代码与 Retry-After 的秒数/HTTP-date 延迟，429（以及带该头的 503）把 provider 冷却下界写回原 cloud_queues，重启仍生效、不改 paused。二次退避附有任务 ID 派生的 0–20% 抖动；每四次领取中三次保留人工优先（其中一次最新优先）、一次按最旧待办，持续人工工作不会饿死历史自动任务。[云客户端](../crates/loppi-core/src/cloud.rs)。
 
 Keychain 访问依赖运行进程与磁盘 bundle 的签名身份一致。发行构建脚本在编译前拒绝覆盖当前正在运行的构建目录 App；日常运行使用独立的 `/Applications/loppi.app` 安装副本。后台读取仍禁止授权弹窗，不复制密钥或放宽 ACL。Core 重启及成功重新保存某 provider 凭据时，复用现有 cloud_tasks 唤醒对应凭据错误的 pending/submitted 任务；保留任务/远端请求 ID、provider 冷却与用户暂停，不重跑已完成或其他失败任务。凭据阻塞及普通重试作为现有任务事实的投影展示，不与“正在记录”互相覆盖。
 
 cloud_queues.blocked_reason 独立表达 402 账号阻塞，用户显式继续/重试或成功重新配置才解除；不会自动重放失败历史，配置可用性与用户 paused 不被冒充。cloud_tasks.retry_failures 只为有限供应商重试预算记账，凭据等待不消耗该预算；总 attempts 仍用于诊断/退避，手动重试重置两者并保留已付费请求身份。transcript_tasks 明列其内容投影列，不使用执行表的 SELECT *。
+
+Windows 使用 CPAL 麦克风与 WASAPI 进程树排除采集；QPC 坐标映射到同一真实时间轴。`IAudioCaptureClient::GetBuffer` 的 QPCPosition 按 100ns 转成 ns，来源不把回调接收时刻冒充采样时刻。原生播放沿用相同 context/epoch 与缓冲协议，输出通过 CPAL。Windows privacy 的 `system_audio` 是实际探测/采集事实，与截图字段分开，锁屏不关闭 WASAPI。截图只接受真实同用户会话/对端 PID 所属的 HWND；GDI/WIC 与独立的受监督离线 OCR 进程复用现有 moments owner。锁屏/未知桌面明确失败，不插入成功现场记录。
+
+Windows 资源桥提供内存负载、进程 private bytes、电源与暂停/恢复代次；没有热传感读数，零仅为中性输入。journal 发布锁是受限普通锁文件；文件 flush 后由 MoveFileExW WRITE_THROUGH 发布，目录检查不伪称 POSIX fsync。Windows Credential Manager 复用原 service/reference 抽象。平台源码、依赖闭包与实测边界见 [Windows 支持说明](tech_docs/windows-support.md)。
 
 ## 5. 外发、修订与清理边界
 
@@ -168,11 +173,11 @@ GUI 上下文刷新合并在途请求，仅前台聚焦时周期刷新。连续�
 [`Rabbit`](../src/Rabbit.tsx)读取统一v2 atlas，以低频计时播放；96px清单格子由用户确认的双竖耳/趴睡生图素材及派生呼吸/眨眼/回应帧组成，主窗/notch/悬浮共用素材与clip。尺寸由清单定义，不硬编码旧48px裁切；隐藏/减少动态效果停计时，canvas 后备尺寸跟随显示大小与像素比，加载失败显示当前状态的静态素材。I4 方形源图与平台图标分别保存。生产代码已修改，真实系统验收尚未全部完成；证据见[安静兔子执行台账](prd/prd_0.1_quiet-rabbit-entry.md)。
 
 
-前端是 React/TypeScript/Vite，Tauri 2 使用 macOS WebView；主窗口与透明悬浮窗共用样式 token，产品视觉规则见 [DESIGN.md](DESIGN.md) 与 [`src/tokens.css`](../src/tokens.css)。`src-tauri/tauri.conf.json` 将签名登录项与 CLI 放入 `.app`；本机核心和推理 worker 不应因 GUI 关闭而丢失采集状态。[`build_macos.sh`](../scripts/build_macos.sh) 构建并签名各组件；[`package_macos.sh`](../scripts/package_macos.sh) 生成 `.dmg`、送公证、装订并检查 Gatekeeper。
+前端是 React/TypeScript/Vite，Tauri 2 在 macOS 使用 WKWebView、Windows 使用 WebView2；主窗口与透明悬浮窗共用样式 token，产品视觉规则见 [DESIGN.md](DESIGN.md) 与 [`src/tokens.css`](../src/tokens.css)。`src-tauri/tauri.conf.json` 将签名登录项与 CLI 放入 `.app`；本机核心和推理 worker 不应因 GUI 关闭而丢失采集状态。[`build_macos.sh`](../scripts/build_macos.sh) 构建并签名各组件；[`package_macos.sh`](../scripts/package_macos.sh) 生成 `.dmg`、送公证、装订并检查 Gatekeeper。
 
 公共 UI 原语在 [`Controls.tsx`](../src/Controls.tsx)，样式在 [`controls.css`](../src/controls.css)。原生 `dialog` 负责 top layer 和背景模态，公共 Dialog 负责局部键盘序列与焦点生命周期；Modal、详情抽屉和图片预览复用它。Tabs 受控切换，Field 仅关联标签 / 错误。短期焦点、弹窗反馈和清理预览代次留在页面 / 组件，保存结果、请求 ID、播放资源仍归既有 owner，不产生新的业务状态源。
 
-目前有已签名的本机测试应用，但公证凭据和组合态发行验收尚未齐备；**不能将本目录或本地签名成功当成可分发 DMG 的证明**。模型权重属于首次安装后的受控下载，不把开发机密钥或录音数据塞入安装包。[发行状态](../plan.md)。
+0.1.18 的既有 macOS 双架构 DMG 已完成签名、公证、装订与 Gatekeeper 校验；Windows 与同版本组合产物的最终状态以 [Windows 执行台账](prd/devplan_261101_windows-release.md) 和 Release 附件报告为准。本地目录或编译成功不能代替安装验收。模型按锁随包提供；开发机密钥、`.env` 和真实录音不进入安装包。
 
 ## 7. 观察与验收
 
@@ -193,7 +198,7 @@ GUI 上下文刷新合并在途请求，仅前台聚焦时周期刷新。连续�
 
 首次 GUI 路由由 Tauri 的 `onboarding.json` 管理（app_config_dir；隔离运行时为 `LOPPI_DATA_DIR/gui`），仅含 schema_version 与 completed，原子受限写入。缺失时以 Core 的 enabled_intent 或双供应商已配置迁移既有用户；损坏显式恢复，不能根据历史空白重置。完成会重新读取 Core 模型、来源、双云和原生权限，保存元数据后进入首页，不写 Start/Resume、登录项或录制计划。CLI 不依赖 GUI 标记。
 
-`SetupGroups` 在设置和首次页面共用模型/来源操作；`refreshContext` 仍是 GUI 观察入口。`CloudKeyInput` 保留未保存草稿在组件内，`setup.ts` 仅在当前 WebView 保存未确认请求 ID。云配置使用既有稳定 ID 与 mutation_receipts，`CloudConfigurationReceipt` 是只读查询；失败回执也记录，不因传输失败自动重复供应商验证。凭据只由 Core 验证、Keychain 保存。设置页并列显示两个云服务，独立弹窗显式验证并保存；首次引导 compact 输入仍维持既有提交方式。
+`SetupGroups` 在设置和首次页面共用模型/来源操作；`refreshContext` 仍是 GUI 观察入口。`CloudKeyInput` 保留未保存草稿在组件内，`setup.ts` 仅在当前 WebView 保存未确认请求 ID。云配置使用既有稳定 ID 与 mutation_receipts，`CloudConfigurationReceipt` 是只读查询；失败回执也记录，不因传输失败自动重复供应商验证。凭据只由 Core 验证并交给系统安全存储。设置页并列显示两个云服务，独立弹窗显式验证并保存；首次引导 compact 输入仍维持既有提交方式。
 
 必要语音模型在启动校验或显式安装后通过 Governor 的 Coarse 预算准入，以现有 AnalysisClient 运行 VAD 和 X-ASR 合成静音加载检查；每次各有 30 秒请求上限，退出回收子进程，不建立业务录音或发云请求。ModelState 提供 checking/downloading/installing/verifying/loading/ready/failed 和分组件错误。CampPlus 独立失败不阻断完成。模型安装按锁定包体和解包文件预算加 2 GiB 录音余量检查磁盘；废弃暂存清理、完整包复用，未完成下载重新开始。
 

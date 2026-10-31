@@ -33,8 +33,9 @@ test('a stale error cannot make an active or complete task look failed', () => {
 });
 test('queued retries expose credential and transport failures instead of looking idle', () => {
  for (const state of ['pending','submitted','failed']) {
-  assert.match(taskStatus({state,error_code:'keychain_read_-25293'}), /无法读取钥匙串密钥/);
+  assert.match(taskStatus({state,error_code:'keychain_read_-25293'}), /无法读取本机安全存储中的密钥/);
   assert.match(taskStatus({state,error_code:'keychain_read_-25308'}), /重新打开 loppi/);
+  assert.match(taskStatus({state,error_code:'credential_read_1168'}), /本机安全存储/);
  }
  assert.equal(taskStatus({state:'pending',error_code:'provider_transport'}),'等待重试 · 云端服务异常');
  assert.equal(taskStatus({state:'pending',error_code:'provider_http_429'}),'等待重试 · 服务繁忙，请稍后重试');

@@ -90,6 +90,9 @@
 		var(--space-8);
 	gap: calc(var(--space-8) + var(--space-1));
 }
+.entry-root[data-platform="windows"] .notch-surface {
+	border-radius: var(--entry-top-radius);
+}
 .notch-rabbit-space {
 	flex: 0 0 calc(var(--space-14) + var(--space-4));
 }

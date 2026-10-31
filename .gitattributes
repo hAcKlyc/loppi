@@ -1,0 +1,9 @@
+# Keep source formatting identical in macOS and Windows checkouts.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.icns binary
