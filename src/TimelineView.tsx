@@ -540,11 +540,6 @@ export function TimelineView({
 													{manualStatus}
 												</span>
 											)}
-											{live && (
-												<span className="event-card-state recording-label">
-													正在记录
-												</span>
-											)}
 											{localIssue && (
 												<span className="event-card-state is-failed">
 													部分本地分析失败 · {item.local_analysis_failures} 项
@@ -557,16 +552,23 @@ export function TimelineView({
 														: processingLabel(fitIssue)}
 												</span>
 											)}
-											<span
-												className={`event-card-state ${processingIssue ? "is-failed" : ""}`}
-												title={
-													processingState === "fit_credentials_unavailable"
-														? "请重新打开 hear；若仍失败，请在设置中重新保存云端密钥"
-														: undefined
-												}
-											>
-												{processingLabel(processingState, item.transcription)}
-											</span>
+											{(!live || processingIssue) && (
+												<span
+													className={`event-card-state ${processingIssue ? "is-failed" : ""}`}
+													title={
+														processingState === "fit_credentials_unavailable"
+															? "请重新打开 hear；若仍失败，请在设置中重新保存云端密钥"
+															: undefined
+													}
+												>
+													{processingLabel(processingState, item.transcription)}
+												</span>
+											)}
+											{live && (
+												<span className="event-card-state recording-label">
+													正在记录
+												</span>
+											)}
 										</div>
 										<h3>
 											{item.title ||

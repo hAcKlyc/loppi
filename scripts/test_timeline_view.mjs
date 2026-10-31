@@ -74,19 +74,31 @@ test('rendered live cards name the ongoing recording and use an open time range'
     const render=(recordingState,entry=live)=>renderToStaticMarkup(createElement(TimelineView,{date,items:[entry],gaps:[],moments:[],recordingState,loading:false,hideCoarse:false}));
     assert.match(render(state), /<h3>实时记录内容<\/h3>/);
     assert.match(render(state), /至今/);
-    assert.match(render(state), /待整理/);
-    for (const [processing_state, label] of Object.entries({fit_credentials_unavailable:'整理受阻 · 无法读取密钥',fit_retrying:'整理异常 · 等待重试',fit_failed:'事件整理失败',fitting:'整理中'})) {
+    const statusLabels=html=>[...html.matchAll(/<span class="event-card-state[^"]*"[^>]*>(.*?)<\/span>/g)].map(match=>match[1]);
+    assert.deepEqual(statusLabels(render(state)),['正在记录']);
+    assert.match(render(state),/recording-label">正在记录<\/span><\/div><h3>/);
+    assert.doesNotMatch(render(state), /待整理/);
+    for(const processing_state of ['pending_fit','fitting','pending_asr','transcribing','transcribed']) {
+      assert.deepEqual(statusLabels(render(state,{...live,processing_state})),['正在记录']);
+    }
+    assert.deepEqual(statusLabels(render({...state,paused_intent:true})),['待整理']);
+    for (const [processing_state, label] of Object.entries({fit_credentials_unavailable:'整理受阻 · 无法读取密钥',fit_retrying:'整理异常 · 等待重试',fit_failed:'事件整理失败'})) {
       const html=render(state,{...live,processing_state});
       assert.match(html,/正在记录/);
-      assert.ok(html.includes(label));
+      assert.deepEqual(statusLabels(html),[label,'正在记录']);
     }
+    for(const [processing_state,label] of [['analysis_failed','本地语音分析失败'],['asr_failed','精转失败'],['partial_asr_failed','部分精转失败 · 已完成文字保留']]) {
+      assert.deepEqual(statusLabels(render(state,{...live,processing_state})),[label,'正在记录']);
+    }
+    assert.deepEqual(statusLabels(render(state,{...live,local_analysis_failures:2})),['部分本地分析失败 · 2 项','正在记录']);
     const completed=render(null,{...live,id:'named',title:'讨论',processing_state:'partial_transcript',transcription:{total:5,complete:5,empty:1,boundary_clipped:false}});
     assert.match(completed,/精转完成 · 1 段无文字/);
     assert.doesNotMatch(completed,/精转中|部分精转/);
     const blockedNamed=render(state,{...live,id:'named',title:'讨论',processing_state:'transcribed',fit_state:'fit_credentials_unavailable'});
     assert.match(blockedNamed,/正在记录/);
     assert.match(blockedNamed,/整理受阻 · 无法读取密钥/);
-    assert.match(blockedNamed,/精转完成/);
+    assert.deepEqual(statusLabels(blockedNamed),['整理受阻 · 无法读取密钥','正在记录']);
+    assert.doesNotMatch(blockedNamed,/精转完成/);
     for (const [processing_state, label] of [['pending_asr','待精转'],['transcribed','精转完成']]) {
       const partial=render(null,{...live,id:'named',processing_state,local_analysis_failures:2});
       assert.match(partial,/部分本地分析失败 · 2 项/);
