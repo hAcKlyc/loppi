@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: implemented
 created: 2026-10-31
 updated: 2026-10-31
 ---
@@ -30,7 +30,7 @@ updated: 2026-10-31
 - [x] 录制主状态去重与回归/文档。
 - [x] 筛选字段与产生原因事实链。
 - [x] 静态/构建、浏览器验证。
-- [x] 三路审查完成（提交后补记哈希）。
+- [x] 三路审查、提交与需求闭环。
 
 ### Review基线
 Base da55f130c2427d9963e31336acb6601eef67c421，/Users/ethan/Projects/hear，branch dev；范围仅本批最终diff，原本机忽略资料/归档/运行中正式App均不属于改动。
@@ -57,3 +57,5 @@ Base da55f130c2427d9963e31336acb6601eef67c421，/Users/ethan/Projects/hear，bra
 - 完整前端65测试、typecheck、lint和生产前端构建PASS。真实浏览器1120/760共13次观察涵盖活跃、暂停、状态不可用、历史日期、命名事件、活跃且本地/凭据异常；正在记录均为最后主状态，右边距误差0，无横向溢出，异常文字保留，非活跃恢复待整理；开关仍按原规则展开第三张素材卡。证据build/dev-timeline-status/browser-acceptance.json与recording/error截图。
 
 - 固定candidate tree5b9f78d进行fresh requirements/adversarial并行审查，两路PASS，无阻塞或证据缺口；需求独立12回归PASS，对抗独立11回归及额外异常/手动任务组合和暂停/存储暂停/来源停止/不可用转换PASS。主Agent裁决无需修复。最终fresh architecture完整5文件审查PASS，无新机制或范围扩张；既有浏览器/构建/65前端证据继续成立。全部mandatory项已闭环，本批仅在dev交付。
+
+- 实现提交 01eef6d35b6baa7074ea9a7d3544d96543cdaf96；重读完整契约，UI去重与筛选说明已完成，没有筛选产品改动或未覆盖mandatory项。后续仅此台账的提交记录收尾，版本保持0.1.14，main与正式安装包保持本轮开发前状态，dev作为下一轮需求分支。
