@@ -142,7 +142,7 @@ flowchart LR
 
 窗口外框随内容收缩。仅 CSS `pointer-events:none` 或透明像素不能保证下层应用收到点击；宿主维护当前可交互区域：兔子目标、面板、悬浮菜单或输入区，排除 hardware 缺口、圆角外围、阴影、兔子与菜单之间的大片空白以及反馈。用本地/全局**鼠标**事件监听更新指针位置，区域外开启整窗 `ignoresMouseEvents`，区域内关闭；监控器不截断或重发其他应用事件。初次显示、改 frame、展开/收起后立刻重算，拖动过程中保持拖动目标，避免第一下点击丢失。
 
-只监测 mouse move / drag / down，位置用于原生侧判定，只有命中真假或展开状态变化才通知 WebView；不把每次 mouse move 转发到 React，不注册全局键盘监听，不开持续高频位置轮询，不引入辅助功能或输入监控授权。全局监听看不到本应用事件，因此需要本地与全局监听配合；外部点击由全局 mouse-down 或应用失活处理，本地监听原样返回事件。[Apple Monitoring Events](https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/EventOverview/MonitoringEvents/MonitoringEvents.html)。
+只监测 mouse move / drag / down / up，位置用于原生侧判定，命中或展开状态变化、手势开始/结束及确认的兔子单击才通知 WebView；不把每次 mouse move 转发到 React，不注册全局键盘监听，不开持续高频位置轮询，不引入辅助功能或输入监控授权。全局监听看不到本应用事件，因此需要本地与全局监听配合；外部点击由全局 mouse-down 或应用失活处理，本地监听消费其持有的悬浮兔子手势，其余事件原样返回。[Apple Monitoring Events](https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/EventOverview/MonitoringEvents/MonitoringEvents.html)。
 
 这是拟定的原生命中实现，必须实测鼠标跨越边界后首个点击、系统菜单、圆角空白及下层文本选择/滚动。若监听与切换存在不可消除的首击竞态，不能用“透明即可穿透”作为交付结论。
 
@@ -166,7 +166,7 @@ stateDiagram-v2
 
 截图、重点点击及评论有效 Enter 均在本次 UI 更新立即收起，不等网络、本机 IPC 或动画。收起后使用现有 `inhibit`/`inhibited` 防止静止指针自动重开；原生层按收起后的实际命中区域解除抑制，不保留旧面板矩形，窗口缩小产生的 DOM leave 不能单独解锁。仅展开→收起时设置抑制，反馈重布局不得重新设置；原生点击解除抑制，React 显式点击/键盘聚焦可展开，展开布局同步清除原生抑制。保存成功才发轻提示和 nod；sleeping 下改用 sleeping-response；异常/等待不播放健康动作。
 
-悬浮沿用单击重点、7px 拖动、向上菜单顺序和主窗口评论。拖动后抑制该次 click，pointer cancel 释放判断；位移中不触发 hover 彩蛋，不能把顶部兔子的暂停点击复用到悬浮主点击。现有 `show_main` / `hear-open-comment` 保留，监听在主窗口已初始化后使用；事件送达失败要反馈，不当作评论已打开。
+悬浮沿用单击重点、7pt 拖动阈值、菜单顺序和主窗口评论。现有原生鼠标监听统一判定物理点击/拖动并消费该手势，拖动期间收起菜单，松手贴所在屏幕可用区域最近四边；原生结束回调直接保存落点，不经 WebView 二次启动拖动或延迟读取位置。顶部附近菜单向下，左右边缘向内展开，角色锚点不变；位移中不触发 hover 彩蛋，不能把顶部兔子的暂停点击复用到悬浮主点击。现有 `show_main` / `hear-open-comment` 保留，监听在主窗口已初始化后使用；事件送达失败要反馈，不当作评论已打开。
 
 ### 5.2 notch 草稿
 

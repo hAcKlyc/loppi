@@ -1,0 +1,956 @@
+{
+  "checked_date": "2026-10-24",
+  "models": [
+    {
+      "requested_id": "microsoft/VibeVoice-ASR-BitNet",
+      "id": "microsoft/VibeVoice-ASR-BitNet",
+      "url": "https://huggingface.co/api/models/microsoft/VibeVoice-ASR-BitNet?blobs=true",
+      "sha": "66e78021ab8f5f06133d1ab421ba4d348bda97c9",
+      "created_at": "2026-07-24T06:03:05.000Z",
+      "last_modified": "2026-07-24T06:03:32.000Z",
+      "license": "mit",
+      "languages": [
+        "en",
+        "zh",
+        "fr",
+        "it",
+        "ko",
+        "pt",
+        "vi"
+      ],
+      "safetensors": {
+        "parameters": {
+          "F32": 2814116321
+        },
+        "total": 322592829
+      },
+      "files": [
+        {
+          "name": ".gitattributes",
+          "bytes": 306,
+          "sha256": null
+        },
+        {
+          "name": "README.md",
+          "bytes": 4124,
+          "sha256": null
+        },
+        {
+          "name": "config.json",
+          "bytes": 3527,
+          "sha256": null
+        },
+        {
+          "name": "figures/report_overview.png",
+          "bytes": 223086,
+          "sha256": "25ff476ff353744e5b52d26021cf50a12dd150d1513402f2b0b127355d0e384e"
+        },
+        {
+          "name": "generation_config.json",
+          "bytes": 138,
+          "sha256": null
+        },
+        {
+          "name": "model-00001-of-00003.safetensors",
+          "bytes": 4996674400,
+          "sha256": "58cb328634bb4b7e5afcc4f14c43261a0c636c9031b0b085bd3ef53c131aaf19"
+        },
+        {
+          "name": "model-00002-of-00003.safetensors",
+          "bytes": 4963184724,
+          "sha256": "410349401256a9a995424408f8f77a21cad5e53183e07207820d7b25e84682df"
+        },
+        {
+          "name": "model-00003-of-00003.safetensors",
+          "bytes": 1296761656,
+          "sha256": "49c2d7591f9dcbbd6fb37baa58379211f21df30dbd3c6ff39cb8c81473660cdb"
+        },
+        {
+          "name": "model.safetensors.index.json",
+          "bytes": 120151,
+          "sha256": null
+        },
+        {
+          "name": "tokenizer.json",
+          "bytes": 7028015,
+          "sha256": null
+        },
+        {
+          "name": "tokenizer_config.json",
+          "bytes": 1289,
+          "sha256": null
+        },
+        {
+          "name": "vibeasr-lm-i2_s-embed-q6_k.gguf",
+          "bytes": 992877600,
+          "sha256": "fbe273d8dc2f2433bb25f849e19d77ea65aaa2188d12c20cee987ab6f321e002"
+        },
+        {
+          "name": "vibeasr-vae-encoder-i8_s.gguf",
+          "bytes": 703080064,
+          "sha256": "4941c82608c253ec066b5cc74d3dd11a5c8fef96cccbc5b87359ef0fe4338df6"
+        },
+        {
+          "name": "vocab.json",
+          "bytes": 2776833,
+          "sha256": null
+        }
+      ]
+    },
+    {
+      "requested_id": "OpenMOSS-Team/MOSS-Transcribe-Diarize",
+      "id": "OpenMOSS-Team/MOSS-Transcribe-Diarize",
+      "url": "https://huggingface.co/api/models/OpenMOSS-Team/MOSS-Transcribe-Diarize?blobs=true",
+      "sha": "704aa4a9c304e8520be88901e0d1960158ef5b15",
+      "created_at": "2026-05-19T08:19:23.000Z",
+      "last_modified": "2026-09-02T08:46:58.000Z",
+      "license": "apache-2.0",
+      "languages": [
+        "en",
+        "zh"
+      ],
+      "safetensors": {
+        "parameters": {
+          "BF16": 908513280
+        },
+        "total": 908513280
+      },
+      "files": [
+        {
+          "name": ".eval_results/open_asr_leaderboard.yaml",
+          "bytes": 1917,
+          "sha256": null
+        },
+        {
+          "name": ".gitattributes",
+          "bytes": 226,
+          "sha256": null
+        },
+        {
+          "name": "Model_Architecture.png",
+          "bytes": 59860,
+          "sha256": null
+        },
+        {
+          "name": "README.md",
+          "bytes": 13985,
+          "sha256": null
+        },
+        {
+          "name": "added_tokens.json",
+          "bytes": 707,
+          "sha256": null
+        },
+        {
+          "name": "chat_template.jinja",
+          "bytes": 4762,
+          "sha256": null
+        },
+        {
+          "name": "config.json",
+          "bytes": 2335,
+          "sha256": null
+        },
+        {
+          "name": "configuration_moss_transcribe_diarize.py",
+          "bytes": 2663,
+          "sha256": null
+        },
+        {
+          "name": "generation_config.json",
+          "bytes": 107,
+          "sha256": null
+        },
+        {
+          "name": "merges.txt",
+          "bytes": 1671853,
+          "sha256": null
+        },
+        {
+          "name": "model-00000-of-00001.safetensors",
+          "bytes": 1817113576,
+          "sha256": "9a0ceb4ab7330357db3ff583dba8d83625d5b733b00e1d55d6970e11b07026c4"
+        },
+        {
+          "name": "model.safetensors.index.json",
+          "bytes": 65401,
+          "sha256": null
+        },
+        {
+          "name": "modeling_moss_transcribe_diarize.py",
+          "bytes": 15101,
+          "sha256": null
+        },
+        {
+          "name": "preprocessor_config.json",
+          "bytes": 315,
+          "sha256": null
+        },
+        {
+          "name": "processing_moss_transcribe_diarize.py",
+          "bytes": 10975,
+          "sha256": null
+        },
+        {
+          "name": "processor_config.json",
+          "bytes": 292,
+          "sha256": null
+        },
+        {
+          "name": "special_tokens_map.json",
+          "bytes": 613,
+          "sha256": null
+        },
+        {
+          "name": "tokenizer.json",
+          "bytes": 11423222,
+          "sha256": "bcf03774334462d6e34b5005cb11120a62275f146ee2953e68731ecdbce84fbb"
+        },
+        {
+          "name": "tokenizer_config.json",
+          "bytes": 503,
+          "sha256": null
+        },
+        {
+          "name": "vocab.json",
+          "bytes": 2776833,
+          "sha256": null
+        }
+      ]
+    },
+    {
+      "requested_id": "csukuangfj2/sherpa-onnx-fire-red-asr2-ctc-zh_en-int8-2026-02-25",
+      "id": "csukuangfj2/sherpa-onnx-fire-red-asr2-ctc-zh_en-int8-2026-02-25",
+      "url": "https://huggingface.co/api/models/csukuangfj2/sherpa-onnx-fire-red-asr2-ctc-zh_en-int8-2026-02-25?blobs=true",
+      "sha": "423be1acfdc5d8aaa5a485fb6263fe4ea8570b06",
+      "created_at": "2026-02-26T05:25:23.000Z",
+      "last_modified": "2026-02-26T05:43:19.000Z",
+      "license": null,
+      "languages": null,
+      "safetensors": null,
+      "files": [
+        {
+          "name": ".gitattributes",
+          "bytes": 1693,
+          "sha256": null
+        },
+        {
+          "name": "README.md",
+          "bytes": 190,
+          "sha256": null
+        },
+        {
+          "name": "model.int8.onnx",
+          "bytes": 775861420,
+          "sha256": "ca3dbabd82170110cc0b343c2890866d449984bc9cd92b9a18371ff80a81bb99"
+        },
+        {
+          "name": "test_wavs/0.wav",
+          "bytes": 321744,
+          "sha256": "7d93384ca14702cc584a7a33fe2fed92e89e708549161cb12ea38c916882103b"
+        },
+        {
+          "name": "test_wavs/1.wav",
+          "bytes": 163244,
+          "sha256": "8bfb42c963e623ebab31b81ff4404867d07d3102507c87ac14577c4c61663b8c"
+        },
+        {
+          "name": "test_wavs/2.wav",
+          "bytes": 150124,
+          "sha256": "20805bcc696b9b65f3357a2508a419d4f33b81006d47e1312e219b0fad934d1d"
+        },
+        {
+          "name": "test_wavs/3-sichuan.wav",
+          "bytes": 250764,
+          "sha256": "150b75ada9f5b4011018e961e56427e4af6849fcc69764321556586bc4790c49"
+        },
+        {
+          "name": "test_wavs/3.wav",
+          "bytes": 282604,
+          "sha256": "5851e31f3e8e5f741635da9466e19fccfbabd117ebcdc92db242c92483aee064"
+        },
+        {
+          "name": "test_wavs/4-tianjin.wav",
+          "bytes": 249932,
+          "sha256": "1127451bad4c45953a5b788ab4977170388e91454ef90fee55754c4587628782"
+        },
+        {
+          "name": "test_wavs/5-henan.wav",
+          "bytes": 255724,
+          "sha256": "ed767dc9a89489888060c65bc246e702b2ab25e16977998be10edc459c9e4397"
+        },
+        {
+          "name": "test_wavs/8k.wav",
+          "bytes": 282284,
+          "sha256": "ad03b71750338810aa39534a42c0bda6c227488ab59e40da1ec8e4804d4ea5c7"
+        },
+        {
+          "name": "tokens.txt",
+          "bytes": 79172,
+          "sha256": null
+        }
+      ]
+    },
+    {
+      "requested_id": "csukuangfj2/sherpa-onnx-fire-red-asr2-zh_en-int8-2026-02-26",
+      "id": "csukuangfj2/sherpa-onnx-fire-red-asr2-zh_en-int8-2026-02-26",
+      "url": "https://huggingface.co/api/models/csukuangfj2/sherpa-onnx-fire-red-asr2-zh_en-int8-2026-02-26?blobs=true",
+      "sha": "374cff185e952c40fcf2f6da972a3b6cf340608d",
+      "created_at": "2026-02-26T05:36:32.000Z",
+      "last_modified": "2026-02-26T05:59:12.000Z",
+      "license": null,
+      "languages": null,
+      "safetensors": null,
+      "files": [
+        {
+          "name": ".gitattributes",
+          "bytes": 1693,
+          "sha256": null
+        },
+        {
+          "name": "README.md",
+          "bytes": 107,
+          "sha256": null
+        },
+        {
+          "name": "decoder.int8.onnx",
+          "bytes": 417291928,
+          "sha256": "b840ce7196ae4a14d05ae84bbf56082b6b61ccec5610fda907dddbcea37354ff"
+        },
+        {
+          "name": "encoder.int8.onnx",
+          "bytes": 817286833,
+          "sha256": "54048d66b6e8f3c80ea7ce95efe794587b0fd81d7271651d0decd3803852ae82"
+        },
+        {
+          "name": "test_wavs/0.wav",
+          "bytes": 321744,
+          "sha256": "7d93384ca14702cc584a7a33fe2fed92e89e708549161cb12ea38c916882103b"
+        },
+        {
+          "name": "test_wavs/1.wav",
+          "bytes": 163244,
+          "sha256": "8bfb42c963e623ebab31b81ff4404867d07d3102507c87ac14577c4c61663b8c"
+        },
+        {
+          "name": "test_wavs/2.wav",
+          "bytes": 150124,
+          "sha256": "20805bcc696b9b65f3357a2508a419d4f33b81006d47e1312e219b0fad934d1d"
+        },
+        {
+          "name": "test_wavs/3-sichuan.wav",
+          "bytes": 250764,
+          "sha256": "150b75ada9f5b4011018e961e56427e4af6849fcc69764321556586bc4790c49"
+        },
+        {
+          "name": "test_wavs/3.wav",
+          "bytes": 282604,
+          "sha256": "5851e31f3e8e5f741635da9466e19fccfbabd117ebcdc92db242c92483aee064"
+        },
+        {
+          "name": "test_wavs/4-tianjin.wav",
+          "bytes": 249932,
+          "sha256": "1127451bad4c45953a5b788ab4977170388e91454ef90fee55754c4587628782"
+        },
+        {
+          "name": "test_wavs/5-henan.wav",
+          "bytes": 255724,
+          "sha256": "ed767dc9a89489888060c65bc246e702b2ab25e16977998be10edc459c9e4397"
+        },
+        {
+          "name": "test_wavs/8k.wav",
+          "bytes": 282284,
+          "sha256": "ad03b71750338810aa39534a42c0bda6c227488ab59e40da1ec8e4804d4ea5c7"
+        },
+        {
+          "name": "tokens.txt",
+          "bytes": 79172,
+          "sha256": null
+        }
+      ]
+    },
+    {
+      "requested_id": "handy-computer/Qwen3-ASR-0.6B-gguf",
+      "id": "handy-computer/Qwen3-ASR-0.6B-gguf",
+      "url": "https://huggingface.co/api/models/handy-computer/Qwen3-ASR-0.6B-gguf?blobs=true",
+      "sha": "7e7c69a577fa2725dfedbe34b5e999336e30a19b",
+      "created_at": "2026-04-20T11:51:04.000Z",
+      "last_modified": "2026-10-16T08:29:36.000Z",
+      "license": "apache-2.0",
+      "languages": [
+        "zh",
+        "en",
+        "yue",
+        "ar",
+        "de",
+        "fr",
+        "es",
+        "pt",
+        "id",
+        "it",
+        "ko",
+        "ru",
+        "th",
+        "vi",
+        "ja",
+        "tr",
+        "hi",
+        "ms",
+        "nl",
+        "sv",
+        "da",
+        "fi",
+        "pl",
+        "cs",
+        "fil",
+        "fa",
+        "el",
+        "ro",
+        "hu",
+        "mk"
+      ],
+      "safetensors": null,
+      "files": [
+        {
+          "name": ".gitattributes",
+          "bytes": 1888,
+          "sha256": null
+        },
+        {
+          "name": "LICENSE",
+          "bytes": 11358,
+          "sha256": null
+        },
+        {
+          "name": "NOTICE",
+          "bytes": 392,
+          "sha256": null
+        },
+        {
+          "name": "Qwen3-ASR-0.6B-BF16.gguf",
+          "bytes": 1571490016,
+          "sha256": "dadb8196937aa6b998a94124a043fce694e0ab6c3c6eb0ae1669fa49d04aab84"
+        },
+        {
+          "name": "Qwen3-ASR-0.6B-F16.gguf",
+          "bytes": 1579793056,
+          "sha256": "5c90e4b1a72a4c59cd12afa5ebb0cc8628848148f2b337d025cc5121ae4d2eea"
+        },
+        {
+          "name": "Qwen3-ASR-0.6B-Q4_K_M.gguf",
+          "bytes": 589560480,
+          "sha256": "5b58f32a58ffa2c8783e0b0963485623e286e6272d953dfc9e28bc3447dee0c0"
+        },
+        {
+          "name": "Qwen3-ASR-0.6B-Q5_K_M.gguf",
+          "bytes": 645356192,
+          "sha256": "062a7bcb18675c2fe5ffd0e8b354eac6a1ceada9b2af9ef7168746ae16b54358"
+        },
+        {
+          "name": "Qwen3-ASR-0.6B-Q6_K.gguf",
+          "bytes": 690417824,
+          "sha256": "3b051f108f03c0c91bbe1a3b2c1ee15e3ed51e4caec2a48751b01f2a21441cc3"
+        },
+        {
+          "name": "Qwen3-ASR-0.6B-Q8_0.gguf",
+          "bytes": 850423456,
+          "sha256": "f081b2d5e23bd669d92cc331d722a8a0681943b8e6f34b48996fd5c319b5acd8"
+        },
+        {
+          "name": "README.md",
+          "bytes": 62869,
+          "sha256": null
+        }
+      ]
+    },
+    {
+      "requested_id": "handy-computer/Qwen3-ASR-1.7B-gguf",
+      "id": "handy-computer/Qwen3-ASR-1.7B-gguf",
+      "url": "https://huggingface.co/api/models/handy-computer/Qwen3-ASR-1.7B-gguf?blobs=true",
+      "sha": "0e0a596e3959c3f3f2ab7d443a5b6f0f4a4bba6f",
+      "created_at": "2026-04-20T11:56:25.000Z",
+      "last_modified": "2026-10-16T08:29:43.000Z",
+      "license": "apache-2.0",
+      "languages": [
+        "zh",
+        "en",
+        "yue",
+        "ar",
+        "de",
+        "fr",
+        "es",
+        "pt",
+        "id",
+        "it",
+        "ko",
+        "ru",
+        "th",
+        "vi",
+        "ja",
+        "tr",
+        "hi",
+        "ms",
+        "nl",
+        "sv",
+        "da",
+        "fi",
+        "pl",
+        "cs",
+        "fil",
+        "fa",
+        "el",
+        "ro",
+        "hu",
+        "mk"
+      ],
+      "safetensors": null,
+      "files": [
+        {
+          "name": ".gitattributes",
+          "bytes": 1888,
+          "sha256": null
+        },
+        {
+          "name": "LICENSE",
+          "bytes": 11358,
+          "sha256": null
+        },
+        {
+          "name": "NOTICE",
+          "bytes": 392,
+          "sha256": null
+        },
+        {
+          "name": "Qwen3-ASR-1.7B-BF16.gguf",
+          "bytes": 4083087904,
+          "sha256": "57db745f8ec3ad2ea391b0205661e7d74f76158877a33f151e4d4624ed2b7cc9"
+        },
+        {
+          "name": "Qwen3-ASR-1.7B-F16.gguf",
+          "bytes": 4091390944,
+          "sha256": "edb09c29b8f73822c639168d5ef72aa2dccdf8b4e48fc4b8518885352ff62c71"
+        },
+        {
+          "name": "Qwen3-ASR-1.7B-Q4_K_M.gguf",
+          "bytes": 1319830496,
+          "sha256": "b7afe3674f653fa84f712ed2440353c6e7cf7f93697fef76b05a26538b24844e"
+        },
+        {
+          "name": "Qwen3-ASR-1.7B-Q5_K_M.gguf",
+          "bytes": 1517290464,
+          "sha256": "034c557fe92ff8fcd9a9c041cbdaad347be0a86a58d3a348f63cf3f0180879d0"
+        },
+        {
+          "name": "Qwen3-ASR-1.7B-Q6_K.gguf",
+          "bytes": 1692554208,
+          "sha256": "c75a961b7134a6c952d89797865cb0d0376876185aee04ef6d12c31c2952e4e1"
+        },
+        {
+          "name": "Qwen3-ASR-1.7B-Q8_0.gguf",
+          "bytes": 2185030624,
+          "sha256": "9a0d81792dfea2d5f278b8a63deb3ea6e02139ce42c2301f32ea19c4f77526b7"
+        },
+        {
+          "name": "README.md",
+          "bytes": 62975,
+          "sha256": null
+        }
+      ]
+    },
+    {
+      "requested_id": "handy-computer/MOSS-Transcribe-Diarize-gguf",
+      "id": "handy-computer/moss-transcribe-diarize-gguf",
+      "url": "https://huggingface.co/api/models/handy-computer/MOSS-Transcribe-Diarize-gguf?blobs=true",
+      "sha": "8c603aa6da33a068e39bbd109786f85786a21834",
+      "created_at": "2026-07-12T05:56:29.000Z",
+      "last_modified": "2026-10-16T08:28:43.000Z",
+      "license": "apache-2.0",
+      "languages": [
+        "en",
+        "zh"
+      ],
+      "safetensors": null,
+      "files": [
+        {
+          "name": ".gitattributes",
+          "bytes": 1942,
+          "sha256": null
+        },
+        {
+          "name": "LICENSE",
+          "bytes": 11358,
+          "sha256": null
+        },
+        {
+          "name": "MOSS-Transcribe-Diarize-BF16.gguf",
+          "bytes": 1826883264,
+          "sha256": "f943293c6c6443b339d7466187181f1ecd31c77cf796740391fdb459e5b7ca4a"
+        },
+        {
+          "name": "MOSS-Transcribe-Diarize-F16.gguf",
+          "bytes": 1833666240,
+          "sha256": "e14d8a3b807fb9416bea9efe51d7a33555672b20753886e08c5bb1d89552cc99"
+        },
+        {
+          "name": "MOSS-Transcribe-Diarize-Q4_K_M.gguf",
+          "bytes": 617345728,
+          "sha256": "1e40cd8a6f385a2bb2a53a8b89b04949c47c870e4f930a69105460538bd16ec0"
+        },
+        {
+          "name": "MOSS-Transcribe-Diarize-Q5_K_M.gguf",
+          "bytes": 700314304,
+          "sha256": "cc36d8ad46c66a55125cd9339dc063e62c657d63de60d571442d19aea87e7349"
+        },
+        {
+          "name": "MOSS-Transcribe-Diarize-Q6_K.gguf",
+          "bytes": 768152256,
+          "sha256": "7fd37409dbec9c732f912717f3cd8f4cd2c5083841edfab2f3b670f816512b44"
+        },
+        {
+          "name": "MOSS-Transcribe-Diarize-Q8_0.gguf",
+          "bytes": 986900160,
+          "sha256": "2f9039f1f06c7795de78f45ec1abea2712e881eb0f5c7ff8a080e66e1a3ce015"
+        },
+        {
+          "name": "NOTICE",
+          "bytes": 410,
+          "sha256": null
+        },
+        {
+          "name": "README.md",
+          "bytes": 21347,
+          "sha256": null
+        }
+      ]
+    },
+    {
+      "requested_id": "handy-computer/cohere-transcribe-03-2026-gguf",
+      "id": "handy-computer/cohere-transcribe-03-2026-gguf",
+      "url": "https://huggingface.co/api/models/handy-computer/cohere-transcribe-03-2026-gguf?blobs=true",
+      "sha": "7353b6040bdc1be9e5a3823d99d5fe12afe88264",
+      "created_at": "2026-04-15T11:52:48.000Z",
+      "last_modified": "2026-10-16T08:26:38.000Z",
+      "license": "apache-2.0",
+      "languages": [
+        "en",
+        "fr",
+        "de",
+        "es",
+        "it",
+        "pt",
+        "nl",
+        "pl",
+        "el",
+        "ar",
+        "ja",
+        "zh",
+        "vi",
+        "ko"
+      ],
+      "safetensors": null,
+      "files": [
+        {
+          "name": ".gitattributes",
+          "bytes": 1954,
+          "sha256": null
+        },
+        {
+          "name": "LICENSE",
+          "bytes": 11358,
+          "sha256": null
+        },
+        {
+          "name": "NOTICE",
+          "bytes": 409,
+          "sha256": null
+        },
+        {
+          "name": "README.md",
+          "bytes": 31907,
+          "sha256": null
+        },
+        {
+          "name": "cohere-transcribe-03-2026-BF16.gguf",
+          "bytes": 4105263104,
+          "sha256": "72e7625abc358da7b1a27348b18269b4a026eceb792e6ade53c6bb2280d0f3a7"
+        },
+        {
+          "name": "cohere-transcribe-03-2026-F16.gguf",
+          "bytes": 4106644992,
+          "sha256": "65ea095ba78ed938a613cc950da0599b29e16bb5a22a968d7b1fd99d71f13784"
+        },
+        {
+          "name": "cohere-transcribe-03-2026-Q4_K_M.gguf",
+          "bytes": 1558162944,
+          "sha256": "0ea56826d8bd5d74b7143a4a04e022dc1bb75452cfae49d98b6acb0c1d16a1fb"
+        },
+        {
+          "name": "cohere-transcribe-03-2026-Q5_K_M.gguf",
+          "bytes": 1770270208,
+          "sha256": "14d02f1ad6dd77b3a60f82639879012c3adb4fe25c50a5a47a2c4c661daf1558"
+        },
+        {
+          "name": "cohere-transcribe-03-2026-Q6_K.gguf",
+          "bytes": 1972524544,
+          "sha256": "094fb65b9d82d4a52db1d944152e4d7b6629f356bb3beaffdd0891eb527f24f3"
+        },
+        {
+          "name": "cohere-transcribe-03-2026-Q8_0.gguf",
+          "bytes": 2410655232,
+          "sha256": "931916663432fd895423a4291a8400221802b288967ca2d435fc5e3141c9e71e"
+        }
+      ]
+    },
+    {
+      "requested_id": "facebook/omniASR-CTC-300M-v2",
+      "url": "https://huggingface.co/api/models/facebook/omniASR-CTC-300M-v2?blobs=true",
+      "error": "HTTP Error 401: Unauthorized"
+    },
+    {
+      "requested_id": "DataoceanAI/dolphin-cn-dialect-small-prompt",
+      "id": "DataoceanAI/dolphin-cn-dialect-small-prompt",
+      "url": "https://huggingface.co/api/models/DataoceanAI/dolphin-cn-dialect-small-prompt?blobs=true",
+      "sha": "ddc9422edbc6e23a7c1e15fbfb9c750866fe7f4f",
+      "created_at": "2026-05-13T07:28:31.000Z",
+      "last_modified": "2026-05-13T07:56:03.000Z",
+      "license": "apache-2.0",
+      "languages": [
+        "zh"
+      ],
+      "safetensors": null,
+      "files": [
+        {
+          "name": ".gitattributes",
+          "bytes": 1652,
+          "sha256": null
+        },
+        {
+          "name": "Dolphin-CN-Dialect.png",
+          "bytes": 523855,
+          "sha256": "d3be711351ad48bac444210e782bc074e1b3d0910a5c895defa9745af0dcfb8f"
+        },
+        {
+          "name": "README.md",
+          "bytes": 6499,
+          "sha256": null
+        },
+        {
+          "name": "global_cmvn",
+          "bytes": 2215,
+          "sha256": null
+        },
+        {
+          "name": "small.cn.prompt.pt",
+          "bytes": 1545489889,
+          "sha256": "fdd09034024fc3aee16c89f678461791b2eb4ac0ae880da4ea6141e0e32f409b"
+        },
+        {
+          "name": "train.yaml",
+          "bytes": 2418,
+          "sha256": null
+        },
+        {
+          "name": "units.txt",
+          "bytes": 204063,
+          "sha256": null
+        }
+      ]
+    },
+    {
+      "requested_id": "csukuangfj/sherpa-onnx-paraformer-zh-small-2024-03-09",
+      "id": "csukuangfj/sherpa-onnx-paraformer-zh-small-2024-03-09",
+      "url": "https://huggingface.co/api/models/csukuangfj/sherpa-onnx-paraformer-zh-small-2024-03-09?blobs=true",
+      "sha": "63ddc3cd0f2810b68289a7b3876e62ef5d53d6df",
+      "created_at": "2024-03-09T15:04:58.000Z",
+      "last_modified": "2024-03-10T02:05:17.000Z",
+      "license": null,
+      "languages": null,
+      "safetensors": null,
+      "files": [
+        {
+          "name": ".done",
+          "bytes": 0,
+          "sha256": null
+        },
+        {
+          "name": ".gitattributes",
+          "bytes": 1519,
+          "sha256": null
+        },
+        {
+          "name": "README.md",
+          "bytes": 152,
+          "sha256": null
+        },
+        {
+          "name": "add-model-metadata.py",
+          "bytes": 2542,
+          "sha256": null
+        },
+        {
+          "name": "am.mvn",
+          "bytes": 11203,
+          "sha256": null
+        },
+        {
+          "name": "config.yaml",
+          "bytes": 56290,
+          "sha256": null
+        },
+        {
+          "name": "generate-tokens.py",
+          "bytes": 491,
+          "sha256": null
+        },
+        {
+          "name": "model.int8.onnx",
+          "bytes": 81828675,
+          "sha256": "3ef6c19369b912f7caf3cef8e545c5ccd1a33d9d7ec792a46668dc41c4b229ec"
+        },
+        {
+          "name": "test_wavs/0.wav",
+          "bytes": 179646,
+          "sha256": null
+        },
+        {
+          "name": "test_wavs/1.wav",
+          "bytes": 164976,
+          "sha256": null
+        },
+        {
+          "name": "test_wavs/2-zh-en.wav",
+          "bytes": 259278,
+          "sha256": null
+        },
+        {
+          "name": "test_wavs/3-sichuan.wav",
+          "bytes": 250764,
+          "sha256": null
+        },
+        {
+          "name": "test_wavs/4-tianjin.wav",
+          "bytes": 249932,
+          "sha256": null
+        },
+        {
+          "name": "test_wavs/5-henan.wav",
+          "bytes": 255724,
+          "sha256": null
+        },
+        {
+          "name": "test_wavs/8k.wav",
+          "bytes": 72434,
+          "sha256": null
+        },
+        {
+          "name": "tokens.txt",
+          "bytes": 75352,
+          "sha256": null
+        }
+      ]
+    },
+    {
+      "requested_id": "csukuangfj/sherpa-onnx-paraformer-zh-2024-03-09",
+      "id": "csukuangfj/sherpa-onnx-paraformer-zh-2024-03-09",
+      "url": "https://huggingface.co/api/models/csukuangfj/sherpa-onnx-paraformer-zh-2024-03-09?blobs=true",
+      "sha": "906992d326ebf0c5171cde675aa0902be9e5bc6c",
+      "created_at": "2024-03-09T13:25:11.000Z",
+      "last_modified": "2024-03-10T02:05:45.000Z",
+      "license": null,
+      "languages": null,
+      "safetensors": null,
+      "files": [
+        {
+          "name": ".gitattributes",
+          "bytes": 1519,
+          "sha256": null
+        },
+        {
+          "name": "README.md",
+          "bytes": 190,
+          "sha256": null
+        },
+        {
+          "name": "add-model-metadata.py",
+          "bytes": 2440,
+          "sha256": null
+        },
+        {
+          "name": "am.mvn",
+          "bytes": 11203,
+          "sha256": null
+        },
+        {
+          "name": "config.yaml",
+          "bytes": 56129,
+          "sha256": null
+        },
+        {
+          "name": "generate-tokens.py",
+          "bytes": 741,
+          "sha256": null
+        },
+        {
+          "name": "model.int8.onnx",
+          "bytes": 227330205,
+          "sha256": "90bc03034ae1bef9575f8cc798cd1519c8be8aa9e8b458a033e32017ff4d584c"
+        },
+        {
+          "name": "model.onnx",
+          "bytes": 822641426,
+          "sha256": "ed302fb061dcb65655b5240f5f8cd18d6d6c2f5c2b5cb63184d413d728bc1ec4"
+        },
+        {
+          "name": "quantize-model.py",
+          "bytes": 585,
+          "sha256": null
+        },
+        {
+          "name": "test_wavs/0.wav",
+          "bytes": 179646,
+          "sha256": null
+        },
+        {
+          "name": "test_wavs/1.wav",
+          "bytes": 164976,
+          "sha256": null
+        },
+        {
+          "name": "test_wavs/2-zh-en.wav",
+          "bytes": 259278,
+          "sha256": null
+        },
+        {
+          "name": "test_wavs/3-sichuan.wav",
+          "bytes": 250764,
+          "sha256": null
+        },
+        {
+          "name": "test_wavs/4-tianjin.wav",
+          "bytes": 249932,
+          "sha256": null
+        },
+        {
+          "name": "test_wavs/5-henan.wav",
+          "bytes": 255724,
+          "sha256": null
+        },
+        {
+          "name": "test_wavs/8k.wav",
+          "bytes": 72434,
+          "sha256": null
+        },
+        {
+          "name": "tokens.json",
+          "bytes": 93182,
+          "sha256": null
+        },
+        {
+          "name": "tokens.txt",
+          "bytes": 75354,
+          "sha256": null
+        }
+      ]
+    }
+  ]
+}

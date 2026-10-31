@@ -1,0 +1,190 @@
+[
+  {
+    "query": "sherpa-onnx-fire-red-asr2",
+    "models": [
+      {
+        "id": "csukuangfj2/sherpa-onnx-fire-red-asr2-ctc-zh_en-2026-02-25",
+        "last_modified": null
+      },
+      {
+        "id": "csukuangfj2/sherpa-onnx-fire-red-asr2-ctc-zh_en-int8-2026-02-25",
+        "last_modified": null
+      },
+      {
+        "id": "csukuangfj2/sherpa-onnx-fire-red-asr2-zh_en-int8-2026-02-26",
+        "last_modified": null
+      },
+      {
+        "id": "csukuangfj2/sherpa-onnx-fire-red-asr2-zh_en-2026-02-26",
+        "last_modified": null
+      },
+      {
+        "id": "ifreeking/sherpa-onnx-fire-red-asr2-zh_en-int8-2026-02-26",
+        "last_modified": null
+      },
+      {
+        "id": "ifreeking/sherpa-onnx-fire-red-asr2-ctc-zh_en-int8-2026-02-25",
+        "last_modified": null
+      }
+    ]
+  },
+  {
+    "query": "dolphin-cn",
+    "models": [
+      {
+        "id": "dolphinteam/OpenWhistle-CNN-VGG16",
+        "last_modified": null
+      },
+      {
+        "id": "azi111/dolphin-2_2-yi-34b-465bpw-h8-exl2-cnen",
+        "last_modified": null
+      },
+      {
+        "id": "azi111/dolphin-2_2-yi-34b-3bpw-h8-exl2-cnen",
+        "last_modified": null
+      },
+      {
+        "id": "azi111/dolphin-2_2-yi-34b-445bpw-h8-exl2-cnen",
+        "last_modified": null
+      },
+      {
+        "id": "stephenlzc/dolphin-llama3-zh-cn-uncensored",
+        "last_modified": null
+      },
+      {
+        "id": "DataoceanAI1/dolphin-cn-dialect-small-streaming",
+        "last_modified": null
+      },
+      {
+        "id": "DataoceanAI1/dolphin-cn-dialect-small-prompt",
+        "last_modified": null
+      },
+      {
+        "id": "DataoceanAI1/dolphin-cn-dialect-base",
+        "last_modified": null
+      },
+      {
+        "id": "DataoceanAI1/dolphin-cn-dialect-base-streaming",
+        "last_modified": null
+      },
+      {
+        "id": "DataoceanAI/dolphin-cn-dialect-base-streaming",
+        "last_modified": null
+      },
+      {
+        "id": "DataoceanAI/dolphin-cn-dialect-small-prompt",
+        "last_modified": null
+      },
+      {
+        "id": "DataoceanAI/dolphin-cn-dialect-small-streaming",
+        "last_modified": null
+      }
+    ]
+  },
+  {
+    "query": "Qwen3-ASR-0.6B-gguf",
+    "models": [
+      {
+        "id": "unslothai/Qwen3-ASR-0.6B-GGUF",
+        "last_modified": null
+      },
+      {
+        "id": "FlippyDora/qwen3-asr-0.6b-GGUF",
+        "last_modified": null
+      },
+      {
+        "id": "screenpipe/qwen3-asr-0.6b-gguf",
+        "last_modified": null
+      },
+      {
+        "id": "poc7667/qwen3-asr-0.6b-gguf",
+        "last_modified": null
+      },
+      {
+        "id": "cstr/qwen3-asr-0.6b-GGUF",
+        "last_modified": null
+      },
+      {
+        "id": "ggml-org/Qwen3-ASR-0.6B-GGUF",
+        "last_modified": null
+      },
+      {
+        "id": "mradermacher/Qwen3-ASR-0.6B-GGUF",
+        "last_modified": null
+      },
+      {
+        "id": "mradermacher/Qwen3-ASR-0.6B-Lyrics-Viet-GGUF",
+        "last_modified": null
+      },
+      {
+        "id": "mradermacher/Qwen3-ASR-0.6B-i1-GGUF",
+        "last_modified": null
+      },
+      {
+        "id": "handy-computer/Qwen3-ASR-0.6B-gguf",
+        "last_modified": null
+      },
+      {
+        "id": "nzyaltair/Qwen3-ASR-0.6B-gguf",
+        "last_modified": null
+      },
+      {
+        "id": "lainlives/Qwen3-ASR-0.6B-GGUF",
+        "last_modified": null
+      }
+    ]
+  },
+  {
+    "query": "Qwen3-ASR-1.7B-gguf",
+    "models": [
+      {
+        "id": "kznkzn/Qwen3-ASR-1.7B-JA-speechcpp-GGUF",
+        "last_modified": null
+      },
+      {
+        "id": "ggml-org/Qwen3-ASR-1.7B-GGUF",
+        "last_modified": null
+      },
+      {
+        "id": "handy-computer/Qwen3-ASR-1.7B-gguf",
+        "last_modified": null
+      },
+      {
+        "id": "unslothai/Qwen3-ASR-1.7B-GGUF",
+        "last_modified": null
+      },
+      {
+        "id": "FlippyDora/qwen3-asr-1.7b-GGUF",
+        "last_modified": null
+      },
+      {
+        "id": "dseditor/qwen3-asr-1.7b-GGUF",
+        "last_modified": null
+      },
+      {
+        "id": "cstr/qwen3-asr-1.7b-GGUF",
+        "last_modified": null
+      },
+      {
+        "id": "foryoung365/Qwen3-ASR-1.7B-Q4_K_M-GGUF",
+        "last_modified": null
+      },
+      {
+        "id": "mradermacher/Qwen3-ASR-1.7B-Lyrics-Viet-GGUF",
+        "last_modified": null
+      },
+      {
+        "id": "mradermacher/Qwen3-ASR-1.7B-Persian-GGUF",
+        "last_modified": null
+      },
+      {
+        "id": "mradermacher/Qwen3-ASR-1.7B-GGUF",
+        "last_modified": null
+      },
+      {
+        "id": "mradermacher/Qwen3-ASR-1.7B-i1-GGUF",
+        "last_modified": null
+      }
+    ]
+  }
+]

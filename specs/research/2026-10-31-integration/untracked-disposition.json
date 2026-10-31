@@ -1,0 +1,650 @@
+[
+  {
+    "path": ".agents/skills/cuse",
+    "action": "保留本地",
+    "reason": "指向本机外部技能目录的绝对链接；不是产品源码",
+    "original_sha256": "symlink"
+  },
+  {
+    "path": ".agents/skills/download-anything",
+    "action": "保留本地",
+    "reason": "指向本机外部技能目录的绝对链接；不是产品源码",
+    "original_sha256": "symlink"
+  },
+  {
+    "path": ".agents/skills/hatch-pet",
+    "action": "保留本地",
+    "reason": "指向本机外部技能目录的绝对链接；不是产品源码",
+    "original_sha256": "symlink"
+  },
+  {
+    "path": ".agents/skills/myagents-anydoc",
+    "action": "保留本地",
+    "reason": "指向本机外部技能目录的绝对链接；不是产品源码",
+    "original_sha256": "symlink"
+  },
+  {
+    "path": ".agents/skills/myagents-cli",
+    "action": "保留本地",
+    "reason": "指向本机外部技能目录的绝对链接；不是产品源码",
+    "original_sha256": "symlink"
+  },
+  {
+    "path": ".agents/skills/myagents-docs",
+    "action": "保留本地",
+    "reason": "指向本机外部技能目录的绝对链接；不是产品源码",
+    "original_sha256": "symlink"
+  },
+  {
+    "path": ".agents/skills/myagents-memory-gardener",
+    "action": "保留本地",
+    "reason": "指向本机外部技能目录的绝对链接；不是产品源码",
+    "original_sha256": "symlink"
+  },
+  {
+    "path": ".agents/skills/myagents-memory-molt",
+    "action": "保留本地",
+    "reason": "指向本机外部技能目录的绝对链接；不是产品源码",
+    "original_sha256": "symlink"
+  },
+  {
+    "path": ".agents/skills/myagents-memory-update",
+    "action": "保留本地",
+    "reason": "指向本机外部技能目录的绝对链接；不是产品源码",
+    "original_sha256": "symlink"
+  },
+  {
+    "path": ".agents/skills/myagents-speech-recognition",
+    "action": "保留本地",
+    "reason": "指向本机外部技能目录的绝对链接；不是产品源码",
+    "original_sha256": "symlink"
+  },
+  {
+    "path": ".agents/skills/myagents-task-alignment",
+    "action": "保留本地",
+    "reason": "指向本机外部技能目录的绝对链接；不是产品源码",
+    "original_sha256": "symlink"
+  },
+  {
+    "path": ".agents/skills/myagents-task-automation",
+    "action": "保留本地",
+    "reason": "指向本机外部技能目录的绝对链接；不是产品源码",
+    "original_sha256": "symlink"
+  },
+  {
+    "path": ".agents/skills/officecli",
+    "action": "保留本地",
+    "reason": "指向本机外部技能目录的绝对链接；不是产品源码",
+    "original_sha256": "symlink"
+  },
+  {
+    "path": ".agents/skills/prompt-writer",
+    "action": "保留本地",
+    "reason": "指向本机外部技能目录的绝对链接；不是产品源码",
+    "original_sha256": "symlink"
+  },
+  {
+    "path": ".agents/skills/skill-creator",
+    "action": "保留本地",
+    "reason": "指向本机外部技能目录的绝对链接；不是产品源码",
+    "original_sha256": "symlink"
+  },
+  {
+    "path": ".agents/skills/summarize",
+    "action": "保留本地",
+    "reason": "指向本机外部技能目录的绝对链接；不是产品源码",
+    "original_sha256": "symlink"
+  },
+  {
+    "path": "design/rabbit/b4-i4-v1/hear-b4-i4-assets-v1.zip",
+    "action": "保留本地",
+    "reason": "81个归档条目均与现有兔子资源逐项内容一致",
+    "original_sha256": "60f3997ff09ec02354ba582bd7b96f1427d2ae0c555a7b6c9ecf0235ee136755"
+  },
+  {
+    "path": "playground/hear-asr-queue-fixed.png",
+    "action": "保留本地",
+    "reason": "生成预览或历史截图；对应可移植原型源码已纳入",
+    "original_sha256": "bb6d98048a47394df7703b294f54c0b50cc38e6c41c2a34959d1efcb31a70165"
+  },
+  {
+    "path": "playground/hear-rabbit-states-preview.jpg",
+    "action": "保留本地",
+    "reason": "生成预览或历史截图；对应可移植原型源码已纳入",
+    "original_sha256": "075a9854ef497b9944de64ee5e9fc8792a7f117859c8d06b98756b0ce6329dae"
+  },
+  {
+    "path": "playground/hear-style-comparison.html",
+    "action": "保留本地",
+    "reason": "生成预览或历史截图；对应可移植原型源码已纳入",
+    "original_sha256": "59d7da8e8988319fe21ac0b300f02a7756f61a8e07cf6dc82a1da41a2a680c82"
+  },
+  {
+    "path": "playground/hear-usage-statistics.png",
+    "action": "保留本地",
+    "reason": "生成预览或历史截图；对应可移植原型源码已纳入",
+    "original_sha256": "921e015962cb833e83ca57a24fa0cf5c8e77df41a13415ddac3b0080a42a0e52"
+  },
+  {
+    "path": "playground/style-comparison/README.md",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "763f7a54936c15876a1f8b42c52626978b0781778e212bc3dabbc712dca8cdf0"
+  },
+  {
+    "path": "playground/style-comparison/build.mjs",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "31d5e458f0e607092daa292c9717361bcb55c43a2e04a1d48430157a7557052d"
+  },
+  {
+    "path": "playground/style-comparison/filled-timeline.png",
+    "action": "保留本地",
+    "reason": "生成预览或历史截图；对应可移植原型源码已纳入",
+    "original_sha256": "867f0346437b598db0039e723f56a93bfd5bb4f3139da0fbbfd4a57619d8a30e"
+  },
+  {
+    "path": "playground/style-comparison/filled.css",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "fe7ab1530de0ca8c95b94b583c58f6ffea96209976530cf11357a70fb0b8e968"
+  },
+  {
+    "path": "playground/style-comparison/frame.css",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "05a94e5c112c4d207d2820ce11128242f68c97c4b27514c3f409c971df65468e"
+  },
+  {
+    "path": "playground/style-comparison/index.html",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "121e5bea80914fb26ae582d7b1777368840e6e30d4e53955a96ed63cfe5f73cd"
+  },
+  {
+    "path": "playground/style-comparison/main.jsx",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "92627db4761b9d38abab243a99faf657f7e36b089ee43d07c5ec055f56809515"
+  },
+  {
+    "path": "playground/style-comparison/proposal.css",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "0fce8c6ac4b9c7183229af233615451a2f395556553170687b58a0d188bc7bcc"
+  },
+  {
+    "path": "playground/style-comparison/queue-comparison.png",
+    "action": "保留本地",
+    "reason": "生成预览或历史截图；对应可移植原型源码已纳入",
+    "original_sha256": "f9d539802edde44b5df7c41840c5b13a9a88d238cd2ac2fc2b394bd7a2d7b04f"
+  },
+  {
+    "path": "playground/style-comparison/timeline-comparison.png",
+    "action": "保留本地",
+    "reason": "生成预览或历史截图；对应可移植原型源码已纳入",
+    "original_sha256": "d714adaca910b835e1a5f87a3b7454ce44e250d8209930ba1628a73c1e34282c"
+  },
+  {
+    "path": "playground/style-comparison/workbench.css",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "479e7926f90ad3940e2afc90a2d77d7bf58b056c6b4cf311983a6493492d2a14"
+  },
+  {
+    "path": "specs/prd/_drafts/context-consumption-scenarios.md",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "8938a0928a06e0709fc74b4aafa7901e4698d69ecf80cc998cb4432ba9a53869"
+  },
+  {
+    "path": "specs/prd/_drafts/local-asr-benchmark.md",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "1dc00e2a92d5abfb2291fcd91769bbd63513552809fc7c076372d979ad4334b6"
+  },
+  {
+    "path": "specs/prd/_drafts/local-speaker-picker.md",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "a044df63eccb8b5cb7c0b2aecd763c548445149ba70ed962bd6f38316c95f181"
+  },
+  {
+    "path": "specs/prd/_drafts/queue-usage-statistics.md",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "34a8a2fa651e5be93a870a9ca9fb0b3562f69a883d30e41d3a8582377b5ebf70"
+  },
+  {
+    "path": "specs/prd/_drafts/screenshot-understanding.md",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "cc7513e6b4d6fbaf6c4b4e73ed9145dd282a37221d213d5ea3bbe6c2b81cfa48"
+  },
+  {
+    "path": "specs/prd/devplan_261017_date-transition.md",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "d410a187aa0b7eb6d029ffe4919124f4fc7ed736f8d6525adac671fc55c20855"
+  },
+  {
+    "path": "specs/prd/devplan_261017_event-summary.md",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "92e8019c16247478d5f0edf6014ebee986f574ecc1ec0aa77ec78ac4f7b7ff27"
+  },
+  {
+    "path": "specs/prd/devplan_261017_filled-surfaces.md",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "4e720e6f18c669c94def7466a04357f0dd200e43898619a6fb753721389142f3"
+  },
+  {
+    "path": "specs/prd/devplan_261017_usage-statistics.md",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "73e293eae055f6af13ede2b9f09ec8fa7e133fe3c71a55e18ec3bf0b374d8e2d"
+  },
+  {
+    "path": "specs/prd/devplan_261017_window-drag.md",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "d5d36e164fefcb57d983596fad259665df3acaea6e5a1b88ca3438987d210650"
+  },
+  {
+    "path": "specs/prd/devplan_261018_local-speaker-picker.md",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "44be4853127a2ee49f623a5651336c043d8be3154e8a1fb6c157b1bd1f40ea6b"
+  },
+  {
+    "path": "specs/prd/devplan_261018_people-settings.md",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "c3fa3b67f914836929cfa23b3d2c4ad5efecdd01ceb1f17ed63461cda3a40de4"
+  },
+  {
+    "path": "specs/prd/devplan_261018_voice-enrollment.md",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "90aa8c3fee1af34888d7b70fedcdbed4bbf7e3211380b3bcb5cb02ced6a53bec"
+  },
+  {
+    "path": "specs/prd/devplan_261024_event-prompt-evaluation.md",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "3b026802e5b162323163f2834d8d37e79533385046f4bfc963c320ded9a193e5"
+  },
+  {
+    "path": "specs/prd/devplan_261024_summary-budget.md",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "6b073d834d84cbdbf27c75a117ba9cf186e505e56545e04e9958def9bdd7b153"
+  },
+  {
+    "path": "specs/research/2026-10-16-hear-product-design-review.md",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "4a3e3d54ca46d105298a7d100d99913c7ffa09329bbccf71cc0a50b70c5118ee"
+  },
+  {
+    "path": "specs/research/2026-10-16-hear-reliability-performance-optimization.md",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "44cbe96a9dad1c268e2e587ce71ee61e43323f4ff513bda94f99ec799dea2b5c"
+  },
+  {
+    "path": "specs/research/2026-10-20-first-run-onboarding.md",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "1ad2d4be609fd506c224382eeba9ec498aae04e2fd98eae15ff7f4ad699c5e46"
+  },
+  {
+    "path": "specs/research/2026-10-23-event-json-example/.gitignore",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "87204ce596db63f4466194cbe64377ff8b5a1ae340474530bee561e05eeebf9b"
+  },
+  {
+    "path": "specs/research/2026-10-23-event-json-example/README.md",
+    "action": "保留本地",
+    "reason": "含真实对话派生的具体讨论内容和私有样例索引",
+    "original_sha256": "8ca379b0060a7339c61b53504bb8ba6200fdb9ec1ee958aa7448f9da1b4a7af8"
+  },
+  {
+    "path": "specs/research/2026-10-23-hear-context-consumption.md",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "a09078c40b8baa120426a105c0d7f28c03441f14bf12a4a588acbfcd531a46ec"
+  },
+  {
+    "path": "specs/research/2026-10-23-hear-context-consumption/adjacent-products.md",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "cd56cd913d70e1eb3e3828bea916aa08831b7eab69d5d535a33dede97ee5a839"
+  },
+  {
+    "path": "specs/research/2026-10-23-hear-context-consumption/granola.md",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "1750979d4700f1ff23512de1ca6c9ffb9669f2ea8d00d302c0d05df65bb06f43"
+  },
+  {
+    "path": "specs/research/2026-10-23-hear-context-consumption/hear-baseline.md",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "e9971e9fb26569eaf64798a78035b133ce0cab629acf9bdd6f006c02dd3f6b13"
+  },
+  {
+    "path": "specs/research/2026-10-23-hear-context-consumption/method-and-validation.md",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "4a4a10bc60b230fb7b1f44ba8fb58a52b192e71ba49b086ee64411b9afadf18f"
+  },
+  {
+    "path": "specs/research/2026-10-23-hear-context-consumption/plaud.md",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "ca3d7b340753ba9d81c390d6f56aa7e716e0c76ed23bbd61752166f4358392d3"
+  },
+  {
+    "path": "specs/research/2026-10-23-hear-context-consumption/xinliqiu.md",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "c18006ff5e8ae6c4a00e8958811daaf27f045810b4f938b205d19faeee13b785"
+  },
+  {
+    "path": "specs/research/2026-10-23-hear-event-understanding-framework.md",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "0ba897e31db133c66642dbb5c21a924779c2cfc5b00f105747965e8f224b8638"
+  },
+  {
+    "path": "specs/research/2026-10-23-hear-scenario-intelligence.md",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "af5176e39cee9036851a1eaf477dda5760999d4485d18ed91ba117098fabb152"
+  },
+  {
+    "path": "specs/research/2026-10-24-budgeted-summary/.gitignore",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "7f1449aa6b5c22585727e0d7ef4b16a112119fb0b8f472d7ab4d3a974369dc6d"
+  },
+  {
+    "path": "specs/research/2026-10-24-budgeted-summary/PLAN.md",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "75b625ee808a93f75773759e050b1c8786b0f4fb355ea023077db9289937f7c2"
+  },
+  {
+    "path": "specs/research/2026-10-24-budgeted-summary/REPORT.md",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "306de3e7555ef4e60ec0a3a5dbedc7c3b6383e364ba00f360a5d95861253ec20"
+  },
+  {
+    "path": "specs/research/2026-10-24-budgeted-summary/REVIEW.md",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "8bebf7e9e444791147f7644127dd809c2dc725028205399489f9a20a60b82238"
+  },
+  {
+    "path": "specs/research/2026-10-24-budgeted-summary/candidate-v3-REPORT.md",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "1b3b25140012ef16166f52b63e0ac1192af0a11befa6fd4aea3b4d4c49e01edc"
+  },
+  {
+    "path": "specs/research/2026-10-24-budgeted-summary/candidate-v3-metrics.json",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "ff13d77f64a07540725a9c27b208ff14642e6b4dbd2dd06af9a0f272ef30961e"
+  },
+  {
+    "path": "specs/research/2026-10-24-budgeted-summary/correction-metrics.json",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "40e7764716dbe5a40f06a7f6416c8376227ee4a76bf56a4adf184f7e5033c802"
+  },
+  {
+    "path": "specs/research/2026-10-24-budgeted-summary/metrics.json",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "ff13d77f64a07540725a9c27b208ff14642e6b4dbd2dd06af9a0f272ef30961e"
+  },
+  {
+    "path": "specs/research/2026-10-24-budgeted-summary/output.schema.json",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "2d8fe024087e33c35ca5b33f9e0f20764b244872b1ed2bd93bc83145dc26efb5"
+  },
+  {
+    "path": "specs/research/2026-10-24-budgeted-summary/prompt.txt",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "ae1e1f1621d6dac00f320c77f13910747ea36367ae87950ee6dcd8c4fa310b6d"
+  },
+  {
+    "path": "specs/research/2026-10-24-budgeted-summary/review-contract.md",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "7678bc511e3d635746a16fe9e5e94653f62ce972de90849d69089a31e4a6c967"
+  },
+  {
+    "path": "specs/research/2026-10-24-event-prompt-evaluation/.gitignore",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "7f1449aa6b5c22585727e0d7ef4b16a112119fb0b8f472d7ab4d3a974369dc6d"
+  },
+  {
+    "path": "specs/research/2026-10-24-event-prompt-evaluation/README.md",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "b404233b8b261ebf448316aba8c4b35e62fc58b5c571b565932254eaa0a7a087"
+  },
+  {
+    "path": "specs/research/2026-10-24-event-prompt-evaluation/REPORT.md",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "28ffa149a0c211792986bf69653299ca86ad8646c868b173686502ad11241baf"
+  },
+  {
+    "path": "specs/research/2026-10-24-event-prompt-evaluation/output.schema.json",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "d18108909e42f21769052191c5a5cf9d22ce74446b7dddaa4c1aef7b3c8c0162"
+  },
+  {
+    "path": "specs/research/2026-10-24-event-prompt-evaluation/prompt-v1.txt",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "8fade91ce6893b081fe3b5f68a2a144f991e8d4d5d95c7d6d5b86c73cad7f5ff"
+  },
+  {
+    "path": "specs/research/2026-10-24-event-prompt-evaluation/prompt-v10.txt",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "6041d741288db08b4e7043cd76c214b410a0e40ff285a16fb67915016fb8a416"
+  },
+  {
+    "path": "specs/research/2026-10-24-event-prompt-evaluation/prompt-v11.txt",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "bc1178df0461246086f3195c38c41debce6fb9053ae3b5951fc4db301625c291"
+  },
+  {
+    "path": "specs/research/2026-10-24-event-prompt-evaluation/prompt-v12.txt",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "a02bbe7671284f6145f998a8bfaa62ae9a6098ec4fdd636af686e8e4324cdab8"
+  },
+  {
+    "path": "specs/research/2026-10-24-event-prompt-evaluation/prompt-v13.txt",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "60a85170cf5fece521ed636c0c64479658ac5beb745c6ce59d171eb9cdab5eef"
+  },
+  {
+    "path": "specs/research/2026-10-24-event-prompt-evaluation/prompt-v14.txt",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "aa07edb00530980dbb909c0610dc5f1d8f5bbc0491ff530a1ea6d8197768e50f"
+  },
+  {
+    "path": "specs/research/2026-10-24-event-prompt-evaluation/prompt-v15.txt",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "6153444eaddfbc4a7e8d8cc4db7179483bfaeac3437b0c8e3aa950edb8b73e04"
+  },
+  {
+    "path": "specs/research/2026-10-24-event-prompt-evaluation/prompt-v16.txt",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "a3b609d444f8b97fb445105e54c665bae35a4d056c8e26075f60f9fb8eadba1e"
+  },
+  {
+    "path": "specs/research/2026-10-24-event-prompt-evaluation/prompt-v2.txt",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "21087fd8bcb98ab699e252e67517a031aa34636f21ea95233097386cb6b19d54"
+  },
+  {
+    "path": "specs/research/2026-10-24-event-prompt-evaluation/prompt-v3.txt",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "8665ff3ca1486c5fcdb0545b08497a5f97eee276a0f3c1afdbbca9110c96e78c"
+  },
+  {
+    "path": "specs/research/2026-10-24-event-prompt-evaluation/prompt-v4.txt",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "12c06ef12d2b1e16173de79f4f655573810ef64f28f7eb044b4a3cfd04cc949a"
+  },
+  {
+    "path": "specs/research/2026-10-24-event-prompt-evaluation/prompt-v5.txt",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "d2443188ed53dc54a78ee21e166d93ca25bc3da467cd80147d347d7b0b7e4b32"
+  },
+  {
+    "path": "specs/research/2026-10-24-event-prompt-evaluation/prompt-v6.txt",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "4b4489537439de7a4f763dc00e2b86e223887d1826efe8a0360d98fa9de26f84"
+  },
+  {
+    "path": "specs/research/2026-10-24-event-prompt-evaluation/prompt-v7.txt",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "37aea469a86fdb1fb5181518ccbb24257baa106fe7880aa3cfdfab7b5c6b1f59"
+  },
+  {
+    "path": "specs/research/2026-10-24-event-prompt-evaluation/prompt-v8.txt",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "1c787b4bdac5badc9142a897036fd08a3bc55f1ba6231a4cb2c9cc9233db4255"
+  },
+  {
+    "path": "specs/research/2026-10-24-event-prompt-evaluation/prompt-v9.txt",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "dd81c8040af0cd5eaf5b3b7eebaec4e67aeb8daf006cb162b58967c94fa68fb1"
+  },
+  {
+    "path": "specs/research/2026-10-24-event-prompt-evaluation/review-contract.md",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "29d792b0c2e45a923f6b21b11e5115ee84282df75d57007d63171e2112b80e9e"
+  },
+  {
+    "path": "specs/research/2026-10-24-event-prompt-evaluation/review-decisions.md",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "5e892b08556b5b9c78b06b1680e3e16dccb33a680edd70f538cf4ed42c9c5953"
+  },
+  {
+    "path": "specs/research/2026-10-24-event-understanding-live/.gitignore",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "240a3e0d37d2e86b614063f5347eb02d4f99ca6c254de6b82871ff8d95532a7d"
+  },
+  {
+    "path": "specs/research/2026-10-24-local-cpu-asr-survey/REPORT.md",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "45c952dee4e43cd9f1da402c822d4a8d02c96c38d00680dbd1b81b547b74f858"
+  },
+  {
+    "path": "specs/research/2026-10-24-local-cpu-asr-survey/github-runtime-metadata.json",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "31a112d139367557e499465052ffcd1a6ba44b567769feb9f4e447f916cea304"
+  },
+  {
+    "path": "specs/research/2026-10-24-local-cpu-asr-survey/hf-discovery.json",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "07800dff34a239323b57269d8e5acc806f9ec75c687689c2f16868dab465ad14"
+  },
+  {
+    "path": "specs/research/2026-10-24-local-cpu-asr-survey/hf-model-metadata-extra.json",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "08a53c2990ce068b12332863e455bb5bbb5c4f615bbb97e692593bf18d0f4a1c"
+  },
+  {
+    "path": "specs/research/2026-10-24-local-cpu-asr-survey/hf-model-metadata.json",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "21fcb5331efb4bf7e9a01e8261979cc2e52240f65024babc8d63722405c1b549"
+  },
+  {
+    "path": "specs/research/evidence/2026-10-16-reliability/README.md",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "23ee423d52fc858d2d8fa7f88b636f8b5ec87c39ea5577d1fc0ac5d8e02b4f1e"
+  },
+  {
+    "path": "specs/research/evidence/2026-10-16-reliability/local_aggregate_observation.json",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "6204a2833f0b998c0314d70c60fbba3e6a76e5a6035f68e7adffeb6b716414cd"
+  },
+  {
+    "path": "specs/research/evidence/2026-10-16-reliability/media_bench.Cargo.lock",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "cde84bfe1c60f268186e5f586289b0ea1e88ee5b31fd235fe1029516a5576bcb"
+  },
+  {
+    "path": "specs/research/evidence/2026-10-16-reliability/media_seal_bench.rs",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "b313703c8213674ed9ce28eef07a299d6c4ee963a77940f02cf9692acd4b0786"
+  },
+  {
+    "path": "specs/research/evidence/2026-10-16-reliability/media_seal_results.csv",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "8503688ede39781f4666d9d9d8d838391c273adb48247aea41200f8f84fbf975"
+  },
+  {
+    "path": "specs/research/evidence/2026-10-16-reliability/sqlite_scaling.py",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "2f4271a74930e65c163d3768f80b2e7f27198f65335576410225e9eb3fd1a437"
+  },
+  {
+    "path": "specs/research/evidence/2026-10-16-reliability/sqlite_scaling_results.json",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "1aa3f10f9339954b4db2e68d7aa09f6178842c94336c4deae22b3586d7ece3f5"
+  },
+  {
+    "path": "specs/research/hear-event-understanding-adaptation-assessment.md",
+    "action": "纳入版本库",
+    "reason": "历史研究/计划或可移植原型源码；不激活draft，不改生产默认",
+    "original_sha256": "4671a19244728954fe573272f898a2f132b86b61c77bdd08ce4775baf23cf611"
+  }
+]

@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 typedef void (*HearEntryEvent)(int, int, uint64_t);
-typedef struct { double width,height,band,rabbit_x,rabbit_y,top_band,top_shift; } HearEntryGeometry;
+typedef struct { double width,height,band,rabbit_x,rabbit_y,top_band,top_shift,menu_y; } HearEntryGeometry;
 static const void *HearEntryKey=&HearEntryKey;
 
 // Only user presentation changes animate. System/layout changes settle now.
@@ -52,6 +52,36 @@ static HearEntryGeometry hitGeometry(HearEntryGeometry g, NSInteger mode, NSInte
   return g;
 }
 
+static NSPoint floatingAnchor(NSRect visible, NSPoint point, BOOL snap) {
+  double left=NSMinX(visible)+34, right=MAX(left,NSMaxX(visible)-34);
+  double bottom=NSMinY(visible)+34, top=MAX(bottom,NSMaxY(visible)-34);
+  point.x=MIN(MAX(point.x,left),right); point.y=MIN(MAX(point.y,bottom),top);
+  if(snap) {
+    double distances[]={point.x-left,right-point.x,point.y-bottom,top-point.y};
+    int edge=0;
+    for(int i=1;i<4;i++) if(distances[i]<distances[edge]) edge=i;
+    if(edge==0) point.x=left; else if(edge==1) point.x=right;
+    else if(edge==2) point.y=bottom; else point.y=top;
+  }
+  return point;
+}
+
+static HearEntryGeometry floatingLayout(NSRect visible, NSPoint anchor, BOOL expanded, NSRect *frame) {
+  HearEntryGeometry g={0};
+  g.width=expanded ? 132 : 68; g.height=expanded ? 230 : 68;
+  BOOL down=NSMaxY(visible)-anchor.y<196;
+  double x=anchor.x-(expanded && anchor.x>NSMidX(visible) ? 98 : 34);
+  double y=anchor.y-(expanded && down ? 196 : 34);
+  if(expanded) {
+    x=MIN(MAX(x,NSMinX(visible)),NSMaxX(visible)-g.width);
+    y=MIN(MAX(y,NSMinY(visible)),NSMaxY(visible)-g.height);
+  }
+  *frame=NSMakeRect(x,y,g.width,g.height);
+  g.rabbit_x=anchor.x-x-26; g.rabbit_y=NSMaxY(*frame)-anchor.y-26;
+  g.menu_y=down ? 55 : 8;
+  return g;
+}
+
 static BOOL roundedRegion(NSRect r, double radius, NSPoint p) {
   if(!NSPointInRect(p,r)) return NO;
   double cx=MIN(MAX(p.x,NSMinX(r)+radius),NSMaxX(r)-radius);
@@ -73,8 +103,9 @@ static BOOL hitRegion(HearEntryGeometry g, NSInteger mode, NSInteger view, BOOL 
     return YES;
   }
   if(mode==1 && view!=0) {
-    if(roundedRegion(NSMakeRect(8,8,116,167),20,p)) return YES;
-    if(detail && roundedRegion(NSMakeRect(8,g.height-41,23,23),8,p)) return YES;
+    if(roundedRegion(NSMakeRect(8,g.menu_y,116,167),20,p)) return YES;
+    double detailX=g.rabbit_x<34 ? g.width-31 : 8;
+    if(detail && roundedRegion(NSMakeRect(detailX,g.rabbit_y+19,23,23),8,p)) return YES;
   }
   return rabbit;
 }
@@ -96,6 +127,9 @@ static BOOL hitRegion(HearEntryGeometry g, NSInteger mode, NSInteger view, BOOL 
 @property uint64_t layoutGeneration;
 @property uint64_t layoutSerial;
 @property BOOL drag;
+@property BOOL dragPending;
+@property NSPoint dragOrigin;
+@property NSPoint dragAnchor;
 @property BOOL inhibited;
 @property (weak) NSWindow *previousWindow;
 @property NSPoint anchor;
@@ -105,7 +139,7 @@ static BOOL hitRegion(HearEntryGeometry g, NSInteger mode, NSInteger view, BOOL 
 @property NSRect targetFrame;
 - (HearEntryGeometry)layout;
 - (HearEntryGeometry)layoutAnimated:(double)duration;
-- (void)updatePointer:(NSEvent *)event at:(NSPoint)point;
+- (BOOL)updatePointer:(NSEvent *)event at:(NSPoint)point;
 - (BOOL)confirmFocus;
 - (BOOL)ownsKeyboard;
 - (void)finishLayout:(uint64_t)serial generation:(uint64_t)generation;
@@ -142,13 +176,52 @@ static BOOL hitRegion(HearEntryGeometry g, NSInteger mode, NSInteger view, BOOL 
   NSPoint p=NSMakePoint(point.x-f.origin.x,NSMaxY(f)-point.y);
   return hitRegion(hitGeometry(_geometry,_mode,_view,f),_mode,_view,_detail,p);
 }
-- (void)checkPointer:(NSEvent *)event {
-  [self updatePointer:event at:NSEvent.mouseLocation];
+- (BOOL)hitRabbit:(NSPoint)point {
+  NSRect f=_window.frame;
+  NSPoint p=NSMakePoint(point.x-f.origin.x,NSMaxY(f)-point.y);
+  return hitRegion(_geometry,1,0,NO,p);
 }
-- (void)updatePointer:(NSEvent *)event at:(NSPoint)point {
-  if(_drag) {
-    if(event && event.type==NSEventTypeLeftMouseUp) { _drag=NO; [self layout]; [self notify:5 value:0]; }
-    else return;
+- (BOOL)checkPointer:(NSEvent *)event {
+  NSPoint point=event.window ? [event.window convertPointToScreen:event.locationInWindow] : NSEvent.mouseLocation;
+  return [self updatePointer:event at:point];
+}
+- (void)moveFloatingTo:(NSPoint)anchor {
+  _anchor=anchor;
+  for(NSScreen *s in NSScreen.screens) if(NSPointInRect(anchor,s.frame)) { _displayUUID=[self uuid:s]; break; }
+  [self layout];
+}
+- (void)finishDrag {
+  _dragPending=NO; _drag=NO;
+  _anchor=floatingAnchor([self floatingScreen].visibleFrame,_anchor,YES);
+  [self layout]; [self notify:5 value:0];
+}
+- (BOOL)updatePointer:(NSEvent *)event at:(NSPoint)point {
+  // One native owner handles the entire physical gesture, including release
+  // outside the WebView. Do not start AppKit dragging after asynchronous IPC.
+  if(_mode==1 && event.type==NSEventTypeLeftMouseDown && event.window==_window && [self hitRabbit:point]) {
+    _dragPending=YES; _dragOrigin=point; _dragAnchor=_anchor;
+    _window.ignoresMouseEvents=NO;
+    return YES;
+  }
+  if(_dragPending) {
+    if(event.type==NSEventTypeLeftMouseDragged || event.type==NSEventTypeLeftMouseUp) {
+      double dx=point.x-_dragOrigin.x, dy=point.y-_dragOrigin.y;
+      BOOL started=!_drag && hypot(dx,dy)>=7;
+      if(started) {
+        _drag=YES; _view=0; _inhibited=YES; _inside=NO;
+      }
+      if(_drag) [self moveFloatingTo:NSMakePoint(_dragAnchor.x+dx,_dragAnchor.y+dy)];
+      // Publish the compact geometry, including when a feedback bubble was
+      // already visible. The final mouse-up sample also participates in the
+      // threshold: a fast/coalesced drag must never become a mark.
+      if(started) [self notify:5 value:1];
+      if(event.type==NSEventTypeLeftMouseUp) {
+        if(_drag) [self finishDrag];
+        else { _dragPending=NO; if([self hitRabbit:point]) [self notify:10 value:0]; }
+      }
+      return YES;
+    }
+    if(!event) return NO;
   }
   BOOL hit=[self hit:point];
   // Only suppress a pointer still over the current entry. The old expanded
@@ -161,6 +234,7 @@ static BOOL hitRegion(HearEntryGeometry g, NSInteger mode, NSInteger view, BOOL 
   // Cancel the user intent now, but let entry_layout own the presentation
   // transition so this outside click still has an expanded -> compact origin.
   if(event && event.type==NSEventTypeLeftMouseDown && !hit && _view!=0) { [self releaseFocus:NO]; [self notify:2 value:0]; }
+  return NO;
 }
 - (HearEntryGeometry)layout {
   return [self layoutAnimated:0];
@@ -176,14 +250,9 @@ static BOOL hitRegion(HearEntryGeometry g, NSInteger mode, NSInteger view, BOOL 
     _window.level=NSStatusWindowLevel;
   } else {
     NSRect visible=s.visibleFrame;
-    if(NSEqualPoints(_anchor,NSZeroPoint)) _anchor=NSMakePoint(NSMaxX(visible)-54,NSMinY(visible)+54);
-    // Reserve the full upwards menu even while collapsed.
-    _anchor.x=MIN(MAX(_anchor.x,NSMinX(visible)+98),NSMaxX(visible)-34);
-    _anchor.y=MIN(MAX(_anchor.y,NSMinY(visible)+34),NSMaxY(visible)-196);
-    g.width=(_view!=0 || _feedback) ? 132 : 68;
-    g.height=(_view!=0 || _feedback) ? 230 : 68;
-    g.rabbit_x=g.width-60; g.rabbit_y=g.height-60;
-    frame=NSMakeRect(_anchor.x-(g.width-34),_anchor.y-34,g.width,g.height);
+    if(!_displayUUID && !_drag) _anchor=NSMakePoint(NSMaxX(visible)-54,NSMinY(visible)+54);
+    if(!_drag) _anchor=floatingAnchor(visible,_anchor,YES);
+    g=floatingLayout(visible,_anchor,!_drag && (_view!=0 || _feedback),&frame);
     _displayUUID=[self uuid:s]; _window.level=NSFloatingWindowLevel;
   }
   _geometry=g; _targetFrame=frame;
@@ -218,7 +287,7 @@ static BOOL hitRegion(HearEntryGeometry g, NSInteger mode, NSInteger view, BOOL 
   __weak HearEntry *weak=self;
   NSEventMask mask=NSEventMaskMouseMoved|NSEventMaskLeftMouseDown|NSEventMaskLeftMouseDragged|NSEventMaskLeftMouseUp|NSEventMaskRightMouseDown;
   _globalMonitor=[NSEvent addGlobalMonitorForEventsMatchingMask:mask handler:^(NSEvent *e){ [weak checkPointer:e]; }];
-  _localMonitor=[NSEvent addLocalMonitorForEventsMatchingMask:mask handler:^NSEvent *(NSEvent *e){ [weak checkPointer:e]; return e; }];
+  _localMonitor=[NSEvent addLocalMonitorForEventsMatchingMask:mask handler:^NSEvent *(NSEvent *e){ return [weak checkPointer:e] ? nil : e; }];
   NSNotificationCenter *center=NSNotificationCenter.defaultCenter;
   [_tokens addObject:[center addObserverForName:NSWindowDidBecomeKeyNotification object:_window queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n){
     (void)n; [weak confirmFocus];
@@ -229,10 +298,14 @@ static BOOL hitRegion(HearEntryGeometry g, NSInteger mode, NSInteger view, BOOL 
   }]];
   [_tokens addObject:[center addObserverForName:NSApplicationDidChangeScreenParametersNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n){
     (void)n;
+    if(weak.drag) [weak finishDrag];
+    weak.dragPending=NO;
     weak.view=0; [weak releaseFocus:NO]; [weak layout]; [weak notify:3 value:0];
   }]];
   [_tokens addObject:[NSWorkspace.sharedWorkspace.notificationCenter addObserverForName:NSWorkspaceActiveSpaceDidChangeNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n){
     (void)n;
+    if(weak.drag) [weak finishDrag];
+    weak.dragPending=NO;
     weak.view=0; [weak releaseFocus:NO]; [weak layout]; [weak notify:3 value:0];
   }]];
   for(NSString *name in @[NSApplicationDidBecomeActiveNotification,NSApplicationDidResignActiveNotification]) {
@@ -250,13 +323,6 @@ static BOOL hitRegion(HearEntryGeometry g, NSInteger mode, NSInteger view, BOOL 
     }]];
   }
   [_tokens addObject:[center addObserverForName:NSWindowDidChangeOcclusionStateNotification object:_window queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n){ (void)n; [weak notify:6 value:weak.window.isVisible && (weak.window.occlusionState & NSWindowOcclusionStateVisible)!=0]; }]];
-  [_tokens addObject:[center addObserverForName:NSWindowDidMoveNotification object:_window queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n){
-    (void)n;
-    if(!weak.drag) return;
-    NSRect f=weak.window.frame;
-    weak.anchor=NSMakePoint(NSMaxX(f)-34,NSMinY(f)+34);
-    for(NSScreen *s in NSScreen.screens) if(NSPointInRect(weak.anchor,s.frame)) weak.displayUUID=[weak uuid:s];
-  }]];
 }
 - (void)releaseFocus:(BOOL)restore {
   if(!_commentFocus) return;
@@ -307,6 +373,8 @@ void hear_entry_install(void *window,HearEntryEvent callback) {
 }
 HearEntryGeometry hear_entry_layout(void *window,int mode,int view,int feedback,int detail,int suppress,uint64_t generation) {
   HearEntry *e=entry(window);
+  if(e.mode!=mode) { if(e.drag) [e finishDrag]; e.dragPending=NO; }
+  if(e.drag) view=0;
   e.layoutGeneration=generation;
   double duration=motionDuration(e.mode,e.view,mode,view,e.window.isVisible,NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion);
   // Arm only for an actual dismissal, never for a feedback-only resize.
@@ -332,7 +400,6 @@ int hear_entry_focus(void *window,int acquire,int restore,uint64_t generation) {
   } else [e releaseFocus:restore!=0];
   return 1;
 }
-void hear_entry_drag(void *window,int dragging) { HearEntry *e=entry(window); e.drag=dragging; if(!dragging) [e layout]; }
 char *hear_entry_position(void *window) {
   HearEntry *e=entry(window); NSScreen *s=[e floatingScreen]; NSRect f=s.visibleFrame;
   NSDictionary *p=@{@"display_uuid":e.displayUUID ?: @"", @"x":@((e.anchor.x-NSMinX(f))/f.size.width), @"y":@((e.anchor.y-NSMinY(f))/f.size.height)};

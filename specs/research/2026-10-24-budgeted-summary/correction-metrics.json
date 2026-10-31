@@ -1,0 +1,194 @@
+[
+  {
+    "candidate": 1,
+    "expected": 6,
+    "completed": 6,
+    "missing": 0,
+    "structural_pass": 5,
+    "length_pass": 5,
+    "lengths": {
+      "s01": [
+        1083,
+        1116,
+        1066
+      ],
+      "s02": [
+        1069,
+        957,
+        1028
+      ]
+    },
+    "summary_checks": 41,
+    "summary_checks_total": 42,
+    "keypoint_checks": 42,
+    "keypoint_checks_total": 42,
+    "correction_success": 6,
+    "review_pass": 4,
+    "planned_calls": 18,
+    "attempts": 18,
+    "successful_calls": 18,
+    "prompt_tokens": 118605,
+    "completion_tokens": 161883,
+    "reasoning_tokens": 136354
+  },
+  {
+    "candidate": 2,
+    "expected": 6,
+    "completed": 6,
+    "missing": 0,
+    "structural_pass": 6,
+    "length_pass": 6,
+    "lengths": {
+      "s01": [
+        984,
+        965,
+        931
+      ],
+      "s02": [
+        908,
+        814,
+        902
+      ]
+    },
+    "summary_checks": 42,
+    "summary_checks_total": 42,
+    "keypoint_checks": 42,
+    "keypoint_checks_total": 42,
+    "correction_success": 6,
+    "review_pass": 5,
+    "planned_calls": 18,
+    "attempts": 18,
+    "successful_calls": 18,
+    "prompt_tokens": 118774,
+    "completion_tokens": 146432,
+    "reasoning_tokens": 121436
+  },
+  {
+    "candidate": 3,
+    "expected": 6,
+    "completed": 6,
+    "missing": 0,
+    "structural_pass": 6,
+    "length_pass": 6,
+    "lengths": {
+      "s01": [
+        967,
+        845,
+        1012
+      ],
+      "s02": [
+        973,
+        839,
+        988
+      ]
+    },
+    "summary_checks": 42,
+    "summary_checks_total": 42,
+    "keypoint_checks": 42,
+    "keypoint_checks_total": 42,
+    "correction_success": 6,
+    "review_pass": 6,
+    "planned_calls": 18,
+    "attempts": 18,
+    "successful_calls": 18,
+    "prompt_tokens": 120433,
+    "completion_tokens": 156295,
+    "reasoning_tokens": 132283
+  },
+  {
+    "candidate": 4,
+    "expected": 6,
+    "completed": 6,
+    "missing": 0,
+    "structural_pass": 6,
+    "length_pass": 6,
+    "lengths": {
+      "s01": [
+        964,
+        990,
+        1050
+      ],
+      "s02": [
+        984,
+        951,
+        880
+      ]
+    },
+    "summary_checks": 41,
+    "summary_checks_total": 42,
+    "keypoint_checks": 42,
+    "keypoint_checks_total": 42,
+    "correction_success": 6,
+    "review_pass": 3,
+    "planned_calls": 18,
+    "attempts": 18,
+    "successful_calls": 18,
+    "prompt_tokens": 122526,
+    "completion_tokens": 168007,
+    "reasoning_tokens": 141542
+  },
+  {
+    "candidate": 5,
+    "expected": 6,
+    "completed": 6,
+    "missing": 0,
+    "structural_pass": 5,
+    "length_pass": 6,
+    "lengths": {
+      "s01": [
+        1001,
+        954,
+        983
+      ],
+      "s02": [
+        959,
+        1042,
+        1013
+      ]
+    },
+    "summary_checks": 42,
+    "summary_checks_total": 42,
+    "keypoint_checks": 42,
+    "keypoint_checks_total": 42,
+    "correction_success": 6,
+    "review_pass": 4,
+    "planned_calls": 18,
+    "attempts": 18,
+    "successful_calls": 18,
+    "prompt_tokens": 122786,
+    "completion_tokens": 169841,
+    "reasoning_tokens": 144386
+  },
+  {
+    "candidate": 6,
+    "expected": 6,
+    "completed": 5,
+    "missing": 1,
+    "structural_pass": 5,
+    "length_pass": 5,
+    "lengths": {
+      "s01": [
+        1043,
+        1045,
+        965
+      ],
+      "s02": [
+        null,
+        1007,
+        986
+      ]
+    },
+    "summary_checks": 35,
+    "summary_checks_total": 42,
+    "keypoint_checks": 35,
+    "keypoint_checks_total": 42,
+    "correction_success": 5,
+    "review_pass": 4,
+    "planned_calls": 18,
+    "attempts": 16,
+    "successful_calls": 15,
+    "prompt_tokens": 115214,
+    "completion_tokens": 162967,
+    "reasoning_tokens": 138703
+  }
+]

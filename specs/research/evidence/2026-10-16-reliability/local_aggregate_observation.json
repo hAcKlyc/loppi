@@ -1,0 +1,42 @@
+{
+  "observed_at": "2026-10-15T17:55:29.295833+00:00",
+  "source_head": "2c81ebd49601c85d89aa3529555aeddaa98d63f5",
+  "method": "read-only schema and aggregate counts only; no audio/text/person/key content read; source and live executable not asserted byte-identical",
+  "hardware": {
+    "model": "Mac17,3",
+    "cpu": "Apple M5",
+    "memory_bytes": 25769803776,
+    "logical_cpus": 10
+  },
+  "sqlite_observer_version": "3.53.4",
+  "database_file_bytes": 32878592,
+  "wal_file_bytes": 5244792,
+  "audio_blocks": {
+    "count": 57244,
+    "with_media_path": 28471,
+    "logical_media_bytes": 732664954
+  },
+  "analysis_states": {
+    "complete": 29572,
+    "failed": 2,
+    "not_needed": 27670
+  },
+  "audio_block_indexes": [
+    [
+      "sqlite_autoindex_audio_blocks_1",
+      null
+    ],
+    [
+      "audio_blocks_source_time",
+      "CREATE INDEX audio_blocks_source_time ON audio_blocks(source, started_ms)"
+    ],
+    [
+      "audio_blocks_started",
+      "CREATE INDEX audio_blocks_started ON audio_blocks(started_ms)"
+    ],
+    [
+      "audio_blocks_ended",
+      "CREATE INDEX audio_blocks_ended ON audio_blocks(ended_ms)"
+    ]
+  ]
+}
