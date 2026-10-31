@@ -9,7 +9,7 @@
 - 实机偏好对照PASS：暂停意图、来源、容量、定时、两云配置/暂停、GUI首次准备与入口偏好；测试后已恢复原顶部模式和原文件缺省状态。真实记录/密钥未编辑。对照只列实测字段，不夸大其他系统设置覆盖。
 - 私有主窗截图含用户内容，留在本地Codex产物，不进入仓库。公开资源图全部使用合成数据。
 
-安装包：`build/releases/0.1.17/macos-universal2/loppi_0.1.17_macos-universal2.dmg`  
+安装包：`build/releases/0.1.17/macos-universal2/loppi_0.1.17_macos-universal2.dmg`
 SHA-256：`a9d367ba38e1e9c7c85a7e5a46bf951dfd0f992320d1685c114522a3773fe936`
 
 已有Intel实机/最低OS实机限制保持release-info.json原样记录；本轮未引入平台代码改变。
