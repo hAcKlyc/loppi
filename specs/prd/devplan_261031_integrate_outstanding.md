@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: implemented
 created: 2026-10-31
 updated: 2026-10-31
 ---
@@ -40,8 +40,8 @@ updated: 2026-10-31
 - [x] 108文件去向与必要可移植资料整合。
 - [x] 回归/静态/完整离线门禁与真实GUI验收。
 - [x] 三路独立审查与定向修复/复查、架构PASS。
-- [ ] 0.1.14版本/提交、PR18及整合PR合入main、本地main同步。
-- [ ] 签名公证发行、本机更新与运行/数据核验、最终留档。
+- [x] 0.1.14版本/提交、PR18及整合PR合入main、本地main同步。
+- [x] 签名公证发行、本机更新与运行/数据核验、最终留档。
 
 ### 当前review基线
 
@@ -63,3 +63,9 @@ Base9c9cbd83bbd55be29d58a698bfd20e0f8e44297b，工作分支codex/integrate-outst
 - requirements/adversarial并行固定tree4180756相对9c9cbd8均代码PASS，无阻塞；各独立复跑13定向测试PASS，对抗10,000组数据215,929个前缀投影PASS。两位指出的当前候选CUA缺口现已闭环；最终架构、clean发行/本机更新/main合并仍待办。
 
 - 最终architecture对完整119文件最终候选tree358c2d1审查PASS，无阻塞/新增架构岔路，独立复跑6测试PASS。三路审查门禁完成；历史media编码harness按固定2c81ebd源码复跑32组合成音调PASS，原型/SQL/编码三处可移植入口均复核。
+
+- 交付完成：整合提交62b320a保留五个原提交，PR33以merge commit 2ef2b478f2ce4821f99936b26f315e3bc866e77f合入main；PR18由祖先关系自动标记MERGED。本地main工作树先复核干净且HEAD仍bf161cc，仅fast-forward至2ef2b47；当前整合工作树亦同步。最终审计22本地/17实际远端分支，0组真实缺失代码、0个开放PR；108原件哈希/链接保持。旧压缩/cherry等价引用保留，不删除分支。
+- 已发行v0.1.14：tag源码62b320aa8a9abc549d168d2b5cadd1abc1cba023，四组件clean/协议23/epoch1793423677；Universal2 arm64+x86_64，Developer ID PMSG2Y8C6Z，Apple accepted 975b5faf-b359-4d47-80ac-07386abb82c0，装订与Gatekeeper PASS。DMG202087685字节，SHA256 dfe0cb230b73f97a9df1743a8ed856ac5ebe034b71d1db49852653b7653b6132；GitHub正式Release三资源已发布。
+- 本机升级前已备份0.1.13应用、一致DB、媒体及GUI配置至Library/Application Support/hear-update-backups/20261031-to-0.1.14，原子交换应用后实际GUI关于显示0.1.14，主窗口可重开，Agent默认通用JSON/本机可用/实际复制成功。实时Core lifecycle返回同一clean62b320a身份，VAD/ASR与speaker ready，双路recording、revision79、原8:00–23:00计划/容量/意图保持；新启动日志无Warn/Error。
+- 数据保全：635事件、42986精转、2修正、2944说话人绑定、4人物、21重点六表逐行相同；2266个已接受用量远端ID与2954个已提交/完成任务远端ID保持，DB quick_check=ok。未重跑付费历史任务，未外传正文/录音/凭据。
+- 完整离线21项、PR33 CI（2m48s）、三路独立审查、合成浏览器/当前macOS CUA及签名安装门槛均已闭环。记录位于specs/research/2026-10-31-integration，私有/本机证据在build/integration-0.1.14。此后仅交付文档收尾，不改发行源码；macOS13/15/Intel/外接屏完整实机验收未声称完成。无剩余mandatory项或待用户决策，台账implemented。
