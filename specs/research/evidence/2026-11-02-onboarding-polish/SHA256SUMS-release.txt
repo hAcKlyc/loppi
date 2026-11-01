@@ -1,0 +1,2 @@
+9e387aa529d4f637a9e8c36f5091260a6738a7e647fe157e6e15ccaf353effcf  loppi_0.1.20_macos-arm64.dmg
+3b3845ae4a737b6eed5b3a347688e50bdce78eab92a855c565ef94fb7f6b03a5  loppi_0.1.20_macos-arm64.app.tar.gz
