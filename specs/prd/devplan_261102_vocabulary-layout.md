@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: implemented
 updated: 2026-11-02
 ---
 # 词库页面精简
@@ -26,7 +26,7 @@ updated: 2026-11-02
 ### 行动清单
 - [x] 布局与文案调整
 - [x] 针对性验证与截图
-- [ ] cross-review / 提交 / 台账收尾
+- [x] cross-review / 提交 / 台账收尾
 
 ### Review 基线
 - Base：711079f2d67c315d1631ff454faae4177a39a7a9
@@ -40,3 +40,5 @@ updated: 2026-11-02
 - 2026-11-02：完成精简，设置三列成组置顶；列表标题含数量和新增操作；移除介绍/用途/例子及缺别名占位，空态仅「暂无词条」。typecheck/lint/build、设计资产8项、词库32项浏览器交互初轮通过，正在完成最终CSS截图与三路审查。
 
 - 2026-11-02：最终CSS双浏览器32项回归通过，1120/760两尺寸均 settingsAboveList/allSwitches/settingsFit/noOverflow=true，staticExplanation=false；最终typecheck/lint/build与设计资产8项通过。requirements/adversarial/architecture全PASS，无blocker、证据缺口或mandatory遗留。
+
+- 2026-11-02：提交5e1fa257e0a8a3a8a5704f795f766a204cd94b11。重读全契约，单批最终源码与已验证/评审快照一致，无中间态、未覆盖范围或硬门槛遗留；仅显式范围提交，其他共享改动保留。状态implemented。advisory验收：看顶部开关分组、下面词条列表与新增入口；编辑/开关原行为已由双浏览器合成IPC回归覆盖。
