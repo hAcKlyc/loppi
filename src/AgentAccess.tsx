@@ -1,6 +1,7 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, SegmentedOptions, Tabs } from "./Controls";
+import { desktopPlatform } from "./platform";
 import "./AgentAccess.css";
 
 type Connection = {
@@ -9,8 +10,7 @@ type Connection = {
 	codex_config: string;
 	mcp_config: object;
 	codex_command: string;
-	skill_command: string;
-	example_command: string;
+	skill_prompt: string;
 	status: {
 		ok: boolean;
 		data?: { online: boolean };
@@ -33,10 +33,20 @@ export function AgentAccess() {
 		try {
 			const result = await invoke<Connection>("agent_access_info");
 			if (generation === request.current) setConnection(result);
-		} catch {
+		} catch (cause) {
 			if (generation === request.current) {
 				setConnection(null);
-				setError("暂时无法读取接入信息，请重试。");
+				const detail =
+					typeof cause === "string"
+						? cause
+						: cause instanceof Error
+							? cause.message
+							: "";
+				setError(
+					detail
+						? `暂时无法读取接入信息：${detail}`
+						: "暂时无法读取接入信息，请重试。",
+				);
 			}
 		} finally {
 			if (generation === request.current) setLoading(false);
@@ -68,8 +78,14 @@ export function AgentAccess() {
 		: "";
 
 	return (
-		<section className="agent-access" aria-labelledby="agent-access-title">
-			<header className="agent-page-heading" data-tauri-drag-region>
+		<section
+			className="page-container agent-access"
+			aria-labelledby="agent-access-title"
+		>
+			<header
+				className="page-heading agent-page-heading"
+				data-tauri-drag-region
+			>
 				<h1 id="agent-access-title">Agent 接入</h1>
 				<p>让你的 Agent 找回 loppi 里的谈话与日常。</p>
 			</header>
@@ -156,7 +172,9 @@ export function AgentAccess() {
 								</Button>
 								<span>
 									{target === "codex"
-										? "添加到 ~/.codex/config.toml 后重连。"
+										? desktopPlatform() === "windows"
+											? "添加到 Codex 配置文件后重连。"
+											: "添加到 ~/.codex/config.toml 后重连。"
 										: "合并到 Agent 的 MCP 配置后重连。"}
 								</span>
 							</div>
@@ -164,32 +182,19 @@ export function AgentAccess() {
 					) : (
 						<>
 							<p className="agent-method-description">
-								适合能执行本机命令的 Agent。安装 Skill，让它按需找到记录。
+								复制以下提示词发给你的 Agent，将 Skill 安装到当前工作区。
 							</p>
 							<pre className="agent-code">
-								<code>{connection.skill_command}</code>
+								<code>{connection.skill_prompt}</code>
 							</pre>
 							<div className="agent-actions">
 								<Button
 									tone="primary"
-									onClick={() => void copy(connection.skill_command)}
+									onClick={() => void copy(connection.skill_prompt)}
 								>
-									复制安装命令
+									复制安装提示词
 								</Button>
-								<span>在终端运行一次。已有自定义 Skill 不会被覆盖。</span>
 							</div>
-							<details className="agent-cli-example">
-								<summary>试一条读取命令</summary>
-								<pre className="agent-code">
-									<code>{connection.example_command}</code>
-								</pre>
-								<Button
-									size="compact"
-									onClick={() => void copy(connection.example_command)}
-								>
-									复制命令
-								</Button>
-							</details>
 						</>
 					)}
 					<div className="agent-copy-feedback" role="status" aria-live="polite">
@@ -204,10 +209,6 @@ export function AgentAccess() {
 					</p>
 				)}
 			</section>
-			<footer className="agent-footnote">
-				<span>只读已有记录 · 不启动录音 · 无需联网端口</span>
-				<p>使用云端模型的 Agent 时，取出的内容会进入该 Agent 的上下文。</p>
-			</footer>
 		</section>
 	);
 }

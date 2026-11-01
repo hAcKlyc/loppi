@@ -1,14 +1,56 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { core, type Person, userError, type VoiceSample } from "./api";
-import { Button, Icon, IconButton, Modal } from "./Controls";
+import { Button, Icon, IconButton, Modal, TabPanel, Tabs } from "./Controls";
 import { LoadBoundary, LoadingSkeleton } from "./LoadingState";
 import { SamplePlayback, sampleParts } from "./sample-playback";
+import { VocabularyView } from "./VocabularyView";
+import "./vocabulary.css";
 
 type Mutation = (
 	request: { type: string; [key: string]: unknown },
 	success: string,
 ) => Promise<boolean>;
-export function PeopleView({
+type PeopleViewProps = {
+	people: Person[];
+	ready?: boolean;
+	loadError?: string;
+	onRetry?: () => void;
+	busy: boolean;
+	onMutate: Mutation;
+};
+
+export function PeopleView(props: PeopleViewProps) {
+	const [tab, setTab] = useState<"people" | "vocabulary">("people");
+	return (
+		<section className="page-container people-page">
+			<header className="library-heading" data-tauri-drag-region>
+				<h1 className="library-page-title">
+					{tab === "people" ? "人物库" : "词库"}
+				</h1>
+				<Tabs
+					id="library"
+					label="人物与词库"
+					value={tab}
+					items={[
+						{ value: "people", label: "人物库" },
+						{ value: "vocabulary", label: "词库" },
+					]}
+					onChange={setTab}
+					disabled={props.busy}
+					className="library-tabs"
+				/>
+			</header>
+			<TabPanel tabsId="library" value="people" selected={tab}>
+				{tab === "people" && <PeopleContent {...props} />}
+			</TabPanel>
+			<TabPanel tabsId="library" value="vocabulary" selected={tab}>
+				{tab === "vocabulary" && <VocabularyView />}
+			</TabPanel>
+		</section>
+	);
+}
+
+function PeopleContent({
 	people,
 	ready = true,
 	loadError,
@@ -27,7 +69,7 @@ export function PeopleView({
 	const [creating, setCreating] = useState(false);
 	const person = people.find((p) => p.id === selected);
 	return (
-		<section className="page-container people-page">
+		<div className="people-content">
 			{person ? (
 				<PersonDetail
 					key={person.id}
@@ -38,8 +80,7 @@ export function PeopleView({
 				/>
 			) : (
 				<>
-					<div className="page-heading" data-tauri-drag-region>
-						<h1>人物库</h1>
+					<div className="people-list-actions">
 						<Button
 							type="button"
 							tone="quiet"
@@ -95,7 +136,7 @@ export function PeopleView({
 					onMutate={onMutate}
 				/>
 			)}
-		</section>
+		</div>
 	);
 }
 

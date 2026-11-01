@@ -1,0 +1,8 @@
+{
+  "skill_name": "merge-release",
+  "evals": [
+    {"id":1,"prompt":"loppi 0.1.19 已在 dev 完成 Mac 和 Windows 升级验收，版本和 CHANGELOG 已提交，帮我 merge release。只说明接下来会用哪些真实仓库入口，不执行 Git 或远端变更。","expected_output":"核对dev exact-SHA Verify，no-ff合入main，main自动Release等待同SHA Verify、三平台汇合校验和公开，最终核对匿名latest.json；不先建空公开Release。","files":[]},
+    {"id":2,"prompt":"main 的 Release run 里 Mac 两包构建成功，Windows 失败了。先把 Mac 发了，latest.json 以后再补吧。只说明处理方案，不执行任何操作。","expected_output":"指出本次契约三平台齐全后统一公开；排查并重跑失败Windows/发布job，不公开半套资源或移动旧标签。","files":[]},
+    {"id":3,"prompt":"main 合并后 Release 是绿色但版本还是已经发过的 0.1.18。是不是已经发新版了？只做只读分析。","expected_output":"区分成功跳过与新版本发布；检查版本/tag/源提交和实际Release；新发行需在dev准备新版本及说明，不能覆盖0.1.18。","files":[]}
+  ]
+}

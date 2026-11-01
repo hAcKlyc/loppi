@@ -11,6 +11,9 @@
 	z-index: var(--layer-base);
 	background: var(--color-canvas);
 }
+.onboarding-page[data-platform="windows"] .onboarding-drag {
+	height: var(--space-6);
+}
 .onboarding-content {
 	max-width: var(--onboarding-content-max-width);
 	padding: var(--space-6) var(--space-10) var(--space-9);

@@ -1,14 +1,5 @@
-.agent-access {
-	max-width: var(--agent-access-max-width);
-	margin: 0 auto;
-	padding: var(--space-11) var(--space-10) var(--space-12);
-	color: var(--color-text);
-}
-.agent-page-heading h1 {
-	margin: 0;
-	font-size: var(--type-title);
-	font-weight: var(--weight-semibold);
-	letter-spacing: var(--tracking-heading);
+.page-heading.agent-page-heading {
+	display: block;
 }
 .agent-page-heading p {
 	margin: var(--space-4) 0 0;
@@ -16,7 +7,6 @@
 	font-size: var(--type-body);
 }
 .agent-connection {
-	margin-top: var(--space-10);
 	background: var(--color-surface);
 	border-radius: var(--radius-lg);
 	padding: var(--space-9) var(--space-10) var(--space-4);
@@ -105,15 +95,7 @@
 	color: var(--color-text-secondary);
 	line-height: var(--leading-body);
 }
-.agent-footnote {
-	margin-top: var(--space-9);
-	font-size: var(--type-caption);
-	line-height: var(--leading-body);
-	color: var(--color-text-muted);
-}
-.agent-footnote p {
-	margin: var(--space-3) 0 0;
-}
+
 .agent-connection-notice {
 	color: var(--color-warning-text);
 	font-size: var(--type-caption);
@@ -127,19 +109,8 @@
 .agent-muted {
 	color: var(--color-text-muted);
 }
-.agent-cli-example {
-	margin-top: var(--space-9);
-	font-size: var(--type-meta);
-}
-.agent-cli-example summary {
-	cursor: pointer;
-	color: var(--color-text-secondary);
-	padding: var(--space-4) 0;
-}
+
 @media (max-width: 1100px) {
-	.agent-access {
-		padding: var(--space-10) var(--space-9);
-	}
 	.agent-method-intro {
 		align-items: flex-start;
 		flex-direction: column;

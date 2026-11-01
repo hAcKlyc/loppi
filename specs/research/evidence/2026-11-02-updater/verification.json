@@ -1,0 +1,480 @@
+{
+  "date": "2026-11-02",
+  "status": "in-progress",
+  "published": false,
+  "committed": true,
+  "source": "eeef7110aa6d43051975b0da02f8f51eaacdc0a9",
+  "dirty": true,
+  "offline_gate": {
+    "schema": 1,
+    "suite": "all",
+    "passed": true,
+    "checks": [
+      {
+        "name": "typecheck",
+        "command": [
+          "npm",
+          "run",
+          "typecheck"
+        ],
+        "seconds": 1.61,
+        "exit_code": 0
+      },
+      {
+        "name": "lint",
+        "command": [
+          "npm",
+          "run",
+          "lint"
+        ],
+        "seconds": 0.29,
+        "exit_code": 0
+      },
+      {
+        "name": "rust-check",
+        "command": [
+          "cargo",
+          "check",
+          "--workspace",
+          "--locked"
+        ],
+        "seconds": 25.11,
+        "exit_code": 0
+      },
+      {
+        "name": "rust-regressions",
+        "command": [
+          "cargo",
+          "test",
+          "--workspace",
+          "--locked"
+        ],
+        "seconds": 84.82,
+        "exit_code": 0
+      },
+      {
+        "name": "frontend-regressions",
+        "command": [
+          "node",
+          "--test",
+          "scripts/test_build_plan.mjs",
+          "scripts/test_capture_status.mjs",
+          "scripts/test_cloud_service_status.mjs",
+          "scripts/test_cloud_task_status.mjs",
+          "scripts/test_design_assets.mjs",
+          "scripts/test_detail_entry.mjs",
+          "scripts/test_detail_pagination.mjs",
+          "scripts/test_detail_transcript.mjs",
+          "scripts/test_entry.mjs",
+          "scripts/test_entry_interaction.mjs",
+          "scripts/test_event_reorganization.mjs",
+          "scripts/test_native_audio.mjs",
+          "scripts/test_onboarding.mjs",
+          "scripts/test_platform_presentation.mjs",
+          "scripts/test_playback.mjs",
+          "scripts/test_recognition_navigation.mjs",
+          "scripts/test_recorded_date_navigation.mjs",
+          "scripts/test_recording_schedule.mjs",
+          "scripts/test_software_update.mjs",
+          "scripts/test_speaker_picker.mjs",
+          "scripts/test_timeline_refresh.mjs",
+          "scripts/test_timeline_view.mjs",
+          "scripts/test_updater_artifacts.mjs",
+          "scripts/test_usage_statistics.mjs"
+        ],
+        "seconds": 6.88,
+        "exit_code": 0
+      },
+      {
+        "name": "rabbit-assets",
+        "command": [
+          "node",
+          "scripts/test_rabbit_assets.cjs"
+        ],
+        "seconds": 0.13,
+        "exit_code": 0
+      },
+      {
+        "name": "python-regressions",
+        "command": [
+          "/opt/homebrew/opt/python@3.14/bin/python3.14",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          "scripts",
+          "-p",
+          "test_*.py"
+        ],
+        "seconds": 1.06,
+        "exit_code": 0
+      },
+      {
+        "name": "native-policy-build",
+        "command": [
+          "clang",
+          "-fobjc-arc",
+          "-fblocks",
+          "-mmacosx-version-min=13.0",
+          "scripts/test_native_entry.m",
+          "-framework",
+          "Cocoa",
+          "-framework",
+          "QuartzCore",
+          "-o",
+          "/var/folders/n5/pzrmblj11dbc2ltb0ncd36s00000gn/T/loppi-native-policy-zbf23uau/entry-policy"
+        ],
+        "seconds": 0.46,
+        "exit_code": 0
+      },
+      {
+        "name": "native-policy",
+        "command": [
+          "/var/folders/n5/pzrmblj11dbc2ltb0ncd36s00000gn/T/loppi-native-policy-zbf23uau/entry-policy"
+        ],
+        "seconds": 0.4,
+        "exit_code": 0
+      },
+      {
+        "name": "native-capture-errors-build",
+        "command": [
+          "clang",
+          "-fobjc-arc",
+          "-fblocks",
+          "-mmacosx-version-min=13.0",
+          "scripts/test_native_capture_errors.m",
+          "-framework",
+          "Foundation",
+          "-framework",
+          "AppKit",
+          "-framework",
+          "ScreenCaptureKit",
+          "-framework",
+          "CoreMedia",
+          "-framework",
+          "CoreGraphics",
+          "-o",
+          "/var/folders/n5/pzrmblj11dbc2ltb0ncd36s00000gn/T/loppi-native-policy-zbf23uau/capture-errors"
+        ],
+        "seconds": 0.4,
+        "exit_code": 0
+      },
+      {
+        "name": "native-capture-errors",
+        "command": [
+          "/var/folders/n5/pzrmblj11dbc2ltb0ncd36s00000gn/T/loppi-native-policy-zbf23uau/capture-errors"
+        ],
+        "seconds": 0.41,
+        "exit_code": 0
+      },
+      {
+        "name": "native-playback-build",
+        "command": [
+          "clang",
+          "-fobjc-arc",
+          "-fblocks",
+          "-mmacosx-version-min=13.0",
+          "scripts/test_native_playback.m",
+          "-framework",
+          "Foundation",
+          "-framework",
+          "AVFoundation",
+          "-o",
+          "/var/folders/n5/pzrmblj11dbc2ltb0ncd36s00000gn/T/loppi-native-policy-zbf23uau/playback"
+        ],
+        "seconds": 0.45,
+        "exit_code": 0
+      },
+      {
+        "name": "native-playback",
+        "command": [
+          "/var/folders/n5/pzrmblj11dbc2ltb0ncd36s00000gn/T/loppi-native-policy-zbf23uau/playback"
+        ],
+        "seconds": 0.83,
+        "exit_code": 0
+      },
+      {
+        "name": "native-power-build",
+        "command": [
+          "clang",
+          "-fobjc-arc",
+          "-fblocks",
+          "-mmacosx-version-min=13.0",
+          "scripts/test_native_power.m",
+          "-framework",
+          "Foundation",
+          "-framework",
+          "IOKit",
+          "-o",
+          "/var/folders/n5/pzrmblj11dbc2ltb0ncd36s00000gn/T/loppi-native-policy-zbf23uau/power-policy"
+        ],
+        "seconds": 0.24,
+        "exit_code": 0
+      },
+      {
+        "name": "native-power",
+        "command": [
+          "/var/folders/n5/pzrmblj11dbc2ltb0ncd36s00000gn/T/loppi-native-policy-zbf23uau/power-policy"
+        ],
+        "seconds": 0.4,
+        "exit_code": 0
+      },
+      {
+        "name": "frontend-build",
+        "command": [
+          "npm",
+          "run",
+          "build"
+        ],
+        "seconds": 1.86,
+        "exit_code": 0
+      },
+      {
+        "name": "binary-build",
+        "command": [
+          "cargo",
+          "build",
+          "--workspace",
+          "--locked"
+        ],
+        "seconds": 18.04,
+        "exit_code": 0
+      },
+      {
+        "name": "component-identities",
+        "command": [
+          "/opt/homebrew/opt/python@3.14/bin/python3.14",
+          "scripts/verify_build_identity.py",
+          "--directory",
+          "target/debug"
+        ],
+        "seconds": 5.21,
+        "exit_code": 0
+      },
+      {
+        "name": "isolated-core",
+        "command": [
+          "/opt/homebrew/opt/python@3.14/bin/python3.14",
+          "scripts/smoke_core.py"
+        ],
+        "seconds": 4.89,
+        "exit_code": 0
+      },
+      {
+        "name": "isolated-diagnostics",
+        "command": [
+          "/opt/homebrew/opt/python@3.14/bin/python3.14",
+          "scripts/smoke_diagnostics.py"
+        ],
+        "seconds": 14.62,
+        "exit_code": 0
+      },
+      {
+        "name": "isolated-test-owner",
+        "command": [
+          "/opt/homebrew/opt/python@3.14/bin/python3.14",
+          "scripts/smoke_test_owner.py"
+        ],
+        "seconds": 0.13,
+        "exit_code": 0
+      }
+    ],
+    "excluded": [
+      "private fixture tests",
+      "cloud API tests",
+      "permission/capture/sleep acceptance",
+      "signed installation",
+      "browser visual acceptance"
+    ]
+  },
+  "tests": {
+    "rust_passed": 426,
+    "rust_preexisting_ignored": 21,
+    "frontend_passed": 112,
+    "rabbit_assets_passed": 3,
+    "python_passed": 9,
+    "post_repair_packaging_signing_build_plan_passed": 15
+  },
+  "lifecycle": [
+    "PASS aborted update reopens GUI barrier, re-inspects Core and exits cleanly",
+    "PASS concurrent initialization and complete exit; no relaunch",
+    "PASS bounded busy-owner coordination timeout; no Core launched",
+    "PASS stable handoff capture",
+    "PASS stable handoff normal",
+    "PASS stable handoff query",
+    "PASS stable handoff newer"
+  ],
+  "native_archive": {
+    "log": [
+      "PASS native updater extraction operations: 60 entries"
+    ],
+    "extracted_app_matches_original": true
+  },
+  "macos_arm64": {
+    "full_development_bundle_passed": true,
+    "report": {
+      "version": "0.1.18",
+      "source": "eeef7110aa6d43051975b0da02f8f51eaacdc0a9",
+      "dirty": true,
+      "target": "aarch64-apple-darwin",
+      "architectures": [
+        "arm64"
+      ],
+      "built_at_epoch": 1793552400,
+      "models_lock_sha256": "e0320694c4f75c3c545886ae3439079c0f9d68fc536f30d8cbc07d1287470519",
+      "models_bytes": 204642977,
+      "native": {
+        "version": "2.0.0",
+        "sha256": "8ed41bf3b27ce55d6527bbc0f7754598c5afbb18e814ff0bddbc9ecd50fb09c5"
+      },
+      "toolchain": {
+        "node": "v24.20.0",
+        "rust": "rustc 1.98.1 (48a229cea 2026-09-01)",
+        "xcode": "Xcode 27.2\nBuild version 27B52",
+        "sdk": "27.2"
+      },
+      "identity": {
+        "schema": 1,
+        "components": {
+          "gui": {
+            "component": "gui",
+            "version": "0.1.18",
+            "protocol_version": 25,
+            "git_sha": "eeef7110aa6d43051975b0da02f8f51eaacdc0a9",
+            "dirty": true,
+            "built_at_epoch": 1793552400
+          },
+          "cli": {
+            "component": "cli",
+            "version": "0.1.18",
+            "protocol_version": 25,
+            "git_sha": "eeef7110aa6d43051975b0da02f8f51eaacdc0a9",
+            "dirty": true,
+            "built_at_epoch": 1793552400
+          },
+          "core": {
+            "component": "core",
+            "version": "0.1.18",
+            "protocol_version": 25,
+            "git_sha": "eeef7110aa6d43051975b0da02f8f51eaacdc0a9",
+            "dirty": true,
+            "built_at_epoch": 1793552400
+          },
+          "worker": {
+            "component": "worker",
+            "version": "0.1.18",
+            "protocol_version": 25,
+            "git_sha": "eeef7110aa6d43051975b0da02f8f51eaacdc0a9",
+            "dirty": true,
+            "built_at_epoch": 1793552400
+          }
+        }
+      },
+      "runtime": {
+        "architecture": "aarch64",
+        "onnxruntime": "1.28.2",
+        "provider": "cpu",
+        "sherpa_onnx": "2.0.0"
+      },
+      "runtime_execution": "native",
+      "runtime_checked_architecture": "arm64",
+      "intel_native_test": "not run on Intel hardware",
+      "minimum_os_runtime_test": "not run",
+      "dmg": "loppi_0.1.18_macos-arm64-dev.dmg",
+      "dmg_bytes": 184111073,
+      "dmg_sha256": "218b97ff640dbcf39cd240497643f2f77f8153c1ad9c188ba677b984e010b49f"
+    }
+  },
+  "macos_intel": {
+    "compile_and_app_identity": {
+      "schema": 1,
+      "components": {
+        "gui": {
+          "component": "gui",
+          "version": "0.1.18",
+          "protocol_version": 25,
+          "git_sha": "eeef7110aa6d43051975b0da02f8f51eaacdc0a9",
+          "dirty": true,
+          "built_at_epoch": 1793552590
+        },
+        "cli": {
+          "component": "cli",
+          "version": "0.1.18",
+          "protocol_version": 25,
+          "git_sha": "eeef7110aa6d43051975b0da02f8f51eaacdc0a9",
+          "dirty": true,
+          "built_at_epoch": 1793552590
+        },
+        "core": {
+          "component": "core",
+          "version": "0.1.18",
+          "protocol_version": 25,
+          "git_sha": "eeef7110aa6d43051975b0da02f8f51eaacdc0a9",
+          "dirty": true,
+          "built_at_epoch": 1793552590
+        },
+        "worker": {
+          "component": "worker",
+          "version": "0.1.18",
+          "protocol_version": 25,
+          "git_sha": "eeef7110aa6d43051975b0da02f8f51eaacdc0a9",
+          "dirty": true,
+          "built_at_epoch": 1793552590
+        }
+      }
+    },
+    "runtime": "Rosetta on Apple Silicon, not physical Intel",
+    "initial_final_image_check": "model_load_timeout during concurrent compilation; not a pass",
+    "focused_model_recheck_passed": true,
+    "focused_dmg_repackage_and_mounted_model_recheck_passed": true,
+    "verified_dmg": "/tmp/loppi-updater-intel-verified.dmg",
+    "bytes": 186500315,
+    "sha256": "a44e8ad29ec35caad848c5d690d916750263c8ad8f4611a9aa98ad3121569a28"
+  },
+  "windows": {
+    "real_host_available": false,
+    "native_msvc_build": "not run",
+    "gnu_cross_check": "aborted after discovering no native Windows C++ toolchain; not accepted as validation"
+  },
+  "reviews": {
+    "requirements": "PASS implementation; platform evidence gaps",
+    "adversarial": "P1 AppleDouble archive repaired; focused PASS",
+    "architecture": "PASS"
+  },
+  "mandatory_remaining": [
+    "Signed two-version Mac installation upgrade, recording-tail playback, old Core/worker complete exit, new component identity and original intent/pause preservation",
+    "Windows11 x64 native NSIS build and installation upgrade, original installation path and automatic restart, recording/Core checks",
+    "Three signed platform release artifacts and GitHub latest.json end-to-end linkage with a new version; no replacement/publication of current0.1.18"
+  ],
+  "followup_white_text": {
+    "date": "2026-11-02",
+    "foreground": "#FDFDFC",
+    "background": "#47745B",
+    "contrast_ratio": 5.27,
+    "default_and_hover_same_colors": true,
+    "actual_browser_style_checked": true,
+    "typecheck": "passed",
+    "lint": "passed",
+    "targeted_tests_passed": 9,
+    "native_and_packaging_unchanged": true
+  },
+  "commit_authorization": {
+    "date": "2026-11-02",
+    "instruction": "提交代码",
+    "scope": "updater changes only; preserve unrelated work",
+    "release_acceptance_complete": false,
+    "publish_requested": false
+  },
+  "code_commit": "ad036e2fd7d7be673612f8e070327128c89fcdd4",
+  "commit_validation": {
+    "isolated_task_only_snapshot": true,
+    "frontend_typecheck": "passed",
+    "frontend_lint": "passed",
+    "targeted_tests_passed": 24,
+    "rust_workspace_check_locked": "passed",
+    "rust_updater_lifecycle_tests_passed": 2,
+    "unrelated_worktree_changes_preserved": true,
+    "pushed": false,
+    "published": false
+  }
+}

@@ -1,0 +1,40 @@
+webkit { passed: 36 }
+webkit 1120 {
+  noOverflow: true,
+  titleSize: '26px',
+  scopeTitle: '应用范围',
+  listTitle: '词条管理',
+  settingsAbove: true,
+  settingsFit: true,
+  noDuplicate: true
+}
+webkit 760 {
+  noOverflow: true,
+  titleSize: '26px',
+  scopeTitle: '应用范围',
+  listTitle: '词条管理',
+  settingsAbove: true,
+  settingsFit: true,
+  noDuplicate: true
+}
+webkit people { passed: 21 }
+chrome { passed: 36 }
+chrome 1120 {
+  noOverflow: true,
+  titleSize: '26px',
+  scopeTitle: '应用范围',
+  listTitle: '词条管理',
+  settingsAbove: true,
+  settingsFit: true,
+  noDuplicate: true
+}
+chrome 760 {
+  noOverflow: true,
+  titleSize: '26px',
+  scopeTitle: '应用范围',
+  listTitle: '词条管理',
+  settingsAbove: true,
+  settingsFit: true,
+  noDuplicate: true
+}
+chrome people { passed: 21 }

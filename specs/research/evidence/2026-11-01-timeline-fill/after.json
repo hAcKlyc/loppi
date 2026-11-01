@@ -1,0 +1,64 @@
+{
+  "bars": [
+    {
+      "bar": 24,
+      "bottom": 0,
+      "kind": "day-map-event raw is-recording",
+      "top": 0,
+      "track": 24
+    },
+    {
+      "bar": 24,
+      "bottom": 0,
+      "kind": "day-map-event organized",
+      "top": 0,
+      "track": 24
+    },
+    {
+      "bar": 24,
+      "bottom": 0,
+      "kind": "day-map-event organized",
+      "top": 0,
+      "track": 24
+    },
+    {
+      "bar": 24,
+      "bottom": 0,
+      "kind": "day-map-event organized",
+      "top": 0,
+      "track": 24
+    },
+    {
+      "bar": 24,
+      "bottom": 0,
+      "kind": "day-map-event raw is-recording",
+      "top": 0,
+      "track": 24
+    },
+    {
+      "bar": 24,
+      "bottom": 0,
+      "kind": "day-map-event organized",
+      "top": 0,
+      "track": 24
+    },
+    {
+      "bar": 24,
+      "bottom": 0,
+      "kind": "day-map-event organized",
+      "top": 0,
+      "track": 24
+    }
+  ],
+  "gaps": [],
+  "live": {
+    "hit": true,
+    "title": "18:10—23:59 · 未整理素材 · 麦克风 · 正在记录",
+    "x": 1115.6015625,
+    "y": 233.5
+  },
+  "viewport": {
+    "height": 720,
+    "width": 1280
+  }
+}

@@ -59,6 +59,25 @@ struct Position {
     x: f64,
     y: f64,
 }
+impl Position {
+    fn valid(&self) -> bool {
+        if !self.x.is_finite() || !self.y.is_finite() {
+            return false;
+        }
+        #[cfg(target_os = "windows")]
+        {
+            self.display_uuid == "windows-desktop"
+                && (-1_000_000.0..=1_000_000.0).contains(&self.x)
+                && (-1_000_000.0..=1_000_000.0).contains(&self.y)
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            Uuid::parse_str(&self.display_uuid).is_ok()
+                && (0.0..=1.0).contains(&self.x)
+                && (0.0..=1.0).contains(&self.y)
+        }
+    }
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct Preferences {
     schema_version: u8,
@@ -120,7 +139,8 @@ impl Inner {
     fn focus_is_current(&self, generation: u64) -> bool {
         generation <= self.layout_generation
             && generation > self.canceled_generation
-            && self.view == View::Comment
+            && self.snapshot.mode == Mode::Top
+            && matches!(self.view, View::Panel | View::Comment)
     }
     fn layout_is_current(&self, generation: u64, mode: Mode, view: View) -> bool {
         generation == self.layout_generation
@@ -267,16 +287,7 @@ impl EntryRuntime {
         let prefs = std::fs::read(&path)
             .ok()
             .and_then(|b| serde_json::from_slice::<Preferences>(&b).ok())
-            .filter(|p| {
-                p.schema_version == 1
-                    && p.floating.as_ref().is_none_or(|f| {
-                        Uuid::parse_str(&f.display_uuid).is_ok()
-                            && f.x.is_finite()
-                            && f.y.is_finite()
-                            && (0.0..=1.0).contains(&f.x)
-                            && (0.0..=1.0).contains(&f.y)
-                    })
-            })
+            .filter(|p| p.schema_version == 1 && p.floating.as_ref().is_none_or(Position::valid))
             .unwrap_or_default();
         Arc::new(Self {
             inner: Mutex::new(Inner {
@@ -378,13 +389,13 @@ impl EntryRuntime {
     }
     fn save(&self, prefs: &Preferences) -> Result<(), String> {
         use std::io::Write;
+        #[cfg(unix)]
         use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
         let parent = self.path.parent().ok_or("missing preference directory")?;
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-        std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700))
-            .map_err(|e| e.to_string())?;
+        loppi_protocol::platform::set_mode(parent, 0o700).map_err(|e| e.to_string())?;
         let pending = self.path.with_extension("tmp");
-        let mut file = std::fs::OpenOptions::new()
+        let mut file = loppi_protocol::platform::OpenOptions::new()
             .write(true)
             .create(true)
             .truncate(true)
@@ -394,7 +405,7 @@ impl EntryRuntime {
         file.write_all(&serde_json::to_vec(prefs).map_err(|e| e.to_string())?)
             .and_then(|_| file.sync_all())
             .map_err(|e| e.to_string())?;
-        std::fs::rename(pending, &self.path).map_err(|e| e.to_string())
+        loppi_protocol::platform::rename(pending, &self.path).map_err(|e| e.to_string())
     }
 }
 #[repr(C)]
@@ -423,7 +434,7 @@ async fn native<T: Send + 'static>(
             .get_webview_window("float")
             .ok_or("entry unavailable".into())
             .and_then(|w| {
-                w.ns_window()
+                w.native_window()
                     .map_err(|e| e.to_string())
                     .and_then(|n| operation(&w, n))
             });
@@ -439,6 +450,20 @@ async fn native<T: Send + 'static>(
 }
 extern "C" fn native_event(kind: i32, value: i32, generation: u64) {
     let Some(app) = HOST.get() else { return };
+    #[cfg(windows)]
+    {
+        if kind == 11 {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+            return;
+        }
+        if kind == 12 {
+            app.exit(0);
+            return;
+        }
+    }
     if kind == 2 || kind == 3 || (kind == 5 && value == 1) {
         let runtime = app.state::<Arc<EntryRuntime>>();
         let mut inner = runtime.inner.lock().unwrap();
@@ -452,7 +477,7 @@ extern "C" fn native_event(kind: i32, value: i32, generation: u64) {
     }
     let geometry = if kind == 3 || kind == 5 || kind == 8 {
         app.get_webview_window("float")
-            .and_then(|w| w.ns_window().ok())
+            .and_then(|w| w.native_window().ok())
             .map(|n| unsafe { loppi_entry_geometry(n) })
     } else {
         None
@@ -479,7 +504,7 @@ pub fn install(
     window
         .set_focusable(unsafe { loppi_entry_active() != 0 })
         .map_err(|e| e.to_string())?;
-    let pointer = window.ns_window().map_err(|e| e.to_string())?;
+    let pointer = window.native_window().map_err(|e| e.to_string())?;
     unsafe {
         loppi_entry_install(pointer, native_event);
     }
@@ -505,7 +530,7 @@ pub fn install(
 }
 pub fn dispose(app: &tauri::AppHandle) {
     if let Some(w) = app.get_webview_window("float") {
-        if let Ok(n) = w.ns_window() {
+        if let Ok(n) = w.native_window() {
             unsafe {
                 loppi_entry_dispose(n);
             }
@@ -602,6 +627,11 @@ pub async fn entry_layout(
                 generation,
             )
         };
+        #[cfg(windows)]
+        if mode == Mode::Top && view == View::Collapsed && !feedback {
+            w.hide().map_err(|e| e.to_string())?;
+            return Ok(Some(geometry));
+        }
         if !w.is_visible().map_err(|e| e.to_string())? {
             w.show().map_err(|e| e.to_string())?;
         }
@@ -623,7 +653,7 @@ pub async fn entry_focus(
             return Ok(false);
         }
         inner.layout_generation = generation;
-        if inner.view == View::Comment {
+        if inner.snapshot.mode == Mode::Top && matches!(inner.view, View::Panel | View::Comment) {
             inner.canceled_generation = generation;
         }
         inner.view = View::Collapsed;
@@ -654,7 +684,7 @@ pub async fn entry_focus(
 }
 fn save_entry_position(app: &tauri::AppHandle) -> Result<(), String> {
     let window = app.get_webview_window("float").ok_or("entry unavailable")?;
-    let n = window.ns_window().map_err(|error| error.to_string())?;
+    let n = window.native_window().map_err(|error| error.to_string())?;
     let position = {
         let p = unsafe { loppi_entry_position(n) };
         if p.is_null() {
@@ -861,6 +891,52 @@ pub async fn entry_action(app: tauri::AppHandle, action: Action) -> Result<Actio
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn saved_platform_position_preserves_floating_mode_on_reload() {
+        #[cfg(target_os = "windows")]
+        let (display, x, y) = ("windows-desktop".to_string(), -800.0, 700.0);
+        #[cfg(not(target_os = "windows"))]
+        let (display, x, y) = (Uuid::new_v4().to_string(), 0.3, 0.7);
+        let path = std::env::temp_dir().join(format!("loppi-position-{}.json", Uuid::new_v4()));
+        std::fs::write(
+            &path,
+            serde_json::to_vec(&serde_json::json!({
+                "schema_version":1,"mode":"floating",
+                "floating":{"display_uuid":display,"x":x,"y":y}
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let runtime = EntryRuntime::new(path.clone());
+        let inner = runtime.inner.lock().unwrap();
+        assert_eq!(inner.prefs.mode, Mode::Floating);
+        assert_eq!(inner.prefs.floating.as_ref().unwrap().x, x);
+        assert!(
+            !Position {
+                display_uuid: display.clone(),
+                x: f64::NAN,
+                y
+            }
+            .valid()
+        );
+        assert!(
+            !Position {
+                display_uuid: "bad-display".into(),
+                x,
+                y
+            }
+            .valid()
+        );
+        assert!(
+            !Position {
+                display_uuid: display,
+                x: 1_000_001.0,
+                y
+            }
+            .valid()
+        );
+        std::fs::remove_file(path).unwrap();
+    }
     fn state() -> ServiceState {
         serde_json::from_value(serde_json::json!({"revision":1,"enabled_intent":true,"paused_intent":false,"storage_paused":false,"microphone_enabled":true,"system_enabled":true,"capture_state":"recording","reason":null,"microphone_recording":true,"system_recording":true,"microphone_reason":null,"system_reason":null,"microphone_phase":"recording","system_phase":"recording","capture_blocker":"none"})).unwrap()
     }
@@ -880,23 +956,31 @@ mod tests {
         assert!(inner.layout_is_current(4, Mode::Floating, View::Comment));
     }
     #[test]
-    fn comment_focus_intent_survives_layout_but_never_a_cancellation() {
+    fn top_input_focus_intent_survives_layout_but_never_a_cancellation() {
         let runtime = EntryRuntime::new(
             std::env::temp_dir().join(format!("loppi-entry-{}.json", Uuid::new_v4())),
         );
         let mut inner = runtime.inner.lock().unwrap();
-        inner.layout_generation = 4;
-        inner.view = View::Comment;
-        assert!(inner.focus_is_current(3));
-        inner.canceled_generation = 4;
-        // Even if a delayed background render has registered a newer layout,
-        // its original user-focus intent remains canceled.
-        inner.layout_generation = 5;
-        assert!(!inner.focus_is_current(3));
-        assert!(!inner.focus_is_current(4));
-        assert!(inner.focus_is_current(5));
-        inner.view = View::Collapsed;
-        assert!(!inner.focus_is_current(5));
+        for view in [View::Panel, View::Comment] {
+            inner.snapshot.mode = Mode::Top;
+            inner.layout_generation = 4;
+            inner.canceled_generation = 0;
+            inner.view = view;
+            assert!(inner.focus_is_current(3));
+            assert!(!inner.focus_is_current(5));
+            inner.canceled_generation = 4;
+            // Even if a delayed background render has registered a newer layout,
+            // its original user-focus intent remains canceled.
+            inner.layout_generation = 5;
+            assert!(!inner.focus_is_current(3));
+            assert!(!inner.focus_is_current(4));
+            assert!(inner.focus_is_current(5));
+            inner.snapshot.mode = Mode::Floating;
+            assert!(!inner.focus_is_current(5));
+            inner.snapshot.mode = Mode::Top;
+            inner.view = View::Collapsed;
+            assert!(!inner.focus_is_current(5));
+        }
     }
     #[test]
     fn disabled_missing_source_is_healthy_but_enabled_missing_is_partial() {
@@ -1067,5 +1151,23 @@ mod tests {
         s.microphone_recording = false;
         s.system_recording = false;
         assert!(inner.observe(Ok(s)).notice.is_none());
+    }
+}
+
+trait NativeWindow {
+    fn native_window(&self) -> Result<*mut std::ffi::c_void, String>;
+}
+impl NativeWindow for tauri::WebviewWindow {
+    fn native_window(&self) -> Result<*mut std::ffi::c_void, String> {
+        #[cfg(target_os = "macos")]
+        {
+            self.ns_window().map_err(|e| e.to_string())
+        }
+        #[cfg(windows)]
+        {
+            self.hwnd()
+                .map(|h| h.0 as *mut std::ffi::c_void)
+                .map_err(|e| e.to_string())
+        }
     }
 }

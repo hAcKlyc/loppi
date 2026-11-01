@@ -7,6 +7,7 @@ use super::*;
 #[ignore = "explicit query of existing failed remote IDs; requires a trusted Core signature, LOPPI_TEST_DB and LOPPI_TEST_RESULTS"]
 fn query_original_failed_asr_without_resubmission() {
     use std::io::Write;
+    #[cfg(unix)]
     use std::os::unix::fs::OpenOptionsExt;
     use uuid::Uuid;
     struct QueryOnly(std::path::PathBuf);
@@ -18,7 +19,7 @@ fn query_original_failed_asr_without_resubmission() {
             unreachable!("query only")
         }
         fn asr_response(&self, id: Uuid, _: &str, body: &serde_json::Value) -> Result<(), String> {
-            let mut file = std::fs::OpenOptions::new()
+            let mut file = loppi_protocol::platform::OpenOptions::new()
                 .write(true)
                 .create_new(true)
                 .mode(0o600)

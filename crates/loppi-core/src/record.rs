@@ -277,20 +277,26 @@ impl ClockAnchor {
     pub fn now() -> Result<Self, String> {
         let at = Instant::now();
         let wall_ms = wall_ms(SystemTime::now())?;
-        let mut uptime = libc::timespec {
-            tv_sec: 0,
-            tv_nsec: 0,
+        #[cfg(windows)]
+        let monotonic_ns = loppi_protocol::platform::monotonic_ns().map_err(|e| e.to_string())?;
+        #[cfg(unix)]
+        let monotonic_ns = {
+            let mut uptime = libc::timespec {
+                tv_sec: 0,
+                tv_nsec: 0,
+            };
+            if unsafe { libc::clock_gettime(libc::CLOCK_UPTIME_RAW, &mut uptime) } != 0 {
+                return Err("monotonic clock unavailable".to_owned());
+            }
+            uptime
+                .tv_sec
+                .saturating_mul(1_000_000_000)
+                .saturating_add(uptime.tv_nsec)
         };
-        if unsafe { libc::clock_gettime(libc::CLOCK_UPTIME_RAW, &mut uptime) } != 0 {
-            return Err("monotonic clock unavailable".to_owned());
-        }
         Ok(Self {
             at,
             wall_ms,
-            monotonic_ns: uptime
-                .tv_sec
-                .saturating_mul(1_000_000_000)
-                .saturating_add(uptime.tv_nsec),
+            monotonic_ns,
         })
     }
 

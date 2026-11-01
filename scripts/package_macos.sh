@@ -29,6 +29,28 @@ loppi_work=$(mktemp -d "${TMPDIR:-/tmp/}loppi-dmg.XXXXXX")
 loppi_mount="$loppi_work/mounted"
 trap 'hdiutil detach "$loppi_mount" >/dev/null 2>&1 || true; rm -rf "$loppi_work"' EXIT
 
+if (( ! loppi_dev )); then
+  loppi_notary_args=()
+  if [[ -n "${APPLE_NOTARY_PROFILE:-}" ]]; then
+    loppi_notary_args=(--keychain-profile "$APPLE_NOTARY_PROFILE")
+  elif [[ -n "${APPLE_API_KEY:-}" && -r "${APPLE_API_KEY_PATH:-}" ]]; then
+    loppi_notary_args=(--key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY")
+    if [[ -n "${APPLE_API_ISSUER:-}" ]]; then
+      loppi_notary_args+=(--issuer "$APPLE_API_ISSUER")
+    fi
+  else
+    print -u2 'Notarization credentials are required before packaging.'
+    exit 2
+  fi
+  # The updater ships the App itself, so its ticket must travel with the App.
+  # Do this before copying into the DMG, keeping both distribution paths equal.
+  ditto -c -k --keepParent "$loppi_app" "$loppi_work/notarization.zip"
+  xcrun notarytool submit "$loppi_work/notarization.zip" "${loppi_notary_args[@]}" --wait
+  xcrun stapler staple "$loppi_app"
+  xcrun stapler validate "$loppi_app"
+  codesign --verify --deep --strict "$loppi_app"
+fi
+
 mkdir -p "$loppi_work/staging" "$loppi_mount" "${loppi_dmg:h}"
 ditto "$loppi_app" "$loppi_work/staging/loppi.app"
 ln -s /Applications "$loppi_work/staging/Applications"
@@ -45,24 +67,6 @@ if (( ! loppi_dev )); then codesign --verify --deep --strict "$loppi_mount/loppi
 hdiutil detach -quiet "$loppi_mount"
 
 if (( ! loppi_dev )); then
-loppi_notary_args=()
-if [[ -n "${APPLE_NOTARY_PROFILE:-}" ]]; then
-  loppi_notary_args=(--keychain-profile "$APPLE_NOTARY_PROFILE")
-elif [[ -n "${APPLE_API_KEY:-}" && -n "${APPLE_API_KEY_PATH:-}" ]]; then
-  if [[ ! -r "$APPLE_API_KEY_PATH" ]]; then
-    print -u2 'APPLE_API_KEY_PATH must point to a readable App Store Connect private key file.'
-    exit 2
-  fi
-  loppi_notary_args=(--key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY")
-  if [[ -n "${APPLE_API_ISSUER:-}" ]]; then
-    loppi_notary_args+=(--issuer "$APPLE_API_ISSUER")
-  fi
-else
-  print -u2 "Signed disk image: $loppi_dmg"
-  print -u2 'Notarization is pending. Configure APPLE_NOTARY_PROFILE or APPLE_API_KEY + APPLE_API_KEY_PATH (and APPLE_API_ISSUER for a team key), then rerun before distribution.'
-  exit 2
-fi
-
 xcrun notarytool submit "$loppi_dmg" "${loppi_notary_args[@]}" --wait
 xcrun stapler staple "$loppi_dmg"
 xcrun stapler validate "$loppi_dmg"

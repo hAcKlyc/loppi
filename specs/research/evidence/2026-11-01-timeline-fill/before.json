@@ -1,0 +1,57 @@
+{
+  "bars": [
+    {
+      "bar": 18,
+      "bottom": 6,
+      "kind": "day-map-event raw is-recording",
+      "top": 0,
+      "track": 24
+    },
+    {
+      "bar": 18,
+      "bottom": 6,
+      "kind": "day-map-event organized",
+      "top": 0,
+      "track": 24
+    },
+    {
+      "bar": 18,
+      "bottom": 6,
+      "kind": "day-map-event organized",
+      "top": 0,
+      "track": 24
+    },
+    {
+      "bar": 18,
+      "bottom": 6,
+      "kind": "day-map-event organized",
+      "top": 0,
+      "track": 24
+    },
+    {
+      "bar": 18,
+      "bottom": 6,
+      "kind": "day-map-event raw is-recording",
+      "top": 0,
+      "track": 24
+    },
+    {
+      "bar": 18,
+      "bottom": 6,
+      "kind": "day-map-event organized",
+      "top": 0,
+      "track": 24
+    },
+    {
+      "bar": 18,
+      "bottom": 6,
+      "kind": "day-map-event organized",
+      "top": 0,
+      "track": 24
+    }
+  ],
+  "viewport": {
+    "height": 720,
+    "width": 1280
+  }
+}

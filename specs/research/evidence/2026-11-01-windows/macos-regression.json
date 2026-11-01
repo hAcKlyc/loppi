@@ -1,0 +1,277 @@
+{
+  "schema": 1,
+  "suite": "all",
+  "passed": true,
+  "checks": [
+    {
+      "name": "typecheck",
+      "command": [
+        "npm",
+        "run",
+        "typecheck"
+      ],
+      "seconds": 1.18,
+      "exit_code": 0
+    },
+    {
+      "name": "lint",
+      "command": [
+        "npm",
+        "run",
+        "lint"
+      ],
+      "seconds": 0.48,
+      "exit_code": 0
+    },
+    {
+      "name": "rust-check",
+      "command": [
+        "cargo",
+        "check",
+        "--workspace",
+        "--locked"
+      ],
+      "seconds": 12.65,
+      "exit_code": 0
+    },
+    {
+      "name": "rust-regressions",
+      "command": [
+        "cargo",
+        "test",
+        "--workspace",
+        "--locked"
+      ],
+      "seconds": 71.45,
+      "exit_code": 0
+    },
+    {
+      "name": "frontend-regressions",
+      "command": [
+        "node",
+        "--test",
+        "scripts/test_build_plan.mjs",
+        "scripts/test_capture_status.mjs",
+        "scripts/test_cloud_task_status.mjs",
+        "scripts/test_design_assets.mjs",
+        "scripts/test_detail_entry.mjs",
+        "scripts/test_detail_pagination.mjs",
+        "scripts/test_detail_transcript.mjs",
+        "scripts/test_entry.mjs",
+        "scripts/test_entry_interaction.mjs",
+        "scripts/test_event_reorganization.mjs",
+        "scripts/test_native_audio.mjs",
+        "scripts/test_onboarding.mjs",
+        "scripts/test_platform_presentation.mjs",
+        "scripts/test_playback.mjs",
+        "scripts/test_recording_schedule.mjs",
+        "scripts/test_speaker_picker.mjs",
+        "scripts/test_timeline_refresh.mjs",
+        "scripts/test_timeline_view.mjs",
+        "scripts/test_usage_statistics.mjs"
+      ],
+      "seconds": 4.8,
+      "exit_code": 0
+    },
+    {
+      "name": "rabbit-assets",
+      "command": [
+        "node",
+        "scripts/test_rabbit_assets.cjs"
+      ],
+      "seconds": 0.14,
+      "exit_code": 0
+    },
+    {
+      "name": "python-regressions",
+      "command": [
+        "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "scripts",
+        "-p",
+        "test_*.py"
+      ],
+      "seconds": 0.91,
+      "exit_code": 0
+    },
+    {
+      "name": "native-policy-build",
+      "command": [
+        "clang",
+        "-fobjc-arc",
+        "-fblocks",
+        "-mmacosx-version-min=13.0",
+        "scripts/test_native_entry.m",
+        "-framework",
+        "Cocoa",
+        "-framework",
+        "QuartzCore",
+        "-o",
+        "/var/folders/n5/pzrmblj11dbc2ltb0ncd36s00000gn/T/loppi-native-policy-1st888lc/entry-policy"
+      ],
+      "seconds": 0.43,
+      "exit_code": 0
+    },
+    {
+      "name": "native-policy",
+      "command": [
+        "/var/folders/n5/pzrmblj11dbc2ltb0ncd36s00000gn/T/loppi-native-policy-1st888lc/entry-policy"
+      ],
+      "seconds": 0.42,
+      "exit_code": 0
+    },
+    {
+      "name": "native-capture-errors-build",
+      "command": [
+        "clang",
+        "-fobjc-arc",
+        "-fblocks",
+        "-mmacosx-version-min=13.0",
+        "scripts/test_native_capture_errors.m",
+        "-framework",
+        "Foundation",
+        "-framework",
+        "AppKit",
+        "-framework",
+        "ScreenCaptureKit",
+        "-framework",
+        "CoreMedia",
+        "-framework",
+        "CoreGraphics",
+        "-o",
+        "/var/folders/n5/pzrmblj11dbc2ltb0ncd36s00000gn/T/loppi-native-policy-1st888lc/capture-errors"
+      ],
+      "seconds": 0.38,
+      "exit_code": 0
+    },
+    {
+      "name": "native-capture-errors",
+      "command": [
+        "/var/folders/n5/pzrmblj11dbc2ltb0ncd36s00000gn/T/loppi-native-policy-1st888lc/capture-errors"
+      ],
+      "seconds": 0.42,
+      "exit_code": 0
+    },
+    {
+      "name": "native-playback-build",
+      "command": [
+        "clang",
+        "-fobjc-arc",
+        "-fblocks",
+        "-mmacosx-version-min=13.0",
+        "scripts/test_native_playback.m",
+        "-framework",
+        "Foundation",
+        "-framework",
+        "AVFoundation",
+        "-o",
+        "/var/folders/n5/pzrmblj11dbc2ltb0ncd36s00000gn/T/loppi-native-policy-1st888lc/playback"
+      ],
+      "seconds": 0.44,
+      "exit_code": 0
+    },
+    {
+      "name": "native-playback",
+      "command": [
+        "/var/folders/n5/pzrmblj11dbc2ltb0ncd36s00000gn/T/loppi-native-policy-1st888lc/playback"
+      ],
+      "seconds": 0.94,
+      "exit_code": 0
+    },
+    {
+      "name": "native-power-build",
+      "command": [
+        "clang",
+        "-fobjc-arc",
+        "-fblocks",
+        "-mmacosx-version-min=13.0",
+        "scripts/test_native_power.m",
+        "-framework",
+        "Foundation",
+        "-framework",
+        "IOKit",
+        "-o",
+        "/var/folders/n5/pzrmblj11dbc2ltb0ncd36s00000gn/T/loppi-native-policy-1st888lc/power-policy"
+      ],
+      "seconds": 0.2,
+      "exit_code": 0
+    },
+    {
+      "name": "native-power",
+      "command": [
+        "/var/folders/n5/pzrmblj11dbc2ltb0ncd36s00000gn/T/loppi-native-policy-1st888lc/power-policy"
+      ],
+      "seconds": 0.42,
+      "exit_code": 0
+    },
+    {
+      "name": "frontend-build",
+      "command": [
+        "npm",
+        "run",
+        "build"
+      ],
+      "seconds": 1.44,
+      "exit_code": 0
+    },
+    {
+      "name": "binary-build",
+      "command": [
+        "cargo",
+        "build",
+        "--workspace",
+        "--locked"
+      ],
+      "seconds": 9.94,
+      "exit_code": 0
+    },
+    {
+      "name": "component-identities",
+      "command": [
+        "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+        "scripts/verify_build_identity.py",
+        "--directory",
+        "target/debug"
+      ],
+      "seconds": 3.71,
+      "exit_code": 0
+    },
+    {
+      "name": "isolated-core",
+      "command": [
+        "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+        "scripts/smoke_core.py"
+      ],
+      "seconds": 4.74,
+      "exit_code": 0
+    },
+    {
+      "name": "isolated-diagnostics",
+      "command": [
+        "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+        "scripts/smoke_diagnostics.py"
+      ],
+      "seconds": 14.62,
+      "exit_code": 0
+    },
+    {
+      "name": "isolated-test-owner",
+      "command": [
+        "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+        "scripts/smoke_test_owner.py"
+      ],
+      "seconds": 0.15,
+      "exit_code": 0
+    }
+  ],
+  "excluded": [
+    "private fixture tests",
+    "cloud API tests",
+    "permission/capture/sleep acceptance",
+    "signed installation",
+    "browser visual acceptance"
+  ]
+}

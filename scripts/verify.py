@@ -16,6 +16,9 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def main():
+    if sys.platform == 'win32':
+        from verify_windows import main as windows_main
+        return windows_main()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--suite', choices=['all', 'static', 'test', 'smoke'], default='all')
     parser.add_argument('--report', type=Path)

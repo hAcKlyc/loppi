@@ -119,21 +119,26 @@ export function topRabbitMotion(
 	const along = (from: number, to: number) =>
 		`calc(${from}px + ${(to - from) / (412 - compact)} * (100vw - ${compact}px))`;
 	const startX = compact / 2 - 14;
+	const endY = Math.max(24, topBand) + 14;
 	const startY = (Math.max(32, topBand) - 28) / 2;
 	// Hold the screen x until the rabbit clears the physical notch. Compensate
 	// for the native window's simultaneous translation, then join the endpoint.
-	const clear = Math.min(
-		0.9,
-		(topBand - startY) / (topBand + 24 - startY) + 0.04,
-	);
+	// Clear vertically during the first part of the resize, leaving enough
+	// horizontal travel for the larger rabbit instead of rushing it at the end.
+	const clear = 0.55;
+	const span = 412 - compact;
+	const y =
+		topBand > 0
+			? `calc(${startY}px + ${(topBand + 4 - startY) / (clear * span)} * min(${clear * span}px, max(0px, calc(100vw - ${compact}px))) + ${(endY - topBand - 4) / ((1 - clear) * span)} * max(0px, calc(100vw - ${compact + clear * span}px)))`
+			: along(startY, endY);
 	const x =
 		topBand > 0
-			? `calc(${startX}px + ${topShift / (412 - compact)} * (100vw - ${compact}px) + ${(20 - startX - topShift) / ((1 - clear) * (412 - compact))} * max(0px, calc(100vw - ${compact + clear * (412 - compact)}px)))`
-			: along(startX, 20);
+			? `calc(${startX}px + ${topShift / (412 - compact)} * (100vw - ${compact}px) + ${(16 - startX - topShift) / ((1 - clear) * (412 - compact))} * max(0px, calc(100vw - ${compact + clear * (412 - compact)}px)))`
+			: along(startX, 16);
 	return {
 		"--entry-compact-width": `${compact}px`,
 		"--entry-rabbit-x": x,
-		"--entry-rabbit-y": along(startY, topBand + 24),
-		"--entry-rabbit-size": along(28, 72),
+		"--entry-rabbit-y": y,
+		"--entry-rabbit-size": along(28, 96),
 	};
 }

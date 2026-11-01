@@ -7,7 +7,7 @@ globalThis.isTauri = true;
 window.__TAURI_INTERNALS__ = {};
 const state={disk_free_bytes:3_000_000_000,audio_used_bytes:0,audio_limit_bytes:1000,microphone_enabled:true,system_enabled:true,microphone_phase:'idle',system_phase:'idle'};
 const models={phase:'ready',speaker_phase:'failed'};
-const privacy={microphone:3,microphone_available:true,tap_required:true,tap_ready:true,screen_and_system_audio:0};
+const privacy={microphone:3,microphone_available:true,tap_required:true,tap_ready:true,screen_and_system_audio:0,system_audio:1};
 const queues=[{provider:'llm',configured:true},{provider:'asr',configured:true}];
 test('completion checks selected sources, both providers and necessary model, not optional speaker',()=>{
  assert.equal(setupBlocker(state,models,privacy,queues),'');
@@ -15,8 +15,8 @@ test('completion checks selected sources, both providers and necessary model, no
  assert.match(setupBlocker({...state,audio_used_bytes:1000},models,privacy,queues),/空间不足/);
  assert.match(setupBlocker(state,{...models,phase:'loading'},privacy,queues),/本地/);
  assert.match(setupBlocker(state,models,privacy,queues.slice(0,1)),/两项/);
- assert.match(setupBlocker(state,models,{...privacy,tap_ready:false},queues),/电脑/);
- assert.equal(setupBlocker({...state,system_enabled:false},models,{...privacy,tap_ready:false},queues),'');
+ assert.match(setupBlocker(state,models,{...privacy,tap_ready:false,system_audio:0},queues),/电脑/);
+ assert.equal(setupBlocker({...state,system_enabled:false},models,{...privacy,tap_ready:false,system_audio:0},queues),'');
  assert.match(setupBlocker({...state,system_enabled:false,microphone_enabled:false},models,privacy,queues),/至少/);
  assert.match(setupBlocker(state,models,{...privacy,microphone_available:false},queues),/麦克风/);
  assert.match(setupBlocker({...state,system_phase:'unavailable'},models,privacy,queues),/电脑/);

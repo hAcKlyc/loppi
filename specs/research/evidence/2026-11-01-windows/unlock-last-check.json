@@ -1,0 +1,14 @@
+{
+  "observed_utc": "2026-10-31T23:57:38.515135Z",
+  "source": "authorized Windows MyAgents session, read-only OS facts",
+  "process_session": 1,
+  "active_console_session": 1,
+  "WTS_session_id": 1,
+  "WTS_connect_state": 0,
+  "WTS_session_flags": 0,
+  "thread_desktop": "Default",
+  "locked_on_windows11": true,
+  "screenshot_attempted": false,
+  "security_settings_changed": false,
+  "continuation": "waiting for user unlock; no publication or source changes"
+}

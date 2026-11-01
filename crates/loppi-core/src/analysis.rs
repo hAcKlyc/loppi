@@ -2,10 +2,12 @@
 //! admission, persistent tasks and publication. One deadline covers the request.
 use serde::{Deserialize, de::DeserializeOwned};
 use sherpa_onnx::LinearResampler;
+#[cfg(unix)]
 use std::io::{Read, Write};
+#[cfg(unix)]
 use std::os::fd::AsRawFd;
 use std::path::Path;
-use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::process::{Child, ChildStdin, ChildStdout, Stdio};
 use std::time::{Duration, Instant};
 
 #[derive(Deserialize)]
@@ -88,7 +90,7 @@ pub fn resample_block(start_48k: u64, mono_48k: &[f32]) -> Result<Vec<f32>, Stri
 impl AnalysisClient {
     pub fn start(worker_path: &Path, mode: &str, model_dir: &Path) -> Result<Self, String> {
         let mut child = OwnedChild(
-            Command::new(worker_path)
+            worker_command(worker_path)
                 .arg(mode)
                 .arg(model_dir)
                 .arg("--parent-pid")
@@ -101,6 +103,7 @@ impl AnalysisClient {
         );
         let input = child.0.stdin.take().ok_or("worker stdin unavailable")?;
         let output = child.0.stdout.take().ok_or("worker stdout unavailable")?;
+        #[cfg(unix)]
         for fd in [input.as_raw_fd(), output.as_raw_fd()] {
             let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
             if flags < 0 || unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0
@@ -192,20 +195,25 @@ impl AnalysisClient {
         for sample in samples {
             frame.extend_from_slice(&sample.to_le_bytes());
         }
-        let mut offset = 0;
-        while offset < frame.len() {
-            wait_fd(self.input.as_raw_fd(), libc::POLLOUT, deadline, cancelled)?;
-            match self.input.write(&frame[offset..]) {
-                Ok(0) => return Err("worker_failed".into()),
-                Ok(n) => offset += n,
-                Err(e)
-                    if matches!(
-                        e.kind(),
-                        std::io::ErrorKind::WouldBlock | std::io::ErrorKind::Interrupted
-                    ) => {}
-                Err(_) => return Err("worker_failed".into()),
+        #[cfg(unix)]
+        {
+            let mut offset = 0;
+            while offset < frame.len() {
+                wait_fd(self.input.as_raw_fd(), libc::POLLOUT, deadline, cancelled)?;
+                match self.input.write(&frame[offset..]) {
+                    Ok(0) => return Err("worker_failed".into()),
+                    Ok(n) => offset += n,
+                    Err(e)
+                        if matches!(
+                            e.kind(),
+                            std::io::ErrorKind::WouldBlock | std::io::ErrorKind::Interrupted
+                        ) => {}
+                    Err(_) => return Err("worker_failed".into()),
+                }
             }
         }
+        #[cfg(windows)]
+        crate::pipe_io::write(&mut self.input, &frame, deadline, cancelled)?;
         let mut size = [0; 4];
         read(&mut self.output, &mut size, deadline, cancelled)?;
         let size = u32::from_le_bytes(size) as usize;
@@ -218,6 +226,7 @@ impl AnalysisClient {
         serde_json::from_slice(&body).map_err(|_| "model_invalid".to_owned())
     }
 }
+#[cfg(unix)]
 fn wait_fd(
     fd: i32,
     events: i16,
@@ -252,6 +261,7 @@ fn wait_fd(
         }
     }
 }
+#[cfg(unix)]
 fn read(
     reader: &mut ChildStdout,
     bytes: &mut [u8],
@@ -278,6 +288,7 @@ fn read(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
     #[test]
     fn failure_codes_preserve_stage_without_model_or_path_payload() {
@@ -303,9 +314,11 @@ mod tests {
     }
     fn fixture(code: &str) -> (tempfile::TempDir, std::path::PathBuf) {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("worker");
+        let path = dir
+            .path()
+            .join(if cfg!(windows) { "worker.py" } else { "worker" });
         std::fs::write(&path, format!("#!/usr/bin/python3\n{code}\n")).unwrap();
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
+        loppi_protocol::platform::set_mode(&path, 0o700).unwrap();
         (dir, path)
     }
     #[test]
@@ -326,7 +339,10 @@ mod tests {
         assert_eq!(result.err().unwrap(), "resource_deferred");
         assert!(started.elapsed() < Duration::from_millis(500));
         drop(worker);
+        #[cfg(unix)]
         assert_eq!(unsafe { libc::kill(pid as i32, 0) }, -1);
+        #[cfg(windows)]
+        assert!(!process_alive(pid));
     }
     #[test]
     fn response_header_and_payload_share_the_request_deadline() {
@@ -361,5 +377,38 @@ mod tests {
         assert!(!worker.needs_replay("system", "b", 480));
         assert!(worker.needs_replay("microphone", "new-session", 480));
         assert!(worker.needs_replay("microphone", "a", 960));
+    }
+}
+
+#[cfg(windows)]
+fn read(
+    reader: &mut ChildStdout,
+    bytes: &mut [u8],
+    deadline: Instant,
+    cancelled: &dyn Fn() -> bool,
+) -> Result<(), String> {
+    crate::pipe_io::read(reader, bytes, deadline, cancelled)
+}
+
+fn worker_command(path: &Path) -> std::process::Command {
+    #[cfg(all(test, windows))]
+    if path.extension().is_some_and(|e| e == "py") {
+        let mut command = loppi_protocol::platform::command("python.exe");
+        command.arg("-u").arg(path);
+        return command;
+    }
+    loppi_protocol::platform::command(path)
+}
+#[cfg(all(test, windows))]
+pub(crate) fn process_alive(pid: u32) -> bool {
+    use windows_sys::Win32::{Foundation::*, System::Threading::*};
+    unsafe {
+        let handle = OpenProcess(0x00100000, 0, pid);
+        if handle.is_null() {
+            return false;
+        }
+        let alive = WaitForSingleObject(handle, 0) == WAIT_TIMEOUT;
+        CloseHandle(handle);
+        alive
     }
 }

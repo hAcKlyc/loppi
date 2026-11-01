@@ -1,6 +1,22 @@
 //! Integration driver for the exact GUI IPC/exit path (isolated LOPPI_DATA_DIR).
 fn main() {
-    let result = if std::env::args().nth(1).as_deref() == Some("quit") {
+    let result = if std::env::args().nth(1).as_deref() == Some("update-abort") {
+        loppi_protocol::quit_gui_core().and_then(|()| {
+            assert!(
+                loppi_protocol::send_from(
+                    loppi_protocol::ClientKind::Gui,
+                    loppi_protocol::Request::Status
+                )
+                .is_err()
+            );
+            loppi_protocol::resume_gui_core()?;
+            loppi_protocol::send_from(
+                loppi_protocol::ClientKind::Gui,
+                loppi_protocol::Request::Status,
+            )?;
+            loppi_protocol::quit_gui_core()
+        })
+    } else if std::env::args().nth(1).as_deref() == Some("quit") {
         loppi_protocol::quit_gui_core().and_then(|()| {
             assert!(
                 loppi_protocol::send_from(

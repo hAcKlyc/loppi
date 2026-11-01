@@ -1,6 +1,7 @@
 //! Daily actions in the existing Core owner, not a continuous capture gate.
 use loppi_protocol::RecordingSchedule;
 use rusqlite::{Connection, Transaction, params};
+#[cfg(unix)]
 use std::ffi::{CStr, CString};
 
 #[derive(Debug)]
@@ -12,6 +13,7 @@ pub struct Window {
     pub next_start: bool,
 }
 
+#[cfg(unix)]
 pub fn window(now: i64, start: u16, stop: u16, zone: Option<&str>) -> Result<Window, String> {
     unsafe extern "C" {
         fn loppi_schedule_window(
@@ -58,6 +60,75 @@ pub fn window(now: i64, start: u16, stop: u16, zone: Option<&str>) -> Result<Win
         previous_start: previous_start != 0,
         next_ms,
         next_start: next_start != 0,
+    })
+}
+
+#[cfg(windows)]
+pub fn window(now: i64, start: u16, stop: u16, zone: Option<&str>) -> Result<Window, String> {
+    use chrono::{Duration, LocalResult, TimeZone};
+    if start >= 1440 || stop >= 1440 || start == stop {
+        return Err("schedule_clock_unavailable".into());
+    }
+    let name = zone
+        .map(str::to_owned)
+        .map(Ok)
+        .unwrap_or_else(iana_time_zone::get_timezone)
+        .map_err(|_| "schedule_clock_unavailable")?;
+    let timezone: chrono_tz::Tz = name.parse().map_err(|_| "schedule_clock_unavailable")?;
+    let day = timezone
+        .timestamp_millis_opt(now)
+        .single()
+        .ok_or("schedule_clock_unavailable")?
+        .date_naive();
+    let mut boundaries = Vec::with_capacity(10);
+    for offset in -2..=2 {
+        let date = day
+            .checked_add_signed(Duration::days(offset))
+            .ok_or("schedule_clock_unavailable")?;
+        for (minute, is_start) in [(stop, false), (start, true)] {
+            let mut local = date
+                .and_hms_opt((minute / 60) as u32, (minute % 60) as u32, 0)
+                .ok_or("schedule_clock_unavailable")?;
+            // Match Foundation: first fold; a missing wall time maps to the first valid minute.
+            let mut resolved = None;
+            for _ in 0..=1440 {
+                match timezone.from_local_datetime(&local) {
+                    LocalResult::Single(t) => {
+                        resolved = Some(t);
+                        break;
+                    }
+                    LocalResult::Ambiguous(a, b) => {
+                        resolved = Some(a.min(b));
+                        break;
+                    }
+                    LocalResult::None => local += Duration::minutes(1),
+                }
+            }
+            boundaries.push((
+                resolved
+                    .ok_or("schedule_clock_unavailable")?
+                    .timestamp_millis(),
+                minute,
+                is_start,
+            ));
+        }
+    }
+    let previous = boundaries
+        .iter()
+        .filter(|v| v.0 <= now)
+        .max_by_key(|v| (v.0, v.1))
+        .ok_or("schedule_clock_unavailable")?;
+    let next = boundaries
+        .iter()
+        .filter(|v| v.0 > now)
+        .min_by_key(|v| (v.0, std::cmp::Reverse(v.1)))
+        .ok_or("schedule_clock_unavailable")?;
+    Ok(Window {
+        zone: name,
+        previous_ms: previous.0,
+        previous_start: previous.2,
+        next_ms: next.0,
+        next_start: next.2,
     })
 }
 

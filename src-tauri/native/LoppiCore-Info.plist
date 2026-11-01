@@ -7,7 +7,7 @@
   <key>CFBundleExecutable</key><string>loppi-core</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleVersion</key><string>12</string>
-  <key>CFBundleShortVersionString</key><string>0.1.18</string>
+  <key>CFBundleShortVersionString</key><string>0.1.19</string>
   <key>LSUIElement</key><true/>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>NSMicrophoneUsageDescription</key>

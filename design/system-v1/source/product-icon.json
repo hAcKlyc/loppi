@@ -34,5 +34,19 @@
       "path": "src-tauri/icons/icon.png",
       "sha256": "3ec23b9f600c39842c29408918e099eaec87b01e82b3cd628dcddb013b2e5a5b"
     }
-  ]
+  ],
+  "windows_ico": {
+    "source": "src/assets/rabbit/app-icon-square.png",
+    "source_sha256": "87ddbd6ea93de992e37ad266fd5496e1d4154f7138c938c206fdaab3fda52a8f",
+    "sampling": "integer pixel centers; source artwork unchanged",
+    "rgba_sha256": {
+      "16": "835ee2eafda9b82d040825c3dd10b843a166e37cb3bc9ca874ab199ab977b428",
+      "24": "1e58e274d9e5bde7e6804e000e6941f38db45ddcc5c9e028328942bcfd42abf9",
+      "32": "e17e1c9d5f2d62179fe55a5433b4bce2261ac4ba6d6e17ae9539a4a30dc2e823",
+      "48": "7962ab382e60bb85b3d96cc7def76b7003010de145bb268594c2303f6a74c0fd",
+      "64": "ce7ac71b03e4fe75dc7292f49db8cbfcce7579d84e07c9b33fb06b75de71641e",
+      "128": "8eb02c6f5aae438333f6ead64ace722c158ab57f43fe225b60515d7a01f92300",
+      "256": "42b9bcee53cff31055751caea13be5501efd96a794d173334bee84397ab2cc20"
+    }
+  }
 }

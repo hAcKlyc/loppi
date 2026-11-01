@@ -1,0 +1,68 @@
+webkit { passed: 30 }
+webkit 1120 { width: 936, scroll: 936 }
+webkit dialog {
+  client: 505,
+  scroll: 505,
+  rect: {
+    x: 307.5,
+    y: 111.90625,
+    width: 505,
+    height: 536.171875,
+    top: 111.90625,
+    right: 812.5,
+    bottom: 648.078125,
+    left: 307.5
+  },
+  visible: true
+}
+webkit 760 { width: 656, scroll: 656 }
+webkit dialog {
+  client: 505,
+  scroll: 505,
+  rect: {
+    x: 127.5,
+    y: 16,
+    width: 505,
+    height: 508,
+    top: 16,
+    right: 632.5,
+    bottom: 524,
+    left: 127.5
+  },
+  visible: true
+}
+webkit people { passed: 21 }
+chromium { passed: 30 }
+chromium 1120 { width: 936, scroll: 936 }
+chromium dialog {
+  client: 505,
+  scroll: 505,
+  rect: {
+    x: 307.5,
+    y: 97.90625,
+    width: 505,
+    height: 564.171875,
+    top: 97.90625,
+    right: 812.5,
+    bottom: 662.078125,
+    left: 307.5
+  },
+  visible: true
+}
+chromium 760 { width: 656, scroll: 656 }
+chromium dialog {
+  client: 505,
+  scroll: 505,
+  rect: {
+    x: 127.5,
+    y: 16,
+    width: 505,
+    height: 508,
+    top: 16,
+    right: 632.5,
+    bottom: 524,
+    left: 127.5
+  },
+  visible: true
+}
+chromium people { passed: 21 }

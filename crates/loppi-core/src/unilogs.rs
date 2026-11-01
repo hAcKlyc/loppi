@@ -1,6 +1,8 @@
+use loppi_protocol::platform::OpenOptions;
 use loppi_protocol::{ClientKind, LogContext, LogEvent, LogFilter, LogLevel, LogRecord, LogWindow};
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Write};
+#[cfg(unix)]
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -22,8 +24,7 @@ impl UniLogs {
     pub fn open(data_directory: &Path, run_id: Uuid) -> Result<Self, String> {
         let directory = data_directory.join("logs");
         fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
-        fs::set_permissions(&directory, fs::Permissions::from_mode(0o700))
-            .map_err(|error| error.to_string())?;
+        loppi_protocol::platform::set_mode(&directory, 0o700).map_err(|error| error.to_string())?;
         let file = Self::open_file(&directory)?;
         Ok(Self {
             directory,
@@ -40,8 +41,8 @@ impl UniLogs {
         let file = OpenOptions::new()
             .create(true)
             .append(true)
-            .custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW)
-            .open(path)
+            .custom_flags(loppi_protocol::platform::NOFOLLOW)
+            .open(&path)
             .map_err(|error| error.to_string())?;
         if !file
             .metadata()
@@ -51,8 +52,7 @@ impl UniLogs {
         {
             return Err("diagnostic log path is not a regular file".to_owned());
         }
-        file.set_permissions(fs::Permissions::from_mode(0o600))
-            .map_err(|error| error.to_string())?;
+        loppi_protocol::platform::set_mode(&path, 0o600).map_err(|error| error.to_string())?;
         Ok(file)
     }
 
@@ -145,7 +145,8 @@ impl UniLogs {
             };
             let next = self.directory.join(format!("loppi.{archive:02}.jsonl"));
             if previous.exists() {
-                fs::rename(previous, next).map_err(|error| error.to_string())?;
+                loppi_protocol::platform::rename(previous, next)
+                    .map_err(|error| error.to_string())?;
             }
         }
         self.file = Self::open_file(&self.directory)?;
@@ -174,7 +175,7 @@ impl UniLogs {
 fn read_matching(path: &Path, filter: &LogFilter, window: &mut LogWindow) -> Result<(), String> {
     let file = match OpenOptions::new()
         .read(true)
-        .custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW)
+        .custom_flags(loppi_protocol::platform::NOFOLLOW)
         .open(path)
     {
         Ok(file) => file,
@@ -331,6 +332,7 @@ mod tests {
         assert_eq!(entries[0].request_id, entries[1].request_id);
         let bytes = fs::read(directory.path().join("logs/loppi.jsonl")).unwrap();
         assert!(!String::from_utf8(bytes).unwrap().contains("null"));
+        #[cfg(unix)]
         assert_eq!(
             fs::metadata(directory.path().join("logs/loppi.jsonl"))
                 .unwrap()

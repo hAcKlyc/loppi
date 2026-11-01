@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-0.1 macOS 客户端正在开发验收。签名版已跑通几分钟真实声音的录制、粗转、事件、精转、人物、纠错、笔记、导出和清理预览；覆盖升级与原有数据读取已有初验。签名 DMG 已通过 Apple 公证、票据装订和 Gatekeeper 包验证，可用于测试分发。多小时稳定性、资源测量及全新 Mac 安装验收仍待完成，当前构建不能当作正式发行版。
+0.1.18 面向 macOS 13+（Apple Silicon / Intel）与 Windows 11 x64（Build 22000+）。客户端包含离线语音模型，通过同一本机核心完成录音、转写与找回。安装包、签名状态与构建身份以 [Release](https://github.com/hAcKlyc/loppi/releases/tag/v0.1.18) 附件为准；组合验收见 [Windows 执行台账](specs/prd/devplan_261101_windows-release.md)。短时功能验收与长期稳定性、其它硬件/系统版本覆盖分别记录，不将单机结果推及所有设备。
 
 | 文档 | 职责 |
 |---|---|
@@ -28,11 +28,26 @@
 
 **持续采集 → 语音检测与本地粗转 → LLM 事件拟合 → 需要时整段精转 → 时间线找回。**
 
-保留下来的人声音频与已有粗转文字默认持续保存，直到用户主动清理或达到全局空间边界而暂停录音。用户主动截图、Mark 和评论关联到发生时刻。产品自身完成记录、整理、找回和回放，并在 macOS 首版提供完整命令行能力。
+保留下来的人声音频与已有粗转文字默认持续保存，直到用户主动清理或达到全局空间边界而暂停录音。用户主动截图、Mark 和评论关联到发生时刻。产品自身完成记录、整理、找回和回放，桌面客户端与命令行共用同一个本机核心。
 
-`loppi` 是产品正式名称。0.1 以 macOS `.dmg` 直接分发，不通过 Mac App Store。项目计划开源；具体许可证与公开发布步骤待确定。复用 MyAgents 代码和第三方模型前，须分别核查相应代码权利与许可；当前仓库不复制第三方实现、模型权重或真实录音资料。
+`loppi` 是产品正式名称，macOS 以 `.dmg` 直接分发，不通过 Mac App Store。项目计划开源；具体许可证与公开发布步骤待确定。第三方库与随包模型的许可见 `THIRD_PARTY_NOTICES.md` 和 `licenses/`；开发机密钥与真实录音不进入仓库或安装包。
 
 更名后的应用使用全新的数据目录、系统身份和凭据配置，不读取或迁移旧 hear 数据。首次使用需重新完成系统授权、Provider 配置和 Agent 接入；旧资料不主动删除。
+
+## Windows 构建与使用
+
+需要 Windows 11 x64、Node.js/npm、Rust MSVC、Visual Studio C++ 工具与 Windows SDK、CMake/Ninja、Python，以及 WebView2。首次在具备 MSVC 环境的 PowerShell 中运行：
+
+```powershell
+npm ci
+./build_dev.ps1
+# 干净、已提交源码的发行构建：
+./build_release.ps1
+```
+
+两入口共用 `scripts/build_windows.mjs`：生成 x64 NSIS 安装包，随包提供语音模型、离线中英文 OCR、推理 DLL、VC 运行库、WebView2 离线安装程序与第三方许可。发行入口要求干净源码，当前没有 Windows 代码签名证书，报告如实标记 `unsigned`。输出及精确依赖要求见 [Windows 支持说明](specs/tech_docs/windows-support.md)。
+
+默认程序目录是 `%LOCALAPPDATA%\loppi`，录音和数据库另存于 `%LOCALAPPDATA%\app.loppi.core`；默认卸载保留资料。Windows 麦克风使用桌面应用访问权限，电脑声音由 WASAPI 获取。锁屏时录音可以继续，桌面截图会明确提示不可用。系统托盘和悬浮入口共享同一只状态兔子。CLI/MCP 接入请从应用的「Agent 接入」复制当前安装路径和 PowerShell 命令。
 
 ## macOS 发行构建
 
@@ -100,7 +115,7 @@ CLI 的 `transcribe-range` 返回 `range_id` 和 `tasks`；每条任务有可用
 
 ## 开发验证用云端配置
 
-本机原型从仓库根目录 `.env` 读取 `DEEPSEEK_API_KEY`（事件拟合 LLM）和 `VOLCENGINE_API_KEY`（火山引擎录音文件 ASR）；变量名示例见 [`.env.example`](.env.example)。`.env` 已被 Git 忽略，不在文档、日志或测试输出中保存密钥值。当前优先验证 DeepSeek 官方 API 与火山引擎「录音文件识别标准版HTTP」，具体接口与尚待验证的限制见[技术 RFC](specs/prd/tech_rfc_0.1.md)。正式 macOS 客户端仍由用户在设置中配置凭据并存入 Keychain，不能把开发机 `.env` 打进安装包。
+本机原型从仓库根目录 `.env` 读取 `DEEPSEEK_API_KEY`（事件拟合 LLM）和 `VOLCENGINE_API_KEY`（火山引擎录音文件 ASR）；变量名示例见 [`.env.example`](.env.example)。`.env` 已被 Git 忽略，不在文档、日志或测试输出中保存密钥值。当前优先验证 DeepSeek 官方 API 与火山引擎「录音文件识别标准版HTTP」，具体接口与尚待验证的限制见[技术 RFC](specs/prd/tech_rfc_0.1.md)。正式客户端由用户在设置中配置凭据并存入系统安全存储（macOS Keychain / Windows Credential Manager），不能把开发机 `.env` 打进安装包。
 
 ## Agent 接入
 

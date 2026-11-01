@@ -52,6 +52,7 @@ mockIPC((command,args)=>{
   return new Promise(resolve=>pending.push(title=>{active--;resolve({type:'timeline',gaps:[],items:[{id:'fixture',manual_range_id:null,title,summary:null,started_ms:r.from_ms+1000,ended_ms:r.from_ms+5000,sources:'microphone',revision:1,processing_state:'transcribed',recording_sources:[],coarse_segments:[],precise_segments:[]}]});}));
  }
  if(r.type==='calendar_days')return {type:r.type,days:[today]};
+ if(r.type==='calendar_adjacent')return {type:r.type,newer_ms:null,older_ms:null};
  if(r.type==='moments')return {type:r.type,moments:[]};
  if(r.type==='cloud_status')return {type:r.type,queues:[]};
  if(r.type==='people')return {type:r.type,people:[]};

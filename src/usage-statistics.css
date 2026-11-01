@@ -2,9 +2,6 @@
 	display: grid;
 	gap: var(--space-8);
 }
-.queue-tabs {
-	margin: calc(-1 * var(--space-6)) 0 var(--space-9);
-}
 .usage-toolbar,
 .usage-chart-heading {
 	display: flex;
@@ -35,6 +32,10 @@
 	background: var(--color-surface);
 	color: var(--color-brand);
 	font-weight: var(--weight-semibold);
+}
+.usage-range button:hover:not(:disabled),
+.usage-legend button:hover:not(:disabled) {
+	background: var(--color-control-hover);
 }
 .usage-chart {
 	min-width: 0;
@@ -82,9 +83,6 @@
 .usage-legend button[aria-pressed="false"] {
 	opacity: var(--opacity-disabled);
 	text-decoration: line-through;
-}
-.usage-legend button:hover {
-	background: var(--color-control);
 }
 .usage-plot-wrap {
 	position: relative;
@@ -184,9 +182,7 @@
 }
 .usage-day-slider {
 	position: absolute;
-	left: 7%;
 	bottom: 0;
-	width: 83%;
 	opacity: 0;
 	pointer-events: none;
 }

@@ -1,10 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AudioStorageSettings } from "./AudioStorageSettings";
 import {
 	type CleanupPreview,
+	type CloudProvider,
 	type CloudQueue,
 	type CloudTask,
 	core,
@@ -22,12 +23,11 @@ import {
 import { CloudServiceSettings } from "./CloudServiceSettings";
 import {
 	Button,
+	Icon,
 	Modal,
 	SegmentedOptions,
 	SettingRow,
 	Switch,
-	TabPanel,
-	Tabs,
 } from "./Controls";
 import { taskNeedsRecognition, taskStatus } from "./cloud-task-status";
 import {
@@ -36,10 +36,14 @@ import {
 	getEntrySnapshot,
 } from "./entry-api";
 import { LoadBoundary, LoadingSkeleton } from "./LoadingState";
+import { desktopPlatform } from "./platform";
 import { RecordingScheduleSettings } from "./RecordingScheduleSettings";
+import { recognitionServices } from "./recognition-services";
 import { ModelPreparation, SourcePreparation } from "./SetupGroups";
+import { SoftwareUpdate } from "./SoftwareUpdate";
 import type { ModelState, PrivacyStatus } from "./setup";
 import { UsageStatisticsView } from "./UsageStatistics";
+import type { AppUpdate } from "./useAppUpdate";
 
 type Mutation = (
 	request: { type: string; [key: string]: unknown },
@@ -84,6 +88,7 @@ export function QueueView({
 	busy,
 	onRefresh,
 	onMutate,
+	onSettings,
 }: {
 	queues: CloudQueue[];
 	queuesReady?: boolean;
@@ -97,9 +102,16 @@ export function QueueView({
 	busy: boolean;
 	onRefresh: () => Promise<void>;
 	onMutate: Mutation;
+	onSettings: (provider: CloudProvider) => void;
 }) {
-	const tabsId = useId();
-	const [queueTab, setQueueTab] = useState<"queue" | "statistics">("queue");
+	const [taskProvider, setTaskProvider] = useState<CloudProvider | null>(null);
+	const pageTop = useRef<HTMLElement>(null);
+	const heading = useRef<HTMLHeadingElement>(null);
+	useEffect(() => {
+		void taskProvider;
+		pageTop.current?.scrollIntoView({ block: "start" });
+		heading.current?.focus({ preventScroll: true });
+	}, [taskProvider]);
 	const [statisticsRefresh, setStatisticsRefresh] = useState(0);
 	const [activeReview, setActiveReview] = useState<string | null>(null);
 	const [candidates, setCandidates] = useState<PreciseSegment[]>([]);
@@ -197,10 +209,24 @@ export function QueueView({
 			await onRefresh();
 		}
 	};
+	const providerTasks = tasks.filter((task) => task.provider === taskProvider);
 	return (
-		<section className="page-container">
+		<section className="page-container recognition-page" ref={pageTop}>
+			{taskProvider && (
+				<Button
+					className="recognition-back"
+					onClick={() => setTaskProvider(null)}
+				>
+					<Icon name="back" />
+					返回智能识别
+				</Button>
+			)}
 			<div className="page-heading" data-tauri-drag-region>
-				<h1>处理队列</h1>
+				<h1 ref={heading} tabIndex={-1}>
+					{taskProvider
+						? `${recognitionServices[taskProvider].title}任务明细`
+						: "智能识别"}
+				</h1>
 				<Button
 					type="button"
 					tone="quiet"
@@ -212,214 +238,275 @@ export function QueueView({
 					刷新
 				</Button>
 			</div>
-			<Tabs
-				id={tabsId}
-				label="处理队列页面"
-				value={queueTab}
-				className="queue-tabs"
-				items={[
-					{ value: "queue", label: "队列" },
-					{ value: "statistics", label: "统计数据" },
-				]}
-				onChange={setQueueTab}
-			/>
-			<TabPanel tabsId={tabsId} value="statistics" selected={queueTab}>
-				{queueTab === "statistics" && (
-					<UsageStatisticsView refresh={statisticsRefresh} />
-				)}
-			</TabPanel>
-			<TabPanel tabsId={tabsId} value="queue" selected={queueTab}>
-				<LoadBoundary
-					ready={queuesReady}
-					error={queuesError}
-					retry={() => void onRefresh()}
-					label="队列状态"
-					rows={2}
-				>
-					<div className="queue-grid">
-						{queues.map((queue) => (
-							<div className="panel-card" key={queue.provider}>
+			<div hidden={taskProvider !== null} inert={taskProvider !== null}>
+				<div className="queue-grid">
+					{(["llm", "asr"] as const).map((provider) => {
+						const queue = queues.find((item) => item.provider === provider);
+						const queueReady = queuesReady && queue !== undefined;
+						const queueError =
+							queuesError ||
+							(queuesReady && !queue ? "未返回该服务的队列状态" : undefined);
+						return (
+							<div className="panel-card recognition-card" key={provider}>
 								<div className="panel-header">
 									<div>
-										<h2>
-											{queue.provider === "llm" ? "事件与图片理解" : "精确转录"}
-										</h2>
-										<p>
-											{queue.configured
-												? queue.blocked_reason === "provider_http_402"
-													? "余额不足，充值后继续；失败项需手动重试"
-													: queue.paused
-														? "已暂停"
-														: "运行中"
-												: "尚未配置"}
-										</p>
+										<h2>{recognitionServices[provider].title}</h2>
+										<p>{recognitionServices[provider].description}</p>
+										{queueReady &&
+											queue &&
+											(!queue.configured || queue.blocked_reason) && (
+												<p className="queue-blocked" role="status">
+													{!queue.configured
+														? "尚未配置"
+														: queue.blocked_reason === "provider_http_402"
+															? "余额不足，充值后继续；失败项需手动重试"
+															: "处理受阻，请检查服务配置后继续"}
+												</p>
+											)}
 									</div>
-									<button
-										type="button"
-										className={`switch ${!queue.paused && !queue.blocked_reason && queue.configured ? "on" : ""}`}
-										aria-label={`${queue.paused || queue.blocked_reason ? "继续" : "暂停"}${queue.provider === "llm" ? "事件与图片理解" : "精确转录"}`}
-										disabled={busy || !queue.configured}
-										onClick={() =>
-											void onMutate(
-												{
-													type: "set_cloud_paused",
-													provider: queue.provider,
-													paused: !queue.paused && !queue.blocked_reason,
-												},
-												queue.paused || queue.blocked_reason
-													? "队列已继续"
-													: "队列已暂停",
-											)
-										}
-									/>
-								</div>
-								<div className="queue-counts">
-									<span>
-										{queue.pending}
-										<small>待处理</small>
-									</span>
-									<span>
-										{queue.processing}
-										<small>处理中</small>
-									</span>
-									<span>
-										{queue.failed}
-										<small>失败</small>
-									</span>
-								</div>
-							</div>
-						))}
-					</div>
-				</LoadBoundary>
-				<div className="section-heading">
-					<h2>任务</h2>
-				</div>
-				<div className="panel-card list-panel">
-					<LoadBoundary
-						ready={tasksReady}
-						error={tasksError}
-						retry={() => void onRefresh()}
-						label="任务"
-					>
-						{tasks.length === 0 ? (
-							<div className="list-empty">暂无任务</div>
-						) : (
-							tasks.map((task) => (
-								<div className="task-row" key={task.id}>
-									<div>
-										<strong>
-											{task.target_kind === "reorganization"
-												? "用户发起的事件整理"
-												: task.target_kind === "screenshot"
-													? "图片理解"
-													: task.provider === "llm"
-														? "事件整理"
-														: "精确转录"}{" "}
-											· {taskRange(task)}
-										</strong>
-										<p title={task.error_code ?? undefined}>
-											{taskStatus(task)}
-										</p>
-										{taskNeedsRecognition(task) && (
-											<p>将用保留原声重新识别，产生新的识别用量</p>
-										)}
-									</div>
-									{task.state === "failed" && (
+									<div className="recognition-actions">
 										<Button
 											type="button"
 											tone="quiet"
-											disabled={busy}
-											onClick={() =>
-												void onMutate(
-													{ type: "retry_cloud_task", task_id: task.id },
-													taskNeedsRecognition(task)
-														? "已加入重新识别队列"
-														: "任务已重新排队",
-												)
-											}
+											size="compact"
+											aria-label={`${recognitionServices[provider].title}设置`}
+											onClick={() => onSettings(provider)}
 										>
-											{taskNeedsRecognition(task) ? "重新识别" : "重试"}
+											设置
 										</Button>
-									)}
-								</div>
-							))
-						)}
-					</LoadBoundary>
-				</div>
-				<div className="section-heading">
-					<h2>待核对</h2>
-					{reviewsReady && (
-						<span className="review-count">{reviews.length} 条</span>
-					)}
-				</div>
-				<div className="panel-card list-panel">
-					<LoadBoundary
-						ready={reviewsReady}
-						error={reviewsError}
-						retry={() => void onRefresh()}
-						label="待核对记录"
-					>
-						{reviews.length === 0 && (
-							<div className="list-empty">没有待核对的修正</div>
-						)}
-						{reviews.map((review) => (
-							<div className="review-row" key={review.id}>
-								<div>
-									<strong>
-										{review.kind === "text" ? "文字修正" : "人物归属"} ·{" "}
-										{time(review.started_ms)}
-									</strong>
-									<p>{review.text || review.person_name || "原归属"}</p>
-								</div>
-								<Button
-									type="button"
-									tone="quiet"
-									onClick={() => void findCandidates(review)}
-								>
-									核对
-								</Button>
-								{activeReview === review.id && (
-									<div className="review-candidates">
-										{finding && (
-											<LoadingSkeleton label="正在查找当前句段" rows={2} />
-										)}
-										{reviewError && (
-											<span className="inline-error">{reviewError}</span>
-										)}
-										{!finding && !reviewError && candidates.length === 0 && (
-											<span>没有可对应的精转句段</span>
-										)}
-										{candidates.map((segment) => (
-											<button
-												type="button"
-												key={segment.id}
-												onClick={() => void resolve(review, segment.id)}
+										{(queueReady || !queueError) && (
+											<LoadBoundary
+												ready={queueReady}
+												label={`${recognitionServices[provider].title}开关`}
+												rows={1}
+												compact
 											>
-												<time>{time(segment.started_ms)}</time>
-												<span>{segment.text}</span>
-											</button>
-										))}
-										<button
-											type="button"
-											className="review-dismiss"
-											onClick={() => void resolve(review, null)}
-										>
-											{review.kind === "text"
-												? "放弃这条文字修正"
-												: "放弃这条人物归属"}
-										</button>
+												{queue && (
+													<Switch
+														label={recognitionServices[provider].title}
+														checked={
+															!queue.paused &&
+															!queue.blocked_reason &&
+															queue.configured
+														}
+														disabled={busy || !queue.configured}
+														onChange={() =>
+															void onMutate(
+																{
+																	type: "set_cloud_paused",
+																	provider: queue.provider,
+																	paused:
+																		!queue.paused && !queue.blocked_reason,
+																},
+																queue.paused || queue.blocked_reason
+																	? "队列已继续"
+																	: "队列已暂停",
+															)
+														}
+													/>
+												)}
+											</LoadBoundary>
+										)}
 									</div>
+								</div>
+								<div className="queue-counts">
+									<LoadBoundary
+										ready={queueReady}
+										error={queueError}
+										retry={() => void onRefresh()}
+										label="队列状态"
+										rows={1}
+										compact
+									>
+										{queue && (
+											<>
+												<span>
+													{queue.pending}
+													<small>待处理</small>
+												</span>
+												<span>
+													{queue.processing}
+													<small>处理中</small>
+												</span>
+												<span>
+													{queue.failed}
+													<small>失败</small>
+												</span>
+											</>
+										)}
+									</LoadBoundary>
+									<div className="recognition-task-link">
+										<Button
+											size="compact"
+											aria-label={`${recognitionServices[provider].title}任务明细`}
+											onClick={() => setTaskProvider(provider)}
+										>
+											任务明细
+										</Button>
+										{provider === "asr" &&
+											reviewsReady &&
+											reviews.length > 0 && (
+												<small>{reviews.length} 条待核对</small>
+											)}
+									</div>
+								</div>
+							</div>
+						);
+					})}
+				</div>
+				<div className="recognition-statistics">
+					<UsageStatisticsView refresh={statisticsRefresh} />
+				</div>
+			</div>
+			{taskProvider && (
+				<>
+					<div className="section-heading">
+						<h2>任务</h2>
+					</div>
+					<div className="panel-card list-panel">
+						<LoadBoundary
+							ready={tasksReady}
+							error={tasksError}
+							retry={() => void onRefresh()}
+							label="任务"
+						>
+							{providerTasks.length === 0 ? (
+								<div className="list-empty">暂无任务</div>
+							) : (
+								providerTasks.map((task) => (
+									<div className="task-row" key={task.id}>
+										<div>
+											<strong>
+												{task.target_kind === "reorganization"
+													? "用户发起的事件整理"
+													: task.target_kind === "screenshot"
+														? "图片理解"
+														: task.provider === "llm"
+															? "事件分析"
+															: "语音识别"}{" "}
+												· {taskRange(task)}
+											</strong>
+											<p
+												className={
+													task.state === "failed"
+														? "task-state-failed"
+														: undefined
+												}
+												title={task.error_code ?? undefined}
+											>
+												{taskStatus(task)}
+											</p>
+											{taskNeedsRecognition(task) && (
+												<p>将用保留原声重新识别，产生新的识别用量</p>
+											)}
+										</div>
+										{task.state === "failed" && (
+											<Button
+												type="button"
+												tone="quiet"
+												disabled={busy}
+												onClick={() =>
+													void onMutate(
+														{ type: "retry_cloud_task", task_id: task.id },
+														taskNeedsRecognition(task)
+															? "已加入重新识别队列"
+															: "任务已重新排队",
+													)
+												}
+											>
+												{taskNeedsRecognition(task) ? "重新识别" : "重试"}
+											</Button>
+										)}
+									</div>
+								))
+							)}
+						</LoadBoundary>
+					</div>
+					{taskProvider === "asr" && (
+						<>
+							<div className="section-heading">
+								<h2>待核对</h2>
+								{reviewsReady && (
+									<span className="review-count">{reviews.length} 条</span>
 								)}
 							</div>
-						))}
-					</LoadBoundary>
-				</div>
-			</TabPanel>
+							<div className="panel-card list-panel">
+								<LoadBoundary
+									ready={reviewsReady}
+									error={reviewsError}
+									retry={() => void onRefresh()}
+									label="待核对记录"
+								>
+									{reviews.length === 0 && (
+										<div className="list-empty">没有待核对的修正</div>
+									)}
+									{reviews.map((review) => (
+										<div className="review-row" key={review.id}>
+											<div>
+												<strong>
+													{review.kind === "text" ? "文字修正" : "人物归属"} ·{" "}
+													{time(review.started_ms)}
+												</strong>
+												<p>{review.text || review.person_name || "原归属"}</p>
+											</div>
+											<Button
+												type="button"
+												tone="quiet"
+												onClick={() => void findCandidates(review)}
+											>
+												核对
+											</Button>
+											{activeReview === review.id && (
+												<div className="review-candidates">
+													{finding && (
+														<LoadingSkeleton
+															label="正在查找当前句段"
+															rows={2}
+														/>
+													)}
+													{reviewError && (
+														<span className="inline-error">{reviewError}</span>
+													)}
+													{!finding &&
+														!reviewError &&
+														candidates.length === 0 && (
+															<span>没有可对应的精转句段</span>
+														)}
+													{candidates.map((segment) => (
+														<button
+															type="button"
+															key={segment.id}
+															onClick={() => void resolve(review, segment.id)}
+														>
+															<time>{time(segment.started_ms)}</time>
+															<span>{segment.text}</span>
+														</button>
+													))}
+													<button
+														type="button"
+														className="review-dismiss"
+														onClick={() => void resolve(review, null)}
+													>
+														{review.kind === "text"
+															? "放弃这条文字修正"
+															: "放弃这条人物归属"}
+													</button>
+												</div>
+											)}
+										</div>
+									))}
+								</LoadBoundary>
+							</div>
+						</>
+					)}
+				</>
+			)}
 		</section>
 	);
 }
 
 export function SettingsView({
+	update,
 	queuesReady = true,
 	loadErrors = {},
 	date,
@@ -433,7 +520,9 @@ export function SettingsView({
 	onContext,
 	onTimeline,
 	onMessage,
+	cloudProvider,
 }: {
+	update?: AppUpdate;
 	date: Date;
 	state: ServiceState | null;
 	queues: CloudQueue[];
@@ -451,6 +540,7 @@ export function SettingsView({
 	onTimeline: () => Promise<void>;
 	onMutate: Mutation;
 	onMessage: (message: string) => void;
+	cloudProvider?: CloudProvider | null;
 }) {
 	const [dialogError, setDialogError] = useState("");
 	const previewBack = useRef<HTMLButtonElement>(null);
@@ -659,6 +749,7 @@ export function SettingsView({
 			</div>
 			<h2>通用</h2>
 			<div className="panel-card setting-panel">
+				{update && <SoftwareUpdate update={update} />}
 				<LoadBoundary
 					ready={entryMode !== null}
 					error={entryError}
@@ -674,7 +765,11 @@ export function SettingsView({
 								label="常驻入口模式"
 								value={entryMode ?? "top"}
 								options={[
-									{ value: "top", label: "顶部" },
+									{
+										value: "top",
+										label:
+											desktopPlatform() === "windows" ? "系统托盘" : "顶部",
+									},
 									{ value: "floating", label: "悬浮兔子" },
 								]}
 								disabled={switchingEntry}
@@ -764,10 +859,9 @@ export function SettingsView({
 						<CloudServiceSettings
 							key={provider}
 							provider={provider}
-							configured={
-								queues.find((queue) => queue.provider === provider)?.configured
-							}
+							queue={queues.find((queue) => queue.provider === provider)}
 							refresh={onContext}
+							locate={cloudProvider === provider}
 						/>
 					))}
 				</LoadBoundary>

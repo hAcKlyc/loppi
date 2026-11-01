@@ -1,0 +1,23 @@
+{
+  "app": {
+    "windows": [{
+      "label": "main", "title": "loppi", "width": 1120, "height": 760,
+      "minWidth": 760, "minHeight": 540, "decorations": true
+    }]
+  },
+  "bundle": {
+    "targets": ["nsis"],
+    "icon": ["icons/icon.ico"],
+    "windows": {
+      "webviewInstallMode": {"type": "offlineInstaller", "silent": true},
+      "nsis": {
+        "installMode": "currentUser",
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico",
+        "languages": ["SimpChinese", "English"],
+        "displayLanguageSelector": false,
+        "installerHooks": "windows/installer-hooks.nsh"
+      }
+    }
+  }
+}

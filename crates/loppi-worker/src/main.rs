@@ -1,3 +1,4 @@
+#![cfg_attr(windows, windows_subsystem = "windows")]
 use serde::{Deserialize, Serialize};
 use sherpa_onnx::{
     OfflineRecognizer, OfflineRecognizerConfig, OfflineTransducerModelConfig, SileroVadModelConfig,
@@ -411,12 +412,16 @@ fn serve_recognizer(model_dir: &Path) -> Result<(), String> {
 }
 
 fn watch_parent(parent: i32) {
+    #[cfg(windows)]
+    if loppi_protocol::platform::watch_process_exit(parent as u32).is_err() {
+        loppi_protocol::platform::hard_exit(70);
+    }
     std::thread::spawn(move || {
         loop {
-            if unsafe { libc::getppid() } != parent {
+            if loppi_protocol::platform::parent_pid() != parent {
                 // Another thread may be in ONNX. Running C++ atexit
                 // destructors here races that inference/model initialization.
-                unsafe { libc::_exit(70) };
+                loppi_protocol::platform::hard_exit(70);
             }
             std::thread::sleep(std::time::Duration::from_millis(100));
         }
@@ -474,6 +479,11 @@ fn run() -> Result<(), String> {
 }
 
 fn main() {
+    #[cfg(windows)]
+    if let Err(error) = loppi_protocol::platform::initialize_process() {
+        eprintln!("loppi: {error}");
+        std::process::exit(1);
+    }
     if let Err(error) = run() {
         eprintln!("loppi-worker: {error}");
         std::process::exit(1);
@@ -499,14 +509,14 @@ mod tests {
     fn orphan_watchdog_skips_global_destructors() {
         if std::env::var_os("LOPPI_TEST_ORPHAN_EXIT").is_some() {
             extern "C" fn destructor() {
-                unsafe { libc::_exit(99) };
+                loppi_protocol::platform::hard_exit(99);
             }
             assert_eq!(unsafe { libc::atexit(destructor) }, 0);
             super::watch_parent(std::process::id() as i32);
             std::thread::sleep(std::time::Duration::from_secs(5));
             panic!("watchdog did not terminate orphan");
         }
-        let result = std::process::Command::new(std::env::current_exe().unwrap())
+        let result = loppi_protocol::platform::command(std::env::current_exe().unwrap())
             .args(["--exact", "tests::orphan_watchdog_skips_global_destructors"])
             .env("LOPPI_TEST_ORPHAN_EXIT", "1")
             .status()

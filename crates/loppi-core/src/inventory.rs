@@ -145,13 +145,13 @@ impl Scan {
             .strip_prefix(directory)
             .map_err(|e| e.to_string())?
             .to_string_lossy()
-            .into_owned();
+            .replace('\\', "/");
         let media_relative = path
             .with_extension("opus")
             .strip_prefix(directory)
             .map_err(|e| e.to_string())?
             .to_string_lossy()
-            .into_owned();
+            .replace('\\', "/");
         let (known, deleting) = {
             let locked = store.lock().map_err(|e| e.to_string())?;
             locked.db.query_row("SELECT EXISTS(SELECT 1 FROM audio_blocks WHERE media_path=?1),EXISTS(SELECT 1 FROM media_deletion_jobs WHERE media_path=?1 AND completed_ms IS NULL)",[&media_relative],|r|Ok((r.get::<_,bool>(0)?,r.get::<_,bool>(1)?))).map_err(|e|e.to_string())?
@@ -166,7 +166,7 @@ impl Scan {
                 .strip_prefix(directory)
                 .map_err(|e| e.to_string())?
                 .to_string_lossy()
-                .into_owned();
+                .replace('\\', "/");
             store
                 .lock()
                 .map_err(|e| e.to_string())?

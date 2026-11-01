@@ -57,7 +57,7 @@ test('Enter submits only outside IME; Shift Enter remains a newline', () => {
 test('top rabbit follows native width continuously and avoids the physical notch', async () => {
   const { topRabbitMotion } = await import('../src/entry-api.ts');
   // Evaluate the generated CSS length expression at actual viewport widths.
-  const value = (css, width) => Function(`return ${css.replaceAll('100vw', String(width)).replaceAll('px', '').replaceAll('calc', '').replaceAll('max(', 'Math.max(')}`)();
+  const value = (css, width) => Function(`return ${css.replaceAll('100vw', String(width)).replaceAll('px', '').replaceAll('calc', '').replaceAll('max(', 'Math.max(').replaceAll('min(', 'Math.min(')}`)();
   for (const feedback of [false, true]) for (const band of [0, 32, 40]) {
     const compact = feedback ? 280 : 44;
     const shift = (412 - compact) / 2 + (band ? 111.5 : 0);
@@ -75,9 +75,9 @@ test('top rabbit follows native width continuously and avoids the physical notch
         assert.ok(Math.abs(size - 28) < 1e-6);
       }
       if (i === 100) {
-        assert.ok(Math.abs(x - 20) < 1e-6);
-        assert.ok(Math.abs(y - (band + 24)) < 1e-6);
-        assert.ok(Math.abs(size - 72) < 1e-6);
+        assert.ok(Math.abs(x - 16) < 1e-6);
+        assert.ok(Math.abs(y - (Math.max(24, band) + 14)) < 1e-6);
+        assert.ok(Math.abs(size - 96) < 1e-6);
       }
       // The rabbit must first clear the notch vertically before moving left.
       if (band && y < band) assert.ok(globalX >= compact / 2 - 14 - 1e-6);

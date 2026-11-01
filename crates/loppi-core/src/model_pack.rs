@@ -249,7 +249,12 @@ mod tests {
         );
         fs::remove_file(&file).unwrap();
         fs::write(temp.path().join("other"), b"good").unwrap();
+        #[cfg(unix)]
         std::os::unix::fs::symlink("other", &file).unwrap();
+        #[cfg(windows)]
+        {
+            std::fs::create_dir(&file).unwrap();
+        }
         assert_eq!(
             verify_file(temp.path(), &asset).unwrap_err(),
             "model_checksum"

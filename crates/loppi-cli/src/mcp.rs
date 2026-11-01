@@ -45,7 +45,7 @@ impl Server {
                     return Some(failure(id, -32602, "capabilities and clientInfo required"));
                 }
                 self.initialized = true;
-                json!({"protocolVersion":if ["2025-11-25","2025-06-18"].contains(&version){version}else{"2025-11-25"},"capabilities":{"tools":{}},"serverInfo":{"name":"loppi","title":"loppi context","version":env!("CARGO_PKG_VERSION"),"description":context::SERVER_DESCRIPTION},"instructions":context::INSTRUCTIONS})
+                json!({"protocolVersion":if ["2025-11-25","2025-06-18"].contains(&version){version}else{"2025-11-25"},"capabilities":{"tools":{}},"serverInfo":{"name":"loppi","title":"loppi","version":env!("CARGO_PKG_VERSION"),"description":context::SERVER_DESCRIPTION},"instructions":context::INSTRUCTIONS})
             }
             "ping" => json!({}),
             _ if !self.ready => {
@@ -135,6 +135,8 @@ mod tests {
             .map(|s| serde_json::from_str(s).unwrap())
             .collect();
         assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0]["result"]["serverInfo"]["name"], "loppi");
+        assert_eq!(lines[0]["result"]["serverInfo"]["title"], "loppi");
         assert_eq!(
             lines[1]["result"]["tools"].as_array().unwrap().len(),
             context::TOOLS.len()

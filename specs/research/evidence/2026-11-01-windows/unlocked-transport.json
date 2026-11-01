@@ -1,0 +1,15 @@
+{
+  "commit": "8ca9966710a05eae8fd9ca71e0567cc0f55c3a6c",
+  "branch": "codex/windows-unlocked-evidence-261101",
+  "windows_json": {
+    "bytes": 35534,
+    "sha256": "9d4df20d29d03b9155d50b92776390b5b0b4a633091f42e490566819e0c2642e",
+    "line_ending": "CRLF"
+  },
+  "git_json": {
+    "bytes": 34268,
+    "sha256": "ef70e305d5f6d826ace519aa9e079a1715cbecfabc95820c48680b567f69658f",
+    "line_ending": "LF"
+  },
+  "verified": "Git text normalization exactly accounts for bytes and original SHA; image binary matches original. Repository SHA256SUMS refers to LF Git blobs. No JSON data changed."
+}

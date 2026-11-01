@@ -10,9 +10,11 @@ import {ModelPreparation,SourcePreparation} from '../src/SetupGroups.tsx';
 import {CloudKeyInput} from '../src/CloudKeyInput.tsx';
 import '../src/App.css';
 const flags=new URLSearchParams(location.search), ready=flags.has('ready');
+const requestedPlatform=flags.get('platform'),windows=requestedPlatform==='windows'||(!requestedPlatform&&/^Win/i.test(navigator.platform));
+if(requestedPlatform==='windows'||requestedPlatform==='macos')Object.defineProperty(navigator,'platform',{configurable:true,value:windows?'Win32':'MacIntel'});
 if(!window.isTauri)window.isTauri=true;
 const state={disk_free_bytes:flags.has('disk')?0:3_000_000_000,audio_used_bytes:0,audio_limit_bytes:1000,revision:0,enabled_intent:false,paused_intent:false,microphone_enabled:true,system_enabled:true,microphone_phase:'idle',system_phase:'idle'};
-const privacy={microphone:flags.has('denied')?2:ready?3:0,microphone_available:true,tap_required:true,tap_ready:ready,screen_and_system_audio:0};
+const privacy={microphone:flags.has('denied')?2:ready?3:0,microphone_available:true,tap_required:!windows,tap_ready:ready,screen_and_system_audio:0,system_audio:windows&&ready?1:0};
 const models={phase:ready?'ready':'missing',speaker_phase:flags.has('speaker')?'failed':ready?'ready':'missing',progress_percent:0,error:null,speaker_error:flags.has('speaker')?'model_network':null};
 const queues=[{provider:'llm',configured:ready},{provider:'asr',configured:ready}];
 const calls=[];window.calls=calls;
@@ -21,7 +23,7 @@ mockIPC((command,args)=>{
  calls.push({command,type:args?.request?.type,source:args?.source??args?.request?.source,provider:args?.request?.provider});
  if(command==='complete_onboarding')return {completed:true};
  if(command==='request_microphone_permission')privacy.microphone=3;
- if(command==='request_system_audio_permission')privacy.tap_ready=true;
+ if(command==='request_system_audio_permission'){privacy.tap_ready=true;if(windows)privacy.system_audio=1;}
  if(command==='core_request'){
   const r=args.request;
   if(r.type==='set_source'){

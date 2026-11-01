@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AgentAccess } from "./AgentAccess";
 import {
+	type CloudProvider,
 	type CloudQueue,
 	type CloudTask,
 	core,
@@ -25,12 +26,15 @@ import { Button, Field, Modal } from "./Controls";
 import { DetailDrawer } from "./DetailDrawer";
 import { type EntrySnapshot, getEntrySnapshot } from "./entry-api";
 import { PeopleView } from "./PeopleView";
+import { desktopPlatform } from "./platform";
 import { TimelineView } from "./TimelineView";
-import { monthBoundaries } from "./timeline-view";
+import { adjacentRecordedDay, monthBoundaries } from "./timeline-view";
 import { QueueView, SettingsView } from "./WorkspaceViews";
 import "./App.css";
 import { OnboardingView } from "./OnboardingView";
+import { RestartUpdate } from "./SoftwareUpdate";
 import type { ModelState, PrivacyStatus } from "./setup";
+import { useAppUpdate } from "./useAppUpdate";
 
 type Page =
 	| "timeline"
@@ -53,7 +57,13 @@ function errorText(error: unknown): string {
 }
 
 function App() {
+	const update = useAppUpdate();
 	const [page, setPage] = useState<Page>("timeline");
+	const [settingsProvider, setSettingsProvider] =
+		useState<CloudProvider | null>(null);
+	useEffect(() => {
+		if (page !== "settings") setSettingsProvider(null);
+	}, [page]);
 	const [setupCompleted, setSetupCompleted] = useState<boolean | null>(null);
 	const [setupError, setSetupError] = useState("");
 	const setupLoading = useRef(false);
@@ -79,6 +89,10 @@ function App() {
 	const [date, setDate] = useState(() => new Date());
 	const [items, setItems] = useState<TimelineItem[]>([]);
 	const [recordedDays, setRecordedDays] = useState<number[] | null>(null);
+	const [adjacentDays, setAdjacentDays] = useState<{
+		newer: number | null;
+		older: number | null;
+	} | null>(null);
 	const [gaps, setGaps] = useState<TimeGap[]>([]);
 	const [dayMoments, setDayMoments] = useState<Moment[]>([]);
 	const [loading, setLoading] = useState(true);
@@ -182,6 +196,7 @@ function App() {
 		const previous = new Date(selectedDay.current);
 		selectedDay.current = nextDay;
 		++timelineRequest.current;
+		setAdjacentDays(null);
 		// Month navigation survives a day change; it is not day-content state.
 		if (
 			previous.getFullYear() !== next.getFullYear() ||
@@ -216,6 +231,12 @@ function App() {
 				}>({ type: "calendar_days", boundaries: monthBoundaries(date) }).catch(
 					() => null,
 				);
+				const adjacent = core<{
+					type: "calendar_adjacent";
+					id: string;
+					newer_ms: number | null;
+					older_ms: number | null;
+				}>({ type: "calendar_adjacent", from_ms, to_ms }).catch(() => null);
 				const response = await core<{
 					type: "timeline";
 					id: string;
@@ -223,6 +244,7 @@ function App() {
 					gaps: TimeGap[];
 				}>({ type: "timeline", from_ms, to_ms });
 				const available = await calendar;
+				const neighbors = await adjacent;
 				const all: Moment[] = [];
 				while (true) {
 					const page = await core<{
@@ -241,11 +263,28 @@ function App() {
 				}
 				if (request === timelineRequest.current) {
 					if (available) setRecordedDays(available.days);
+					const today = dayBounds(new Date())[0];
+					const newer = adjacentRecordedDay(
+						neighbors?.newer_ms,
+						from_ms,
+						to_ms,
+						"newer",
+						today,
+					);
+					const older = adjacentRecordedDay(
+						neighbors?.older_ms,
+						from_ms,
+						to_ms,
+						"older",
+						today,
+					);
+					setAdjacentDays(neighbors ? { newer, older } : null);
 					if (initialDatePending.current) {
 						initialDatePending.current = false;
-						const latest = available?.days[available.days.length - 1];
+						const latest = older ?? available?.days[available.days.length - 1];
 						if (
 							response.items.length === 0 &&
+							all.length === 0 &&
 							latest !== undefined &&
 							latest !== from_ms
 						) {
@@ -306,8 +345,10 @@ function App() {
 					setError(null);
 				}
 			} catch (cause) {
-				if (request === timelineRequest.current)
+				if (request === timelineRequest.current) {
 					setTimelineError(errorText(cause));
+					setAdjacentDays(null);
+				}
 			} finally {
 				if (request === timelineRequest.current) setLoading(false);
 			}
@@ -670,14 +711,14 @@ function App() {
 		if (reorganize && !eventSubmission.current)
 			eventSubmission.current = { id: crypto.randomUUID(), key };
 		if (reorganize && eventSubmission.current?.key !== key) {
-			setDialogError("上次提交结果待确认，请先确认原提交或在处理队列查看");
+			setDialogError("上次提交结果待确认，请先确认原提交或在智能识别查看");
 			return;
 		}
 		if (
 			await mutate(
 				request,
 				reorganize
-					? "已提交，正在重新整理事件，可在处理队列查看"
+					? "已提交，正在重新整理事件，可在智能识别查看"
 					: "事件已保存",
 				reorganize ? eventSubmission.current?.id : undefined,
 			)
@@ -839,7 +880,7 @@ function App() {
 			/>
 		);
 	return (
-		<div className="app-shell">
+		<div className="app-shell" data-platform={desktopPlatform()}>
 			<aside className="sidebar" data-tauri-drag-region>
 				<div className="brand" data-tauri-drag-region>
 					<img
@@ -865,7 +906,7 @@ function App() {
 								"时间线",
 								"M8 4v16M12 6h8M12 12h6M12 18h8M4 6h.01M4 12h.01M4 18h.01",
 							],
-							["queue", "处理队列", "M20 12a8 8 0 1 1-8-8M12 7v5l3 2M17 3v6h6"],
+							["queue", "智能识别", "M20 12a8 8 0 1 1-8-8M12 7v5l3 2M17 3v6h6"],
 							[
 								"people",
 								"人物库",
@@ -888,6 +929,7 @@ function App() {
 							title={label}
 							onClick={() => {
 								setPage(id);
+								setSettingsProvider(null);
 								setDataAction(null);
 								setSelection(null);
 							}}
@@ -912,8 +954,9 @@ function App() {
 						</button>
 					))}
 				</nav>
+				<RestartUpdate update={update} />
 			</aside>
-			<main className="main-area" tabIndex={-1} data-focus-fallback>
+			<main key={page} className="main-area" tabIndex={-1} data-focus-fallback>
 				{setupCompleted === false && (
 					<div className="connection-banner">
 						首次准备尚未完成
@@ -951,6 +994,7 @@ function App() {
 						}
 						date={date}
 						recordedDays={recordedDays}
+						adjacentDays={adjacentDays}
 						recordingState={snapshot?.error ? null : state}
 						items={items}
 						gaps={gaps}
@@ -981,6 +1025,12 @@ function App() {
 							await Promise.all([refreshTasks(), refreshContext()]);
 						}}
 						onMutate={mutate}
+						onSettings={(provider) => {
+							setSettingsProvider(provider);
+							setDataAction(null);
+							setSelection(null);
+							setPage("settings");
+						}}
 					/>
 				)}
 				{page === "people" && (
@@ -996,6 +1046,8 @@ function App() {
 				{page === "agents" && <AgentAccess />}
 				{page === "settings" && (
 					<SettingsView
+						update={update}
+						cloudProvider={settingsProvider}
 						queuesReady={contextReady.queues}
 						loadErrors={{
 							...contextErrors,

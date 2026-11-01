@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-"""Loppi GUI/Core ownership, handoff and exit, using disposable data only."""
+"""macOS GUI/Core ownership, handoff and exit, using disposable data only."""
 import argparse
 import concurrent.futures
-import fcntl
 import json
 import os
 from pathlib import Path
@@ -40,6 +39,9 @@ def wait_status(directory, version):
 
 
 def main():
+    # This opt-in macOS socket smoke is not part of portable unit discovery.
+    import fcntl
+
     parser = argparse.ArgumentParser()
     parser.add_argument('--core', type=Path, default=Path('target/debug/loppi-core'))
     parser.add_argument('--driver', type=Path, default=Path('target/debug/examples/gui_lifecycle'))
@@ -67,6 +69,10 @@ def main():
             assert not (directory / 'core.sock').exists()
             assert drive(directory, 'quit').returncode == 0
             assert not (directory / 'core.sock').exists()
+            result = drive(directory, 'update-abort')
+            assert result.returncode == 0, result.stderr
+            assert not (directory / 'core.sock').exists()
+            print('PASS aborted update reopens GUI barrier, re-inspects Core and exits cleanly', flush=True)
             print('PASS concurrent initialization and complete exit; no relaunch', flush=True)
         finally:
             if (directory / 'core.sock').exists():

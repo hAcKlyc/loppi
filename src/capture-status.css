@@ -105,7 +105,7 @@
 	height: var(--space-3);
 	margin-right: var(--space-3);
 	border-radius: var(--space-1);
-	background: var(--color-live);
+	background: var(--capture-ink);
 }
 .capture-status-copy strong {
 	font-size: var(--type-lead);

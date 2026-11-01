@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "source": "73f53d4cd4988875e00e05e271041de01b86e5e8 plus three-file test-tool repair; not release artifacts",
+  "patch_sha256": "0418afc65706452250eac5768a304f83cb99896cf21713c74c5e3a8e818b90c1",
+  "patch_bytes": 3449,
+  "command": [
+    "python",
+    "-m",
+    "unittest",
+    "discover",
+    "-s",
+    "scripts",
+    "-p",
+    "test_*.py"
+  ],
+  "macos": {
+    "exit_code": 0,
+    "tests": 9,
+    "skipped": 0
+  },
+  "windows_public_cli_return": {
+    "exit_code": 0,
+    "tests": 9,
+    "skipped": 1,
+    "stdout": "..s......\n----------------------------------------------------------------------\nRan 9 tests in 0.029s\n\nOK (skipped=1)\n",
+    "existing_skip": "scripts/test_native_resources.py:12; macOS native adapter; unchanged"
+  },
+  "review": {
+    "requirements": "PASS; independently9 tests and no-fcntl import simulation, 0 skipped onMac",
+    "adversarial": "PASS; independently9 tests and no-fcntl import simulation, 0 skipped onMac",
+    "architecture": "PASS; AST and all13 sampler assertions unchanged except dependency import/fixture type"
+  },
+  "production_source_changed": false,
+  "release_ready": false
+}

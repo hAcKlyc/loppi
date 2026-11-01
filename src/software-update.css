@@ -1,0 +1,26 @@
+.software-update-setting > div:first-child {
+	min-width: 0;
+}
+.software-update-setting .warning-text {
+	max-width: 48ch;
+	overflow-wrap: anywhere;
+}
+.sidebar-update {
+	margin-top: auto;
+	padding-top: var(--space-7);
+}
+.sidebar-update .restart-update-button {
+	width: 100%;
+	background: var(--color-complete-text);
+	color: var(--color-on-brand);
+	border-color: transparent;
+}
+.sidebar-update .restart-update-button:hover {
+	background: var(--color-complete-text);
+	box-shadow: var(--shadow-control);
+}
+.sidebar-update .warning-text {
+	margin: var(--space-4) 0 0;
+	font-size: var(--type-meta);
+	overflow-wrap: anywhere;
+}

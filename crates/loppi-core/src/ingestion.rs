@@ -2,10 +2,11 @@
 //! files; only core validates generations, cleanup and commits business facts.
 use crate::{cleanup, media, record, source_name};
 use loppi_protocol::AudioSource;
+use loppi_protocol::platform::OpenOptions;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -195,9 +196,7 @@ pub struct Journal {
 }
 
 fn sync_dir(path: &Path) -> Result<(), String> {
-    File::open(path)
-        .and_then(|file| file.sync_all())
-        .map_err(|e| e.to_string())
+    loppi_protocol::platform::sync_directory(path).map_err(|e| e.to_string())
 }
 
 impl Journal {
@@ -269,10 +268,11 @@ impl Journal {
         // covers only the bounded journal namespace, never DB/model work. It
         // is on the directory inode (no extra journal file) and dies with its
         // owning descriptor/process. Capture callbacks never acquire it.
-        let publication = File::open(&self.root).map_err(|e| e.to_string())?;
+        let publication =
+            loppi_protocol::platform::open_directory(&self.root).map_err(|e| e.to_string())?;
         let deadline = Instant::now() + Duration::from_secs(2);
         loop {
-            match fs2::FileExt::try_lock_exclusive(&publication) {
+            match loppi_protocol::platform::try_lock_exclusive(&publication) {
                 Ok(()) => break,
                 Err(e)
                     if e.kind() == std::io::ErrorKind::WouldBlock && Instant::now() < deadline =>
@@ -289,6 +289,9 @@ impl Journal {
         let mut ids = std::collections::HashSet::new();
         for file in fs::read_dir(&self.root).map_err(|e| e.to_string())? {
             let file = file.map_err(|e| e.to_string())?;
+            if file.file_name() == ".publication.lock" {
+                continue;
+            }
             if let Some(id) = file.path().file_stem().and_then(|n| n.to_str()) {
                 ids.insert(id.to_owned());
             }
@@ -309,7 +312,7 @@ impl Journal {
             .and_then(|()| file.sync_all())
             .map_err(|e| e.to_string())?;
         drop(file);
-        fs::rename(
+        loppi_protocol::platform::rename(
             &temporary,
             self.root.join(format!(
                 "{name}.{}",
@@ -437,7 +440,7 @@ pub fn pending(
     include_prepared: bool,
 ) -> std::io::Result<Vec<PathBuf>> {
     let root = directory.join("ingestion").join(session_id.to_string());
-    let snapshot = match File::open(&root) {
+    let snapshot = match loppi_protocol::platform::open_directory(&root) {
         Ok(file) => file,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
         Err(e) => return Err(e),
@@ -445,7 +448,7 @@ pub fn pending(
     // Yield if a source is publishing; do not wait on its filesystem sync.
     // Only enumerate names under this guard, then release before file reads,
     // decoding, commits and acknowledgement. Each session has one publisher.
-    fs2::FileExt::try_lock_shared(&snapshot)?;
+    loppi_protocol::platform::try_lock_shared(&snapshot)?;
     let entries = match fs::read_dir(&root) {
         Ok(entries) => entries,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
@@ -766,15 +769,15 @@ pub fn commit(db: &mut Connection, entry: &Entry, prepared: &Prepared) -> Result
             for row in &prepared.retained {
                 tx.execute("INSERT INTO audio_blocks(id,session_id,source,started_ms,ended_ms,sample_start,frames,bytes,media_path,retention_decision,analysis_state)
                   VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",params![row.id.to_string(),row.session_id,row.source,row.start,row.end,row.sample_start,row.frames as i64,row.bytes as i64,
-                    if *digital_silence{None}else{Some(row.path.to_string_lossy().into_owned())},
+                    if *digital_silence{None}else{Some(loppi_protocol::platform::relative_key(&row.path))},
                     if *digital_silence{"discard_digital_silence_v1"}else{"pending_vad_v2"},if *digital_silence{"not_needed"}else{"pending"}]).map_err(|e|e.to_string())?;
             }
             if prepared.replaced && !digital_silence {
-                tx.execute("INSERT OR IGNORE INTO media_deletion_jobs(media_path,created_ms) VALUES(?1,?2)",params![prepared.original.to_string_lossy(),crate::now_ms()?]).map_err(|e|e.to_string())?;
+                tx.execute("INSERT OR IGNORE INTO media_deletion_jobs(media_path,created_ms) VALUES(?1,?2)",params![loppi_protocol::platform::relative_key(&prepared.original),crate::now_ms()?]).map_err(|e|e.to_string())?;
             }
             tx.execute(
                 "DELETE FROM orphan_media WHERE media_path=?1",
-                [prepared.original.to_string_lossy()],
+                [loppi_protocol::platform::relative_key(&prepared.original)],
             )
             .map_err(|e| e.to_string())?;
             tx.execute("UPDATE recording_sessions SET last_confirmed_ms=max(last_confirmed_ms,?2) WHERE id=?1",params![entry.session.id.to_string(),entry.ended_ms]).map_err(|e|e.to_string())?;
@@ -857,7 +860,7 @@ pub fn quarantine(directory: &Path, path: &Path) -> Result<(), String> {
     fs::create_dir_all(&target).map_err(|e| e.to_string())?;
     sync_dir(&directory.join("ingestion-quarantine"))?;
     sync_dir(directory)?;
-    fs::rename(
+    loppi_protocol::platform::rename(
         path,
         target.join(path.file_name().ok_or("missing journal name")?),
     )
@@ -885,6 +888,10 @@ pub fn finish_journal(directory: &Path, session: Uuid) -> Result<bool, String> {
         Ok(entries) => {
             for entry in entries {
                 let path = entry.map_err(|e| e.to_string())?.path();
+                #[cfg(windows)]
+                if path.file_name().is_some_and(|n| n == ".publication.lock") {
+                    continue;
+                }
                 if path.extension().is_some_and(|e| e == "writing") {
                     quarantine(directory, &path)?;
                 } else {
@@ -892,6 +899,12 @@ pub fn finish_journal(directory: &Path, session: Uuid) -> Result<bool, String> {
                 }
             }
         }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e.to_string()),
+    }
+    #[cfg(windows)]
+    match fs::remove_file(root.join(".publication.lock")) {
+        Ok(()) => {}
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => return Err(e.to_string()),
     }
@@ -934,7 +947,7 @@ mod tests {
         let root = dir.path().join("ingestion").join(session.to_string());
         fs::create_dir_all(&root).unwrap();
         fs::write(root.join("one.ready"), b"{}").unwrap();
-        let guard = File::open(&root).unwrap();
+        let guard = loppi_protocol::platform::open_directory(&root).unwrap();
         fs2::FileExt::lock_exclusive(&guard).unwrap();
         assert_eq!(
             pending(dir.path(), session, false).unwrap_err().kind(),
@@ -1331,7 +1344,10 @@ mod tests {
     fn journal_snapshot_yields_to_publisher_without_holding_store_or_waiting() {
         let (dir, _store, session) = setup();
         let id = publish(dir.path(), &session, 0, true);
-        let guard = File::open(dir.path().join(format!("ingestion/{}", session.id))).unwrap();
+        let guard = loppi_protocol::platform::open_directory(
+            dir.path().join(format!("ingestion/{}", session.id)),
+        )
+        .unwrap();
         fs2::FileExt::lock_exclusive(&guard).unwrap();
         let started = Instant::now();
         assert!(pending(dir.path(), session.id, false).is_err());
@@ -1403,7 +1419,10 @@ mod tests {
     fn publication_cannot_change_a_live_journal_snapshot() {
         let (dir, _store, session) = setup();
         let a = publish(dir.path(), &session, 0, true);
-        let snapshot = File::open(dir.path().join(format!("ingestion/{}", session.id))).unwrap();
+        let snapshot = loppi_protocol::platform::open_directory(
+            dir.path().join(format!("ingestion/{}", session.id)),
+        )
+        .unwrap();
         fs2::FileExt::lock_shared(&snapshot).unwrap();
         let directory = dir.path().to_owned();
         let source = session.clone();

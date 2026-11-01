@@ -5,7 +5,6 @@ Consumes the status/cloud snapshots saved before a local debug acceptance run.
 Never launches Core directly, edits the DB, or sends start/resume/app-opened.
 """
 import argparse
-import fcntl
 import json
 import os
 from pathlib import Path
@@ -75,6 +74,9 @@ def readiness_errors(before, state, owner, gui, build, now_ms):
 
 
 def restore(args):
+    # Keep the pure readiness checks importable on every development host.
+    import fcntl
+
     session, app = args.session_dir.resolve(), args.app.resolve()
     data = Path.home() / 'Library/Application Support/loppi'
     before = json.loads((session / 'original-status.json').read_text())['state']

@@ -592,7 +592,7 @@ export function DetailDrawer({
 			(response) => {
 				const tasks = response.tasks as { state: string }[] | undefined;
 				if (response.type !== "transcription_queued" || !tasks?.length) {
-					return "精转请求未返回任务，请检查处理队列";
+					return "精转请求未返回任务，请检查智能识别";
 				}
 				if (tasks.every((task) => task.state === "no_transcript")) {
 					return "这段声音未识别出文字";
@@ -1362,7 +1362,7 @@ export function DetailDrawer({
 								)}
 							{queueRelevant && (
 								<Button type="button" tone="secondary" onClick={onQueue}>
-									查看处理队列
+									查看智能识别
 								</Button>
 							)}
 							{detail.id && (

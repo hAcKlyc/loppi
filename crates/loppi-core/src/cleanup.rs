@@ -502,15 +502,13 @@ pub(crate) fn encode_part(
     let media_dir = directory.join("media").join(&row.source);
     fs::create_dir_all(&media_dir).map_err(|error| error.to_string())?;
     let marker = media_dir.join(format!("{id}.cleanup-staged"));
-    let marker_file = fs::OpenOptions::new()
+    let marker_file = loppi_protocol::platform::OpenOptions::new()
         .write(true)
         .create_new(true)
         .open(&marker)
         .map_err(|error| error.to_string())?;
     marker_file.sync_all().map_err(|error| error.to_string())?;
-    fs::File::open(&media_dir)
-        .and_then(|dir| dir.sync_all())
-        .map_err(|error| error.to_string())?;
+    loppi_protocol::platform::sync_directory(&media_dir).map_err(|error| error.to_string())?;
     let sealed = (|| {
         let mut block = crate::media::OpusBlock::create(&media_dir, id)?;
         block.push(&pcm[from..to])?;
@@ -707,7 +705,7 @@ pub fn apply(
           WHERE id=?1 AND media_path=?2",
                 params![
                     row.id,
-                    row.path.to_string_lossy(),
+                    loppi_protocol::platform::relative_key(&row.path),
                     mode_name(scope.mode),
                     mode_name(scope.mode)
                 ],
@@ -718,7 +716,7 @@ pub fn apply(
         }
         tx.execute(
             "INSERT OR IGNORE INTO media_deletion_jobs VALUES (?1,?2,NULL,NULL)",
-            params![row.path.to_string_lossy(), now],
+            params![loppi_protocol::platform::relative_key(&row.path), now],
         )
         .map_err(|error| error.to_string())?;
     }
@@ -868,7 +866,7 @@ pub fn apply(
                 row.sample_start,
                 row.frames as i64,
                 row.bytes as i64,
-                row.path.to_string_lossy(),
+                loppi_protocol::platform::relative_key(&row.path),
                 row.speech_active
             ],
         )

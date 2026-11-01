@@ -1,0 +1,153 @@
+name: Release
+'on':
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+jobs:
+  preflight:
+    if: github.repository == 'hAcKlyc/loppi' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      source: ${{ steps.plan.outputs.source }}
+      should_release: ${{ steps.plan.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Validate version and wait for Verify at the exact main commit
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release_ci.mjs preflight
+
+  build:
+    needs: preflight
+    if: needs.preflight.outputs.should_release == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-arm64
+            runner: macos-15
+            target: aarch64-apple-darwin
+          - platform: macos-x86_64
+            runner: macos-15-intel
+            target: x86_64-apple-darwin
+          - platform: windows-x64
+            runner: windows-2025-vs2026
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    env:
+      CARGO_BUILD_JOBS: '2'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.preflight.outputs.source }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
+      - name: Select the supported Apple SDK
+        if: runner.os == 'macOS'
+        run: echo 'DEVELOPER_DIR=/Applications/Xcode_26.0.1.app/Contents/Developer' >> "$GITHUB_ENV"
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
+        if: runner.os == 'Windows'
+        with:
+          arch: x64
+      - name: Install locked frontend dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Prepare Rust target
+        run: rustup target add ${{ matrix.target }}
+      - name: Import Developer ID certificate into temporary keychain
+        if: runner.os == 'macOS'
+        uses: apple-actions/import-codesign-certs@288b8ec97b82c66b6f2a6baaf7acc8dfbcbe331c # v7
+        with:
+          p12-file-base64: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      - name: Prepare temporary notarization key
+        if: runner.os == 'macOS'
+        env:
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          node --input-type=module <<'JS'
+          import {writeFileSync,appendFileSync} from 'node:fs';
+          import {join} from 'node:path';
+          if(!process.env.APPLE_API_PRIVATE_KEY)throw new Error('APPLE_API_PRIVATE_KEY is required');
+          const file=join(process.env.RUNNER_TEMP,'loppi-notarization.p8');
+          writeFileSync(file,process.env.APPLE_API_PRIVATE_KEY,{mode:0o600});
+          appendFileSync(process.env.GITHUB_ENV,`APPLE_API_KEY_PATH=${file}\n`);
+          JS
+      - name: Build, sign and notarize macOS release
+        if: runner.os == 'macOS'
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: ./build_release.sh --target ${{ matrix.target }}
+      - name: Build Windows release and sign updater
+        if: runner.os == 'Windows'
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        shell: pwsh
+        run: ./build_release.ps1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-${{ matrix.platform }}
+          path: build/releases/${{ needs.preflight.outputs.version }}/${{ matrix.platform }}/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Remove temporary notarization private key
+        if: always() && runner.os == 'macOS'
+        run: rm -f "$RUNNER_TEMP/loppi-notarization.p8"
+
+  publish:
+    needs: [preflight, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.preflight.outputs.source }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: release-*
+          path: build/incoming
+      - name: Extract dated release notes
+        env:
+          RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
+        run: node scripts/release_metadata.mjs "v$RELEASE_VERSION" "$RUNNER_TEMP/loppi-release-notes.txt"
+      - name: Verify all assets, tag, publish and check anonymous updater endpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/release_ci.mjs publish "$RUNNER_TEMP/loppi-release-notes.txt" \
+            build/incoming/release-macos-arm64/updater.json \
+            build/incoming/release-macos-x86_64/updater.json \
+            build/incoming/release-windows-x64/updater.json

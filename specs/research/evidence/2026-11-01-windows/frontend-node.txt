@@ -1,0 +1,119 @@
+✔ build defaults to two separate thin targets (0.622042ms)
+✔ build respects one explicit target: aarch64-apple-darwin (0.05725ms)
+✔ build respects one explicit target: x86_64-apple-darwin (0.038166ms)
+✔ build respects one explicit target: universal-apple-darwin (0.035166ms)
+✔ release defaults to two separate thin targets (0.036417ms)
+✔ release respects one explicit target: aarch64-apple-darwin (0.039958ms)
+✔ release respects one explicit target: x86_64-apple-darwin (0.030542ms)
+✔ release respects one explicit target: universal-apple-darwin (0.03375ms)
+✔ omitting command preserves release entry semantics (0.0485ms)
+✔ bad arguments fail before any build or download (0.14025ms)
+✔ invalid default target configuration cannot silently skip or duplicate a package (0.063334ms)
+✔ host architecture stays correct when Node runs as Intel on Apple Silicon (421.51125ms)
+✔ main, notch and floating share the host appearance, including unknown/error observations (0.459042ms)
+✔ healthy copy names only actual recording sources, and partial never claims healthy capture (0.255792ms)
+✔ paused, never started, and query-only are distinct from real capture (0.119792ms)
+✔ unknown or failed observations disable blind controls even with stale healthy data (0.139166ms)
+✔ stopping, source startup and maintenance do not claim stopped or recording (0.162792ms)
+✔ capacity and setup blockers lead to existing settings rather than a futile blind resume (0.171666ms)
+✔ a control click is single-flight; a lost outcome confirms the original operation with the same ID (2.732541ms)
+✔ a competing control refused before dispatch is not retained as an uncertain confirmation (0.21275ms)
+✔ confirming an accepted control still in flight retains its ID until its receipt is known (0.146459ms)
+✔ recovered capacity keeps recording paused and offers the host resume control (0.096583ms)
+✔ ASR mapping and response errors are distinguished from transport failures (1.171583ms)
+✔ a stale error cannot make an active or complete task look failed (0.20875ms)
+✔ queued retries expose credential and transport failures instead of looking idle (0.346917ms)
+✔ only rejected ASR results offer an explicit paid recognition (0.228791ms)
+4:25:23 AM [vite] (client) [optimizer] scanning dependencies...
+✔ queue renders paid reruns separately from request retries and disables busy actions (1450.068542ms)
+✔ completed partial results distinguish empty audio and cropped text, with legacy fallback (606.865875ms)
+✔ entry clamps to real range and defaults to start without inventing a seek (0.603042ms)
+✔ nearest text prefers containing intervals and resolves gaps and empty results (0.147292ms)
+✔ initial paging continues until each stream covers the target or is exhausted (0.122917ms)
+✔ positioned text respects playback source, including gaps and missing sources (0.083791ms)
+loppi_core_request_failed {
+  command: 'event_detail',
+  request_id: '952729c7-b4a4-4124-95f4-7c5abce4d299',
+  code: 'core_transport',
+  duration_ms: 0
+}
+PASS: precise/coarse boundary, scroll paging, concurrency, errors/retry, EOF, views, seek, refresh and close
+✔ scripts/test_detail_pagination.mjs (2914.014541ms)
+✔ the 100th precise sentence is a page boundary, not a missing transcript (5.73875ms)
+✔ real gaps and the other audio source remain visible after their time is known (0.555917ms)
+✔ straddling coarse sentences, equal starts and long precise ends do not prove coverage (0.482291ms)
+✔ a sparse precise stream cannot jump ahead of unknown coarse gaps (0.247375ms)
+✔ comment validates Unicode length, whitespace and IME composition (0.958209ms)
+✔ an uncertain request retries its original identity, time and text (1.161125ms)
+✔ pending save prevents duplicate submission while leaving pause available (0.219875ms)
+✔ a lost bridge reply preserves the operation; a definite rejection allows a new edit (0.113208ms)
+✔ Enter submits only outside IME; Shift Enter remains a newline (0.054125ms)
+✔ top rabbit follows native width continuously and avoids the physical notch (11.349584ms)
+✔ entry surface corner radii agree with the native pointer masks (40.879ms)
+PASS: hover/click, suppression, idempotence, comment focus/cancel/failure/retry, floating click/drag
+✔ scripts/test_entry_interaction.mjs (4946.85575ms)
+loppi_core_request_failed {
+  command: 'reorganize_events',
+  request_id: '2ab5c33f-80d1-4727-a56a-422d7bdbb04c',
+  code: 'core_transport',
+  duration_ms: 7
+}
+event reorganization: real App form, accepted task, stable retry ID and retained cards PASS
+queue reorganization source labels: microphone/system/both PASS
+✔ scripts/test_event_reorganization.mjs (2109.171ms)
+✔ native output completion is scoped to context and epoch, and pause releases buffers (56.588375ms)
+✔ stop before an asynchronous renderer open never starts a silent output (0.169583ms)
+✔ a new player cancels the old context and a late old close cannot stop it (1.794083ms)
+✔ completion checks selected sources, both providers and necessary model, not optional speaker (0.520375ms)
+✔ lost verification reply is queried using original ID, never resubmitted; providers remain independent (2.485167ms)
+✔ pending and unknown receipts never claim success; definite failures allow explicit retry (0.150291ms)
+✔ desktop presentation distinguishes Windows without changing readiness facts (0.430958ms)
+✔ native credential errors stay understandable for either secure storage backend (0.14ms)
+✔ native screenshot failures explain the desktop constraint without exposing OS details (0.053084ms)
+WebSocket server error: Port 24678 is already in use
+✔ real setup groups show Windows device preparation and Windows privacy guidance (911.62475ms)
+✔ audio-clock continuation prefetches only one ahead, releases buffers, and completes (3.316166ms)
+✔ seek/source/close discard late responses without concurrent requests or stale audio (0.653333ms)
+✔ empty ranges jump to real next media while preserving its absolute playhead (1.2885ms)
+✔ prefetch failure preserves current audio and reports only at its boundary (1.172ms)
+✔ seek cancels deferred prefetch error and first-chunk failures still stop immediately (1.321875ms)
+✔ external committed cleanup cancels both scheduled buffers without changing event boundaries (354.737125ms)
+✔ legacy chunks without a cleanup generation never prefetch stale future media (0.734125ms)
+✔ late validity responses cannot cancel a new seek/source or resurrect closed playback (0.780833ms)
+✔ native scheduling failure on the first buffer fails immediately and releases it (0.655125ms)
+✔ time controls round trip every minute and reject incomplete or invalid input (3.42525ms)
+✔ schedule presentation uses actual capture and reports the next plan separately (10.01ms)
+loppi_core_request_failed {
+  command: 'bind_speaker',
+  request_id: '97cc90b2-98c2-4ce1-aa52-c26b2ac907eb',
+  code: 'speaker_binding_invalid',
+  duration_ms: 10
+}
+speaker picker: WebKit pointer choices/scopes, IPC completion/errors and dismissal passed
+✔ scripts/test_speaker_picker.mjs (1879.288ms)
+timeline refresh: same-day coalescing, immediate stale-response invalidation and serial fresh read passed
+✔ scripts/test_timeline_refresh.mjs (1721.737125ms)
+✔ hover cursor maps exact track position to local time and keeps the right edge at 24:00 (1.947541ms)
+✔ day spans clip cross-day and future ranges without inflating short durations (0.846541ms)
+✔ hide coarse preserves moment clues without exposing hidden transcript (0.212292ms)
+✔ empty and legacy summaries use honest placeholders; screenshot text remains bounded (0.171708ms)
+✔ monthly boundaries respect leap years and year boundaries (0.158125ms)
+✔ only newest matching live card glows; pause, errors, history and other sources do not (0.316208ms)
+WebSocket server error: Port 24678 is already in use
+✔ rendered live cards name the ongoing recording and use an open time range (1117.622167ms)
+✔ hiding coarse keeps failed material visible with its own status and time (517.691ms)
+✔ event cards use generated summary independently of transcript state and coarse filter (0.155417ms)
+✔ date header retains selected day while month availability is unknown or empty (387.758416ms)
+✔ coarse filtering preserves the active recording and its excerpt, but not paused or historical coarse cards (374.094833ms)
+✔ removing the coarse toggle preserves the default visible cards and excerpts (328.88175ms)
+✔ ranges contain exactly N local calendar days including today (1.244041ms)
+✔ calendar boundaries preserve 23-hour and 25-hour local days (1.664666ms)
+✔ small nonzero costs are never formatted as zero (14.266917ms)
+ℹ tests 84
+ℹ suites 0
+ℹ pass 84
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4975.919541

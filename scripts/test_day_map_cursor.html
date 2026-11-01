@@ -11,13 +11,14 @@ import '/src/App.css';
 const NativeDate=Date,fixedNow=new NativeDate(2026,9,17,18,30).getTime();
 window.Date=class extends NativeDate{constructor(...args){super(...(args.length?args:[fixedNow]))}static now(){return fixedNow}};
 const root=createRoot(document.getElementById('root'));
-let date=new Date(2026,9,17), selected=0;
+let date=new Date(2026,9,17), selected=0,selectedAt;
 function render(){
  const from=new Date(date.getFullYear(),date.getMonth(),date.getDate()).getTime(),to=new Date(date.getFullYear(),date.getMonth(),date.getDate()+1).getTime();
  const item={id:'fixture',manual_range_id:null,title:'模拟记录',summary:'鼠标移动查看时间，点击色块仍打开原记录。',started_ms:from,ended_ms:to,sources:'both',processing_state:'transcribed',recording_sources:[],preview:null};
- flushSync(()=>root.render(React.createElement(TimelineView,{date,recordedDays:[from],recordingState:null,items:[item],gaps:[],moments:[{id:'mark',anchor_ms:from+18*3600000,kind:'mark'}],loading:false,hideCoarse:false,onSelect:()=>{selected++},onDate:()=>{},onCreate:()=>{}})));
+ flushSync(()=>root.render(React.createElement(TimelineView,{date,recordedDays:[from],recordingState:null,items:[item],gaps:[],moments:[{id:'early',anchor_ms:from,kind:'mark'},{id:'mark',anchor_ms:from+18*3600000,kind:'mark'},{id:'near-now',anchor_ms:fixedNow-5000,kind:'mark'},{id:'right-edge',anchor_ms:to-1,kind:'mark'}],loading:false,hideCoarse:false,onSelect:(_,at)=>{selected++;selectedAt=at;document.documentElement.dataset.markerSelection=JSON.stringify({selected,selectedAt})},onDate:()=>{},onCreate:()=>{}})));
 }
 render();
+window.__markerSelection=()=>({selected,selectedAt});
 const frames=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
 const assert=(value,message)=>{if(!value)throw Error(message)};
 const track=()=>document.querySelector('.day-map-cursor-track');
@@ -30,6 +31,12 @@ document.getElementById('run').onclick=async()=>{
  try{
   await frames();
   assert(document.querySelector('.day-map-clock').textContent==='18:30','当前时间标签错误');
+  assert(document.querySelectorAll('.day-map-row').length===2,'标记新增了第三行');
+  const markers=[...document.querySelectorAll('.day-map-moment')],overlay=document.querySelector('.day-map-moments').getBoundingClientRect();
+  assert(markers.length===3,'漏掉重点');
+  for(const marker of markers){const rect=marker.getBoundingClientRect(),line=getComputedStyle(marker,'::before');assert(Math.abs(rect.height-overlay.height)<.1&&line.width==='1px','标记不是跨两轨细线');assert(getComputedStyle(marker).backgroundColor==='rgba(0, 0, 0, 0)','标记意外填满背景');}
+  markers[1].focus();markers[1].click();assert(selectedAt===new Date(2026,9,17,18).getTime(),'重点未带真实时间进入详情');selected=0;
+  assert(document.documentElement.scrollWidth<=innerWidth,'边界标记导致横向溢出');
   await move(0);assert(getComputedStyle(document.querySelector('.day-map-clock')).visibility==='hidden','悬停时间与当前时间重叠');assert(label().textContent==='00:00','左端时间错误');contained();
   await move(1);assert(label().textContent==='24:00','右端显示成次日');contained();
   await move((17*60+54)/1440);assert(label().textContent==='17:54','位置与时间不一致');
@@ -37,13 +44,13 @@ document.getElementById('run').onclick=async()=>{
   assert(Math.abs(line.left-(box.left+box.width*(17*60+54)/1440))<1,'竖线与时间位置不一致');
   document.elementFromPoint(line.left,box.top+8).click();assert(selected===1,'光标挡住了记录点击');
   plot().dispatchEvent(new PointerEvent('pointerleave'));await frames();assert(!track().dataset.visible,'离开后未消失');assert(getComputedStyle(document.querySelector('.day-map-clock')).visibility==='visible','离开后未恢复当前时间');
-  await move(.5);date=new Date(2026,9,16);render();await frames();assert(!track().dataset.visible,'切日保留旧光标');
+  await move(.5);date=new Date(2026,9,16);render();await frames();assert(!track().dataset.visible,'切日保留旧光标');const edge=[...document.querySelectorAll('.day-map-moment')].at(-1).getBoundingClientRect(),axis=document.querySelector('.day-map-moments').getBoundingClientRect();assert(Math.abs((edge.left+edge.right)/2-axis.right)<1,'右端标记未对齐真实时间');
   await move(.5);document.getElementById('fixture').style.maxWidth='760px';await frames();assert(!track().dataset.visible,'宽度变化保留旧位置');
   await move(0);contained();await move(1);contained();
   window.dispatchEvent(new Event('blur'));await frames();assert(!track().dataset.visible,'失焦未清理');
   await move(.5);plot().dispatchEvent(new PointerEvent('pointermove',{pointerType:'touch'}));await frames();assert(!track().dataset.visible,'触摸误显示悬停');
   document.getElementById('fixture').style.maxWidth='1250px';await frames();await move((17*60+54)/1440);
-  output.textContent='PASS：时间、边界、跨轨道竖线、点击、离开、切日、缩放、失焦和触摸检查通过。';
+  output.textContent='PASS：两轨道重点细线、边界、定位点击、时间光标、切日、缩放、失焦和触摸检查通过。';
  }catch(error){output.textContent='FAIL：'+error.message}
 };
 </script></html>

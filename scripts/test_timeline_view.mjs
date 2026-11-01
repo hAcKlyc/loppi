@@ -26,9 +26,9 @@ const item={id:null,manual_range_id:null,preview:{text:'原始摘录',source:'mi
 const note={text:'现场笔记',ocr_text:null,kind:'comment'};
 test('hide coarse preserves moment clues without exposing hidden transcript', () => {
   assert.deepEqual(cardExcerpt(item,[note],true),{text:'现场笔记',label:'现场笔记'});
-  assert.equal(cardExcerpt(item,[],false).label,'粗转 · 麦克风');
+  assert.equal(cardExcerpt(item,[],false).label,'麦克风');
   assert.equal(cardExcerpt({...item,id:'event'},[note],true).text,'暂无内容摘要，打开查看转录');
-  assert.equal(cardExcerpt({...item,manual_range_id:'range',preview:{text:'修正后的精转',source:'system',is_precise:true}},[],true).label,'精转 · 电脑声音');
+  assert.equal(cardExcerpt({...item,manual_range_id:'range',preview:{text:'修正后的精转',source:'system',is_precise:true}},[],true).label,'电脑声音');
 });
 test('empty and legacy summaries use honest placeholders; screenshot text remains bounded', () => {
   assert.equal(cardExcerpt({...item,preview:null},[],false).label,'');
@@ -55,6 +55,33 @@ test('only newest matching live card glows; pause, errors, history and other sou
   assert.equal(liveCard([live],state,new Date(2026,9,16),now),null);
   assert.equal(liveCard([{...live,recording_sources:['system']}],state,date,now),null);
   assert.equal(liveCard([live,{...live,started_ms:now,recording_sources:[]}],state,date,now),null);
+  assert.equal(liveCard([live,{...live,started_ms:now,processing_state:'moment_only',recording_sources:[]}],state,date,now),live,'an unsealed-tail mark must not hide the active audio card');
+});
+
+test('saved moments are timestamp overlays, not a third audio row or a changed recording span', async () => {
+  const {createServer}=await import('vite');
+  const {createElement}=await import('react');
+  const {renderToStaticMarkup}=await import('react-dom/server');
+  const server=await createServer({server:{middlewareMode:true},appType:'custom'});
+  try {
+    const {TimelineView}=await server.ssrLoadModule('/src/TimelineView.tsx');
+    const now=Date.now(),date=new Date(now),start=now-600000;
+    const live={...item,title:null,started_ms:start,ended_ms:now-1000,sources:'microphone',processing_state:'pending_fit',recording_sources:['microphone']};
+    const state={capture_state:'recording',paused_intent:false,storage_paused:false,microphone_phase:'recording',microphone_recording:true};
+    const marks=['mark','comment','screenshot'].map((kind,index)=>({id:kind,kind,anchor_ms:start+(index+1)*60000}));
+    const props={date,items:[live],gaps:[],recordingState:state,loading:false,hideCoarse:true};
+    const render=moments=>renderToStaticMarkup(createElement(TimelineView,{...props,moments}));
+    const before=render([]), after=render(marks);
+    assert.equal((after.match(/class="day-map-row"/g)||[]).length,2);
+    assert.equal((after.match(/class="day-map-moment /g)||[]).length,3);
+    assert.match(after,/aria-label="重点 · /);
+    assert.match(after,/aria-label="笔记 · /);
+    assert.match(after,/aria-label="截图 · /);
+    const bands=html=>[...html.matchAll(/<button[^>]*class="day-map-event[^>]*>/g)].map(x=>x[0]);
+    assert.deepEqual(bands(after),bands(before),'saving a mark must not affect audio color or range');
+    const outside=[{id:'yesterday',kind:'mark',anchor_ms:new Date(date.getFullYear(),date.getMonth(),date.getDate()).getTime()-1},{id:'future',kind:'mark',anchor_ms:now+60000}];
+    assert.doesNotMatch(render(outside),/day-map-moment /);
+  } finally { await server.close(); }
 });
 
 test('rendered live cards name the ongoing recording and use an open time range', async () => {
@@ -108,7 +135,10 @@ test('rendered live cards name the ongoing recording and use an open time range'
     assert.doesNotMatch(render(null), /至今/);
     assert.match(render(state,{...live,id:'named',title:'项目讨论'}), /<h3>项目讨论<\/h3>/);
     const summarized=render(null,{...live,id:'named',title:'项目讨论',summary:'讨论了页面布局，倾向保留色块。'});
-    assert.match(summarized,/内容摘要 · 麦克风/);
+    assert.doesNotMatch(summarized,/内容摘要 · 麦克风/);
+    const metadata=summarized.match(/class="event-card-meta"[\s\S]*?<\/div>/)?.[0];
+    assert(metadata?.includes("麦克风"));
+    assert.doesNotMatch(metadata,/内容摘要|粗转|精转(?!完成)/);
     assert.match(summarized,/讨论了页面布局，倾向保留色块。/);
     assert.doesNotMatch(summarized,/原始摘录/);
     assert.match(render(null,{...live,id:'legacy',title:'历史事件'}),/暂无内容摘要，打开查看转录/);
@@ -137,7 +167,7 @@ test('hiding coarse keeps failed material visible with its own status and time',
 test('event cards use generated summary independently of transcript state and coarse filter', () => {
   const event={...item,id:'event',sources:'microphone',summary:'比较了布局方案，倾向保留色块。'};
   for(const hide of [true,false]) {
-    assert.deepEqual(cardExcerpt(event,[note],hide),{text:event.summary,label:'内容摘要 · 麦克风'});
+    assert.deepEqual(cardExcerpt(event,[note],hide),{text:event.summary,label:'麦克风'});
     for(const summary of [null,undefined,'  ']) {
       assert.equal(cardExcerpt({...event,summary},[note],hide).text,'暂无内容摘要，打开查看转录');
     }
@@ -182,7 +212,7 @@ test('coarse filtering preserves the active recording and its excerpt, but not p
     assert.match(render(state,false), /历史粗转摘录/);
     for(const html of [render(null),render({...state,paused_intent:true}),render(state,true,new Date(now-86400000))]) {
       assert.doesNotMatch(html, /<h3>实时记录内容<\/h3>/);
-      assert.match(html, /粗转内容已隐藏/);
+      assert.match(html, /暂无有效事件/);
       assert.doesNotMatch(html, /原始摘录/);
     }
   } finally { await server.close(); }

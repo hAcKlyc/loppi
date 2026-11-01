@@ -4,6 +4,7 @@ import { type CloudQueue, type ServiceState, userError } from "./api";
 import { CloudKeyInput } from "./CloudKeyInput";
 import { Button } from "./Controls";
 import { LoadBoundary } from "./LoadingState";
+import { desktopPlatform } from "./platform";
 import { ModelPreparation, SourcePreparation } from "./SetupGroups";
 import { type ModelState, type PrivacyStatus, setupBlocker } from "./setup";
 import "./onboarding.css";
@@ -64,7 +65,7 @@ export function OnboardingView({
 		}
 	};
 	return (
-		<main className="onboarding-page">
+		<main className="onboarding-page" data-platform={desktopPlatform()}>
 			<div className="onboarding-drag" data-tauri-drag-region />
 			<div className="onboarding-content">
 				<header>
@@ -89,7 +90,12 @@ export function OnboardingView({
 						</div>
 					</section>
 					<section className="setup-group">
-						<h2>② 授权声音访问</h2>
+						<h2>
+							②{" "}
+							{desktopPlatform() === "windows"
+								? "检查声音来源"
+								: "授权声音访问"}
+						</h2>
 						<div className="setup-step-content">
 							<SourcePreparation
 								compact
@@ -160,7 +166,9 @@ export function OnboardingView({
 										DeepSeek
 										接收文字、时间与来源信息，以及主动保存的新截图原图；火山引擎接收待准确转录的音频。声纹与人物库不会因此外发。
 									</p>
-									<p>密钥保存在本机钥匙串。验证和使用可能产生服务商费用。</p>
+									<p>
+										密钥保存在本机安全存储中。验证和使用可能产生服务商费用。
+									</p>
 								</details>
 							</LoadBoundary>
 						</div>

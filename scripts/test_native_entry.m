@@ -29,7 +29,7 @@
   self.lastDuration=duration;
   LoppiEntryGeometry g=self.view==0
     ? (LoppiEntryGeometry){self.feedback ? 280 : 44,self.feedback ? 80 : 32,32,self.feedback ? 126 : 8,2}
-    : (LoppiEntryGeometry){412,160,32,20,56};
+    : (LoppiEntryGeometry){412,176,32,16,46};
   self.geometry=g;
   ((EntryTestWindow *)self.window).frame=NSMakeRect(self.view==0 ? 847-g.width/2 : 529,956-g.height,g.width,g.height);
   self.targetFrame=self.window.frame;
@@ -118,14 +118,22 @@ static void testCompletionAndFocus(void) {
   assert(presented==1 && confirmedGeneration==7);
   e.view=0; [e finishLayout:2 generation:7];
   assert(presented==1);
-  e.view=2;
-  assert(!loppi_entry_focus(handle,1,0,8)); // requesting focus is not success
-  assert(focused==0);
-  e.keyboard=YES;
-  assert([e confirmFocus] && focused==1 && confirmedGeneration==8);
-  assert([e confirmFocus] && focused==1); // one confirmation per intent
-  loppi_entry_focus(handle,0,0,9);
-  assert(![e confirmFocus] && focused==1); // late notification after dismissal
+  for(NSInteger view=1;view<=2;view++) {
+    int before=focused;
+    e.view=view; e.keyboard=NO;
+    assert(!loppi_entry_focus(handle,1,0,8)); // requesting focus is not success
+    assert(focused==before);
+    e.layoutGeneration=9; // Feedback/detail layout preserves the original intent.
+    e.keyboard=YES;
+    assert([e confirmFocus] && focused==before+1 && confirmedGeneration==8);
+    assert(loppi_entry_focus(handle,1,0,8) && focused==before+1);
+    loppi_entry_focus(handle,0,0,9);
+    assert(![e confirmFocus] && focused==before+1); // late notification after dismissal
+  }
+  e.mode=1; e.view=1;
+  assert(!loppi_entry_focus(handle,1,0,10)); // floating keeps its existing main-window comment path
+  e.mode=0; e.view=0;
+  assert(!loppi_entry_focus(handle,1,0,10));
 }
 static void testOutsideClose(void) {
   EntryTestWindow *window=[EntryTestWindow new]; window.isVisible=YES;
@@ -136,6 +144,7 @@ static void testOutsideClose(void) {
   loppi_entry_layout(handle,0,1,0,0,0,1);
   NSEvent *click=[NSEvent mouseEventWithType:NSEventTypeLeftMouseDown location:NSZeroPoint modifierFlags:0 timestamp:0 windowNumber:0 context:nil eventNumber:0 clickCount:1 pressure:1];
   int before=dismissals;
+  e.commentFocus=YES;
   [e updatePointer:click at:e.testPoint];
   assert(dismissals==before+1 && !e.commentFocus && window.ignoresMouseEvents);
   // Frontend consumes native cancellation and requests its new presentation.
@@ -149,7 +158,7 @@ static void testClosingHit(void) {
   e.mode=0; e.view=0;
   e.geometry=(LoppiEntryGeometry){44,32,32,8,2,32};
   e.targetFrame=NSMakeRect(825,924,44,32);
-  window.frame=NSMakeRect(529,796,412,160); // visual tail is still expanded
+  window.frame=NSMakeRect(529,780,412,176); // visual tail is still expanded
   assert([e hit:NSMakePoint(847,940)]);
   assert(![e hit:NSMakePoint(551,940)]); // no hit at old-frame + compact offset
   assert(![e hit:NSMakePoint(830,860)]); // dismissed action passes through now
@@ -160,17 +169,21 @@ static void testTopLayouts(void) {
   assert(g.band==32 && g.height==32 && NSMaxY(frame)==NSMaxY(screen));
   assert(NSMidX(frame)==NSMidX(screen));
   g=topLayout(screen,0,NSZeroRect,NSZeroRect,1,NO,NO,&frame);
-  assert(g.band==0 && g.top_band==0 && g.height==128 && g.rabbit_y==24);
+  assert(g.band==24 && g.top_band==0 && g.height==168 && g.rabbit_y==38 && g.rabbit_x==16);
   assert(NSMaxY(frame)==NSMaxY(screen) && NSMidX(frame)==NSMidX(screen));
   assert(hitRegion(g,0,1,NO,NSMakePoint(206,16)));
   g=topLayout(screen,0,NSZeroRect,NSZeroRect,2,NO,NO,&frame);
-  assert(g.band==0 && g.height==152);
+  assert(g.band==24 && g.top_band==0 && g.height==168);
   screen=NSMakeRect(0,0,1470,956);
   NSRect left=NSMakeRect(0,924,646,32), right=NSMakeRect(825,924,645,32);
   g=topLayout(screen,32,left,right,1,NO,NO,&frame);
-  assert(g.band==32 && g.top_band==32 && g.height==160 && NSMidX(frame)==735.5);
+  assert(g.band==32 && g.top_band==32 && g.height==176 && g.rabbit_y==46 && NSMidX(frame)==735.5);
+  g=topLayout(screen,32,left,right,1,NO,YES,&frame);
+  assert(g.width==412 && g.height==216 && g.rabbit_x==16 && g.rabbit_y==46);
+  g=topLayout(screen,12,left,right,1,NO,NO,&frame);
+  assert(g.band==24 && g.top_band==12 && g.height==168 && g.rabbit_y==38);
   g=topLayout(screen,32,NSZeroRect,right,1,NO,NO,&frame);
-  assert(g.band==0 && NSMidX(frame)==735); // incomplete safe areas are not a notch
+  assert(g.band==24 && g.top_band==0 && NSMidX(frame)==735); // incomplete safe areas are not a notch
 }
 @interface FloatingTestScreen : NSObject
 @property NSRect visibleFrame;
@@ -274,10 +287,10 @@ static void testFloating(void) {
 }
 int main(void) {
   testFloating();
-  NSRect target=NSMakeRect(529,796,412,160);
+  NSRect target=NSMakeRect(529,780,412,176);
   NSRect peak=expansionPeak(NSMakeRect(825,924,44,32),target);
   assert(peak.size.width>412 && peak.size.width<420);
-  assert(peak.size.height>160 && peak.size.height<164);
+  assert(peak.size.height>176 && peak.size.height<180);
   assert(NSMaxY(peak)==NSMaxY(target));
   assert(NSEqualRects(expansionPeak(target,target),target));
   testTopLayouts();
@@ -285,13 +298,13 @@ int main(void) {
   testOutsideClose();
   testCompletionAndFocus();
   testReopening();
-  LoppiEntryGeometry top={412,160,32,20,56};
+  LoppiEntryGeometry top={412,176,32,16,46};
   // Built-in notch spans 646...825; entry is centered at 735, rabbit at 847.
   // These are coordinates in the expanded window, including the menu-bar band.
   assert(hitRegion(top,0,1,NO,NSMakePoint(318,16)));
   assert(hitRegion(top,0,2,NO,NSMakePoint(318,16)));
-  assert(hitRegion(top,0,1,NO,NSMakePoint(200,159)));
-  assert(!hitRegion(top,0,1,NO,NSMakePoint(0,159)));
+  assert(hitRegion(top,0,1,NO,NSMakePoint(200,175)));
+  assert(!hitRegion(top,0,1,NO,NSMakePoint(0,175)));
   assert(!hitRegion(top,0,1,NO,NSMakePoint(413,80)));
   assert(motionDuration(0,0,0,1,YES,NO)==0.30);
   assert(!motionDuration(0,0,0,1,YES,YES));
@@ -304,7 +317,7 @@ int main(void) {
   // Transparent corners and the not-yet-expanded area remain click-through.
   for(int step=0;step<=20;step++) {
     double progress=step/20.0;
-    NSRect frame=NSMakeRect(825+(529-825)*progress,0,44+(412-44)*progress,32+128*progress);
+    NSRect frame=NSMakeRect(825+(529-825)*progress,0,44+(412-44)*progress,32+144*progress);
     LoppiEntryGeometry live=hitGeometry(top,0,1,frame);
     assert(hitRegion(live,0,1,NO,NSMakePoint(847-frame.origin.x,16)));
     assert(!hitRegion(live,0,1,NO,NSMakePoint(0,live.height-1)));

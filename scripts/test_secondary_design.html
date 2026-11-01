@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>loppi · 辅助页面设计复核</title>
+<style>
+@import '/src/tokens.css';
+body{margin:0;background:var(--color-canvas);color:var(--color-text);font:14px/1.6 system-ui}
+header{padding:12px 20px}button,select{font:inherit;padding:4px 8px}label{margin-left:12px}
+iframe{display:block;border:0;transform-origin:top left}#frame{overflow:hidden}pre{white-space:pre-wrap;margin:12px 20px;font-size:12px}
+</style>
+<header><button id="run" disabled>运行辅助页面复核</button>
+<label>窗口<select id="size"><option>1120</option><option>760</option><option>1440</option></select></label>
+<label>平台<select id="platform"><option value="macos">macOS</option><option value="windows">Windows 呈现样板</option></select></label>
+<label>页面<select id="page"><option value="queue">智能识别</option><option value="statistics">用量统计</option><option value="people">人物库</option><option value="person">人物详情</option><option value="agent">Agent 接入</option><option value="settings">设置</option><option value="detail">事件详情</option><option value="onboarding">首次准备</option></select></label>
+<label>资料<select id="state"><option value="populated">有内容</option><option value="empty">空</option><option value="loading">加载中</option><option value="error">读取失败</option></select></label>
+</header>
+<div id="frame"><iframe id="preview" title="当前真实组件 · 隔离资料"></iframe></div>
+<pre id="result">真实组件与内存资料；拒绝原生/数据/云端写入。平台参数只证明 Web 呈现。</pre>
+<script>
+const frame=document.getElementById('preview'),size=document.getElementById('size'),page=document.getElementById('page'),state=document.getElementById('state'),platform=document.getElementById('platform'),result=document.getElementById('result');
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+const inputs=[size,page,state,platform],runner=document.getElementById('run');
+function lockInputs(disabled){for(const input of inputs)input.disabled=disabled;}
+async function until(fn,label){for(let n=0;n<100;n++){if(fn())return;await wait(30);}throw Error('未就绪：'+label);}
+function fit(){const width=Number(size.value),height=width===760?540:width===1440?900:760,scale=Math.min(1,innerWidth/width);frame.width=width;frame.height=height;frame.style.transform=`scale(${scale})`;frame.parentElement.style.height=`${height*scale}px`;}
+function button(doc,text,root=doc){return [...root.querySelectorAll('button')].find(b=>b.textContent.trim()===text);}
+async function load(){
+ fit();
+ const kind=page.value,mode=state.value;
+ const url=kind==='onboarding'?`/scripts/test_onboarding.html?${mode==='populated'?'ready':'denied'}&platform=${platform.value}`:`/scripts/test_design_scene.html?scene=${kind==='detail'?'detail':'timeline'}&workspace=${mode}&platform=${platform.value}&reduce=1`;
+ await new Promise(resolve=>{frame.onload=resolve;frame.src=url;});
+ const doc=frame.contentDocument;
+ if(kind==='onboarding'){await until(()=>doc.querySelector('.onboarding-content'),'首次准备');return;}
+ if(kind==='detail'){await until(()=>doc.querySelectorAll('.transcript-row').length>=10,'长详情');return;}
+ const names={queue:'智能识别',statistics:'智能识别',people:'人物库',person:'人物库',agent:'Agent 接入',settings:'设置'};
+ await until(()=>button(doc,names[kind],doc.querySelector('.sidebar')??doc),'导航');
+ button(doc,names[kind],doc.querySelector('.sidebar')).click();
+ await until(()=>doc.querySelector(kind==='agent'?'.agent-access':'.page-container'),'页面');
+ if(kind==='statistics'&&mode==='populated')await until(()=>doc.querySelector('.usage-chart'),'主页统计图');
+ if(kind==='person'){await until(()=>doc.querySelectorAll('.people-list-row').length===2,'长姓名人物');doc.querySelectorAll('.people-list-row')[1].click();await until(()=>doc.querySelectorAll('.voice-sample-row').length===2,'人物详情');}
+ const loaded={queue:'.queue-grid',statistics:'.usage-chart',people:'.people-list-row',agent:'.agent-code',settings:'.settings-page'};
+ if(mode==='populated'&&loaded[kind])await until(()=>doc.querySelector(loaded[kind]),'内容');
+ if(mode==='empty'&&kind==='people')await until(()=>doc.querySelector('.list-empty'),'人物空态');
+ if(mode==='error')await until(()=>doc.querySelector('[role=alert]'),'读取失败');
+ if(mode==='loading'&&kind!=='agent')await until(()=>doc.querySelector('.loading-skeleton'),'加载反馈');
+ await wait(80);
+}
+function inspect(){
+ const doc=frame.contentDocument,win=frame.contentWindow,kind=page.value,mode=state.value;
+ const check=(ok,message)=>{if(!ok)throw Error(`${platform.value}/${size.value}/${kind}/${mode}: ${message}`);};
+ const inside=el=>{if(!el)return false;const r=el.getBoundingClientRect();return r.left>=-1&&r.right<=win.innerWidth+1&&r.top>=-1&&r.bottom<=win.innerHeight+1;};
+ const root=doc.querySelector('.main-area')??doc.querySelector('.onboarding-page');
+ check(win.innerWidth===Number(size.value),'逻辑窗口尺寸');
+ check(root.scrollWidth<=root.clientWidth+1,'页面横向溢出');
+ for(const el of doc.querySelectorAll('.agent-code,.transcript-content,.person-profile-info,.setting-row'))check(el.scrollWidth<=el.clientWidth+1,'内容横向溢出');
+ for(const toggle of [...doc.querySelectorAll('.switch')].filter(el=>el.getClientRects().length>0)){
+  check(toggle.getAttribute('role')==='switch','私有开关没有状态语义');
+  const on=toggle.getAttribute('aria-checked')==='true';
+  check(win.getComputedStyle(toggle).backgroundColor===(on?'rgb(182, 91, 66)':'rgb(98, 101, 95)'),'开关未统一为开暖红/关中性灰');
+  check(win.getComputedStyle(toggle,'::after').transform===(on?'matrix(1, 0, 0, 1, 18, 0)':'none'),'开关颜色与圆钮位置不一致');
+ }
+ if(kind!=='detail'&&kind!=='onboarding'&&kind!=='person'){
+  const heading=doc.querySelector('.library-tabs [aria-selected=true],.page-heading h1'),container=doc.querySelector('.page-container'),style=win.getComputedStyle(container);
+  check(!!heading&&win.getComputedStyle(heading).fontSize==='26px','公共标题层级');
+  check(Math.abs(heading.getBoundingClientRect().left-container.getBoundingClientRect().left-parseFloat(style.paddingLeft))<1,'标题与公共内容起点不齐');
+  check(style.paddingTop==='60px','独立页面另配顶部边距');
+  if(kind==='agent')check(doc.querySelector('.agent-page-heading p').getBoundingClientRect().top>=heading.getBoundingClientRect().bottom,'Agent说明未排列在标题下方');
+ }
+ if(kind==='queue'&&mode==='populated'){
+  const toggles=[...doc.querySelectorAll('.queue-grid [role=switch]')];
+  check(![...doc.querySelectorAll('.task-row')].some(el=>el.getClientRects().length),'主页面仍展示任务列表');
+  check(doc.querySelectorAll('.queue-counts [aria-label$="任务明细"]').length===2,'缺少两类任务明细入口');
+  check(toggles.length===2&&toggles[0].getAttribute('aria-checked')==='false'&&toggles[1].getAttribute('aria-checked')==='true','队列开关状态/语义');
+  check(doc.querySelector('.queue-blocked')?.textContent.includes('余额不足'),'缺少阻断说明');
+  check(win.getComputedStyle(doc.querySelector('.queue-blocked')).color==='rgb(118, 84, 29)','阻断未用注意色');
+  check(!!doc.querySelector('.usage-chart'),'统计图没有默认展示');
+ }
+ if(kind==='detail'){
+  check(inside(doc.querySelector('[aria-label=关闭详情]'))&&inside(doc.querySelector('.note-composer')),'详情操作不可达');
+  check(doc.querySelector('.detail-scroll').scrollHeight>doc.querySelector('.detail-scroll').clientHeight,'缺少长阅读');
+ }
+ if(kind==='statistics'&&mode==='populated'){
+  for(const text of doc.querySelectorAll('.usage-grid text,.usage-date')){
+   const scale=text.getScreenCTM();
+   check(parseFloat(win.getComputedStyle(text).fontSize)*Math.hypot(scale.a,scale.b)>=11.9,'统计图文字被随viewBox缩小');
+   const label=text.getBoundingClientRect(),plot=text.closest('svg').getBoundingClientRect();
+   check(label.left>=plot.left-1&&label.right<=plot.right+1,'可读字号的统计刻度被裁切');
+  }
+ }
+ if(mode==='error')check(!!doc.querySelector('[role=alert]'),'失败伪装成空态');
+ if(mode==='loading'&&kind!=='agent')check(!doc.querySelector('.list-empty')&&!!doc.querySelector('.loading-skeleton'),'加载伪装为空态');
+ root.scrollTop=root.scrollHeight;
+ check(root.scrollHeight-root.clientHeight-root.scrollTop<2,'无法滚动到底部');
+ if(kind==='onboarding')check(inside(button(doc,'稍后')),'首次准备底部操作不可达');
+ root.scrollTop=0;
+ return {platform:platform.value,width:win.innerWidth,height:win.innerHeight,page:kind,state:mode,result:'PASS'};
+}
+for(const input of inputs)input.onchange=async()=>{lockInputs(true);runner.disabled=true;try{await load();}catch(e){result.textContent='FAIL · '+e.message;}finally{lockInputs(false);runner.disabled=false;}};
+runner.onclick=async()=>{
+ runner.disabled=true;lockInputs(true);const evidence=[];
+ try{
+  for(const system of ['macos','windows'])for(const width of [760,1120,1440])for(const kind of ['queue','statistics','people','person','agent','settings','detail','onboarding']){
+   platform.value=system;size.value=String(width);page.value=kind;state.value='populated';await load();evidence.push(inspect());result.textContent=JSON.stringify(evidence,null,2);
+  }
+  platform.value='macos';size.value='760';
+  for(const mode of ['empty','loading','error'])for(const kind of ['queue','statistics','people','agent','settings']){
+   page.value=kind;state.value=mode;await load();evidence.push(inspect());result.textContent=JSON.stringify(evidence,null,2);
+  }
+  page.value='onboarding';state.value='empty';await load();evidence.push(inspect());
+  result.textContent='PASS · '+evidence.length+' 组辅助页面/平台呈现/宽窄窗口检查\n'+JSON.stringify(evidence,null,2);
+ }catch(error){result.textContent='FAIL · '+error.message+'\n'+JSON.stringify(evidence,null,2);}finally{runner.disabled=false;lockInputs(false);}
+};
+lockInputs(true);load().catch(e=>result.textContent='FAIL · '+e.message).finally(()=>{runner.disabled=false;lockInputs(false);});
+</script></html>

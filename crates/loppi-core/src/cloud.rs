@@ -3,10 +3,6 @@
 use crate::usage::Meter;
 use base64::Engine;
 use loppi_protocol::CloudProvider;
-use security_framework::os::macos::keychain::SecKeychain;
-use security_framework::passwords::{
-    PasswordOptions, delete_generic_password, generic_password, set_generic_password,
-};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::io::{BufRead, BufReader, Read};
@@ -58,15 +54,7 @@ pub fn credential(provider: CloudProvider, reference: &str) -> Result<Option<Str
     let _guard = keychain_access()
         .lock()
         .map_err(|_| "keychain_read_lock".to_owned())?;
-    let _no_ui = SecKeychain::disable_user_interaction()
-        .map_err(|error| format!("keychain_read_{}", error.code()))?;
-    match generic_password(PasswordOptions::new_generic_password(SERVICE, reference)) {
-        Ok(secret) => String::from_utf8(secret)
-            .map(Some)
-            .map_err(|_| "cloud credential is not UTF-8".to_owned()),
-        Err(error) if error.code() == -25300 => Ok(None), // errSecItemNotFound
-        Err(error) => Err(format!("keychain_read_{}", error.code())),
-    }
+    crate::credentials::read(SERVICE, reference)
 }
 
 /// Check the actual signed Core's Keychain access without starting services,
@@ -105,8 +93,7 @@ pub fn save_credential(provider: CloudProvider, secret: &str) -> Result<String, 
         .lock()
         .map_err(|_| "keychain_save_lock".to_owned())?;
     let reference = format!("{}:{}", account(provider), Uuid::new_v4());
-    set_generic_password(SERVICE, &reference, secret.as_bytes())
-        .map_err(|error| format!("keychain_save_{}", error.code()))?;
+    crate::credentials::save(SERVICE, &reference, secret.as_bytes())?;
     Ok(reference)
 }
 
@@ -117,8 +104,7 @@ pub fn delete_credential(reference: &str) -> Result<(), String> {
     let _guard = keychain_access()
         .lock()
         .map_err(|_| "keychain_delete_lock".to_owned())?;
-    delete_generic_password(SERVICE, reference)
-        .map_err(|error| format!("keychain_delete_{}", error.code()))
+    crate::credentials::delete(SERVICE, reference)
 }
 
 fn agent() -> &'static ureq::Agent {

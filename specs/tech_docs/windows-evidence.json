@@ -1,0 +1,1208 @@
+{
+  "schema": 1,
+  "platform": "Windows 11 Pro x64 build 26300",
+  "single_device": true,
+  "release_ready": false,
+  "locked_desktop": {
+    "process_session": 1,
+    "active_console_session": 1,
+    "state": "Active",
+    "session_flags": 0,
+    "window_station": "WinSta0",
+    "desktop": "Default",
+    "foreground_window": 0
+  },
+  "ocr": {
+    "schema": 1,
+    "passed": true,
+    "desktop_capture": false,
+    "fixture": "locally rendered synthetic PNG",
+    "engine_sha256": "538bf25b9a2e3e3415341fc145db34f5e869441a69e865d7e8fb36406a4677ed"
+  },
+  "lifecycle": {
+    "schema": 1,
+    "real_windows": true,
+    "cloud_api_requests": false,
+    "fixture": "disposable configured+paused queues; existing offline test owner",
+    "data": "build\\windows-lifecycle-test\\\u9694\u79bb data 81dd6104-a2c2-4dcc-8b79-6db54bbb6402",
+    "checks": [
+      {
+        "name": "actual-dual-source-pause-resume",
+        "recording": {
+          "recording_schedule": {
+            "enabled": false,
+            "start_minute": 480,
+            "stop_minute": 1380,
+            "paused_by_schedule": false,
+            "next_at_ms": null,
+            "next_action": null,
+            "error": null
+          },
+          "revision": 1,
+          "enabled_intent": true,
+          "paused_intent": false,
+          "storage_paused": false,
+          "storage_recoverable": false,
+          "audio_used_bytes": 0,
+          "audio_limit_bytes": 10737418240,
+          "disk_free_bytes": 6105554944,
+          "storage_warning": false,
+          "microphone_enabled": true,
+          "system_enabled": true,
+          "capture_state": "recording",
+          "reason": null,
+          "microphone_recording": true,
+          "system_recording": true,
+          "microphone_phase": "recording",
+          "system_phase": "recording",
+          "capture_blocker": "none",
+          "microphone_reason": null,
+          "system_reason": null
+        },
+        "paused": {
+          "recording_schedule": {
+            "enabled": false,
+            "start_minute": 480,
+            "stop_minute": 1380,
+            "paused_by_schedule": false,
+            "next_at_ms": null,
+            "next_action": null,
+            "error": null
+          },
+          "revision": 2,
+          "enabled_intent": true,
+          "paused_intent": true,
+          "storage_paused": false,
+          "storage_recoverable": false,
+          "audio_used_bytes": 74097,
+          "audio_limit_bytes": 10737418240,
+          "disk_free_bytes": 6044143616,
+          "storage_warning": false,
+          "microphone_enabled": true,
+          "system_enabled": true,
+          "capture_state": "paused",
+          "reason": "recording was paused by the user",
+          "microphone_recording": false,
+          "system_recording": false,
+          "microphone_phase": "idle",
+          "system_phase": "idle",
+          "capture_blocker": "none",
+          "microphone_reason": null,
+          "system_reason": null
+        },
+        "resumed": {
+          "recording_schedule": {
+            "enabled": false,
+            "start_minute": 480,
+            "stop_minute": 1380,
+            "paused_by_schedule": false,
+            "next_at_ms": null,
+            "next_action": null,
+            "error": null
+          },
+          "revision": 3,
+          "enabled_intent": true,
+          "paused_intent": false,
+          "storage_paused": false,
+          "storage_recoverable": false,
+          "audio_used_bytes": 38825,
+          "audio_limit_bytes": 10737418240,
+          "disk_free_bytes": 6033313792,
+          "storage_warning": false,
+          "microphone_enabled": true,
+          "system_enabled": true,
+          "capture_state": "recording",
+          "reason": null,
+          "microphone_recording": true,
+          "system_recording": true,
+          "microphone_phase": "recording",
+          "system_phase": "recording",
+          "capture_blocker": "none",
+          "microphone_reason": null,
+          "system_reason": null
+        },
+        "blocks_before": 4,
+        "blocks_after": 8,
+        "gaps": [
+          [
+            "microphone",
+            1793480507960,
+            1793480512607,
+            "manual_pause"
+          ],
+          [
+            "system",
+            1793480507958,
+            1793480512607,
+            "manual_pause"
+          ],
+          [
+            "microphone",
+            1793480519511,
+            null,
+            "manual_pause"
+          ],
+          [
+            "system",
+            1793480519516,
+            null,
+            "manual_pause"
+          ]
+        ]
+      },
+      {
+        "name": "persisted-system-capture-vad-xasr-current-cli-read",
+        "coarse": [
+          [
+            "021186b0-185b-4c24-a906-487750c55194",
+            "system",
+            1793480501409,
+            1793480503979,
+            "TODAY WE ARE TESTING THE WINDOWS AUDIO RECORDER",
+            "x-asr-zipformer-transducer-zh-en-int8-2026-06-03"
+          ],
+          [
+            "d169e8e6-526e-4d77-9636-2c1f2735b31c",
+            "system",
+            1793480518366,
+            1793480519494,
+            "THE MICROPHONE AND COMPUTER",
+            "x-asr-zipformer-transducer-zh-en-int8-2026-06-03"
+          ]
+        ],
+        "media": [
+          [
+            "system",
+            1793480501097,
+            1793480506097,
+            240000,
+            "media/system/6d8a03ad-dfb1-445f-a58d-ac4cebb8615e.opus",
+            "complete"
+          ],
+          [
+            "system",
+            1793480506218,
+            1793480507958,
+            83520,
+            "media/system/8c1ba21a-bb5e-4000-ae7c-a2bfc471a7a6.opus",
+            "complete"
+          ],
+          [
+            "system",
+            1793480512806,
+            1793480517806,
+            240000,
+            "media/system/fb20ca95-b2b0-4367-8374-af672f871c09.opus",
+            "complete"
+          ],
+          [
+            "system",
+            1793480517806,
+            1793480519516,
+            82080,
+            "media/system/65456489-80da-473f-bded-632660f09902.opus",
+            "complete"
+          ]
+        ],
+        "current_context": {
+          "data": {
+            "items": [
+              {
+                "audio_available": true,
+                "citation_label": "2026-10-31T21:01:41.409+00:00 \u00b7 coarse",
+                "content_kind": "source",
+                "content_version": "13ac0e2c57ec1f32135880e6cb4e0f0c9e68a0c8ae1c23f181c87620f4e926fb",
+                "corrected": false,
+                "ended_ms": 1793480503979,
+                "event_ids": [],
+                "fragment": {
+                  "end": 47,
+                  "has_more": false,
+                  "start": 0
+                },
+                "from": "2026-10-31T21:01:41.409+00:00",
+                "identity_origin": null,
+                "item_id": "021186b0-185b-4c24-a906-487750c55194",
+                "kind": "coarse",
+                "overlaps_precise": false,
+                "person_id": null,
+                "person_name": null,
+                "ref": "eyJraW5kIjoiY29hcnNlIiwiaWQiOiIwMjExODZiMC0xODViLTRjMjQtYTkwNi00ODc3NTBjNTUxOTQiLCJ2ZXJzaW9uIjoiMTNhYzBlMmM1N2VjMWYzMjEzNTg4MGU2Y2I0ZTBmMGM5ZTY4YTBjOGFlMWMyM2YxODFjODc2MjBmNGU5MjZmYiJ9",
+                "screenshot": null,
+                "source": "system",
+                "started_ms": 1793480501409,
+                "text": "TODAY WE ARE TESTING THE WINDOWS AUDIO RECORDER",
+                "text_available": true,
+                "to": "2026-10-31T21:01:43.979+00:00"
+              },
+              {
+                "audio_available": true,
+                "citation_label": "2026-10-31T21:01:58.366+00:00 \u00b7 coarse",
+                "content_kind": "source",
+                "content_version": "9830d66722e4bffa56900734f9a5cd2150c145ff2fb2c74085f9f0a55260049f",
+                "corrected": false,
+                "ended_ms": 1793480519494,
+                "event_ids": [],
+                "fragment": {
+                  "end": 27,
+                  "has_more": false,
+                  "start": 0
+                },
+                "from": "2026-10-31T21:01:58.366+00:00",
+                "identity_origin": null,
+                "item_id": "d169e8e6-526e-4d77-9636-2c1f2735b31c",
+                "kind": "coarse",
+                "overlaps_precise": false,
+                "person_id": null,
+                "person_name": null,
+                "ref": "eyJraW5kIjoiY29hcnNlIiwiaWQiOiJkMTY5ZThlNi01MjZlLTRkNzctOTYzNi0yYzFmMjczNWIzMWMiLCJ2ZXJzaW9uIjoiOTgzMGQ2NjcyMmU0YmZmYTU2OTAwNzM0ZjlhNWNkMjE1MGMxNDVmZjJmYjJjNzQwODVmOWYwYTU1MjYwMDQ5ZiJ9",
+                "screenshot": null,
+                "source": "system",
+                "started_ms": 1793480518366,
+                "text": "THE MICROPHONE AND COMPUTER",
+                "text_available": true,
+                "to": "2026-10-31T21:01:59.494+00:00"
+              }
+            ],
+            "transcript": "best_available"
+          },
+          "ok": true,
+          "page": {
+            "consistency": "live",
+            "has_more": false,
+            "next_cursor": null,
+            "text_chunk_characters": 2000,
+            "truncated": false
+          },
+          "quality": {
+            "coarse_segments": 2,
+            "coverage_state": "observed_only",
+            "gap_summary": [
+              {
+                "duration_ms": 5649,
+                "reason": "manual_pause",
+                "source": "system"
+              },
+              {
+                "duration_ms": 255,
+                "reason": "source_start_gap",
+                "source": "system"
+              }
+            ],
+            "gaps": [
+              {
+                "from": "2026-10-31T21:01:40.842+00:00",
+                "reason": "source_start_gap",
+                "source": "system",
+                "to": "2026-10-31T21:01:41.097+00:00"
+              },
+              {
+                "from": "2026-10-31T21:01:47.958+00:00",
+                "reason": "manual_pause",
+                "source": "system",
+                "to": "2026-10-31T21:01:52.607+00:00"
+              },
+              {
+                "from": "2026-10-31T21:01:59.516+00:00",
+                "reason": "manual_pause",
+                "source": "system",
+                "to": "2026-10-31T21:02:00.516+00:00"
+              }
+            ],
+            "gaps_truncated": false,
+            "issues": [
+              {
+                "code": "coarse_pending",
+                "count": 3
+              }
+            ],
+            "note": "Coverage describes recorded material, not all real-world activity. Text and retained audio are independent.",
+            "precise_segments": 0,
+            "retained_audio_blocks": 4
+          },
+          "query": {
+            "from": "2026-10-31T21:01:40.097+00:00",
+            "timezone": "Asia/Shanghai",
+            "to": "2026-10-31T21:02:00.516+00:00"
+          },
+          "request_id": "be60f93e-3126-4412-8176-2c273bd708bb",
+          "retrieved_at": "2026-10-31T21:02:05.141+00:00",
+          "schema_version": "loppi.context.v1"
+        },
+        "model_root": "build\\windows-unicode-install\\\u5b89\u88c5 \ud83d\udc30 space\\resources\\models"
+      },
+      {
+        "name": "cli-context-status",
+        "ok": true,
+        "error": null
+      },
+      {
+        "name": "cli-context-list",
+        "ok": true,
+        "error": null
+      },
+      {
+        "name": "cli-context-digest",
+        "ok": true,
+        "error": null
+      },
+      {
+        "name": "cli-context-search",
+        "ok": true,
+        "error": null
+      },
+      {
+        "name": "cli-context-event",
+        "ok": false,
+        "error": {
+          "cause": "ref_unavailable",
+          "code": "ref_unavailable",
+          "message": "ref_unavailable: event no longer available",
+          "partial": false,
+          "retry_after_ms": null,
+          "retryable": false
+        }
+      },
+      {
+        "name": "cli-context-read",
+        "ok": false,
+        "error": {
+          "cause": "invalid_argument",
+          "code": "invalid_argument",
+          "message": "selector requires exactly one of event_id, time, refs",
+          "partial": false,
+          "retry_after_ms": null,
+          "retryable": false
+        }
+      },
+      {
+        "name": "cli-context-people",
+        "ok": true,
+        "error": null
+      },
+      {
+        "name": "actual-mcp-stdio-handshake-seven-tools",
+        "tools": [
+          "loppi_status",
+          "loppi_list_context",
+          "loppi_search_context",
+          "loppi_get_event",
+          "loppi_read_context",
+          "loppi_digest",
+          "loppi_list_people"
+        ]
+      },
+      {
+        "name": "normal-install-preparation-during-dual-recording",
+        "response": {
+          "forced": false,
+          "stopped": true
+        }
+      }
+    ],
+    "passed": true
+  },
+  "gui_checks": [
+    {
+      "name": "build",
+      "value": {
+        "component": "gui",
+        "version": "0.1.18",
+        "protocol_version": 24,
+        "git_sha": "1e36cf56c5c49b9cc4ba9d9305131e7e83782ca9",
+        "dirty": true,
+        "built_at_epoch": 1793476200
+      }
+    },
+    {
+      "name": "privacy",
+      "value": {
+        "microphone": 3,
+        "microphone_available": true,
+        "screen_and_system_audio": 0,
+        "system_audio": 0,
+        "tap_required": false,
+        "tap_ready": false
+      }
+    },
+    {
+      "name": "actual-system-probe-independent-of-locked-screen",
+      "privacy": {
+        "microphone": 3,
+        "microphone_available": true,
+        "screen_and_system_audio": 0,
+        "system_audio": 1,
+        "tap_required": false,
+        "tap_ready": false
+      }
+    },
+    {
+      "name": "startup-status-read-only",
+      "value": 0
+    },
+    {
+      "name": "entry",
+      "value": {
+        "sequence": 7,
+        "state": {
+          "recording_schedule": {
+            "enabled": false,
+            "start_minute": 480,
+            "stop_minute": 1380,
+            "paused_by_schedule": false,
+            "next_at_ms": null,
+            "next_action": null,
+            "error": null
+          },
+          "revision": 0,
+          "enabled_intent": false,
+          "paused_intent": false,
+          "storage_paused": false,
+          "storage_recoverable": false,
+          "audio_used_bytes": 0,
+          "audio_limit_bytes": 10737418240,
+          "disk_free_bytes": 8930344960,
+          "storage_warning": false,
+          "microphone_enabled": true,
+          "system_enabled": true,
+          "capture_state": "not_ready",
+          "reason": "local speech models are not ready",
+          "microphone_recording": false,
+          "system_recording": false,
+          "microphone_phase": "idle",
+          "system_phase": "idle",
+          "capture_blocker": "model_not_ready",
+          "microphone_reason": null,
+          "system_reason": null
+        },
+        "error": null,
+        "mode": "top",
+        "appearance": "sleeping",
+        "detail": null,
+        "control": "start",
+        "notice": null
+      }
+    },
+    {
+      "name": "entry-mode-roundtrip",
+      "passed": true
+    },
+    {
+      "name": "actual-native-playback-exclusion",
+      "response": {
+        "type": "probe_result",
+        "id": "90ab9f8f-799d-44f3-ad90-0d0669f85d44",
+        "stats": {
+          "source": "system",
+          "sample_rate": 48000,
+          "channels": 2,
+          "frames": 96000,
+          "peak": 0,
+          "dropped_packets": 0
+        }
+      }
+    },
+    {
+      "name": "actual-native-playback-ended-event",
+      "events": [
+        {
+          "buffer": 1,
+          "context": 1,
+          "epoch": 1,
+          "status": 1
+        }
+      ]
+    },
+    {
+      "name": "main-window-screenshot",
+      "path": "build\\windows-gui-test\\main.png"
+    },
+    {
+      "name": "normal-gui-core-exit-before-installation",
+      "passed": true,
+      "forced": false
+    }
+  ],
+  "core_checks": [
+    {
+      "name": "verified-offline-models",
+      "state": {
+        "phase": "ready",
+        "progress_percent": 100,
+        "speaker_phase": "ready",
+        "error": null,
+        "speaker_error": null
+      }
+    },
+    {
+      "name": "microphone-probe",
+      "response": {
+        "type": "probe_result",
+        "id": "6819e10a-d360-4f82-aea6-76a9d3574cad",
+        "stats": {
+          "source": "microphone",
+          "sample_rate": 48000,
+          "channels": 2,
+          "frames": 95520,
+          "peak": 0.0025000698,
+          "dropped_packets": 0
+        }
+      }
+    },
+    {
+      "name": "system-probe",
+      "response": {
+        "type": "probe_result",
+        "id": "e0232b1c-9f3f-4bb8-a5f6-062f860280a4",
+        "stats": {
+          "source": "system",
+          "sample_rate": 48000,
+          "channels": 2,
+          "frames": 96000,
+          "peak": 0.0,
+          "dropped_packets": 0
+        }
+      }
+    },
+    {
+      "name": "offline-synthetic-speech-recognition",
+      "text": "TODAY WE ARE TESTING THE WINDOWS AUDIO RECORDER THE MICROPHONE AND COMPUTER AUDIO SHOULD USE THE SAME CLOCK THIS IS SYNTHETIC SPEECH CREATED ON THIS COMPUTER NO PRIVATE RECORDING IS USED"
+    },
+    {
+      "name": "microphone-recording",
+      "response": {
+        "type": "record_test_result",
+        "id": "83410b67-6614-4e1c-9faf-6769bf7000c3",
+        "source": "microphone",
+        "blocks": 2,
+        "frames": 479520,
+        "dropped_packets": 0
+      }
+    },
+    {
+      "name": "system-recording",
+      "response": {
+        "type": "record_test_result",
+        "id": "a5e46151-4232-4b77-9182-1674eb863b23",
+        "source": "system",
+        "blocks": 2,
+        "frames": 475200,
+        "dropped_packets": 0
+      }
+    },
+    {
+      "name": "captured-system-speech-playback",
+      "peak": 0.61297607421875,
+      "samples": 240000
+    },
+    {
+      "name": "dual-source-time-coordinates",
+      "blocks": [
+        {
+          "source": "microphone",
+          "started_ms": 1793479485349,
+          "ended_ms": 1793479490349,
+          "sample_start": 13344,
+          "frames": 240000,
+          "media_path": "media/microphone/ded28aa7-d35e-43e2-9059-d11432c07179.opus",
+          "analysis_state": "pending"
+        },
+        {
+          "source": "microphone",
+          "started_ms": 1793479490349,
+          "ended_ms": 1793479495339,
+          "sample_start": 253344,
+          "frames": 239520,
+          "media_path": "media/microphone/813465da-0736-48cf-905f-72fa9793168a.opus",
+          "analysis_state": "pending"
+        },
+        {
+          "source": "system",
+          "started_ms": 1793479485189,
+          "ended_ms": 1793479490189,
+          "sample_start": 0,
+          "frames": 240000,
+          "media_path": "media/system/6aea0833-1d32-48fc-a642-bb7c1e50c208.opus",
+          "analysis_state": "pending"
+        },
+        {
+          "source": "system",
+          "started_ms": 1793479490282,
+          "ended_ms": 1793479495182,
+          "sample_start": 240000,
+          "frames": 235200,
+          "media_path": "media/system/c7d63d1f-47a1-48f1-ad04-12df548d2292.opus",
+          "analysis_state": "pending"
+        }
+      ],
+      "clocks": [
+        {
+          "session_id": "4354cca6-533c-43f4-8da5-9dc8ff389e79",
+          "run_id": "9c05e94b-6fc5-4081-8da4-a4546199142f",
+          "wall_anchor_ms": 1793479485071,
+          "monotonic_anchor_ns": 2461149930318700
+        },
+        {
+          "session_id": "5f63ca89-2987-425d-9934-7e19103eba50",
+          "run_id": "9c05e94b-6fc5-4081-8da4-a4546199142f",
+          "wall_anchor_ms": 1793479485131,
+          "monotonic_anchor_ns": 2461149989911500
+        }
+      ],
+      "wall_range": [
+        1793479485022,
+        1793479495773
+      ]
+    },
+    {
+      "name": "normal-core-quit",
+      "response": {
+        "type": "status",
+        "id": "bc792d57-eaf7-4cff-abe4-cd64259a7955",
+        "state": {
+          "recording_schedule": {
+            "enabled": false,
+            "start_minute": 480,
+            "stop_minute": 1380,
+            "paused_by_schedule": false,
+            "next_at_ms": null,
+            "next_action": null,
+            "error": null
+          },
+          "revision": 0,
+          "enabled_intent": false,
+          "paused_intent": false,
+          "storage_paused": false,
+          "storage_recoverable": false,
+          "audio_used_bytes": 106200,
+          "audio_limit_bytes": 10737418240,
+          "disk_free_bytes": 8953643008,
+          "storage_warning": false,
+          "microphone_enabled": true,
+          "system_enabled": true,
+          "capture_state": "not_ready",
+          "reason": "configure both cloud providers before recording",
+          "microphone_recording": false,
+          "system_recording": false,
+          "microphone_phase": "idle",
+          "system_phase": "idle",
+          "capture_blocker": "setup_incomplete",
+          "microphone_reason": null,
+          "system_reason": null
+        }
+      }
+    }
+  ],
+  "pending": [
+    "integrated frontend/Mac regression",
+    "NSIS install/upgrade/uninstall retention",
+    "default Core root and corruption tests",
+    "unlocked desktop capture/window exclusion",
+    "final clean build/release"
+  ],
+  "locked_capture": {
+    "schema": 1,
+    "passed": true,
+    "locked_screenshot_failure": {
+      "type": "error",
+      "id": "afbb5915-fe56-4a9f-b2e0-704e12fafa17",
+      "code": "screenshot_desktop_unavailable",
+      "message": "screen capture unavailable: Windows session is locked or its state cannot be verified"
+    },
+    "successful_moments": 0,
+    "image_files": 0,
+    "locked_wasapi_probe": {
+      "type": "probe_result",
+      "id": "22807e41-ce34-40ef-aae0-0955f477dfa8",
+      "stats": {
+        "source": "system",
+        "sample_rate": 48000,
+        "channels": 2,
+        "frames": 96000,
+        "peak": 0.0,
+        "dropped_packets": 0
+      }
+    },
+    "process_session": 1,
+    "active_console_session": 1,
+    "window_station": "WinSta0",
+    "desktop": "Default",
+    "session_flags": 0
+  },
+  "entry_geometry": {
+    "schema": 1,
+    "passed": true,
+    "real_win32": true,
+    "desktop_capture": false,
+    "cases": 15,
+    "checks": [
+      "restored off-work-area anchors remain visible",
+      "native region contains rabbit center at actual DPI"
+    ]
+  },
+  "cli_install": {
+    "schema": 1,
+    "checks": [
+      {
+        "name": "install-repeat-cold-core-lookup",
+        "passed": true
+      },
+      {
+        "name": "launcher-preserves-mcp-stdio",
+        "passed": true
+      },
+      {
+        "name": "unrelated-file-preserved",
+        "passed": true
+      }
+    ],
+    "passed": true
+  },
+  "pe_closure": {
+    "schema": 1,
+    "passed": true,
+    "images": [
+      {
+        "path": "concrt140.dll",
+        "machine": "0x8664",
+        "architecture": "x64",
+        "imports": [
+          "MSVCP140.dll",
+          "VCRUNTIME140_1.dll",
+          "VCRUNTIME140.dll",
+          "api-ms-win-crt-heap-l1-1-0.dll",
+          "api-ms-win-crt-math-l1-1-0.dll",
+          "api-ms-win-crt-runtime-l1-1-0.dll",
+          "api-ms-win-crt-string-l1-1-0.dll",
+          "api-ms-win-crt-stdio-l1-1-0.dll",
+          "KERNEL32.dll"
+        ],
+        "delay_imports": []
+      },
+      {
+        "path": "loppi-core.exe",
+        "machine": "0x8664",
+        "architecture": "x64",
+        "imports": [
+          "ole32.dll",
+          "MMDevAPI.DLL",
+          "ADVAPI32.dll",
+          "POWRPROF.dll",
+          "GDI32.dll",
+          "USER32.dll",
+          "dwmapi.dll",
+          "WTSAPI32.dll",
+          "api-ms-win-core-synch-l1-2-0.dll",
+          "kernel32.dll",
+          "combase.dll",
+          "oleaut32.dll",
+          "api-ms-win-core-winrt-l1-1-0.dll",
+          "api-ms-win-core-winrt-error-l1-1-0.dll",
+          "ws2_32.dll",
+          "advapi32.dll",
+          "shell32.dll",
+          "bcryptprimitives.dll",
+          "bcrypt.dll",
+          "sherpa-onnx-c-api.dll",
+          "ntdll.dll",
+          "KERNEL32.dll",
+          "WS2_32.dll",
+          "MSVCP140.dll",
+          "VCRUNTIME140.dll",
+          "VCRUNTIME140_1.dll",
+          "api-ms-win-crt-string-l1-1-0.dll",
+          "api-ms-win-crt-math-l1-1-0.dll",
+          "api-ms-win-crt-runtime-l1-1-0.dll",
+          "api-ms-win-crt-heap-l1-1-0.dll",
+          "api-ms-win-crt-stdio-l1-1-0.dll",
+          "api-ms-win-crt-utility-l1-1-0.dll",
+          "api-ms-win-crt-time-l1-1-0.dll",
+          "api-ms-win-crt-locale-l1-1-0.dll"
+        ],
+        "delay_imports": []
+      },
+      {
+        "path": "loppi-desktop.exe",
+        "machine": "0x8664",
+        "architecture": "x64",
+        "imports": [
+          "bcryptprimitives.dll",
+          "advapi32.dll",
+          "ntdll.dll",
+          "kernel32.dll",
+          "ole32.dll",
+          "user32.dll",
+          "shlwapi.dll",
+          "comctl32.dll",
+          "api-ms-win-core-synch-l1-2-0.dll",
+          "gdi32.dll",
+          "winmm.dll",
+          "shell32.dll",
+          "combase.dll",
+          "mmdevapi.dll",
+          "dwmapi.dll",
+          "imm32.dll",
+          "oleaut32.dll",
+          "api-ms-win-core-winrt-l1-1-0.dll",
+          "api-ms-win-core-winrt-error-l1-1-0.dll",
+          "wtsapi32.dll",
+          "USER32.dll",
+          "ADVAPI32.dll",
+          "api-ms-win-crt-heap-l1-1-0.dll",
+          "api-ms-win-crt-math-l1-1-0.dll",
+          "api-ms-win-crt-string-l1-1-0.dll",
+          "api-ms-win-crt-utility-l1-1-0.dll",
+          "api-ms-win-crt-stdio-l1-1-0.dll",
+          "api-ms-win-crt-convert-l1-1-0.dll",
+          "api-ms-win-crt-runtime-l1-1-0.dll",
+          "api-ms-win-crt-locale-l1-1-0.dll",
+          "MSVCP140.dll"
+        ],
+        "delay_imports": []
+      },
+      {
+        "path": "loppi-worker.exe",
+        "machine": "0x8664",
+        "architecture": "x64",
+        "imports": [
+          "kernel32.dll",
+          "bcryptprimitives.dll",
+          "api-ms-win-core-synch-l1-2-0.dll",
+          "ntdll.dll",
+          "KERNEL32.dll",
+          "sherpa-onnx-c-api.dll",
+          "VCRUNTIME140.dll",
+          "api-ms-win-crt-string-l1-1-0.dll",
+          "api-ms-win-crt-runtime-l1-1-0.dll",
+          "api-ms-win-crt-math-l1-1-0.dll",
+          "api-ms-win-crt-stdio-l1-1-0.dll",
+          "api-ms-win-crt-locale-l1-1-0.dll",
+          "api-ms-win-crt-heap-l1-1-0.dll"
+        ],
+        "delay_imports": []
+      },
+      {
+        "path": "loppi.exe",
+        "machine": "0x8664",
+        "architecture": "x64",
+        "imports": [
+          "combase.dll",
+          "api-ms-win-core-winrt-l1-1-0.dll",
+          "kernel32.dll",
+          "oleaut32.dll",
+          "bcryptprimitives.dll",
+          "advapi32.dll",
+          "user32.dll",
+          "shell32.dll",
+          "api-ms-win-core-synch-l1-2-0.dll",
+          "ntdll.dll",
+          "KERNEL32.dll",
+          "VCRUNTIME140.dll",
+          "api-ms-win-crt-runtime-l1-1-0.dll",
+          "api-ms-win-crt-math-l1-1-0.dll",
+          "api-ms-win-crt-stdio-l1-1-0.dll",
+          "api-ms-win-crt-locale-l1-1-0.dll",
+          "api-ms-win-crt-heap-l1-1-0.dll"
+        ],
+        "delay_imports": []
+      },
+      {
+        "path": "msvcp140.dll",
+        "machine": "0x8664",
+        "architecture": "x64",
+        "imports": [
+          "VCRUNTIME140.dll",
+          "VCRUNTIME140_1.dll",
+          "api-ms-win-crt-heap-l1-1-0.dll",
+          "api-ms-win-crt-runtime-l1-1-0.dll",
+          "api-ms-win-crt-string-l1-1-0.dll",
+          "api-ms-win-crt-locale-l1-1-0.dll",
+          "api-ms-win-crt-stdio-l1-1-0.dll",
+          "api-ms-win-crt-filesystem-l1-1-0.dll",
+          "api-ms-win-crt-time-l1-1-0.dll",
+          "api-ms-win-crt-environment-l1-1-0.dll",
+          "api-ms-win-crt-math-l1-1-0.dll",
+          "api-ms-win-crt-convert-l1-1-0.dll",
+          "api-ms-win-crt-utility-l1-1-0.dll",
+          "KERNEL32.dll"
+        ],
+        "delay_imports": []
+      },
+      {
+        "path": "msvcp140_1.dll",
+        "machine": "0x8664",
+        "architecture": "x64",
+        "imports": [
+          "MSVCP140.dll",
+          "VCRUNTIME140.dll",
+          "api-ms-win-crt-heap-l1-1-0.dll",
+          "api-ms-win-crt-runtime-l1-1-0.dll",
+          "KERNEL32.dll"
+        ],
+        "delay_imports": []
+      },
+      {
+        "path": "msvcp140_2.dll",
+        "machine": "0x8664",
+        "architecture": "x64",
+        "imports": [
+          "MSVCP140.dll",
+          "VCRUNTIME140.dll",
+          "VCRUNTIME140_1.dll",
+          "api-ms-win-crt-runtime-l1-1-0.dll",
+          "api-ms-win-crt-math-l1-1-0.dll",
+          "api-ms-win-crt-heap-l1-1-0.dll",
+          "api-ms-win-crt-stdio-l1-1-0.dll",
+          "api-ms-win-crt-string-l1-1-0.dll",
+          "api-ms-win-crt-locale-l1-1-0.dll",
+          "KERNEL32.dll"
+        ],
+        "delay_imports": []
+      },
+      {
+        "path": "msvcp140_atomic_wait.dll",
+        "machine": "0x8664",
+        "architecture": "x64",
+        "imports": [
+          "MSVCP140.dll",
+          "VCRUNTIME140_1.dll",
+          "VCRUNTIME140.dll",
+          "api-ms-win-crt-heap-l1-1-0.dll",
+          "api-ms-win-crt-locale-l1-1-0.dll",
+          "api-ms-win-crt-runtime-l1-1-0.dll",
+          "ADVAPI32.dll",
+          "api-ms-win-core-synch-l1-2-0.dll",
+          "KERNEL32.dll"
+        ],
+        "delay_imports": []
+      },
+      {
+        "path": "msvcp140_codecvt_ids.dll",
+        "machine": "0x8664",
+        "architecture": "x64",
+        "imports": [
+          "VCRUNTIME140.dll",
+          "api-ms-win-crt-runtime-l1-1-0.dll",
+          "KERNEL32.dll"
+        ],
+        "delay_imports": []
+      },
+      {
+        "path": "onnxruntime.dll",
+        "machine": "0x8664",
+        "architecture": "x64",
+        "imports": [
+          "KERNEL32.dll",
+          "ADVAPI32.dll",
+          "MSVCP140.dll",
+          "MSVCP140_1.dll",
+          "api-ms-win-core-path-l1-1-0.dll",
+          "dbghelp.dll",
+          "SETUPAPI.dll",
+          "dxgi.dll",
+          "VCRUNTIME140.dll",
+          "VCRUNTIME140_1.dll",
+          "api-ms-win-crt-heap-l1-1-0.dll",
+          "api-ms-win-crt-string-l1-1-0.dll",
+          "api-ms-win-crt-runtime-l1-1-0.dll",
+          "api-ms-win-crt-math-l1-1-0.dll",
+          "api-ms-win-crt-stdio-l1-1-0.dll",
+          "api-ms-win-crt-convert-l1-1-0.dll",
+          "api-ms-win-crt-filesystem-l1-1-0.dll",
+          "api-ms-win-crt-time-l1-1-0.dll",
+          "api-ms-win-crt-locale-l1-1-0.dll"
+        ],
+        "delay_imports": []
+      },
+      {
+        "path": "onnxruntime_providers_shared.dll",
+        "machine": "0x8664",
+        "architecture": "x64",
+        "imports": [
+          "VCRUNTIME140.dll",
+          "api-ms-win-crt-runtime-l1-1-0.dll",
+          "KERNEL32.dll"
+        ],
+        "delay_imports": []
+      },
+      {
+        "path": "sherpa-onnx-c-api.dll",
+        "machine": "0x8664",
+        "architecture": "x64",
+        "imports": [
+          "onnxruntime.dll",
+          "KERNEL32.dll",
+          "MSVCP140.dll",
+          "VCRUNTIME140_1.dll",
+          "VCRUNTIME140.dll",
+          "api-ms-win-crt-heap-l1-1-0.dll",
+          "api-ms-win-crt-stdio-l1-1-0.dll",
+          "api-ms-win-crt-math-l1-1-0.dll",
+          "api-ms-win-crt-runtime-l1-1-0.dll",
+          "api-ms-win-crt-convert-l1-1-0.dll",
+          "api-ms-win-crt-locale-l1-1-0.dll",
+          "api-ms-win-crt-filesystem-l1-1-0.dll",
+          "api-ms-win-crt-string-l1-1-0.dll",
+          "api-ms-win-crt-utility-l1-1-0.dll",
+          "api-ms-win-crt-environment-l1-1-0.dll"
+        ],
+        "delay_imports": []
+      },
+      {
+        "path": "sherpa-onnx-cxx-api.dll",
+        "machine": "0x8664",
+        "architecture": "x64",
+        "imports": [
+          "sherpa-onnx-c-api.dll",
+          "MSVCP140.dll",
+          "VCRUNTIME140_1.dll",
+          "VCRUNTIME140.dll",
+          "api-ms-win-crt-heap-l1-1-0.dll",
+          "api-ms-win-crt-math-l1-1-0.dll",
+          "api-ms-win-crt-runtime-l1-1-0.dll",
+          "api-ms-win-crt-locale-l1-1-0.dll",
+          "api-ms-win-crt-stdio-l1-1-0.dll",
+          "KERNEL32.dll"
+        ],
+        "delay_imports": []
+      },
+      {
+        "path": "vccorlib140.dll",
+        "machine": "0x8664",
+        "architecture": "x64",
+        "imports": [
+          "KERNEL32.dll",
+          "VCRUNTIME140_1.dll",
+          "VCRUNTIME140.dll",
+          "api-ms-win-crt-stdio-l1-1-0.dll",
+          "api-ms-win-crt-heap-l1-1-0.dll",
+          "api-ms-win-crt-string-l1-1-0.dll",
+          "api-ms-win-crt-runtime-l1-1-0.dll",
+          "MSVCP140.dll",
+          "ole32.dll",
+          "OLEAUT32.dll",
+          "api-ms-win-core-winrt-string-l1-1-0.dll",
+          "api-ms-win-core-winrt-error-l1-1-0.dll",
+          "api-ms-win-core-winrt-l1-1-0.dll",
+          "api-ms-win-crt-math-l1-1-0.dll"
+        ],
+        "delay_imports": []
+      },
+      {
+        "path": "vcruntime140.dll",
+        "machine": "0x8664",
+        "architecture": "x64",
+        "imports": [
+          "api-ms-win-crt-runtime-l1-1-0.dll",
+          "api-ms-win-crt-heap-l1-1-0.dll",
+          "api-ms-win-crt-string-l1-1-0.dll",
+          "api-ms-win-crt-stdio-l1-1-0.dll",
+          "api-ms-win-crt-convert-l1-1-0.dll",
+          "KERNEL32.dll"
+        ],
+        "delay_imports": []
+      },
+      {
+        "path": "vcruntime140_1.dll",
+        "machine": "0x8664",
+        "architecture": "x64",
+        "imports": [
+          "api-ms-win-crt-runtime-l1-1-0.dll",
+          "api-ms-win-crt-heap-l1-1-0.dll",
+          "api-ms-win-crt-string-l1-1-0.dll",
+          "VCRUNTIME140.dll",
+          "KERNEL32.dll"
+        ],
+        "delay_imports": []
+      },
+      {
+        "path": "vcruntime140_threads.dll",
+        "machine": "0x8664",
+        "architecture": "x64",
+        "imports": [
+          "api-ms-win-crt-runtime-l1-1-0.dll",
+          "api-ms-win-crt-heap-l1-1-0.dll",
+          "api-ms-win-crt-time-l1-1-0.dll",
+          "VCRUNTIME140.dll",
+          "KERNEL32.dll"
+        ],
+        "delay_imports": []
+      },
+      {
+        "path": "resources/ocr/tesseract.exe",
+        "machine": "0x8664",
+        "architecture": "x64",
+        "imports": [
+          "KERNEL32.dll"
+        ],
+        "delay_imports": []
+      }
+    ],
+    "missing": [],
+    "system_baseline": "Windows 11 x64; explicit inbox list/API sets; VC runtime requires app-local files"
+  },
+  "component_identity": {
+    "schema": 1,
+    "components": {
+      "gui": {
+        "component": "gui",
+        "version": "0.1.18",
+        "protocol_version": 24,
+        "git_sha": "1e36cf56c5c49b9cc4ba9d9305131e7e83782ca9",
+        "dirty": true,
+        "built_at_epoch": 1793476200
+      },
+      "core": {
+        "component": "core",
+        "version": "0.1.18",
+        "protocol_version": 24,
+        "git_sha": "1e36cf56c5c49b9cc4ba9d9305131e7e83782ca9",
+        "dirty": true,
+        "built_at_epoch": 1793476200
+      },
+      "worker": {
+        "component": "worker",
+        "version": "0.1.18",
+        "protocol_version": 24,
+        "git_sha": "1e36cf56c5c49b9cc4ba9d9305131e7e83782ca9",
+        "dirty": true,
+        "built_at_epoch": 1793476200
+      },
+      "cli": {
+        "component": "cli",
+        "version": "0.1.18",
+        "protocol_version": 24,
+        "git_sha": "1e36cf56c5c49b9cc4ba9d9305131e7e83782ca9",
+        "dirty": true,
+        "built_at_epoch": 1793476200
+      }
+    }
+  },
+  "workspace_tests": {
+    "core": {
+      "passed": 392,
+      "ignored": 22
+    },
+    "protocol": 19,
+    "gui": 11,
+    "cli": 2,
+    "worker": 2,
+    "failures": 0
+  },
+  "webview_image": {
+    "path": "windows-evidence/main-webview.png",
+    "proves": "actual Windows WebView2 host font/layout with coordinator frontend; synthetic onboarding only",
+    "desktop_capture": false
+  },
+  "runtime_models": {
+    "path": "build/windows-unicode-install/\u5b89\u88c5 \ud83d\udc30 space/resources/models",
+    "readonly": true,
+    "actual_core_vad_xasr_tokens": true
+  },
+  "historical_dirty_nsis": {
+    "bytes": 388293595,
+    "sha256": "bfdd815d3c5802a72eb8535b399b5961f14fb1684bfcd6a2272fb8f512015b2f",
+    "acceptance": false,
+    "reason": "first build predates final VC closure/manifest/install preparation repairs; must rebuild; never release"
+  }
+}

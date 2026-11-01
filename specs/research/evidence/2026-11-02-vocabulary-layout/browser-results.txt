@@ -1,0 +1,30 @@
+webkit { passed: 32 }
+webkit 1120 {
+  noOverflow: true,
+  settingsAboveList: true,
+  allSwitches: true,
+  settingsFit: true,
+  staticExplanation: false
+}
+webkit 760 {
+  noOverflow: true,
+  settingsAboveList: true,
+  allSwitches: true,
+  settingsFit: true,
+  staticExplanation: false
+}
+chrome { passed: 32 }
+chrome 1120 {
+  noOverflow: true,
+  settingsAboveList: true,
+  allSwitches: true,
+  settingsFit: true,
+  staticExplanation: false
+}
+chrome 760 {
+  noOverflow: true,
+  settingsAboveList: true,
+  allSwitches: true,
+  settingsFit: true,
+  staticExplanation: false
+}

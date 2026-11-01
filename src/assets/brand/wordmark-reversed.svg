@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 238 100" fill="none" role="img" aria-label="loppi">
+  <g fill="#F6F5F1">
+    <path d="M8 14a7 7 0 0 1 14 0v45c0 5 2 7 7 7a7 7 0 0 1 0 14C15 80 8 72 8 59Z"/>
+    <path fill-rule="evenodd" d="M65 29a25 25 0 1 1 0 50 25 25 0 0 1 0-50Zm0 14a11 11 0 1 0 0 22 11 11 0 0 0 0-22Z"/>
+    <path fill-rule="evenodd" d="M123 29a25 25 0 1 1 0 50c-4 0-8-1-11-3v13a7 7 0 0 1-14 0V54a25 25 0 0 1 25-25Zm0 14a11 11 0 1 0 0 22 11 11 0 0 0 0-22Z"/>
+    <path fill-rule="evenodd" d="M181 29a25 25 0 1 1 0 50c-4 0-8-1-11-3v13a7 7 0 0 1-14 0V54a25 25 0 0 1 25-25Zm0 14a11 11 0 1 0 0 22 11 11 0 0 0 0-22Z"/>
+    <rect x="216" y="31" width="14" height="48" rx="7"/>
+  </g>
+  <rect x="216" y="8" width="14" height="14" rx="2" fill="#B65B42"/>
+</svg>

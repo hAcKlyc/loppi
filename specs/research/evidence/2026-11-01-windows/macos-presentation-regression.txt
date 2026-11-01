@@ -1,0 +1,20 @@
+760 × 540 / timeline: PASS
+760 × 540 / detail: PASS
+760 × 540 / crossday: PASS
+760 × 540 / recording: PASS
+760 × 540 / empty: PASS
+760 × 540 / error: PASS
+1120 × 760 / timeline: PASS
+1120 × 760 / detail: PASS
+1120 × 760 / crossday: PASS
+1120 × 760 / recording: PASS
+1120 × 760 / empty: PASS
+1120 × 760 / error: PASS
+1440 × 900 / timeline: PASS
+1440 × 900 / detail: PASS
+1440 × 900 / crossday: PASS
+1440 × 900 / recording: PASS
+1440 × 900 / empty: PASS
+1440 × 900 / error: PASS
+reduced-motion: PASS · CSS 和 React 偏好模拟
+全部通过

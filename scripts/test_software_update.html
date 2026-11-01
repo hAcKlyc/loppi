@@ -1,0 +1,18 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>loppi 软件更新隔离预览</title>
+<div id="root"></div>
+<script type="module">
+import React from 'react';import{createRoot}from'react-dom/client';import{mockIPC}from'@tauri-apps/api/mocks';import{SettingsView}from'/src/WorkspaceViews.tsx';import{useAppUpdate}from'/src/useAppUpdate.ts';import{RestartUpdate}from'/src/SoftwareUpdate.tsx';import'/src/App.css';
+window.isTauri=true;
+const h=React.createElement;
+mockIPC(async(command,args)=>{
+ if(command==='plugin:app|version')return'0.1.18';
+ if(command==='plugin:event|listen')return 1;if(command==='plugin:event|unlisten')return;
+ if(command==='entry_snapshot')return{mode:'top'};
+ if(command==='check_update'){args.progress.onmessage({phase:'downloading',downloaded:50,total:100});await new Promise(r=>setTimeout(r,1200));return{currentVersion:'0.1.18',version:'0.1.19'};}
+ if(command==='install_update'){for(const phase of['stopping','installing']){args.progress.onmessage({phase,downloaded:50,total:100});await new Promise(r=>setTimeout(r,800));}throw'隔离演示已结束，没有下载、停止录音或安装任何软件。';}
+ throw Error('Unsupported fixture command: '+command);
+});
+const state={revision:1,enabled_intent:true,paused_intent:false,microphone_enabled:true,system_enabled:true,microphone_phase:'recording',system_phase:'recording',audio_limit_bytes:10*1073741824,audio_used_bytes:1073741824,disk_free_bytes:30*1073741824,recording_schedule:{enabled:false,start_minute:480,stop_minute:1380,next_at_ms:null,next_action:null,error:null}};
+function App(){const update=useAppUpdate();return h('div',{className:'app-shell'},h('aside',{className:'sidebar'},h('div',{className:'brand'},'loppi'),h('nav',null,h('button',{className:'active nav-button'},'设置')),h(RestartUpdate,{update})),h('main',{className:'main-area'},h(SettingsView,{update,date:new Date(2026,10,2),state,privacy:{microphone:3,microphone_available:true,tap_required:true,tap_ready:true,screen_and_system_audio:1},queues:[{provider:'llm',configured:true},{provider:'asr',configured:true}],loginStatus:0,models:{phase:'ready',speaker_phase:'ready',progress_percent:100},selection:null,busy:false,onStatus:async()=>{},onContext:async()=>{},onTimeline:async()=>{},onMutate:async()=>true,onMessage:()=>{}})));}
+createRoot(document.getElementById('root')).render(h(React.StrictMode,null,h(App)));
+</script>

@@ -1,8 +1,9 @@
 //! GUI-session ownership coordination. Never reads or writes the business DB.
 use super::*;
-use fs2::FileExt;
+use crate::platform::OpenOptions;
 use serde_json::{Value, json};
-use std::fs::{File, OpenOptions};
+use std::fs::File;
+#[cfg(unix)]
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::sync::{RwLock, RwLockReadGuard};
 
@@ -57,6 +58,15 @@ pub fn quit_gui_core() -> Result<(), String> {
     wait_stopped(&directory)
 }
 
+/// Reopen this GUI's IPC barrier after an aborted update. The next request must
+/// inspect the owner again: shutdown may have succeeded before installation failed.
+pub fn resume_gui_core() -> Result<(), String> {
+    let mut session = SESSION.write().map_err(|e| e.to_string())?;
+    session.ready = false;
+    session.stopped = false;
+    Ok(())
+}
+
 // Raw JSON intentionally decouples this stable handshake from ServiceState.
 fn inspect() -> Result<Option<BuildInfo>, String> {
     let status = match exchange(PROTOCOL_VERSION, json!({"type":"status"})) {
@@ -84,8 +94,7 @@ fn inspect() -> Result<Option<BuildInfo>, String> {
 fn ensure_current() -> Result<(), String> {
     let directory = data_dir()?;
     fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
-    fs::set_permissions(&directory, fs::Permissions::from_mode(0o700))
-        .map_err(|e| e.to_string())?;
+    crate::platform::set_mode(&directory, 0o700).map_err(|e| e.to_string())?;
     let _gate = lock(&directory.join("lifecycle.lock"))?;
     let owner = inspect()?;
     let expected = build_info("core");
@@ -99,7 +108,7 @@ fn ensure_current() -> Result<(), String> {
     }
     // Validate the replacement before asking the running owner to leave.
     let binary = core_binary_path()?;
-    let output = Command::new(&binary)
+    let output = crate::platform::command(&binary)
         .arg("--build-info")
         .output()
         .map_err(|e| e.to_string())?;
@@ -113,7 +122,7 @@ fn ensure_current() -> Result<(), String> {
         None => None,
     };
     wait_stopped(&directory)?;
-    let mut command = Command::new(binary);
+    let mut command = crate::platform::command(binary);
     command.arg("serve");
     if let Some(mode) = mode {
         command.args(["--handoff", mode]);
@@ -218,7 +227,7 @@ fn lock(path: &Path) -> Result<File, String> {
         .map_err(|e| e.to_string())?;
     let deadline = Instant::now() + WAIT;
     loop {
-        match file.try_lock_exclusive() {
+        match crate::platform::try_lock_exclusive(&file) {
             Ok(()) => return Ok(file),
             Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
             Err(e) => return Err(e.to_string()),

@@ -1,10 +1,16 @@
+#[cfg(windows)]
+mod windows_host;
+#[cfg(unix)]
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-use std::process::{Command, Stdio};
+#[cfg(unix)]
+use std::process::Stdio;
+#[cfg(unix)]
 use std::time::{Duration, Instant};
 use tauri::Manager;
 mod entry;
 mod onboarding;
 mod playback_output;
+mod updater;
 use entry::{EntryRuntime, entry_action, entry_focus, entry_layout, entry_mode, entry_snapshot};
 use std::sync::{Arc, Mutex};
 static PRIVACY_REQUEST: Mutex<()> = Mutex::new(());
@@ -53,6 +59,7 @@ async fn core_request(
 
 #[tauri::command]
 async fn cleanup_request(
+    app: tauri::AppHandle,
     request: loppi_protocol::Request,
 ) -> Result<loppi_protocol::Response, String> {
     let loppi_protocol::Request::ExecuteCleanup {
@@ -61,9 +68,19 @@ async fn cleanup_request(
     else {
         return Err("cleanup request required".into());
     };
+    #[cfg(windows)]
+    if *confirmed_all_data {
+        use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+        let confirmed=tauri::async_runtime::spawn_blocking(move||app.dialog().message("将永久清除选中范围的录音、文字、笔记、截图和相关声纹样例。已经导出或发送给服务商的副本无法从这里撤回。")
+            .title("清除全部数据").kind(MessageDialogKind::Warning).buttons(MessageDialogButtons::OkCancelCustom("清除全部数据".into(),"取消".into())).blocking_show()).await.map_err(|e|e.to_string())?;
+        if !confirmed {
+            return Err("已取消清除全部数据".into());
+        }
+    }
+    #[cfg(unix)]
     if *confirmed_all_data {
         let confirmed = tauri::async_runtime::spawn_blocking(|| {
-            std::process::Command::new("/usr/bin/osascript")
+            loppi_protocol::platform::command("/usr/bin/osascript")
                 .args(["-e", "display dialog \"将永久清除选中范围的录音、文字、笔记、截图和相关声纹样例。已经导出或发送给服务商的副本无法从这里撤回。\" with title \"清除全部数据\" buttons {\"取消\", \"清除全部数据\"} default button \"取消\" cancel button \"取消\" with icon caution"])
                 .output()
                 .is_ok_and(|result| result.status.success() && String::from_utf8_lossy(&result.stdout).contains("button returned:清除全部数据"))
@@ -88,8 +105,8 @@ async fn agent_access_info() -> Result<serde_json::Value, String> {
         let cli = executable
             .parent()
             .ok_or("missing app directory")?
-            .join("loppi");
-        let mut info = loppi_protocol::agent_assets::info(&cli);
+            .join(loppi_protocol::platform::executable("loppi"));
+        let mut info = loppi_protocol::agent_assets::info(&cli)?;
         info["status"] = loppi_protocol::context::execute(loppi_protocol::context::Query::Status(
             loppi_protocol::context::StatusArgs::default(),
         ));
@@ -101,29 +118,36 @@ async fn agent_access_info() -> Result<serde_json::Value, String> {
 
 #[tauri::command]
 async fn copy_agent_text(text: String) -> Result<(), String> {
-    if text.len() > 32768 {
-        return Err("copy text too large".into());
+    #[cfg(windows)]
+    {
+        return windows_host::copy_text(&text);
     }
-    tauri::async_runtime::spawn_blocking(move || {
-        use std::io::Write;
-        let mut child = Command::new("/usr/bin/pbcopy")
-            .stdin(Stdio::piped())
-            .spawn()
-            .map_err(|e| e.to_string())?;
-        child
-            .stdin
-            .take()
-            .ok_or("clipboard unavailable")?
-            .write_all(text.as_bytes())
-            .map_err(|e| e.to_string())?;
-        if child.wait().map_err(|e| e.to_string())?.success() {
-            Ok(())
-        } else {
-            Err("clipboard unavailable".into())
+    #[cfg(unix)]
+    {
+        if text.len() > 32768 {
+            return Err("copy text too large".into());
         }
-    })
-    .await
-    .map_err(|e| e.to_string())?
+        tauri::async_runtime::spawn_blocking(move || {
+            use std::io::Write;
+            let mut child = loppi_protocol::platform::command("/usr/bin/pbcopy")
+                .stdin(Stdio::piped())
+                .spawn()
+                .map_err(|e| e.to_string())?;
+            child
+                .stdin
+                .take()
+                .ok_or("clipboard unavailable")?
+                .write_all(text.as_bytes())
+                .map_err(|e| e.to_string())?;
+            if child.wait().map_err(|e| e.to_string())?.success() {
+                Ok(())
+            } else {
+                Err("clipboard unavailable".into())
+            }
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    }
 }
 
 #[tauri::command]
@@ -170,17 +194,27 @@ struct PrivacyStatus {
     microphone: i32,
     microphone_available: bool,
     screen_and_system_audio: i32,
+    #[cfg(windows)]
+    system_audio: i32,
     tap_required: bool,
     tap_ready: bool,
 }
 
 #[tauri::command]
-fn privacy_status() -> PrivacyStatus {
+async fn privacy_status() -> Result<PrivacyStatus, String> {
+    tauri::async_runtime::spawn_blocking(privacy_snapshot)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+fn privacy_snapshot() -> PrivacyStatus {
     let tap_required = unsafe { loppi_tap_required() != 0 };
     PrivacyStatus {
         microphone: unsafe { loppi_microphone_authorization_status() },
         microphone_available: unsafe { loppi_microphone_available() != 0 },
         screen_and_system_audio: unsafe { loppi_screen_authorization_status() },
+        #[cfg(windows)]
+        system_audio: windows_host::system_audio_status(),
         tap_required,
         tap_ready: tap_required
             && loppi_protocol::data_dir()
@@ -202,90 +236,99 @@ async fn request_microphone_permission() -> Result<i32, String> {
 
 #[tauri::command]
 async fn request_system_audio_permission() -> Result<i32, String> {
-    tauri::async_runtime::spawn_blocking(|| {
-        let _guard = PRIVACY_REQUEST
-            .try_lock()
-            .map_err(|_| "另一项授权正在进行，请完成后重试")?;
-        if unsafe { loppi_tap_required() } == 0 {
-            return Ok(unsafe { loppi_request_screen_authorization() });
-        }
-        let directory = loppi_protocol::data_dir()?;
-        std::fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
-        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))
-            .map_err(|error| error.to_string())?;
-        let marker = directory.join("tap-ready-v1");
-        // A previous successful setup is historical evidence, not a live TCC
-        // grant. Revalidation must clear it before making another attempt.
-        match std::fs::remove_file(&marker) {
-            Ok(()) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => return Err(error.to_string()),
-        }
-        // Apple's first Tap read prompts for AudioCapture permission. Run it
-        // from the visible app, not the login item, and never persist readiness
-        // until the signed helper has actually returned audio frames.
-        let binary = std::env::current_exe().map_err(|error| error.to_string())?;
-        let contents = binary
-            .parent()
-            .and_then(|path| path.parent())
-            .ok_or("cannot locate loppi application contents")?;
-        let helper = contents.join("Library/LoginItems/LoppiCore.app/Contents/MacOS/loppi-core");
-        let mut child = Command::new(&helper)
-            .args([
-                "probe-system",
-                "1",
-                "--parent-pid",
-                &std::process::id().to_string(),
-            ])
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .map_err(|error| format!("cannot start system audio authorization: {error}"))?;
-        let deadline = Instant::now() + Duration::from_secs(75);
-        loop {
-            match child.try_wait() {
-                Ok(Some(status)) if status.success() => break,
-                Ok(Some(status)) => {
-                    return Err(format!("电脑声音授权未完成（{status}）"));
-                }
-                Ok(None) if Instant::now() < deadline => {
-                    std::thread::sleep(Duration::from_millis(100));
-                }
-                Ok(None) => {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    return Err("电脑声音授权等待超时；请在系统设置中允许后重试".to_owned());
-                }
-                Err(error) => {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    return Err(format!("电脑声音授权检查失败：{error}"));
+    #[cfg(windows)]
+    {
+        return windows_host::probe_system().await;
+    }
+    #[cfg(unix)]
+    {
+        tauri::async_runtime::spawn_blocking(|| {
+            let _guard = PRIVACY_REQUEST
+                .try_lock()
+                .map_err(|_| "另一项授权正在进行，请完成后重试")?;
+            if unsafe { loppi_tap_required() } == 0 {
+                return Ok(unsafe { loppi_request_screen_authorization() });
+            }
+            let directory = loppi_protocol::data_dir()?;
+            std::fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+            loppi_protocol::platform::set_mode(&directory, 0o700)
+                .map_err(|error| error.to_string())?;
+            let marker = directory.join("tap-ready-v1");
+            // A previous successful setup is historical evidence, not a live TCC
+            // grant. Revalidation must clear it before making another attempt.
+            match std::fs::remove_file(&marker) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.to_string()),
+            }
+            // Apple's first Tap read prompts for AudioCapture permission. Run it
+            // from the visible app, not the login item, and never persist readiness
+            // until the signed helper has actually returned audio frames.
+            let binary = std::env::current_exe().map_err(|error| error.to_string())?;
+            let contents = binary
+                .parent()
+                .and_then(|path| path.parent())
+                .ok_or("cannot locate loppi application contents")?;
+            let helper =
+                contents.join("Library/LoginItems/LoppiCore.app/Contents/MacOS/loppi-core");
+            let mut child = loppi_protocol::platform::command(&helper)
+                .args([
+                    "probe-system",
+                    "1",
+                    "--parent-pid",
+                    &std::process::id().to_string(),
+                ])
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .map_err(|error| format!("cannot start system audio authorization: {error}"))?;
+            let deadline = Instant::now() + Duration::from_secs(75);
+            loop {
+                match child.try_wait() {
+                    Ok(Some(status)) if status.success() => break,
+                    Ok(Some(status)) => {
+                        return Err(format!("电脑声音授权未完成（{status}）"));
+                    }
+                    Ok(None) if Instant::now() < deadline => {
+                        std::thread::sleep(Duration::from_millis(100));
+                    }
+                    Ok(None) => {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        return Err("电脑声音授权等待超时；请在系统设置中允许后重试".to_owned());
+                    }
+                    Err(error) => {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        return Err(format!("电脑声音授权检查失败：{error}"));
+                    }
                 }
             }
-        }
-        let pending = directory.join(format!("tap-ready-v1.{}.tmp", std::process::id()));
-        let result = (|| {
-            use std::io::Write;
-            let mut file = std::fs::OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .mode(0o600)
-                .open(&pending)
-                .map_err(|error| error.to_string())?;
-            file.write_all(b"foreground Tap probe succeeded\n")
-                .and_then(|_| file.sync_all())
-                .map_err(|error| error.to_string())?;
-            std::fs::rename(&pending, &marker).map_err(|error| error.to_string())
-        })();
-        if result.is_err() {
-            let _ = std::fs::remove_file(pending);
-        }
-        result.map(|()| 1)
-    })
-    .await
-    .map_err(|error| error.to_string())?
+            let pending = directory.join(format!("tap-ready-v1.{}.tmp", std::process::id()));
+            let result = (|| {
+                use std::io::Write;
+                let mut file = loppi_protocol::platform::OpenOptions::new()
+                    .write(true)
+                    .create(true)
+                    .truncate(true)
+                    .mode(0o600)
+                    .open(&pending)
+                    .map_err(|error| error.to_string())?;
+                file.write_all(b"foreground Tap probe succeeded\n")
+                    .and_then(|_| file.sync_all())
+                    .map_err(|error| error.to_string())?;
+                loppi_protocol::platform::rename(&pending, &marker)
+                    .map_err(|error| error.to_string())
+            })();
+            if result.is_err() {
+                let _ = std::fs::remove_file(pending);
+            }
+            result.map(|()| 1)
+        })
+        .await
+        .map_err(|error| error.to_string())?
+    }
 }
 
 #[tauri::command]
@@ -312,7 +355,7 @@ fn register_login_item() -> Result<i32, String> {
         Ok(unsafe { loppi_agent_status() })
     } else {
         Err(format!(
-            "login item registration failed with macOS code {result}"
+            "login item registration failed with OS code {result}"
         ))
     }
 }
@@ -323,9 +366,7 @@ fn unregister_login_item() -> Result<i32, String> {
     if result == 0 {
         Ok(unsafe { loppi_agent_status() })
     } else {
-        Err(format!(
-            "login item removal failed with macOS code {result}"
-        ))
+        Err(format!("login item removal failed with OS code {result}"))
     }
 }
 
@@ -344,9 +385,28 @@ fn show_exit_error(error: &str, native_exit: bool) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    #[cfg(windows)]
+    if let Err(error) = windows_host::initialize() {
+        show_exit_error(&error, true);
+        return;
+    }
+    let builder = tauri::Builder::default();
+    #[cfg(windows)]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _, _| {
+        if let Some(w) = app.get_webview_window("main") {
+            let _ = w.show();
+            let _ = w.set_focus();
+        }
+    }));
+    builder
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(updater::Updates::default())
         .setup(|app| {
+            #[cfg(target_os = "windows")]
+            if let Some(main) = app.get_webview_window("main") {
+                windows_host::style_main_window(&main).map_err(std::io::Error::other)?;
+            }
             app.manage(onboarding::Preferences::new(
                 std::env::var_os("LOPPI_DATA_DIR")
                     .map(|p| std::path::PathBuf::from(p).join("gui"))
@@ -387,6 +447,8 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            updater::check_update,
+            updater::install_update,
             build_info,
             agent_access_info,
             copy_agent_text,
@@ -440,6 +502,7 @@ pub fn run() {
                     }
                 }
             }
+            #[cfg(target_os = "macos")]
             tauri::RunEvent::Reopen { .. } => {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.show();

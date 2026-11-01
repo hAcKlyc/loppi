@@ -85,13 +85,10 @@
 	border-radius: 0 0 var(--entry-top-radius) var(--entry-top-radius);
 	display: flex;
 	align-items: flex-start;
-	padding: calc(var(--entry-band) + var(--space-9))
-		calc(var(--space-7) + var(--space-1)) calc(var(--space-9) + var(--space-1))
-		var(--space-8);
-	gap: calc(var(--space-8) + var(--space-1));
+	padding: 0;
 }
-.notch-rabbit-space {
-	flex: 0 0 calc(var(--space-14) + var(--space-4));
+.entry-root[data-platform="windows"] .notch-surface {
+	border-radius: var(--entry-top-radius);
 }
 .notch-rabbit-control {
 	width: var(--notch-rabbit-control-width);
@@ -117,30 +114,38 @@
 .notch-rabbit-control:focus-visible .rabbit-control-overlay {
 	opacity: 1;
 }
+.notch-wordmark {
+	position: absolute;
+	/* Native rabbit center: 16 + 96 / 2 = 64. */
+	left: var(--space-14);
+	transform: translateX(-50%);
+	top: calc((var(--entry-band) - var(--space-8)) / 2);
+	width: calc(var(--space-12) - var(--space-2));
+	height: var(--space-8);
+	object-fit: contain;
+}
+.notch-tools {
+	position: absolute;
+	left: calc(var(--space-14) + var(--space-14));
+	right: var(--space-8);
+	top: calc(var(--entry-band) + var(--space-6));
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-6);
+}
 .notch-actions {
 	display: flex;
 	gap: var(--space-4);
-	align-items: center;
-	margin-top: 0;
-	flex: 0 0
-		calc(
-			var(--space-14) +
-			calc(
-				var(--space-14) +
-				calc(var(--space-14) + calc(var(--space-14) + var(--space-9)))
-			)
-		);
 }
 .notch-actions button {
 	display: flex;
 	flex: 1;
 	min-width: 0;
-	height: var(--notch-actions-button-height);
-	flex-direction: column;
+	height: calc(var(--space-12) - var(--space-2));
 	align-items: center;
 	justify-content: center;
-	gap: calc(var(--space-4) + var(--stroke-hairline));
-	border-radius: var(--radius-lg);
+	gap: var(--space-4);
+	border-radius: var(--radius-md);
 	color: var(--entry-text);
 	background: var(--entry-action);
 	transition: background var(--motion-fast);
@@ -167,11 +172,13 @@
 	line-height: calc(var(--space-7) + var(--space-1));
 	padding: 0;
 }
-.notch-surface:not(.comment-surface) > .notch-actions,
-.notch-surface:not(.comment-surface) > .entry-detail {
+.notch-surface > .notch-tools,
+.notch-surface > .notch-wordmark,
+.notch-surface > .entry-detail {
 	visibility: hidden;
 }
-.notch-surface[data-ready="true"] > .notch-actions,
+.notch-surface[data-ready="true"] > .notch-tools,
+.notch-surface[data-ready="true"] > .notch-wordmark,
 .notch-surface[data-ready="true"] > .entry-detail {
 	visibility: visible;
 	animation: notch-content-in var(--motion-instant) var(--ease-out) both;
@@ -184,69 +191,46 @@
 		opacity: 1;
 	}
 }
-.comment-surface {
-	padding: calc(var(--entry-band) + calc(var(--space-7) + var(--space-1)))
-		var(--space-8) var(--space-7);
-}
 .notch-composer {
+	position: relative;
 	width: 100%;
 }
-.entry-root .notch-composer textarea {
+.entry-root .notch-composer input {
 	display: block;
-	resize: none;
 	width: 100%;
-	height: var(--entry-root-notch-composer-textarea-height);
-	min-height: var(--entry-root-notch-composer-textarea-min-height);
-	max-height: var(--entry-root-notch-composer-textarea-max-height);
-	overflow-y: auto;
+	height: calc(var(--space-12) - var(--space-2));
 	border: var(--stroke-hairline) solid transparent;
-	border-radius: calc(var(--radius-md) + var(--space-1));
-	padding: var(--space-5) var(--space-6);
+	border-radius: var(--radius-md);
+	padding: 0 var(--space-12) 0 var(--space-6);
 	background: var(--entry-action);
 	color: var(--entry-text);
 	outline: none;
 	box-shadow: none;
-	line-height: calc(var(--space-8) + var(--stroke-hairline));
-	font-size: var(--type-control);
+	font-size: var(--type-caption);
 	user-select: text;
 }
-.entry-root .notch-composer textarea:focus {
-	outline: var(--space-1) solid var(--entry-accent);
-	outline-offset: var(--stroke-hairline);
-	border-color: var(--entry-comment-focus-border);
+.entry-root .notch-composer input:focus {
+	border-color: var(--entry-accent);
+	outline: none;
 	box-shadow: none;
 }
-.notch-composer textarea::placeholder {
+.notch-composer input::placeholder {
 	color: var(--entry-text-secondary);
 }
-.comment-footer {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	margin-top: calc(var(--space-3) + var(--stroke-hairline));
-	color: var(--entry-text-secondary);
-	font-size: var(--type-micro);
-	min-height: var(--space-9);
-}
-.comment-footer button {
-	background: var(--entry-action);
-	color: var(--entry-accent);
+.entry-root .comment-send {
+	position: absolute;
+	right: var(--space-2);
+	top: var(--space-2);
+	width: var(--space-10);
+	height: calc(var(--space-10) + var(--space-2));
+	padding: 0;
 	border-radius: var(--radius-sm);
-	height: var(--space-9);
-	padding: 0 var(--space-6);
-	font-size: var(--type-caption);
-}
-.comment-footer button:hover:not(:disabled) {
-	background: var(--entry-action-hover);
-}
-.comment-footer-actions {
-	display: flex;
-	align-items: center;
-	gap: var(--space-4);
-}
-.comment-footer .comment-cancel {
 	background: transparent;
-	color: var(--entry-text-secondary);
+	color: var(--entry-accent);
+	font-size: var(--type-control);
+}
+.entry-root .comment-send:hover:not(:disabled) {
+	background: var(--entry-action-hover);
 }
 .entry-feedback {
 	position: absolute;
@@ -333,7 +317,8 @@
 	.entry-root.entry-root * {
 		transition: none;
 	}
-	.entry-root .notch-surface > .notch-actions,
+	.entry-root .notch-surface > .notch-tools,
+	.entry-root .notch-surface > .notch-wordmark,
 	.entry-root .notch-surface > .entry-detail {
 		animation: none;
 	}
@@ -355,10 +340,6 @@
 .notch-surface[data-view="collapsed"] {
 	pointer-events: none;
 	padding: 0;
-}
-.entry-top .entry-rabbit[data-view="comment"] {
-	visibility: hidden;
-	pointer-events: none;
 }
 .entry-top .entry-rabbit:not([data-view="panel"]) .rabbit-control-overlay,
 .entry-top .entry-rabbit[data-ready="false"] .rabbit-control-overlay {

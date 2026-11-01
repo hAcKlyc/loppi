@@ -1,22 +1,24 @@
 pub mod agent_assets;
 pub mod context;
 mod diagnostic;
+pub mod ipc;
 mod lifecycle;
+pub mod platform;
 pub mod vocabulary;
 pub use diagnostic::*;
-pub use lifecycle::quit_gui_core;
+use ipc::Stream as UnixStream;
+pub use lifecycle::{quit_gui_core, resume_gui_core};
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs;
 use std::io::{Read, Write};
-use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::thread;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
-pub const PROTOCOL_VERSION: u32 = 24;
+pub const PROTOCOL_VERSION: u32 = 25;
 const MAX_RESPONSE_BYTES: u64 = 48 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -131,6 +133,10 @@ pub enum Request {
     },
     CalendarDays {
         boundaries: Vec<i64>,
+    },
+    CalendarAdjacent {
+        from_ms: i64,
+        to_ms: i64,
     },
     EventDetail {
         event_id: Uuid,
@@ -358,6 +364,7 @@ impl Request {
             Self::RebuildUnderstanding { .. } => "rebuild_understanding",
             Self::Timeline { .. } => "timeline",
             Self::CalendarDays { .. } => "calendar_days",
+            Self::CalendarAdjacent { .. } => "calendar_adjacent",
             Self::EventDetail { .. } => "event_detail",
             Self::RangeDetail { .. } => "range_detail",
             Self::PlaybackChunk { .. } => "playback_chunk",
@@ -812,6 +819,11 @@ pub enum Response {
         id: Uuid,
         days: Vec<i64>,
     },
+    CalendarAdjacent {
+        id: Uuid,
+        newer_ms: Option<i64>,
+        older_ms: Option<i64>,
+    },
     Event {
         id: Uuid,
         event: TimelineItem,
@@ -1056,9 +1068,11 @@ pub fn data_dir() -> Result<PathBuf, String> {
     if let Some(path) = env::var_os("LOPPI_DATA_DIR") {
         return Ok(PathBuf::from(path));
     }
-    dirs::data_dir()
-        .map(|base| base.join("loppi"))
-        .ok_or_else(|| "cannot locate the user's application data directory".to_owned())
+    #[cfg(windows)]
+    let directory = dirs::data_local_dir().map(|base| base.join("app.loppi.core"));
+    #[cfg(unix)]
+    let directory = dirs::data_dir().map(|base| base.join("loppi"));
+    directory.ok_or_else(|| "cannot locate the user's application data directory".to_owned())
 }
 
 pub fn socket_path() -> Result<PathBuf, String> {
@@ -1158,6 +1172,7 @@ fn send_with_policy(
         | Response::CloudTasks { id, .. }
         | Response::Timeline { id, .. }
         | Response::CalendarDays { id, .. }
+        | Response::CalendarAdjacent { id, .. }
         | Response::Event { id, .. }
         | Response::Accepted { id, .. }
         | Response::TranscriptionQueued { id, .. }
@@ -1207,7 +1222,7 @@ fn wait_for_core(socket: &Path) -> Result<UnixStream, String> {
 
 fn start_core_on_demand() -> Result<(), String> {
     let path = core_binary_path()?;
-    Command::new(path)
+    crate::platform::command(path)
         .arg("serve")
         .arg("--on-demand")
         .stdin(Stdio::null())
@@ -1230,7 +1245,7 @@ fn core_binary_path() -> Result<PathBuf, String> {
     if installed.is_file() {
         return fs::canonicalize(installed).map_err(|error| error.to_string());
     }
-    let development = sibling.join("loppi-core");
+    let development = sibling.join(platform::executable("loppi-core"));
     if development.is_file() {
         return Ok(development);
     }
@@ -1401,6 +1416,33 @@ mod tests {
         assert!(
             matches!(serde_json::from_value::<Response>(serde_json::to_value(response).unwrap()).unwrap(), Response::CalendarDays { days, .. } if days == vec![0])
         );
+        let request = Request::CalendarAdjacent {
+            from_ms: 0,
+            to_ms: 82_800_000,
+        };
+        assert_eq!(request.name(), "calendar_adjacent");
+        assert!(matches!(
+            serde_json::from_value::<Request>(serde_json::to_value(request).unwrap()).unwrap(),
+            Request::CalendarAdjacent {
+                from_ms: 0,
+                to_ms: 82_800_000
+            }
+        ));
+        let response = Response::CalendarAdjacent {
+            id: Uuid::new_v4(),
+            newer_ms: None,
+            older_ms: Some(-1),
+        };
+        let wire = serde_json::to_value(response).unwrap();
+        assert!(wire["newer_ms"].is_null());
+        assert!(matches!(
+            serde_json::from_value::<Response>(wire).unwrap(),
+            Response::CalendarAdjacent {
+                newer_ms: None,
+                older_ms: Some(-1),
+                ..
+            }
+        ));
     }
 }
 
