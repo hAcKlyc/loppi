@@ -45,3 +45,4 @@ updated: 2026-11-02
 
 - 2026-11-02：main正式发行工作流、完整附件/远端/匿名地址验证与loppi专用skill已实现。actionlint1.7.12通过，21项版本/签名/资源/流程回归通过，类型/格式与技能frontmatter/链接检查通过。未修改仓库可见性、未上传Secrets、未触发远端workflow/发行；首次真实CI运行属于启用前置，不能冒充已执行。
 - 2026-11-02：fresh requirements通过并完成三个技能演练；adversarial发现长时gh watch输出可能超过默认缓冲，修复为CLI边界流式输出，2MiB回归与原reviewer定向复核通过；fresh architecture最终PASS。修正开发指南中“所有CI均无签名凭据”的旧陈述，区分普通Verify与main发行。记录见specs/research/evidence/2026-11-02-actions-release/review.md。本devplan仅完成流程编写，真实CI启用条件和自动更新真机验收仍需在正式发行前关闭。
+- 2026-11-02：流程与技能提交`7701bf016f45471273c88eec516c502b8514d372`。仅纳入本任务拥有的差异，共享工作区其它改动及其暂存状态均保留；既有未跟踪开发指南中的一句纠正随其原任务保留。用户要求的0.1.19 ARM64验收DMG已完成签名、公证、模型烟测与拷贝后完整性/更新签名复核，详见specs/research/2026-11-02-release-0.1.19.md。
