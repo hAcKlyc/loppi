@@ -63,7 +63,7 @@ export function writePlatformManifest({ root, artifact, version, source, targets
   return manifest;
 }
 
-export function mergeManifests(paths, { version, source, notes = '', pubkey }) {
+export function mergeManifests(paths, { version, source, notes = '', pubkey, pubDate = new Date().toISOString() }) {
   const entries = {};
   const uploads = new Map();
   for (const path of paths) {
@@ -88,5 +88,5 @@ export function mergeManifests(paths, { version, source, notes = '', pubkey }) {
     }
   }
   if (platforms.some(target => !entries[target])) throw new Error('Release needs both macOS architectures and Windows x64');
-  return { manifest: { version, notes, pub_date: new Date().toISOString(), platforms: entries }, uploads: [...uploads.values()] };
+  return { manifest: { version, notes, pub_date: pubDate, platforms: entries }, uploads: [...uploads.values()] };
 }

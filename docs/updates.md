@@ -41,18 +41,55 @@ node scripts/publish_update.mjs /absolute/release-notes.txt \
 
 脚本核对三个平台齐全、同一源码/版本、文件大小/哈希、GitHub 版本化地址、更新签名与签名中的版本，生成 `build/releases/<version>/latest.json`。平台键为 `darwin-aarch64`、`darwin-x86_64`、`windows-x86_64`；签名字段是 `.sig` 文件内容。客户端也启用了签名版本绑定，不能将旧的已签名包配上新版本号来安装。
 
-## 上传和发布
+## GitHub Actions 正式发行
 
-先按仓库发行流程建立 `v<version>` 标签并推送，创建对应的 GitHub **草稿 Release**。标签必须解析到构建源码提交。完成三平台验收后，使用已登录的 GitHub CLI 上传：
+验收在 `dev`，正式发布在 `main`。`.github/workflows/release.yml` 对 main push 自动执行；手动重跑也只接受 main，不在 PR、dev 或 fork 中使用发行凭据。
+
+1. 在 dev 准备新版本并同步现有 package、Cargo、Tauri、Plist 与锁文件，按上一公开版本更新带日期的 CHANGELOG，完成适用验收及该 dev SHA 的 Verify。
+2. 合入并推送 main。Release 检查全部版本源，等待 **同一个 main SHA** 的 Verify 成功。已经公开的版本直接跳过，不重建、不覆盖。
+3. Actions 使用 `macos-15`（ARM）、`macos-15-intel`（Intel）和 `windows-2025-vs2026`（x64）调用原有正式构建入口。Mac 完成 Developer ID 签名、公证和装订；三个平台用同一更新私钥签名。
+4. 三个构建全部成功后，统一验证源码、版本、更新签名、Mac DMG、报告和文件哈希；生成完整附件及 latest.json。CI 此时才创建新版本的 annotated tag 和内部草稿，将全部附件上传并核对。
+5. 自动公开 Release、设为 Latest，再以不携带鉴权的 HTTPS 请求核对固定 latest.json。main 不增加人工草稿确认步骤；内部草稿只是上传过程的中间态。
+
+本地发布协作入口为 [merge-release](../.agents/skills/merge-release/SKILL.md)。用户要求「合并发布」后，Agent 负责 dev 版本/文档/验收、合入 main、跟踪精确 SHA 的 Release 并汇总实际结果；不要再抢先在本地创建公开空 Release。
+
+### GitHub Secrets
+
+在 `hAcKlyc/loppi` 的 Actions Secrets 中配置以下内容。当前工作仅提供仓库配置，没有上传这些凭据，也没有更改仓库可见性。
+
+| 名称 | 内容 |
+| --- | --- |
+| `TAURI_SIGNING_PRIVATE_KEY` | 已有 loppi 更新私钥的内容；三个平台使用同一把，不能重新生成替换已有公钥 |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | 该密钥的密码；无密码时可留空 |
+| `APPLE_CERTIFICATE_P12` | 含 Developer ID Application 证书及对应私钥的 P12，转为 base64；只导出本应用需要的身份 |
+| `APPLE_CERTIFICATE_PASSWORD` | P12 导出密码 |
+| `APPLE_API_KEY` | App Store Connect API Key ID |
+| `APPLE_API_ISSUER` | 团队 Key 的 Issuer ID；个人 Key 留空 |
+| `APPLE_API_PRIVATE_KEY` | 对应 `.p8` 私钥的完整文本 |
+
+P12 导入临时钥匙串，公证私钥只写入 runner 临时目录并在结束时移除；不会上传到 Actions artifacts 或 Release。仅最终发布 job 使用 contents:write，其余 job 只读。Windows 当前仍无 Authenticode 证书，构建报告继续如实标记 unsigned；Tauri 更新签名独立验证，不能称为 Windows 已完成代码签名。
+
+公开更新要求仓库可被匿名访问。私有仓库也能使用 Actions，但当前固定更新地址没有私人访问 token；新版本的正式匿名发行会在私有状态下被阻止，不会由脚本自行公开仓库。GitHub 标准 runner 的可用标签见 [官方说明](https://docs.github.com/en/actions/how-tos/write-workflows/choose-where-workflows-run/choose-the-runner-for-a-job)。
+
+首次启用需要实际验证 runner 的 SDK/锁定资源及签名凭据：Mac 使用 Xcode 26.0.1；Windows 的 VC runtime 按 `config/windows-assets.json` 的版本和精确哈希检查。托管镜像不再提供该锁定版本时必须据实际来源更新并验证资源配置，流程会报错阻止发行，不会自动放宽哈希或混入其它版本。首次真实 Actions 尚未执行，不能把本地离线测试称为远端发行成功。
+
+### 附件与重试
+
+公开附件包括两份 Mac DMG、三平台更新资源及 `.sig`、按平台唯一命名的三个构建报告、`SHA256SUMS` 和 `latest.json`。全局校验和覆盖所有其它公开附件。
 
 ```sh
-node scripts/publish_update.mjs --upload-draft /absolute/release-notes.txt \
+# 本地准备完整资源，原有参数形式继续有效
+node scripts/publish_update.mjs /absolute/release-notes.txt \
   build/releases/<version>/macos-arm64/updater.json \
   build/releases/<version>/macos-x86_64/updater.json \
   build/releases/<version>/windows-x64/updater.json
 ```
 
-该入口仅上传到已有草稿，不创建或修改公开版本，不自动发布，也不覆盖同名附件。首次安装包、构建报告和校验和继续按仓库现有发行流程上传。全部附件完整并关闭实机门槛后再发布草稿、设为 Latest，客户端才会通过固定地址看到更新。后续版本同样保留附件名 `latest.json`，其内部下载 URL 固定到本次 `v<version>`。
+输出在 `build/releases/<version>/github/`；清单另保留原来的 `build/releases/<version>/latest.json`。发布日期来自源码提交，重复准备不会随当前时间改变清单。每个平台目录需要完整的 `release-info.json`；Mac 还必须有报告中一致的 DMG。
+
+本地辅助模式为 `--upload-draft`、`--verify-draft`、`--publish`、`--verify-published`，后面仍接说明文件和全部平台清单。默认只准备文件；远端写入模式要求干净源码。它们复用相同的完整资源验证，主要用于同一发行源码工作树的重试/只读复核，常规 main 发布由 Actions 统一负责。
+
+重跑失败 job 时，已存在且大小/摘要完全一致的草稿附件会复用；不同字节或未知附件会阻止发行，不覆盖。如果重新构建导致同版本草稿字节变化，应明确处理未公开草稿或使用新版本，不能覆盖公开版本。若 Release 已公开而最后匿名地址检查因网络/传播失败，用相同 source 和该 run 的原平台资源执行 `--verify-published`；不删除已公开版本来重试。
 
 ## 验证
 

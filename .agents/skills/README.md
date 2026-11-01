@@ -11,7 +11,8 @@
 | [review-requirements](review-requirements/SKILL.md) | 需求符合性与验收证据审查 |
 | [review-adversarial](review-adversarial/SKILL.md) | 故障路径、并发、资源与生命周期审查 |
 | [review-architecture](review-architecture/SKILL.md) | 最终架构、职责归属与复杂度审查 |
+| [merge-release](merge-release/SKILL.md) | dev 验收后合入 main，由 Actions 自动构建三个平台、签名并发布完整更新资源 |
 
-调用关系：`prd-discuss → prd-writer → start-dev → cross-review-code`；审查协调器先执行 requirements / adversarial，再执行 architecture。
+调用关系：`prd-discuss → prd-writer → start-dev → cross-review-code → dev 验收 → merge-release`；审查协调器先执行 requirements / adversarial，再执行 architecture；正式发行由 main 上的 Release Actions 执行。
 
 本次仅复制技能，未启动开发或审查流程。正文保留了 MyAgents 的名称、架构文档路径、构建命令和示例；这些不是 loppi 已存在的实现或工具链。正式使用前，应按 loppi 的实际项目指令与文件核对并适配，不能为满足源项目示例而引入其架构。loppi 当前 PRD 仍为 draft，复制技能不改变其就绪状态。
