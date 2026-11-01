@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: implemented
 updated: 2026-11-02
 ---
 # 词条紧凑单行列表
@@ -39,7 +39,9 @@ updated: 2026-11-02
 - 验收：静态/build/设计资产、双浏览器39项原回归、40条列表两尺寸检查所有行及外框radius0、border0、无横向溢出；截图确认，悬停与编辑入口保留。源码仅CSS，不重测录音/桥接/模型；无mandatory OS遗留，主观观感advisory。
 - 三路fresh review结束后显式提交和收尾；新增契约不回审此前已交付批次。
 - [x] 扁平化样式与验证
-- [ ] 审查提交与收尾
+- [x] 审查提交与收尾
 - 2026-11-02：移除两处圆角与行间border规则；静态/build/设计8项PASS，WebKit/Chrome各39项回归、两尺寸40行零圆角零分隔线无溢出及悬停/编辑PASS；requirements/adversarial均PASS，无需修复。
 
 - 2026-11-02：最终architecture PASS。追加修订全契约与原子门禁通过，CSS自验证后未再变化，无新机制或mandatory缺口；仅显式范围提交。
+
+- 2026-11-02：扁平化修订提交b775364dc5e49ddc42d4c10f362517de533dc5bb；所有适用验收与三路review通过，状态implemented。advisory观感：列表无圆角/行线、悬停可辨且点击编辑不变；对应检查已完成。其他共享改动保留。
