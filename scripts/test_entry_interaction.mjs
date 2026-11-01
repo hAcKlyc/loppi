@@ -9,7 +9,7 @@ import ts from 'typescript';
 const requireTest = createRequire(import.meta.url);
 const { JSDOM } = requireTest('jsdom');
 const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost/' });
-for (const name of ['window', 'document', 'HTMLElement', 'HTMLTextAreaElement', 'Event', 'MouseEvent', 'KeyboardEvent']) globalThis[name] = dom.window[name];
+for (const name of ['window', 'document', 'HTMLElement', 'HTMLTextAreaElement', 'HTMLInputElement', 'CompositionEvent', 'Event', 'MouseEvent', 'KeyboardEvent']) globalThis[name] = dom.window[name];
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 // JSDOM exposes custom properties rather than resolving CSS lengths. Resolve
 // only the numeric endpoint checked here; native/browser checks cover rendering.
@@ -36,6 +36,7 @@ registerHooks({
     return next(specifier, context);
   },
   load(url, context, next) {
+    if (url.endsWith('.svg')) return { format: 'module', source: `export default ${JSON.stringify(url)}`, shortCircuit: true };
     if (url.endsWith('.css')) return { format: 'module', source: '', shortCircuit: true };
     if (url.endsWith('/Rabbit.tsx')) return { format: 'module', source: 'export function Rabbit(){return null}', shortCircuit: true };
     if (/\.tsx?$/.test(url)) return {
@@ -64,7 +65,7 @@ mockIPC(async (command, args) => {
     if (mode === 'floating') return { width: 68, height: 68, band: 0, top_band: 0, top_shift: 0, rabbit_x: 8, rabbit_y: 8, menu_y: 8 };
     if (finishLayout && args.view === 'panel')
       await emit('loppi-entry-native', { kind: 8, value: 1, generation: args.generation });
-    return { width: args.view === 'collapsed' ? 44 : 412, height: args.view === 'collapsed' ? 32 : 160, band: 32, top_band: 32, top_shift: args.feedback ? 178 : 296, rabbit_x: 8, rabbit_y: 2, menu_y: 8 };
+    return { width: args.view === 'collapsed' ? 44 : 412, height: args.view === 'collapsed' ? 32 : 176, band: 32, top_band: 32, top_shift: args.feedback ? 178 : 296, rabbit_x: 8, rabbit_y: 2, menu_y: 8 };
   }
   if (command === 'entry_focus') { focus.push(args); return confirmFocus; }
   if (command === 'entry_action') { actions.push(args.action); return { outcome, message: 'simulated failure' }; }
@@ -95,66 +96,81 @@ try {
   await settle(() => emit('loppi-entry-native', { kind: 8, value: 1, generation: layouts.at(-1).generation }));
   assert.equal(panel().dataset.ready, 'true', 'matching native completion reveals content');
   finishLayout = true;
-  assert(!focus.some(call => call.acquire), 'hover never acquires app focus');
+  const editor = () => document.querySelector('input[aria-label="留下评论"]');
+  const enter = (options={}) => settle(() => editor().dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', keyCode:13, bubbles:true, cancelable:true, ...options})));
+  const type = value => settle(() => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(editor(), value);
+    editor().dispatchEvent(new Event('input', {bubbles:true}));
+  });
+  assert.equal(document.activeElement, editor(), 'hover focuses persistent one-line editor after completion and activation');
+  assert.equal(document.querySelectorAll('.notch-actions button').length, 2);
+  assert(document.querySelector('.notch-wordmark').getAttribute('src').includes('wordmark-reversed.svg'));
   await click(button('重点'));
   assert(!panel(), 'action immediately collapses');
-  assert.equal(document.querySelector('.entry-top .entry-rabbit'), persistentRabbit, 'rabbit keeps its DOM identity while closing');
-  assert(document.querySelector('[role=status]').textContent.includes('已标记'), 'confirmed feedback');
-  assert.equal(computedLeft(document.querySelector('[role=status]')), '8px', 'collapsed feedback retains the full-width endpoint');
-  // No kind 7 release: a direct/keyboard-generated click must override the guard.
+  assert.equal(document.querySelector('.entry-top .entry-rabbit'), persistentRabbit, 'rabbit keeps DOM identity');
+  assert.match(document.querySelector('[role=status]').textContent, /已标记/);
   await click(document.querySelector('.entry-rabbit'));
-  assert(panel(), 'explicit click reopens while inhibited');
-  assert.equal(computedLeft(document.querySelector('[role=status]')), '110px', 'expanded feedback retains its separate endpoint');
-  assert.equal(layouts.at(-1).suppress, false, 'native open is also unsuppressed');
+  assert(panel(), 'explicit click overrides inhibit');
   const count = layouts.length;
+  const acquisitions = focus.filter(call => call.acquire).length;
   await native(1, 1);
   assert.equal(layouts.length, count, 'repeated open is idempotent');
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 3300)); });
-  assert(!document.querySelector('[role=status]'), 'feedback expires');
-  assert(panel(), 'feedback expiry does not close the reopened menu');
+  assert(panel(), 'feedback expiry leaves panel open');
+  assert.equal(focus.filter(call => call.acquire).length, acquisitions, 'feedback layout never reacquires keyboard');
   await escape();
   await native(1, 1);
   assert(!panel(), 'residual hover cannot undo intentional dismissal');
   await native(7, 0);
-  await native(1, 1);
-  assert(panel(), 'fresh native entry reopens');
   confirmFocus = false;
-  await click(button('评论'));
+  await native(1, 1);
   const firstIntent = focus.at(-1).generation;
-  assert.notEqual(document.activeElement, document.querySelector('textarea'), 'unconfirmed activation does not focus editor');
-  await settle(() => emit('loppi-entry-native', { kind: 9, value: 1, generation: firstIntent }));
-  const text = document.querySelector('textarea');
-  assert.equal(document.activeElement, text, 'late actual activation focuses its editor');
-  await settle(() => {
-    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(text, '保留草稿');
-    text.dispatchEvent(new Event('input', { bubbles: true }));
-  });
-  await click(button('取消'));
+  assert.notEqual(document.activeElement, editor(), 'unconfirmed native activation cannot focus editor');
+  await settle(() => emit('loppi-entry-native', {kind:9,value:1,generation:firstIntent}));
+  assert.equal(document.activeElement, editor(), 'late actual activation focuses editor');
+  await type('保留草稿');
+  const beforeIME = actions.length;
+  await settle(() => editor().dispatchEvent(new CompositionEvent('compositionstart', {bubbles:true})));
+  await enter({isComposing:true});
+  await enter({keyCode:229});
+  assert.equal(actions.length,beforeIME,'IME confirmation never submits');
+  await settle(() => editor().dispatchEvent(new CompositionEvent('compositionend', {bubbles:true})));
+  await escape();
   await click(document.querySelector('.entry-rabbit'));
-  await click(button('评论'));
-  await settle(() => emit('loppi-entry-native', { kind: 9, value: 1, generation: firstIntent }));
-  assert.notEqual(document.activeElement, document.querySelector('textarea'), 'old focus confirmation cannot affect a new comment');
-  await settle(() => emit('loppi-entry-native', { kind: 9, value: 1, generation: focus.at(-1).generation }));
-  assert.equal(document.activeElement, document.querySelector('textarea'));
+  await settle(() => emit('loppi-entry-native', {kind:9,value:1,generation:firstIntent}));
+  assert.notEqual(document.activeElement, editor(), 'old focus cannot affect new panel');
+  await settle(() => emit('loppi-entry-native', {kind:9,value:1,generation:focus.at(-1).generation}));
+  assert.equal(document.activeElement,editor());
+  assert.equal(editor().value,'保留草稿','Escape preserves draft');
   confirmFocus = true;
-  assert.equal(document.querySelector('textarea').value, '保留草稿', 'cancel preserves draft');
   outcome = 'rejected';
-  await click(button('保存'));
-  assert(!panel(), 'failed action remains collapsed');
+  await enter();
+  assert(!panel(),'comment send collapses');
+  const firstComment=actions.at(-1);
+  assert.equal(firstComment.text,'保留草稿');
   await click(document.querySelector('.entry-rabbit'));
-  await click(button('评论'));
-  assert.equal(document.querySelector('textarea').value, '保留草稿', 'failure preserves draft');
-  const firstComment = actions.find(a => a.kind === 'comment');
-  outcome = 'confirmed';
-  await click(button('保存'));
-  assert.equal(actions.at(-1).anchor_ms, firstComment.anchor_ms, 'retry preserves comment anchor');
+  assert.equal(editor().value,'保留草稿','failure retains draft');
+  outcome='uncertain';
+  await enter();
+  const uncertainComment=structuredClone(actions.at(-1));
   await click(document.querySelector('.entry-rabbit'));
-  await click(button('评论'));
-  assert.equal(document.querySelector('textarea').value, '', 'confirmed save clears draft');
-  await click(button('取消'));
+  assert(editor().readOnly,'unconfirmed request cannot be edited');
+  assert.equal(editor().value,'保留草稿');
+  outcome='confirmed';
+  await click(document.querySelector('.comment-send'));
+  assert.deepEqual(actions.at(-1),uncertainComment,'uncertain retry uses identical request');
+  assert.equal(actions.at(-1).anchor_ms,firstComment.anchor_ms,'anchor survives failure/retry');
+  await click(document.querySelector('.entry-rabbit'));
+  assert.equal(editor().value,'','confirmed save clears draft');
+  await type('外部收起保留');
+  await native(2,0);
+  assert(!panel());
+  await click(document.querySelector('.entry-rabbit'));
+  assert.equal(editor().value,'外部收起保留','outside dismissal retains draft');
+  await escape();
   await settle(() => document.querySelector('.entry-rabbit').focus());
-  assert(panel(), 'explicit keyboard focus reopens after dismissal');
-  assert(document.activeElement.matches('.notch-rabbit-control'), 'focus moves off hidden trigger');
+  assert(panel(),'keyboard trigger reopens');
+  assert.equal(document.activeElement,editor(),'keyboard opening also focuses editor');
   mode = 'floating';
   await settle(() => emit('loppi-entry-snapshot', { sequence: 2, state: null, error: null, mode, appearance: 'sleeping', control: 'resume', detail: null, notice: null }));
   const rabbit = document.querySelector('.entry-rabbit');

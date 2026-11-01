@@ -29,18 +29,19 @@ static LoppiEntryGeometry topLayout(NSRect screen, double safeTop, NSRect left, 
   BOOL notch=safeTop>0 && !NSIsEmptyRect(left) && !NSIsEmptyRect(right) && NSMaxX(left)<NSMinX(right);
   double center=notch ? (NSMaxX(left)+NSMinX(right))/2 : NSMidX(screen);
   double rabbitCenter=notch ? NSMinX(right)+22 : center;
-  // The compact trigger needs room even on a plain display. Expanded content
-  // reserves only a real hardware obstruction, not a fictitious 32pt notch.
-  double band=view==0 ? MAX(32,notch ? safeTop : 0) : (notch ? safeTop : 0);
-  LoppiEntryGeometry g={0}; g.band=band; g.top_band=notch ? safeTop : 0;
+  // Keep the logical brand header separate from the physical obstruction used
+  // by the rabbit's animation path. The compact trigger retains its own room.
+  double physicalBand=notch ? safeTop : 0;
+  double band=view==0 ? MAX(32,physicalBand) : MAX(24,physicalBand);
+  LoppiEntryGeometry g={0}; g.band=band; g.top_band=physicalBand;
   g.top_shift=rabbitCenter-center+206-(feedback ? 140 : 22);
   if(view==0) {
     g.width=feedback ? 280 : 44; g.height=band+(feedback ? 48 : 0);
     g.rabbit_x=g.width/2-14; g.rabbit_y=(band-28)/2;
     *frame=NSMakeRect(rabbitCenter-g.width/2,NSMaxY(screen)-g.height,g.width,g.height);
   } else {
-    g.width=412; g.height=band+(view==2 ? 152 : 128)+(detail && view==1 ? 40 : 0);
-    g.rabbit_x=20; g.rabbit_y=band+24;
+    g.width=412; g.height=band+144+(detail && view==1 ? 40 : 0);
+    g.rabbit_x=16; g.rabbit_y=band+14;
     *frame=NSMakeRect(center-g.width/2,NSMaxY(screen)-g.height,g.width,g.height);
   }
   return g;
@@ -89,7 +90,7 @@ static BOOL roundedRegion(NSRect r, double radius, NSPoint p) {
   return pow(p.x-cx,2)+pow(p.y-cy,2)<=radius*radius;
 }
 static BOOL hitRegion(LoppiEntryGeometry g, NSInteger mode, NSInteger view, BOOL detail, NSPoint p) {
-  double size=mode==0 ? (view==0 ? 28 : 72) : 52;
+  double size=mode==0 ? (view==0 ? 28 : 96) : 52;
   BOOL rabbit=pow(p.x-(g.rabbit_x+size/2),2)+pow(p.y-(g.rabbit_y+size/2),2)<=pow(size/2+5,2);
   if(mode==0 && view!=0) {
     // The original rabbit sits in this band. Keep that point inside after
@@ -150,7 +151,7 @@ static BOOL hitRegion(LoppiEntryGeometry g, NSInteger mode, NSInteger view, BOOL
 - (void)notify:(int)kind value:(int)value { if(_callback) _callback(kind,value,_layoutGeneration); }
 - (BOOL)ownsKeyboard { return NSApp.isActive && _window.isKeyWindow; }
 - (BOOL)confirmFocus {
-  BOOL confirmed=_commentFocus && _view==2 && [self ownsKeyboard];
+  BOOL confirmed=_commentFocus && _mode==0 && _view!=0 && [self ownsKeyboard];
   if(confirmed && !_focusConfirmed) {
     _focusConfirmed=YES;
     if(_callback) _callback(9,1,_focusGeneration);
@@ -310,7 +311,7 @@ static BOOL hitRegion(LoppiEntryGeometry g, NSInteger mode, NSInteger view, BOOL
   }]];
   for(NSString *name in @[NSApplicationDidBecomeActiveNotification,NSApplicationDidResignActiveNotification]) {
     [_tokens addObject:[center addObserverForName:name object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n){ (void)n;
-      if(!NSApp.isActive && weak.view==2) {
+      if(!NSApp.isActive && weak.mode==0 && weak.view!=0) {
         weak.inhibited=YES;
         weak.view=0; [weak releaseFocus:NO]; [weak layout]; [weak notify:2 value:0];
       }
@@ -389,7 +390,7 @@ LoppiEntryGeometry loppi_entry_layout(void *window,int mode,int view,int feedbac
 int loppi_entry_focus(void *window,int acquire,int restore,uint64_t generation) {
   LoppiEntry *e=entry(window);
   if(acquire) {
-    if(e.view!=2) return 0;
+    if(e.mode!=0 || e.view==0) return 0;
     if(e.commentFocus) return [e confirmFocus];
     if(!e.commentFocus) { e.previous=NSWorkspace.sharedWorkspace.frontmostApplication; e.previousWindow=NSApp.isActive ? NSApp.keyWindow : nil; }
     e.commentFocus=YES; e.focusConfirmed=NO; e.focusGeneration=generation;

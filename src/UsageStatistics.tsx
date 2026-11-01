@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { core, userError } from "./api";
 import { LoadingSkeleton } from "./LoadingState";
 import {
@@ -41,6 +41,20 @@ export function UsageChart({
 	const available = kind === "asr" ? asrMetrics : llmMetrics;
 	const [hidden, setHidden] = useState<UsageMetric[]>([]);
 	const [hover, setHover] = useState<number | null>(null);
+	const plot = useRef<SVGSVGElement>(null);
+	const [plotWidth, setPlotWidth] = useState(900);
+	useLayoutEffect(() => {
+		const element = plot.current;
+		if (!element) return;
+		const measure = () => {
+			const width = element.getBoundingClientRect().width;
+			if (width > 0) setPlotWidth(width);
+		};
+		measure();
+		const observer = new ResizeObserver(measure);
+		observer.observe(element);
+		return () => observer.disconnect();
+	}, []);
 	const titleId = useId();
 	const detailId = useId();
 	const visible = available.filter((metric) => !hidden.includes(metric));
@@ -57,7 +71,10 @@ export function UsageChart({
 		) * 1.15;
 	const maxUnits = Math.ceil(max(false) / 4) * 4;
 	const maxMoney = max(true);
-	const x = (i: number) => 64 + (i * 750) / Math.max(1, days.length - 1);
+	// SVG units follow logical pixels, so labels retain their token font size.
+	const plotSpan = Math.max(1, plotWidth - 150);
+	const plotRight = 64 + plotSpan;
+	const x = (i: number) => 64 + (i * plotSpan) / Math.max(1, days.length - 1);
 	const y = (v: number, money: boolean) =>
 		208 - (v / (money ? maxMoney : maxUnits)) * 160;
 	const path = (metric: UsageMetric) => {
@@ -119,19 +136,20 @@ export function UsageChart({
 			</div>
 			<div className="usage-plot-wrap">
 				<svg
-					viewBox="0 0 900 252"
+					ref={plot}
+					viewBox={`0 0 ${plotWidth} 252`}
 					role="img"
 					aria-labelledby={titleId}
 					aria-describedby={detailId}
 					onPointerMove={(event) => {
 						const rect = event.currentTarget.getBoundingClientRect();
-						const px = ((event.clientX - rect.left) * 900) / rect.width;
+						const px = ((event.clientX - rect.left) * plotWidth) / rect.width;
 						setHover(
 							Math.max(
 								0,
 								Math.min(
 									days.length - 1,
-									Math.round(((px - 64) / 750) * (days.length - 1)),
+									Math.round(((px - 64) / plotSpan) * (days.length - 1)),
 								),
 							),
 						);
@@ -150,7 +168,7 @@ export function UsageChart({
 							<g key={step} className="usage-grid">
 								<line
 									x1="64"
-									x2="814"
+									x2={plotRight}
 									y1={208 - value * 160}
 									y2={208 - value * 160}
 								/>
@@ -160,7 +178,7 @@ export function UsageChart({
 									</text>
 								)}
 								{moneyVisible && (
-									<text x="826" y={212 - value * 160}>
+									<text x={plotRight + 12} y={212 - value * 160}>
 										{usageAxis(maxMoney * value, true)}
 									</text>
 								)}
@@ -234,6 +252,7 @@ export function UsageChart({
 				</svg>
 				<input
 					className="usage-day-slider"
+					style={{ left: 64, width: plotSpan }}
 					type="range"
 					min={0}
 					max={days.length - 1}

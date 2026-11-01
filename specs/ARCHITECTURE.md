@@ -30,7 +30,7 @@ flowchart LR
 | 核心 | [`crates/loppi-core/src/main.rs`](../crates/loppi-core/src/main.rs) | 唯一 SQLite 写入者；持有采集监督、时间映射、媒体、两条云队列、声纹任务和权限/容量状态。登录项与按需服务争同一个 owner 锁。 |
 | 采集来源 | [`source_process.rs`](../crates/loppi-core/src/source_process.rs)、[`record.rs`](../crates/loppi-core/src/record.rs) | 每个来源以同一签名核心可执行文件的私有子命令运行；持有原生设备、有界缓冲及封块写入。只发布不可变媒体和 core 管理的 ingestion 日志，不访问业务库。 |
 | 本地推理 | [`crates/loppi-worker/src/main.rs`](../crates/loppi-worker/src/main.rs) | 轻量 `vad` 与重型 `recognize` 独立进程；`embed` 按需复用 CampPlus。三者共用有界帧协议，父 core 消失退出；只计算，不拥有数据库。 |
-| IPC 协议 | [`crates/loppi-protocol/src/lib.rs`](../crates/loppi-protocol/src/lib.rs) | 请求/响应、稳定 ID、预期修订、重复提交标识和协议版本。当前工作树版本为 24；只读 Agent 接口见 [Agent Context 契约](tech_docs/agent-context.md)。 |
+| IPC 协议 | [`crates/loppi-protocol/src/lib.rs`](../crates/loppi-protocol/src/lib.rs) | 请求/响应、稳定 ID、预期修订、重复提交标识和协议版本。当前工作树版本为 25；只读 Agent 接口见 [Agent Context 契约](tech_docs/agent-context.md)。 |
 | macOS 桥接 | [`src-tauri/native/`](../src-tauri/native/privacy.m)、[`crates/loppi-core/native/`](../crates/loppi-core/native/system_audio.m) | 登录项、权限、截图/OCR、系统声 API 等原生操作；业务数据仍由核心裁决。 |
 | Windows 桥接 | [`protocol::platform`](../crates/loppi-protocol/src/platform.rs)、[`protocol::ipc`](../crates/loppi-protocol/src/ipc.rs)、Core/GUI 的 `native/windows.cpp` | 本机安全/文件/进程、WASAPI、截图/OCR、资源/电源、播放与托盘。业务 owner 与协议保持共用；细节见 [Windows 支持](tech_docs/windows-support.md)。 |
 
@@ -209,3 +209,5 @@ GUI 上下文刷新合并在途请求，仅前台聚焦时周期刷新。连续�
 事件理解与原窗口拟合共用 LLM 请求及发布事务。`named_events.understanding_json` 保存带稳定粗转引用的 topics、key_points、mentioned_objects，summary 保持独立文本列且不设字数硬限制。旧理解随下一窗口输入，引用下标每次重新映射；模型返回结构增量及摘要句子增量；摘要句编号由现有字符串临时派生，数据库仍只存完整文本。Core 默认保留未修改旧条目和摘要句子，事实修订update必须引用当前窗证据；摘要compress可凭目标旧证据合并缩短旧句，不能改事实；输入提供派生长度和900字符写作预算（产品目标800–1000、容差1100），数据层不截断。合并后持久化完整快照，不增加调用或持久状态。Core 检查引用归属、范围、来源和输入快照；人工纠错、边界修改、全部数据清理统一失效摘要/结构，只清原声则保留。没有额外调度任务、全局实体 owner、缓存或 GUI 协议扩展；迁移不回填历史付费任务。详见[事件理解算法](tech_docs/algorithms.md#52-llm-拟合)与[交付契约](prd/prd_0.1.6_event-understanding.md)。
 
 本地粗转自2026-10-25采用固定X-ASR离线INT8（2026-06-03），新包为speech-xasr-v1、旧speech-v1保留；模型准备仍由原Core入口与Governor管理，结果按实际model_version归属，不重写历史。具体权重、20例评测集、五配置效果/成本及采用边界见[本地ASR评测与选型](tech_docs/local-asr-benchmark.md)。
+
+时间线投影中的现场标记只归入相邻所有素材之间的真实空隙；未封块尾部的 mark/comment/screenshot 不吞并既有未整理素材，不扩大声源或录制范围。前端 liveCard 忽略 moment_only 项，标记不能替代活跃音频卡。

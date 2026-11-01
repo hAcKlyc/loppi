@@ -18,7 +18,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
-pub const PROTOCOL_VERSION: u32 = 24;
+pub const PROTOCOL_VERSION: u32 = 25;
 const MAX_RESPONSE_BYTES: u64 = 48 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -133,6 +133,10 @@ pub enum Request {
     },
     CalendarDays {
         boundaries: Vec<i64>,
+    },
+    CalendarAdjacent {
+        from_ms: i64,
+        to_ms: i64,
     },
     EventDetail {
         event_id: Uuid,
@@ -360,6 +364,7 @@ impl Request {
             Self::RebuildUnderstanding { .. } => "rebuild_understanding",
             Self::Timeline { .. } => "timeline",
             Self::CalendarDays { .. } => "calendar_days",
+            Self::CalendarAdjacent { .. } => "calendar_adjacent",
             Self::EventDetail { .. } => "event_detail",
             Self::RangeDetail { .. } => "range_detail",
             Self::PlaybackChunk { .. } => "playback_chunk",
@@ -814,6 +819,11 @@ pub enum Response {
         id: Uuid,
         days: Vec<i64>,
     },
+    CalendarAdjacent {
+        id: Uuid,
+        newer_ms: Option<i64>,
+        older_ms: Option<i64>,
+    },
     Event {
         id: Uuid,
         event: TimelineItem,
@@ -1162,6 +1172,7 @@ fn send_with_policy(
         | Response::CloudTasks { id, .. }
         | Response::Timeline { id, .. }
         | Response::CalendarDays { id, .. }
+        | Response::CalendarAdjacent { id, .. }
         | Response::Event { id, .. }
         | Response::Accepted { id, .. }
         | Response::TranscriptionQueued { id, .. }
@@ -1405,6 +1416,33 @@ mod tests {
         assert!(
             matches!(serde_json::from_value::<Response>(serde_json::to_value(response).unwrap()).unwrap(), Response::CalendarDays { days, .. } if days == vec![0])
         );
+        let request = Request::CalendarAdjacent {
+            from_ms: 0,
+            to_ms: 82_800_000,
+        };
+        assert_eq!(request.name(), "calendar_adjacent");
+        assert!(matches!(
+            serde_json::from_value::<Request>(serde_json::to_value(request).unwrap()).unwrap(),
+            Request::CalendarAdjacent {
+                from_ms: 0,
+                to_ms: 82_800_000
+            }
+        ));
+        let response = Response::CalendarAdjacent {
+            id: Uuid::new_v4(),
+            newer_ms: None,
+            older_ms: Some(-1),
+        };
+        let wire = serde_json::to_value(response).unwrap();
+        assert!(wire["newer_ms"].is_null());
+        assert!(matches!(
+            serde_json::from_value::<Response>(wire).unwrap(),
+            Response::CalendarAdjacent {
+                newer_ms: None,
+                older_ms: Some(-1),
+                ..
+            }
+        ));
     }
 }
 

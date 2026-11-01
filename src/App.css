@@ -204,6 +204,8 @@ p {
 }
 .date-header {
 	display: flex;
+	-webkit-user-select: none;
+	user-select: none;
 	align-items: center;
 	gap: var(--space-7);
 	min-height: var(--date-header-min-height);
@@ -211,27 +213,6 @@ p {
 }
 .calendar-anchor {
 	position: relative;
-}
-.calendar-button {
-	display: grid;
-	place-items: center;
-	width: var(--space-11);
-	height: var(--space-11);
-	border: var(--stroke-hairline) solid transparent;
-	border-radius: var(--radius-md);
-	background: var(--color-surface);
-	color: var(--color-brand);
-}
-.calendar-button:hover {
-	background: var(--color-surface-hover);
-}
-.calendar-button svg {
-	width: var(--space-8);
-	height: var(--space-8);
-	fill: none;
-	stroke: currentColor;
-	stroke-width: var(--stroke-icon);
-	stroke-linecap: round;
 }
 .calendar-popover {
 	position: absolute;
@@ -308,26 +289,27 @@ p {
 }
 .date-track {
 	display: flex;
-	flex-direction: column;
-	justify-content: center;
-	gap: var(--space-2);
+	align-items: center;
+	gap: var(--space-4);
 	min-height: var(--date-navigation-height);
 	min-width: 0;
 }
-.date-main-row,
+.date-copy {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	flex: 0 0 var(--date-copy-width);
+	width: var(--date-copy-width);
+}
 .date-step-controls,
 .date-context {
 	display: flex;
 	align-items: center;
 }
-.date-main-row {
-	gap: var(--space-4);
-}
 .date-step-controls {
 	gap: var(--space-2);
 }
 .date-choice {
-	width: var(--date-title-width);
 	justify-content: flex-start;
 	padding: 0;
 	border: 0;
@@ -344,6 +326,7 @@ p {
 	line-height: var(--leading-tight);
 	letter-spacing: var(--tracking-heading);
 	white-space: nowrap;
+	font-variant-numeric: tabular-nums;
 }
 .date-step {
 	width: var(--date-step-size);
@@ -451,19 +434,18 @@ p {
 .day-map-legend i {
 	width: var(--space-6);
 	height: var(--space-4);
-	border-radius: var(--radius-xs);
+	border-radius: var(--map-band-radius);
 }
 .day-map-legend .raw,
 .day-map-event.raw {
-	background: var(--color-complete-soft);
-	box-shadow: inset 0 0 0 var(--stroke-hairline) var(--color-complete);
+	background: var(--color-unorganized);
 }
 .day-map-legend .organized,
 .day-map-event.organized {
 	background: var(--color-complete);
 }
 .day-map-event.is-recording {
-	background: var(--color-live);
+	background: var(--color-recording-surface);
 	box-shadow: none;
 }
 .day-map-legend .gap,
@@ -497,7 +479,7 @@ p {
 	height: var(--map-track-height);
 	position: relative;
 	background: var(--color-surface-subtle);
-	border-radius: var(--radius-xs);
+	border-radius: var(--map-band-radius);
 	overflow: hidden;
 }
 .day-map-gap {
@@ -555,9 +537,11 @@ p {
 	background: var(--color-live-text);
 }
 .day-map-moments {
-	position: relative;
-	height: calc(var(--space-6) + var(--stroke-hairline));
-	overflow: hidden;
+	position: absolute;
+	inset: var(--map-label-lane-height) 0 0
+		calc(var(--layout-map-label) + var(--space-6));
+	pointer-events: none;
+	z-index: var(--layer-map-marker);
 }
 .day-map-event {
 	position: absolute;
@@ -565,30 +549,50 @@ p {
 	height: var(--map-event-height);
 	padding: 0;
 	border: 0;
-	border-radius: var(--radius-xs);
+	border-radius: var(--map-band-radius);
 	min-width: var(--space-1);
 }
 .day-map-event:hover {
 	filter: brightness(0.92);
+}
+.day-map-event.is-recording:hover {
+	background: var(--color-recording-surface-hover);
+	filter: none;
 }
 .day-map-event:focus-visible {
 	outline-offset: calc(-1 * var(--space-1));
 }
 .day-map-moment {
 	position: absolute;
-	top: var(--stroke-hairline);
-	z-index: var(--layer-map-marker);
+	top: 0;
+	bottom: 0;
+	width: var(--space-5);
+	padding: 0;
+	border: 0;
+	border-radius: 0;
+	transform: translateX(-50%);
+	background: transparent;
+	color: var(--color-mark);
+	pointer-events: auto;
+}
+.day-map-moment::before {
+	content: "";
+	position: absolute;
+	left: 50%;
+	top: 0;
+	bottom: 0;
+	width: var(--stroke-hairline);
+	background: currentColor;
+}
+.day-map-moment::after {
+	content: "";
+	position: absolute;
+	left: 50%;
+	top: calc(-1 * var(--space-3));
 	width: var(--space-3);
-	height: calc(var(--space-5) + var(--stroke-hairline));
-	border: var(--stroke-hairline) solid var(--color-surface);
-	border-radius: var(--radius-xs);
-	background: var(--color-screenshot);
-}
-.day-map-moment.mark {
-	background: var(--color-mark);
-}
-.day-map-moment.comment {
-	background: var(--color-comment);
+	height: var(--space-3);
+	border-radius: var(--radius-xs) var(--radius-xs) var(--radius-xs) 0;
+	background: currentColor;
 }
 .day-map-hours {
 	font-family: var(--font-time);
@@ -699,7 +703,7 @@ p {
 	font-variant-numeric: tabular-nums;
 }
 .event-line:has(.is-recording)::after {
-	background: var(--color-live);
+	background: var(--color-text-muted);
 }
 .event-card {
 	width: 100%;
@@ -775,16 +779,6 @@ p {
 	min-width: 0;
 	flex-shrink: 1;
 }
-.event-card.is-recording {
-	position: relative;
-	overflow: hidden;
-	isolation: isolate;
-	background: var(--color-recording-surface);
-	border-color: transparent;
-}
-.event-card.is-recording:hover {
-	background: var(--color-recording-surface-hover);
-}
 .recording-label {
 	background: var(--color-live-soft);
 	color: var(--color-live-text);
@@ -795,7 +789,7 @@ p {
 	width: var(--space-3);
 	height: var(--space-3);
 	border-radius: var(--radius-circle);
-	background: var(--color-live);
+	background: currentColor;
 	margin-right: var(--space-3);
 }
 .event-card p.event-card-placeholder {
@@ -809,13 +803,16 @@ p {
 }
 .page-heading {
 	display: flex;
+	-webkit-user-select: none;
+	user-select: none;
 	align-items: center;
 	justify-content: space-between;
 	margin-bottom: var(--space-11);
 }
 .page-heading h1 {
 	font-size: var(--type-display-sm);
-	letter-spacing: var(--tracking-tight);
+	font-weight: var(--weight-semibold);
+	letter-spacing: var(--tracking-heading);
 	margin: 0;
 }
 .panel-card {
@@ -826,7 +823,7 @@ p {
 }
 .queue-grid {
 	display: grid;
-	grid-template-columns: 1fr 1fr;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
 	gap: calc(var(--space-7) - var(--stroke-hairline));
 }
 .panel-header,
@@ -836,6 +833,21 @@ p {
 	align-items: center;
 	justify-content: space-between;
 	gap: var(--space-7);
+}
+.recognition-card .panel-header {
+	align-items: flex-start;
+	flex-wrap: wrap;
+}
+.recognition-card .panel-header > div:first-child {
+	flex: 1 1 14rem;
+	min-width: 0;
+}
+.recognition-actions {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: var(--space-4);
+	margin-left: auto;
 }
 .setting-actions {
 	display: flex;
@@ -878,17 +890,19 @@ p {
 	transition: transform var(--motion-standard) var(--ease-standard);
 }
 .switch.on {
-	background-color: var(--color-brand-accent);
+	background-color: var(--color-switch-on);
 }
 .switch.on:after {
 	transform: translateX(calc(var(--space-7) + var(--space-1)));
 }
 .queue-counts {
 	display: flex;
-	gap: calc(calc(var(--space-9) + var(--space-2)) + var(--stroke-hairline));
+	align-items: flex-start;
+	flex-wrap: wrap;
+	gap: var(--space-5) var(--space-7);
 	margin-top: calc(var(--space-9) + var(--space-1));
 }
-.queue-counts span {
+.queue-counts > span {
 	font-size: var(--type-heading-sm);
 	font-weight: var(--weight-strong);
 }
@@ -898,6 +912,23 @@ p {
 	font-size: var(--type-caption);
 	font-weight: var(--weight-regular);
 	margin-top: var(--space-1);
+}
+.recognition-task-link {
+	margin-left: auto;
+	text-align: right;
+}
+.recognition-statistics {
+	margin-top: var(--space-11);
+}
+/* Navigation focuses the heading without painting it as an input control. */
+.recognition-page .page-heading h1:focus {
+	outline: none;
+}
+.recognition-back {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin-bottom: var(--space-6);
 }
 .list-panel {
 	padding-top: calc(var(--space-2) + var(--stroke-hairline));
@@ -909,6 +940,12 @@ p {
 }
 .task-row:last-child {
 	border-bottom: 0;
+}
+.task-row .task-state-failed {
+	color: var(--color-danger);
+}
+.panel-header .queue-blocked {
+	color: var(--color-warning-text);
 }
 .task-row strong,
 .setting-row strong {
@@ -1004,6 +1041,14 @@ p {
 .setting-row:last-child {
 	border: 0;
 }
+.cloud-setting-row {
+	scroll-margin-block: var(--space-11);
+}
+.cloud-setting-row:focus {
+	outline: var(--space-1) solid var(--color-focus);
+	outline-offset: var(--space-2);
+	border-radius: var(--radius-sm);
+}
 /* Keep each setting's name and confirmed status on one visual heading. */
 .settings-page .setting-row > div:first-child {
 	min-width: 0;
@@ -1025,6 +1070,10 @@ p {
 	font-size: var(--type-caption);
 	font-weight: var(--weight-regular);
 	line-height: var(--leading-body);
+}
+.setting-status.is-warning {
+	background: var(--color-warning-soft);
+	color: var(--color-warning-text);
 }
 
 .cloud-config {

@@ -3,6 +3,7 @@ import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { userError } from "./api";
+import wordmarkReversed from "./assets/brand/wordmark-reversed.svg";
 import {
 	commentCanSubmit,
 	commentEnterSubmits,
@@ -89,7 +90,7 @@ export function FloatingWidget() {
 	const draftRef = useRef("");
 	draftRef.current = draft;
 	const anchor = useRef<number | null>(null);
-	const textarea = useRef<HTMLTextAreaElement>(null);
+	const commentInput = useRef<HTMLInputElement>(null);
 	const composing = useRef(false);
 	const requests = useRef(new EntryRequests());
 	const active = useRef(new Set<EntryKind>());
@@ -123,12 +124,12 @@ export function FloatingWidget() {
 	const focusComment = useCallback((intent: number) => {
 		if (
 			mounted.current &&
-			viewRef.current === "comment" &&
+			viewRef.current === "panel" &&
 			snapshotRef.current.mode === "top" &&
 			commentFocusIntent.current === intent &&
-			document.activeElement !== textarea.current
+			document.activeElement !== commentInput.current
 		)
-			textarea.current?.focus();
+			commentInput.current?.focus();
 	}, []);
 
 	const showFeedback = useCallback((text: string) => {
@@ -168,6 +169,10 @@ export function FloatingWidget() {
 			if (explicit) inhibit.current = false;
 			if (inhibit.current) return;
 			keyboardExpand.current = focusInside.current;
+			if (snapshotRef.current.mode === "top") {
+				anchor.current ??= Date.now();
+				commentFocusIntent.current = "new";
+			}
 			viewRef.current = "panel";
 			setPanelReady(false);
 			setView("panel");
@@ -275,12 +280,12 @@ export function FloatingWidget() {
 		if (!ready) return;
 		const token = ++generation.current;
 		const desired = view;
-		if (desired === "comment" && commentFocusIntent.current === "new")
+		if (
+			desired === "panel" &&
+			mode === "top" &&
+			commentFocusIntent.current === "new"
+		)
 			commentFocusIntent.current = token;
-		const focusIntent =
-			typeof commentFocusIntent.current === "number"
-				? commentFocusIntent.current
-				: null;
 		layoutQueue.current = layoutQueue.current
 			.then(async () => {
 				if (
@@ -289,7 +294,7 @@ export function FloatingWidget() {
 					mode !== snapshotRef.current.mode
 				)
 					return;
-				if (desired !== "comment")
+				if (desired === "collapsed" || mode === "floating")
 					await invoke("entry_focus", {
 						acquire: false,
 						restore: restoreFocus.current,
@@ -310,32 +315,35 @@ export function FloatingWidget() {
 					return;
 				if (!next) return;
 				setGeometry(next);
-				if (desired === "comment" && focusIntent !== null) {
-					const acquired = await invoke<boolean>("entry_focus", {
-						acquire: true,
-						restore: false,
-						generation: focusIntent,
-					});
-					if (!acquired) return;
-					if (mounted.current && token === generation.current)
-						focusComment(focusIntent);
-					else if (
-						!mounted.current ||
-						viewRef.current !== "comment" ||
-						mode !== snapshotRef.current.mode ||
-						commentFocusIntent.current !== focusIntent
-					)
-						await invoke("entry_focus", {
-							acquire: false,
-							restore: false,
-							generation: token,
-						});
-				}
 			})
 			.catch((error) => {
 				if (mounted.current) showFeedback(userError(error));
 			});
-	}, [ready, view, mode, hasDetail, hasFeedback, showFeedback, focusComment]);
+	}, [ready, view, mode, hasDetail, hasFeedback, showFeedback]);
+	// Native completion makes the expanded editor visible; activation is a
+	// separate confirmation. Feedback/detail relayouts never create new intent.
+	useEffect(() => {
+		const intent = commentFocusIntent.current;
+		if (
+			!panelReady ||
+			view !== "panel" ||
+			mode !== "top" ||
+			typeof intent !== "number"
+		)
+			return;
+		void invoke<boolean>("entry_focus", {
+			acquire: true,
+			restore: false,
+			generation: intent,
+		})
+			.then((acquired) => {
+				if (acquired) focusComment(intent);
+			})
+			.catch((error) => {
+				if (mounted.current) showFeedback(userError(error));
+			});
+	}, [panelReady, view, mode, focusComment, showFeedback]);
+
 	const perform = async (kind: EntryKind) => {
 		if (active.current.has(kind) || requests.current.isBusy(kind)) return;
 		if (
@@ -414,11 +422,6 @@ export function FloatingWidget() {
 			} catch (error) {
 				showFeedback(userError(error));
 			}
-		} else {
-			anchor.current ??= Date.now();
-			commentFocusIntent.current = "new";
-			viewRef.current = "comment";
-			setView("comment");
 		}
 	};
 	const openSettings = async () => {
@@ -490,115 +493,96 @@ export function FloatingWidget() {
 			}}
 		>
 			{isTop ? (
-				<div
-					className={`notch-surface ${view === "comment" ? "comment-surface" : ""}`}
-					data-ready={panelReady}
-					data-view={view}
-				>
-					{view === "collapsed" ? null : view === "comment" ? (
-						<div className="notch-composer">
-							<textarea
-								ref={textarea}
-								aria-label="留下评论"
-								placeholder="留下一句话…"
-								value={draft}
-								readOnly={pendingComment}
-								onChange={(event) => {
-									setDraft(event.target.value);
-									draftRef.current = event.target.value;
-								}}
-								onCompositionStart={() => {
-									composing.current = true;
-								}}
-								onCompositionEnd={() => {
-									composing.current = false;
-								}}
-								onKeyDown={(event) => {
-									if (
-										commentEnterSubmits(
-											{
-												key: event.key,
-												shiftKey: event.shiftKey,
-												keyCode: event.keyCode,
-												isComposing: event.nativeEvent.isComposing,
-											},
-											composing.current,
-										)
-									) {
-										event.preventDefault();
-										void perform("comment");
-									}
-								}}
+				<div className="notch-surface" data-ready={panelReady} data-view={view}>
+					{expanded && (
+						<>
+							<img
+								className="notch-wordmark"
+								src={wordmarkReversed}
+								alt="loppi"
+								draggable={false}
 							/>
-							<div className="comment-footer">
-								<span>
-									{uncertain.comment
-										? "原评论结果待确认"
-										: "回车保存 · ⇧ 回车换行"}
-								</span>
-								<div className="comment-footer-actions">
+							<div className="notch-tools">
+								<div
+									className="notch-actions"
+									role="toolbar"
+									aria-label="快速操作"
+								>
 									<button
 										type="button"
-										className="comment-cancel"
-										onClick={() => collapse(true, true)}
+										disabled={!!busy.screenshot}
+										onClick={() => void perform("screenshot")}
+										title={uncertain.screenshot ? "确认原截屏结果" : undefined}
 									>
-										取消
+										<Glyph kind="screenshot" />
+										<span>截图</span>
 									</button>
 									<button
 										type="button"
+										disabled={!!busy.mark}
+										onClick={() => void perform("mark")}
+										title={uncertain.mark ? "确认原重点结果" : undefined}
+									>
+										<Glyph kind="mark" />
+										<span>重点</span>
+									</button>
+								</div>
+								<div className="notch-composer">
+									<input
+										ref={commentInput}
+										type="text"
+										aria-label="留下评论"
+										placeholder="留下一句话，回车保存…"
+										value={draft}
+										readOnly={pendingComment}
+										spellCheck={false}
+										onChange={(event) => {
+											setDraft(event.target.value);
+											draftRef.current = event.target.value;
+										}}
+										onCompositionStart={() => {
+											composing.current = true;
+										}}
+										onCompositionEnd={() => {
+											composing.current = false;
+										}}
+										onKeyDown={(event) => {
+											if (
+												commentEnterSubmits(
+													{
+														key: event.key,
+														shiftKey: event.shiftKey,
+														keyCode: event.keyCode,
+														isComposing: event.nativeEvent.isComposing,
+													},
+													composing.current,
+												)
+											) {
+												event.preventDefault();
+												void perform("comment");
+											}
+										}}
+									/>
+									<button
+										className="comment-send"
+										type="button"
+										aria-label={
+											uncertain.comment ? "确认原评论结果" : "保存评论"
+										}
+										title={uncertain.comment ? "确认原评论结果" : "回车保存"}
 										disabled={
 											!!busy.comment ||
 											(!uncertain.comment && !commentCanSubmit(draft, false))
 										}
 										onClick={() => void perform("comment")}
 									>
-										{uncertain.comment ? "确认结果" : "保存"}
+										{uncertain.comment ? (
+											"确认"
+										) : (
+											<span aria-hidden="true">↵</span>
+										)}
 									</button>
 								</div>
-							</div>
-						</div>
-					) : (
-						<>
-							<div className="notch-rabbit-space" aria-hidden="true" />
-							<div
-								className="notch-actions"
-								role="toolbar"
-								aria-label="快速操作"
-							>
-								<button
-									type="button"
-									disabled={!!busy.screenshot}
-									ref={(element) => {
-										if (
-											element &&
-											panelReady &&
-											isTop &&
-											keyboardExpand.current &&
-											(!control || busy.control)
-										) {
-											keyboardExpand.current = false;
-											element.focus();
-										}
-									}}
-									onClick={() => void perform("screenshot")}
-									title={uncertain.screenshot ? "确认原截屏结果" : undefined}
-								>
-									<Glyph kind="screenshot" />
-									<span>截图</span>
-								</button>
-								<button
-									type="button"
-									disabled={!!busy.mark}
-									onClick={() => void perform("mark")}
-									title={uncertain.mark ? "确认原重点结果" : undefined}
-								>
-									<Glyph kind="mark" />
-									<span>重点</span>
-								</button>
-								<button type="button" onClick={() => void openComment()}>
-									<Glyph kind="comment" />
-									<span>评论</span>
-								</button>
 							</div>
 							{snapshot.detail && (
 								<button
@@ -686,23 +670,10 @@ export function FloatingWidget() {
 					data-view={view}
 					data-ready={panelReady}
 					aria-label={expanded ? controlLabel : "loppi 快速操作"}
-					tabIndex={view === "comment" ? -1 : 0}
 					disabled={expanded && (!control || !!busy.control)}
 					aria-disabled={
 						expanded && (!panelReady || !control || !!busy.control)
 					}
-					ref={(element) => {
-						if (
-							element &&
-							panelReady &&
-							keyboardExpand.current &&
-							control &&
-							!busy.control
-						) {
-							keyboardExpand.current = false;
-							element.focus();
-						}
-					}}
 					onMouseEnter={() => {
 						pointerInside.current = true;
 						openPanel();

@@ -1122,6 +1122,7 @@ fn main() {
             | Response::CloudTasks { .. }
             | Response::Timeline { .. }
             | Response::CalendarDays { .. }
+            | Response::CalendarAdjacent { .. }
             | Response::Event { .. }
             | Response::Accepted { .. }
             | Response::TranscriptionQueued { .. }

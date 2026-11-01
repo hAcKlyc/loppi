@@ -35,6 +35,7 @@ mockIPC(async(command,args)=>{
   if(command==='login_item_status') return 1;
   if(command!=='core_request') return null;
   const r=args.request;
+  if(r.type==='calendar_adjacent') return {type:r.type,newer_ms:days.find(d=>d>=r.to_ms)??null,older_ms:days.findLast(d=>d<r.from_ms)??null};
   if(r.type==='calendar_days') {await wait(80);if(failCalendar){failCalendar=false;throw Error('simulated calendar failure')}return {type:r.type,days};}
   if(r.type==='timeline') {
     await wait(r.from_ms===day(older)?700:150);

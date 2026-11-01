@@ -10,6 +10,7 @@ const dom = new JSDOM('<div id="root"></div>', { url:'http://localhost/', preten
 for (const name of ['window','document','HTMLElement','HTMLTextAreaElement','Event','MouseEvent','KeyboardEvent','MutationObserver']) globalThis[name]=dom.window[name];
 globalThis.IS_REACT_ACT_ENVIRONMENT=true;
 globalThis.ResizeObserver=class {observe(){} disconnect(){}};
+HTMLElement.prototype.scrollIntoView=function(){};
 window.isTauri=true; globalThis.isTauri=true;
 globalThis.requestAnimationFrame=dom.window.requestAnimationFrame.bind(dom.window);
 globalThis.cancelAnimationFrame=dom.window.cancelAnimationFrame.bind(dom.window);
@@ -35,6 +36,7 @@ const {createRoot}=await import('react-dom/client');
 const {mockIPC,clearMocks}=await import('@tauri-apps/api/mocks');
 const {emit}=await import('@tauri-apps/api/event');
 const {default:App}=await import('../src/App.tsx');
+const { QueueView } = await import('../src/WorkspaceViews.tsx');
 const {dayBounds}=await import('../src/api.ts');
 globalThis.HTMLDialogElement=window.HTMLDialogElement;
 globalThis.HTMLButtonElement=window.HTMLButtonElement;
@@ -56,6 +58,7 @@ mockIPC((command,args)=>{
  }
  if(r.type==='timeline')return {type:'timeline',gaps:[],items:[{id:'old',manual_range_id:null,title:'Existing meeting',summary:'Keep this while the model works.',started_ms:today+1000,ended_ms:today+5000,sources:'microphone',revision:1,processing_state:'transcribed',recording_sources:[],coarse_segments:[],precise_segments:[]}]};
  if(r.type==='calendar_days')return {type:r.type,days:[today]};
+ if(r.type==='calendar_adjacent')return {type:r.type,newer_ms:null,older_ms:null};
  if(r.type==='moments')return {type:r.type,moments:[]};
  if(r.type==='cloud_status')return {type:r.type,queues:[]};
  if(r.type==='people')return {type:r.type,people:[]};
@@ -84,12 +87,11 @@ try {
  assert(document.body.textContent.includes('Existing meeting'),'accepted task retains existing cards');
  assert(document.body.textContent.includes('\u5df2\u63d0\u4ea4'),'receipt says submitted, not event completed');
  console.log('event reorganization: real App form, accepted task, stable retry ID and retained cards PASS');
+ for (const [sources,label] of [['microphone','麦克风'],['system','电脑声音'],['both','双路声音']]) {
+  await settle(()=>root.render(React.createElement(QueueView,{queues:[{provider:'llm',configured:true,paused:false,pending:0,processing:0,failed:1}],reviews:[],busy:false,onRefresh:async()=>{},onMutate:async()=>true,onSettings(){},tasks:[{id:sources,provider:'llm',target_kind:'reorganization',target_id:'request',source:null,sources,started_ms:today+1000,ended_ms:today+5000,state:'failed',error_code:'reorganization_revision_conflict',manual:true}]})));
+  if(!document.querySelector('.task-row'))await settle(()=>document.querySelector('[aria-label="事件分析任务明细"]').click());
+  assert(document.querySelector('.task-row').textContent.includes(label),sources+' source label');
+  assert.equal(document.querySelector('.task-row button').textContent,'重试','existing failed-task retry control');
+ }
+ console.log('queue reorganization source labels: microphone/system/both PASS');
 } finally {await settle(()=>root.unmount());clearMocks();dom.window.close();}
-const { renderToStaticMarkup } = await import('react-dom/server');
-const { QueueView } = await import('../src/WorkspaceViews.tsx');
-for (const [sources,label] of [['microphone','\u9ea6\u514b\u98ce'],['system','\u7535\u8111\u58f0\u97f3'],['both','\u53cc\u8def\u58f0\u97f3']]) {
- const html=renderToStaticMarkup(React.createElement(QueueView,{queues:[],reviews:[],busy:false,onRefresh(){},onMutate(){},tasks:[{id:sources,provider:'llm',target_kind:'reorganization',target_id:'request',source:null,sources,started_ms:today+1000,ended_ms:today+5000,state:'failed',error_code:'reorganization_revision_conflict',manual:true}]}));
- assert(html.includes(label),sources+' source label');
- assert(html.includes('\u91cd\u8bd5'),'existing failed-task retry control');
-}
-console.log('queue reorganization source labels: microphone/system/both PASS');

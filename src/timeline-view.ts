@@ -57,7 +57,12 @@ export function cardExcerpt(
 		if (item.summary?.trim())
 			return {
 				text: item.summary.trim(),
-				label: `内容摘要 · ${item.sources === "both" ? "双路声音" : item.sources === "system" ? "电脑声音" : "麦克风"}`,
+				label:
+					item.sources === "both"
+						? "双路声音"
+						: item.sources === "system"
+							? "电脑声音"
+							: "麦克风",
 			};
 		return { text: "暂无内容摘要，打开查看转录", label: "" };
 	}
@@ -67,7 +72,7 @@ export function cardExcerpt(
 	if (preview?.text.trim())
 		return {
 			text: preview.text,
-			label: `${preview.is_precise ? "精转" : "粗转"} · ${preview.source === "microphone" ? "麦克风" : "电脑声音"}`,
+			label: preview.source === "microphone" ? "麦克风" : "电脑声音",
 		};
 	const moment = moments.find((entry) =>
 		(entry.text || entry.ocr_text)?.trim(),
@@ -98,6 +103,30 @@ export function monthBoundaries(date: Date): number[] {
 	);
 }
 
+/** Validate an availability anchor before turning it into a local calendar day. */
+export function adjacentRecordedDay(
+	anchor: number | null | undefined,
+	from: number,
+	to: number,
+	direction: "newer" | "older",
+	today: number,
+): number | null {
+	if (
+		typeof anchor !== "number" ||
+		![anchor, from, to, today].every(Number.isSafeInteger) ||
+		to <= from ||
+		(direction === "newer" ? anchor < to : anchor >= from)
+	)
+		return null;
+	const date = new Date(anchor);
+	const day = new Date(
+		date.getFullYear(),
+		date.getMonth(),
+		date.getDate(),
+	).getTime();
+	return Number.isFinite(day) && day <= today ? day : null;
+}
+
 export function liveCard(
 	items: TimelineItem[],
 	state: import("./api").ServiceState | null,
@@ -111,7 +140,9 @@ export function liveCard(
 		date.toDateString() !== new Date(now).toDateString()
 	)
 		return null;
-	const newest = [...items].sort((a, b) => b.started_ms - a.started_ms)[0];
+	const newest = items
+		.filter((item) => item.processing_state !== "moment_only")
+		.sort((a, b) => b.started_ms - a.started_ms)[0];
 	return newest?.recording_sources?.some(
 		(source) =>
 			state[`${source}_phase`] === "recording" && state[`${source}_recording`],

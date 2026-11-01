@@ -1,22 +1,24 @@
 :root {
 	/* 1. Foundations. Only this section defines literal colors. */
 	--palette-ink: #292c28;
-	--palette-paper: #faf8f2;
-	--palette-stone: #ede9e1;
-	--palette-mint: #8bbda1;
-	--palette-coral: #f4a686;
+	--palette-paper: #f6f5f1;
+	--palette-paper-hover: #efefe9;
+	--palette-stone: #ecebe5;
+	--palette-mint: #93b29c;
+	--palette-mint-soft: #b6cabb;
+	--palette-coral: #d6a08a;
 	--palette-rust: #b65b42;
-	--palette-white: #fffdf9;
-	--palette-neutral-hover: #e5e0d7;
-	--palette-neutral-text: #625e57;
-	--palette-neutral-line: #ded9d0;
-	--palette-neutral-edge: #968d7e;
+	--palette-white: #fdfdfc;
+	--palette-neutral-hover: #e4e4dc;
+	--palette-neutral-text: #62655f;
+	--palette-neutral-line: #dedfd7;
+	--palette-neutral-edge: #8e9287;
 	--palette-ink-hover: #151813;
 	--palette-green-ink: #47745b;
 	--palette-green-wash: #e9f2eb;
-	--palette-coral-ink: #a6533c;
-	--palette-coral-wash: #fff0e7;
-	--palette-coral-hover: #fbe3d5;
+	--palette-coral-ink: #9c503c;
+	--palette-coral-wash: #f6e8e1;
+	--palette-coral-hover: #cc937d;
 	--palette-amber: #a07932;
 	--palette-amber-ink: #76541d;
 	--palette-amber-wash: #f5eddd;
@@ -28,7 +30,7 @@
 	--palette-violet: #92839b;
 	--palette-overlay: #292c2866;
 	--palette-overlay-strong: #191c18ed;
-	--palette-focus-wash: #968d7e55;
+	--palette-focus-wash: #8e928755;
 	--palette-shadow-soft: #292c281a;
 	--palette-shadow-medium: #292c2829;
 	--palette-shadow-strong: #292c2833;
@@ -37,11 +39,12 @@
 	--palette-entry-action: #30352c;
 	--palette-entry-hover: #41473b;
 	--palette-entry-muted: #c5c2b8;
+	--palette-entry-accent: #e3af98;
 	--palette-entry-warning: #e4bf7e;
 	--palette-entry-warning-ink: #57401d;
 	--palette-entry-overlay: #24271fd9;
 	--palette-entry-shadow: #292c281f;
-	--palette-coral-edge: #f4a68699;
+	--palette-coral-edge: #d6a08a99;
 
 	/* 2. Semantic roles. A color describes a fact or interaction, never a page. */
 	--color-logo-dot: var(--palette-rust);
@@ -52,7 +55,7 @@
 	--color-surface-hover: var(--palette-neutral-hover);
 	--color-surface-selected: var(--palette-stone);
 	--color-surface-selected-hover: var(--palette-neutral-hover);
-	--color-surface-card-hover: var(--palette-paper);
+	--color-surface-card-hover: var(--palette-paper-hover);
 	--color-control: var(--palette-stone);
 	--color-control-hover: var(--palette-neutral-hover);
 	--color-text: var(--palette-ink);
@@ -74,6 +77,7 @@
 	--color-complete: var(--palette-mint);
 	--color-complete-text: var(--palette-green-ink);
 	--color-complete-soft: var(--palette-green-wash);
+	--color-unorganized: var(--palette-mint-soft);
 	--color-positive: var(--color-complete);
 	--color-positive-soft: var(--color-complete-soft);
 	--color-mark: var(--color-complete-text);
@@ -83,7 +87,7 @@
 	--color-live-text: var(--palette-coral-ink);
 	--color-live-soft: var(--palette-coral-wash);
 	--color-live-hover: var(--palette-coral-hover);
-	--color-recording-surface: var(--color-live-soft);
+	--color-recording-surface: var(--color-live);
 	--color-recording-surface-hover: var(--color-live-hover);
 	--color-recording-light: var(--color-live);
 	--color-warning: var(--palette-amber);
@@ -101,6 +105,7 @@
 	--color-focus: var(--palette-neutral-text);
 	--color-focus-ring: var(--palette-focus-wash);
 	--color-switch-off: var(--color-text-secondary);
+	--color-switch-on: var(--palette-rust);
 	--color-chart-usage: var(--color-complete-text);
 	--color-chart-output: var(--palette-blue);
 	--color-chart-cached: var(--palette-violet);
@@ -113,7 +118,7 @@
 	--entry-action-hover: var(--palette-entry-hover);
 	--entry-text: var(--palette-paper);
 	--entry-text-secondary: var(--palette-entry-muted);
-	--entry-accent: var(--palette-coral);
+	--entry-accent: var(--palette-entry-accent);
 	--entry-warning: var(--palette-entry-warning);
 	--entry-warning-ink: var(--palette-entry-warning-ink);
 	--entry-control-overlay: var(--palette-entry-overlay);
@@ -243,6 +248,7 @@
 	--map-time-label-width: 5ch;
 	--map-track-height: 24px;
 	--map-event-height: var(--map-track-height);
+	--map-band-radius: var(--space-1);
 	--entry-top-radius: 26px;
 	--entry-menu-radius: 20px;
 	--entry-menu-shadow-style: 0 4px 12px var(--entry-menu-shadow);
@@ -250,15 +256,14 @@
 	--entry-rabbit-hover-shadow-style: 0 2px 4px var(--entry-rabbit-hover-shadow);
 
 	/* Component bounds preserve the accepted layout at wide/compact sizes. */
-	--agent-access-max-width: 960px;
 	--calendar-popover-width: 296px;
 	--capture-status-copy-min-width: 112px;
 	--capture-status-feedback-width: 300px;
 	--cloud-provider-row-columns: minmax(190px, 1fr) minmax(290px, 1.35fr);
 	--comment-input-min-height: 130px;
 	--date-navigation-height: 72px;
+	--date-copy-width: 152px;
 	--date-step-size: var(--space-10);
-	--date-title-width: calc(var(--type-date) * 4.5);
 	--date-header-min-height: 92px;
 	--detail-columns: minmax(0, 1fr) clamp(260px, 30%, 360px);
 	--detail-columns-medium: minmax(0, 1fr) 260px;

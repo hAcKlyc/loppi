@@ -139,7 +139,8 @@ impl Inner {
     fn focus_is_current(&self, generation: u64) -> bool {
         generation <= self.layout_generation
             && generation > self.canceled_generation
-            && self.view == View::Comment
+            && self.snapshot.mode == Mode::Top
+            && matches!(self.view, View::Panel | View::Comment)
     }
     fn layout_is_current(&self, generation: u64, mode: Mode, view: View) -> bool {
         generation == self.layout_generation
@@ -652,7 +653,7 @@ pub async fn entry_focus(
             return Ok(false);
         }
         inner.layout_generation = generation;
-        if inner.view == View::Comment {
+        if inner.snapshot.mode == Mode::Top && matches!(inner.view, View::Panel | View::Comment) {
             inner.canceled_generation = generation;
         }
         inner.view = View::Collapsed;
@@ -955,23 +956,31 @@ mod tests {
         assert!(inner.layout_is_current(4, Mode::Floating, View::Comment));
     }
     #[test]
-    fn comment_focus_intent_survives_layout_but_never_a_cancellation() {
+    fn top_input_focus_intent_survives_layout_but_never_a_cancellation() {
         let runtime = EntryRuntime::new(
             std::env::temp_dir().join(format!("loppi-entry-{}.json", Uuid::new_v4())),
         );
         let mut inner = runtime.inner.lock().unwrap();
-        inner.layout_generation = 4;
-        inner.view = View::Comment;
-        assert!(inner.focus_is_current(3));
-        inner.canceled_generation = 4;
-        // Even if a delayed background render has registered a newer layout,
-        // its original user-focus intent remains canceled.
-        inner.layout_generation = 5;
-        assert!(!inner.focus_is_current(3));
-        assert!(!inner.focus_is_current(4));
-        assert!(inner.focus_is_current(5));
-        inner.view = View::Collapsed;
-        assert!(!inner.focus_is_current(5));
+        for view in [View::Panel, View::Comment] {
+            inner.snapshot.mode = Mode::Top;
+            inner.layout_generation = 4;
+            inner.canceled_generation = 0;
+            inner.view = view;
+            assert!(inner.focus_is_current(3));
+            assert!(!inner.focus_is_current(5));
+            inner.canceled_generation = 4;
+            // Even if a delayed background render has registered a newer layout,
+            // its original user-focus intent remains canceled.
+            inner.layout_generation = 5;
+            assert!(!inner.focus_is_current(3));
+            assert!(!inner.focus_is_current(4));
+            assert!(inner.focus_is_current(5));
+            inner.snapshot.mode = Mode::Floating;
+            assert!(!inner.focus_is_current(5));
+            inner.snapshot.mode = Mode::Top;
+            inner.view = View::Collapsed;
+            assert!(!inner.focus_is_current(5));
+        }
     }
     #[test]
     fn disabled_missing_source_is_healthy_but_enabled_missing_is_partial() {

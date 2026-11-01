@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>loppi · 常驻入口配色样例</title>
+<!-- Real FloatingWidget and styles; memory-only native layout adapter, no Core or writes. -->
+<div id="root"></div>
+<output id="diagnostic" style="position:fixed;top:250px;left:12px">隔离入口样例加载中</output>
+<script>
+window.addEventListener('error',event=>{document.getElementById('diagnostic').textContent=event.message;});
+window.addEventListener('unhandledrejection',event=>{document.getElementById('diagnostic').textContent=String(event.reason);});
+</script>
+<script type="module">
+import React from 'react';
+import {createRoot} from 'react-dom/client';
+import {mockIPC,mockWindows} from '@tauri-apps/api/mocks';
+import {emit} from '@tauri-apps/api/event';
+import '/src/App.css';
+try {
+window.isTauri=true;
+mockWindows('float');
+const physicalBand=Number(new URLSearchParams(location.search).get('band')??32);
+const band=Math.max(24,physicalBand);
+const actions=[];
+window.entryEvidence={actions};
+mockIPC(async(command,args)=>{
+ if(command==='entry_snapshot')return {sequence:1,state:null,error:null,mode:'top',appearance:'listening',control:'pause',detail:null,notice:null};
+ if(command==='entry_layout'){
+  if(args.view==='panel')await emit('loppi-entry-native',{kind:8,value:1,generation:args.generation});
+  return {width:args.view==='collapsed'?44:412,height:args.view==='collapsed'?32:band+144,band,top_band:physicalBand,top_shift:0,rabbit_x:8,rabbit_y:2,menu_y:8};
+ }
+ if(command==='entry_focus')return true;
+ if(command==='entry_action'){actions.push(args.action);return {outcome:'confirmed',message:null,response:null};}
+ if(command==='privacy_status')return {screen_and_system_audio:1};
+ throw Error('Isolated color sample refuses action: '+command);
+},{shouldMockEvents:true});
+document.getElementById('diagnostic').textContent='正在载入实际入口组件';
+const {FloatingWidget}=await import('/src/FloatingWidget.tsx');
+createRoot(document.getElementById('root')).render(React.createElement(FloatingWidget));
+document.getElementById('diagnostic').textContent='隔离样例，无真实操作或数据写入';
+if(new URLSearchParams(location.search).has('auto'))setTimeout(()=>emit('loppi-entry-native',{kind:1,value:1}),100);
+} catch(error) {document.getElementById('diagnostic').textContent=String(error);}
+</script></html>

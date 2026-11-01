@@ -1478,15 +1478,9 @@ fn queue_asr_with_processor(
 
 type ManualRangeRow = (String, i64, i64, i64, i64);
 
-fn visible_manual_ranges(
-    db: &Connection,
-    start: i64,
-    end: i64,
-) -> Result<Vec<ManualRangeRow>, String> {
-    let mut statement = db
-        .prepare(
-            "SELECT id,started_ms,ended_ms,source_mask,revision FROM manual_ranges m
-         WHERE started_ms<?2 AND ended_ms>?1 AND (
+const VISIBLE_MANUAL_RANGES_SQL: &str =
+    "SELECT id,started_ms,ended_ms,source_mask,revision FROM manual_ranges m
+         WHERE (
            EXISTS(SELECT 1 FROM audio_blocks b WHERE b.media_path IS NOT NULL
              AND b.started_ms<m.ended_ms AND b.ended_ms>m.started_ms
              AND b.source IN (CASE WHEN m.source_mask&1!=0 THEN 'microphone' END,
@@ -1500,9 +1494,17 @@ fn visible_manual_ranges(
                AND t.target_version=cast(m.revision AS TEXT)
                AND p.started_ms<m.ended_ms AND p.ended_ms>m.started_ms
                AND ((p.source='microphone' AND m.source_mask&1!=0)
-                 OR (p.source='system' AND m.source_mask&2!=0))))
-         ORDER BY m.rowid",
-        )
+                 OR (p.source='system' AND m.source_mask&2!=0))))";
+
+fn visible_manual_ranges(
+    db: &Connection,
+    start: i64,
+    end: i64,
+) -> Result<Vec<ManualRangeRow>, String> {
+    let mut statement = db
+        .prepare(&format!(
+            "{VISIBLE_MANUAL_RANGES_SQL} AND started_ms<?2 AND ended_ms>?1 ORDER BY m.rowid"
+        ))
         .map_err(|error| error.to_string())?;
     statement
         .query_map(params![start, end], |row| {
@@ -1519,13 +1521,58 @@ fn visible_manual_ranges(
         .map_err(|error| error.to_string())
 }
 
+/// Shared availability projection for monthly and all-history date navigation.
+/// Points keep their exact timestamp; intervals remain half-open.
+fn calendar_material_sql() -> String {
+    format!(
+        "SELECT started_ms,ended_ms,0 AS point FROM audio_blocks
+         WHERE source IN ('microphone','system') AND media_path IS NOT NULL
+         UNION ALL SELECT started_ms,ended_ms,0 FROM coarse_segments
+         UNION ALL SELECT started_ms,ended_ms,0 FROM named_events WHERE deleted_ms IS NULL
+         UNION ALL SELECT anchor_ms,anchor_ms,1 FROM moments
+         UNION ALL SELECT started_ms,ended_ms,0 FROM ({VISIBLE_MANUAL_RANGES_SQL})"
+    )
+}
+
+fn valid_calendar_day(start: i64, end: i64) -> bool {
+    matches!(end.checked_sub(start), Some(82_800_000..=90_000_000))
+}
+
+/// Return material anchors on either side of a local day in one database read,
+/// without enumerating days or months. The GUI converts anchors to local days.
+pub fn calendar_adjacent(
+    db: &Connection,
+    start: i64,
+    end: i64,
+    now: i64,
+) -> Result<(Option<i64>, Option<i64>), String> {
+    if !valid_calendar_day(start, end) {
+        return Err("invalid calendar boundaries".into());
+    }
+    db.query_row(
+        &format!(
+            "WITH material AS ({}) SELECT
+             min(CASE WHEN (point=1 AND started_ms>=?2) OR (point=0 AND ended_ms>?2)
+                 THEN max(started_ms,?2) END),
+             max(CASE WHEN started_ms<?1 THEN
+                 CASE WHEN point=1 THEN started_ms ELSE min(ended_ms-1,?1-1,?3) END END)
+             FROM material WHERE started_ms<=?3 AND (point=1 OR ended_ms>started_ms)",
+            calendar_material_sql()
+        ),
+        params![start, end, now],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )
+    .map_err(|error| error.to_string())
+    .map(|(newer, older): (Option<i64>, Option<i64>)| (newer.filter(|at| *at <= now), older))
+}
+
 /// Calendar uses explicit local-midnight boundaries from the client, so DST and
 /// timezone changes do not silently turn this into a UTC-day index.
 pub fn calendar_days(db: &Connection, boundaries: &[i64], now: i64) -> Result<Vec<i64>, String> {
     if !(2..=32).contains(&boundaries.len())
         || boundaries
             .windows(2)
-            .any(|pair| !matches!(pair[1].checked_sub(pair[0]), Some(82_800_000..=90_000_000)))
+            .any(|pair| !valid_calendar_day(pair[0], pair[1]))
     {
         return Err("invalid calendar boundaries".into());
     }
@@ -1541,23 +1588,22 @@ pub fn calendar_days(db: &Connection, boundaries: &[i64], now: i64) -> Result<Ve
             }
         }
     };
-    let mut query = db.prepare("SELECT started_ms,ended_ms,0 FROM audio_blocks
-        WHERE source IN ('microphone','system') AND media_path IS NOT NULL AND started_ms<?2 AND ended_ms>?1
-        UNION ALL SELECT started_ms,ended_ms,0 FROM coarse_segments WHERE started_ms<?2 AND ended_ms>?1
-        UNION ALL SELECT started_ms,ended_ms,0 FROM named_events WHERE deleted_ms IS NULL AND started_ms<?2 AND ended_ms>?1
-        UNION ALL SELECT anchor_ms,anchor_ms,1 FROM moments WHERE anchor_ms>=?1 AND anchor_ms<?2"
-    ).map_err(|e| e.to_string())?;
+    let mut query = db
+        .prepare(&format!(
+            "SELECT started_ms,ended_ms,point FROM ({}) WHERE started_ms<?2
+         AND started_ms<=?3 AND (point=1 OR ended_ms>started_ms)
+         AND (ended_ms>?1 OR (point=1 AND started_ms>=?1))",
+            calendar_material_sql()
+        ))
+        .map_err(|e| e.to_string())?;
     let mut rows = query
-        .query(params![start, end])
+        .query(params![start, end, now])
         .map_err(|e| e.to_string())?;
     while let Some(row) = rows.next().map_err(|e| e.to_string())? {
         let first: i64 = row.get(0).map_err(|e| e.to_string())?;
         let last: i64 = row.get(1).map_err(|e| e.to_string())?;
         let point: bool = row.get(2).map_err(|e| e.to_string())?;
         mark(first, if point { last.saturating_add(1) } else { last });
-    }
-    for (_, first, last, _, _) in visible_manual_ranges(db, start, end)? {
-        mark(first, last);
     }
     Ok(boundaries[..boundaries.len() - 1]
         .iter()
@@ -1820,17 +1866,13 @@ pub fn timeline(db: &Connection, start: i64, end: i64) -> Result<Vec<TimelineIte
         }
         let left = output
             .iter()
-            .filter(|item| {
-                (item.id.is_some() || item.manual_range_id.is_some()) && item.ended_ms <= anchor
-            })
+            .filter(|item| item.ended_ms <= anchor)
             .map(|item| item.ended_ms)
             .max()
             .unwrap_or(start);
         let right = output
             .iter()
-            .filter(|item| {
-                (item.id.is_some() || item.manual_range_id.is_some()) && item.started_ms > anchor
-            })
+            .filter(|item| item.started_ms > anchor)
             .map(|item| item.started_ms)
             .min()
             .unwrap_or(end);
@@ -1838,31 +1880,10 @@ pub fn timeline(db: &Connection, start: i64, end: i64) -> Result<Vec<TimelineIte
         group.0 = group.0.min(anchor);
         group.1 = group.1.max(anchor);
     }
-    for ((left, right), (first, last)) in moment_gaps {
-        let mut a = first;
-        let mut b = (last + 1).min(end);
-        let mut mask = 0;
-        for item in output.iter().filter(|item| {
-            item.id.is_none()
-                && item.manual_range_id.is_none()
-                && item.started_ms >= left
-                && item.ended_ms <= right
-        }) {
-            a = a.min(item.started_ms);
-            b = b.max(item.ended_ms);
-            mask |= match item.sources {
-                EventSources::Microphone => 1,
-                EventSources::System => 2,
-                EventSources::Both => 3,
-            };
-        }
-        output.retain(|item| {
-            item.id.is_some()
-                || item.manual_range_id.is_some()
-                || item.started_ms < left
-                || item.ended_ms > right
-        });
-        output.push(unorganized(db, a, b, if mask == 0 { 3 } else { mask })?);
+    for (_, (first, last)) in moment_gaps {
+        // A mark can precede the next sealed audio block. Keep that point in
+        // its actual material-free gap; it must not widen or merge audio.
+        output.push(unorganized(db, first, (last + 1).min(end), 3)?);
     }
     for item in output.iter_mut().filter(|item| item.id.is_none()) {
         let mask = match item.sources {
@@ -6392,6 +6413,100 @@ mod tests {
     }
 
     #[test]
+    fn calendar_adjacent_seeks_all_history_and_preserves_half_open_and_point_boundaries() {
+        let db = db();
+        let day = 86_400_000;
+        let old = -day * 365 * 200;
+        media(&db, "ancient", old, old + 1_000);
+        media(&db, "cross", day - 1_000, day * 2);
+        db.execute(
+            "INSERT INTO moments(id,kind,anchor_ms,created_ms) VALUES('midnight','mark',?1,?1)",
+            params![day * 3],
+        )
+        .unwrap();
+        db.execute("INSERT INTO media_gaps(id,source,started_ms,ended_ms,reason) VALUES('gap','microphone',?1,?2,'manual_pause')", params![day * 2, day * 3]).unwrap();
+        db.execute(
+            "INSERT INTO manual_ranges VALUES('cleared',?1,?2,1,1)",
+            params![day * 2, day * 3],
+        )
+        .unwrap();
+        media(&db, "future", day * 5, day * 6);
+        media(&db, "future-today", day * 4 + 10, day * 4 + 20);
+        assert_eq!(
+            calendar_adjacent(&db, 0, day, day * 4).unwrap(),
+            (Some(day), Some(old + 999))
+        );
+        assert_eq!(
+            calendar_adjacent(&db, day, day * 2, day * 4).unwrap(),
+            (Some(day * 3), Some(day - 1))
+        );
+        assert_eq!(
+            calendar_adjacent(&db, day * 2, day * 3, day * 4).unwrap(),
+            (Some(day * 3), Some(day * 2 - 1))
+        );
+        assert_eq!(
+            calendar_adjacent(&db, day * 3, day * 4, day * 4).unwrap(),
+            (None, Some(day * 2 - 1))
+        );
+        assert_eq!(
+            calendar_adjacent(&db, old, old + day, day * 4).unwrap(),
+            (Some(day - 1_000), None)
+        );
+        assert_eq!(
+            calendar_days(&db, &[day * 4, day * 5, day * 6], day * 4 + 1).unwrap(),
+            Vec::<i64>::new()
+        );
+        // Both DST day lengths use supplied boundaries, without UTC-day math.
+        for length in [82_800_000, 90_000_000] {
+            assert!(calendar_adjacent(&db, 0, length, day * 4).is_ok());
+        }
+        for (start, end) in [(0, 0), (1, 0), (0, 1), (i64::MIN, i64::MAX)] {
+            assert_eq!(
+                calendar_adjacent(&db, start, end, day * 4).unwrap_err(),
+                "invalid calendar boundaries"
+            );
+        }
+    }
+
+    #[test]
+    fn calendar_projections_share_named_coarse_and_visible_manual_range_rules() {
+        let db = db();
+        let day = 86_400_000;
+        coarse(&db, "coarse", day + 5, day + 10, "synthetic");
+        db.execute("INSERT INTO named_events(id,started_ms,ended_ms,title,source_mask,revision,origin,boundary_locked,title_locked,asr_required,deleted_ms,created_ms) VALUES('event',?1,?2,'synthetic',1,1,'manual',1,1,1,NULL,0)", params![day * 3, day * 3 + 10]).unwrap();
+        db.execute(
+            "INSERT INTO manual_ranges VALUES('precise-only',?1,?2,1,1)",
+            params![day * 5, day * 6],
+        )
+        .unwrap();
+        db.execute("INSERT INTO cloud_tasks(id,provider,target_kind,target_id,target_version,model_id,processor_version,started_ms,ended_ms,source,state,created_ms,updated_ms) VALUES('task','asr','range','precise-only','1','test','1',?1,?2,'microphone','complete',0,0)", params![day * 5, day * 6]).unwrap();
+        db.execute("INSERT INTO precise_segments VALUES('precise','task','microphone',?1,?2,'synthetic','scope',NULL)", params![day * 5 + 10, day * 5 + 20]).unwrap();
+        let bounds = (0..=7).map(|index| index * day).collect::<Vec<_>>();
+        assert_eq!(
+            calendar_days(&db, &bounds, day * 7).unwrap(),
+            vec![day, day * 3, day * 5]
+        );
+        assert_eq!(
+            calendar_adjacent(&db, day * 2, day * 3, day * 7).unwrap(),
+            (Some(day * 3), Some(day + 9))
+        );
+        assert_eq!(
+            calendar_adjacent(&db, day * 4, day * 5, day * 7).unwrap(),
+            (Some(day * 5), Some(day * 3 + 9))
+        );
+        // A stale precise task no longer makes an otherwise cleared range visible.
+        db.execute("UPDATE manual_ranges SET revision=2", [])
+            .unwrap();
+        db.execute("UPDATE named_events SET deleted_ms=1", [])
+            .unwrap();
+        assert_eq!(calendar_days(&db, &bounds, day * 7).unwrap(), vec![day]);
+        assert_eq!(
+            calendar_adjacent(&db, day * 2, day * 3, day * 7).unwrap(),
+            (None, Some(day + 9))
+        );
+    }
+
+    #[test]
     fn recording_projection_requires_active_source_and_current_confirmed_tail() {
         let db = db();
         media(&db, "live", 1_000, 6_000);
@@ -6551,6 +6666,65 @@ mod tests {
         )
         .unwrap();
         assert!(timeline(&db, 0, 10_000).unwrap().is_empty());
+    }
+
+    #[test]
+    fn new_moments_before_audio_seals_do_not_merge_or_recolor_existing_material() {
+        let db = db();
+        media(&db, "mic", 1_000, 9_000);
+        media(&db, "sys", 3_000, 6_000);
+        db.execute("UPDATE audio_blocks SET source='system' WHERE id='sys'", [])
+            .unwrap();
+        db.execute(
+            "INSERT INTO recording_sessions VALUES('live','microphone',8000,9000,NULL,'open')",
+            [],
+        )
+        .unwrap();
+        let projection = || {
+            let mut items = timeline(&db, 0, 20_000).unwrap();
+            mark_recording_items(&db, &mut items, &[AudioSource::Microphone], 10_000).unwrap();
+            items
+        };
+        let before = serde_json::to_value(projection()).unwrap();
+        // Includes an early point, two points beyond the sealed tail and a
+        // point already covered by audio. Only real material-free gaps group.
+        for anchor in [500, 9_500, 9_600, 4_000] {
+            db.execute(
+                "INSERT INTO moments(id,kind,anchor_ms,created_ms) VALUES(?1,'mark',?2,?2)",
+                params![Uuid::new_v4().to_string(), anchor],
+            )
+            .unwrap();
+        }
+        let after = projection();
+        let audio: Vec<_> = after
+            .iter()
+            .filter(|item| item.processing_state != "moment_only")
+            .collect();
+        assert_eq!(serde_json::to_value(audio).unwrap(), before);
+        let points: Vec<_> = after
+            .iter()
+            .filter(|item| item.processing_state == "moment_only")
+            .collect();
+        assert_eq!(points.len(), 2);
+        assert!(points.iter().all(|item| item.recording_sources.is_empty()));
+        assert!(
+            points
+                .iter()
+                .any(|item| item.started_ms == 9_500 && item.ended_ms == 9_601)
+        );
+        // Once the next block arrives, its real source absorbs the tail marks.
+        media(&db, "next", 9_000, 10_000);
+        let next = projection();
+        assert_eq!(
+            next.iter()
+                .filter(|item| item.processing_state == "moment_only")
+                .count(),
+            1
+        );
+        assert!(next.iter().any(|item| item.started_ms == 6_000
+            && item.ended_ms == 10_000
+            && item.sources == EventSources::Microphone
+            && item.recording_sources == vec![AudioSource::Microphone]));
     }
 
     #[test]

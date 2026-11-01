@@ -246,7 +246,6 @@
 	gap: var(--space-6);
 }
 .settings-page .quiet-button {
-	background: var(--color-control);
 	min-height: calc(var(--space-10) + var(--space-1));
 	padding: var(--space-4) var(--space-6);
 }

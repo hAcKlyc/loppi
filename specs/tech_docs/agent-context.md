@@ -17,7 +17,9 @@ flowchart LR
   Capture[既有采集与整理] --> Data
 ```
 
-Core 是数据、有效性和查询的唯一 owner。新入口只用 `send_existing`，不启动 Core、采集、精转或云任务；没有网络监听、独立 daemon 或客户端内容缓存。内部 IPC 版本为 24；对外结果版本为 `loppi.context.v1`。同 UID 的 socket 检查沿用现有实现。读取能力不意味着云端 Agent 的模型推理离线。
+Core 是数据、有效性和查询的唯一 owner。新入口只用 `send_existing`，不启动 Core、采集、精转或云任务；没有网络监听、独立 daemon 或客户端内容缓存。内部 IPC 版本为 25；对外结果版本为 `loppi.context.v1`。同 UID 的 socket 检查沿用现有实现。读取能力不意味着云端 Agent 的模型推理离线。
+
+GUI 日期导航使用只读 `CalendarAdjacent {from_ms,to_ms}`：输入为客户端本地日界（23–25 小时），输出 `newer_ms`/`older_ms` 为两侧最近可用材料的时间点或 `null`。GUI 以本地日界归日，不把时间点当 UTC 日期。投影与 `CalendarDays` 共用音频、粗转、未删除事件、现场记录及可见人工范围的可用性规则，排除 gap 与未来材料；一次查询覆盖全历史，无日期枚举或历史截断。协议 25 与 GUI/CLI/Core/worker 同步发布；旧组件按既有版本不匹配路径拒绝请求，无存储迁移或新增业务状态。
 
 CLI/MCP 的默认参数、校验、描述、schema 和执行入口共用 `crates/loppi-protocol/src/context.rs`。MCP 是有限的 JSON-RPC stdio 适配层，支持 initialize / initialized / ping / tools/list / tools/call，协商 2025-11-25、2025-06-18；不声明可选 prompts、resources、通知或异步任务能力。每行请求最多 1 MiB，stdout 只写协议。
 

@@ -26,14 +26,26 @@ test('semantic text colors remain readable on their actual surfaces', () => {
     ['color-text-muted', 'color-sidebar'],
     ['color-text-secondary', 'color-surface-selected'], ['color-text-secondary', 'color-surface-subtle'], ['color-placeholder', 'color-surface-subtle'],
     ['color-live-text', 'color-live-soft'], ['color-complete-text', 'color-complete-soft'],
+    ['color-live-text', 'color-canvas'], ['color-live-text', 'color-surface'], ['color-text-muted', 'color-surface-card-hover'],
     ['color-warning-text', 'color-warning-surface'], ['color-danger', 'color-danger-surface'],
     ['color-on-brand', 'color-brand'], ['entry-text', 'entry-surface'],
     ['entry-text-secondary', 'entry-menu'],
+    ['entry-accent', 'entry-surface'], ['entry-accent', 'entry-action'], ['entry-accent', 'entry-action-hover'],
   ];
   for (const [text, surface] of pairs) {
     const a = luminance(color(text)), b = luminance(color(surface));
     const ratio = (Math.max(a, b) + .05) / (Math.min(a, b) + .05);
     assert(ratio >= 4.5, `${text} on ${surface}: ${ratio.toFixed(2)} < 4.5`);
+  }
+});
+test('on and off switch tracks retain visible thumb and surface contrast', () => {
+  assert.notEqual(color('color-switch-on'), color('color-switch-off'));
+  for (const track of ['color-switch-on', 'color-switch-off']) {
+    for (const surface of ['color-surface', 'color-canvas']) {
+      const a=luminance(color(track)), b=luminance(color(surface));
+      const ratio=(Math.max(a,b)+.05)/(Math.min(a,b)+.05);
+      assert(ratio>=3, `${track} against ${surface}: ${ratio.toFixed(2)} < 3`);
+    }
   }
 });
 test('source assets and exported token definitions agree', async () => {
@@ -63,6 +75,42 @@ test('formal asset manifest hashes correspond to the shipped files', async () =>
     const bytes = await readFile(resolve(root, 'design/system-v1', file.path));
     assert.equal(bytes.length, file.bytes, file.path);
     assert.equal(createHash('sha256').update(bytes).digest('hex'), file.sha256, file.path);
+  }
+});
+
+test('formal swatches, covers and wordmark variants use the canonical palette', async () => {
+  const base = resolve(root, 'design/system-v1');
+  const approved = await readFile(resolve(root, 'src/assets/brand/wordmark.svg'), 'utf8');
+  assert.equal(await readFile(resolve(root, 'src/assets/brand/wordmark-reversed.svg'), 'utf8'), approved.replaceAll(color('color-text').toUpperCase(), color('entry-text').toUpperCase()));
+  for (const [variant, expected] of Object.entries({
+    color: approved,
+    mono: approved.replaceAll(color('color-logo-dot').toUpperCase(), color('color-text').toUpperCase()),
+    reversed: approved.replaceAll(color('color-text').toUpperCase(), color('entry-text').toUpperCase()),
+  })) assert.equal(await readFile(resolve(base, `brand/wordmark-${variant}.svg`), 'utf8'), expected);
+
+  const allowed = new Set(Object.entries(tokens)
+    .filter(([name, value]) => name.startsWith('palette-') && /^#[a-f\d]{6}$/i.test(value))
+    .map(([, value]) => value.toLowerCase()));
+  const usage = await readFile(resolve(base, 'usage.svg'), 'utf8');
+  for (const [label, token] of [['炭黑', 'ink'], ['纸白', 'paper'], ['暖石', 'stone'], ['完成绿', 'mint'], ['进行中', 'coral'], ['i 方点', 'rust']]) {
+    assert(usage.includes(`${label} · ${color('palette-' + token).toUpperCase()}`), `Stale swatch: ${label}`);
+  }
+  for (const name of ['usage', 'release/readme-header', 'release/social-cover']) {
+    const svg = await readFile(resolve(base, `${name}.svg`), 'utf8');
+    const background = svg.match(/<rect\b[^>]*fill="(#[a-f\d]{6})"/i)?.[1];
+    assert.equal(background?.toLowerCase(), color('color-canvas').toLowerCase(), `${name} background`);
+    for (const [, paint] of svg.matchAll(/\b(?:fill|stroke)="(#[a-f\d]{6})"/gi)) {
+      assert(allowed.has(paint.toLowerCase()), `${name} has stale color ${paint}`);
+    }
+    const png = await sharp(await readFile(resolve(base, `${name}.png`))).ensureAlpha().raw().toBuffer({resolveWithObject: true});
+    const dimensions = svg.match(/<svg\b[^>]*width="(\d+)" height="(\d+)"/);
+    assert.deepEqual([png.info.width, png.info.height], dimensions.slice(1).map(Number), `${name} PNG dimensions`);
+    const pixel = (x, y) => '#' + png.data.subarray((y * png.info.width + x) * 4, (y * png.info.width + x) * 4 + 3).toString('hex');
+    // Check flat colors, not re-rasterized text: system fonts differ by OS.
+    assert.equal(pixel(0, 0), color('color-canvas').toLowerCase(), `${name} PNG background is stale`);
+    if (name === 'usage') for (const [, x, paint] of svg.matchAll(/<rect x="(\d+)" y="146" width="192" height="72"[^>]*fill="(#[a-f\d]{6})"/gi)) {
+      assert.equal(pixel(Number(x) + 96, 182), paint.toLowerCase(), `PNG swatch at ${x} is stale`);
+    }
   }
 });
 
@@ -96,7 +144,7 @@ test('tokens are acyclic, complete, and preserve the approved foundations', asyn
     for(const match of tokens[name].matchAll(/var\(--([\w-]+)/g))visit(match[1],[...ancestors,name]);
   };
   for(const name of Object.keys(tokens))visit(name);
-  assert.deepEqual(['ink','paper','stone','mint','coral','rust'].map(n=>tokens['palette-'+n]),['#292c28','#faf8f2','#ede9e1','#8bbda1','#f4a686','#b65b42']);
+  assert.deepEqual(['ink','paper','stone','mint','coral','rust'].map(n=>tokens['palette-'+n]),['#292c28','#f6f5f1','#ecebe5','#93b29c','#d6a08a','#b65b42']);
   for(const name of ['font-ui','font-time','type-body','space-7','radius-control','stroke-icon','shadow-modal','ring-focus','motion-fast','ease-standard','opacity-disabled','layer-drawer','control-height-default','layout-sidebar-width','map-track-height','entry-top-radius'])assert(tokens[name],name);
 });
 

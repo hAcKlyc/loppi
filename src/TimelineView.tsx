@@ -27,6 +27,7 @@ type Props = {
 	captureStatus: ReactNode;
 	date: Date;
 	recordedDays: number[] | null;
+	adjacentDays?: { newer: number | null; older: number | null } | null;
 	recordingState: ServiceState | null;
 	items: TimelineItem[];
 	gaps: TimeGap[];
@@ -77,6 +78,7 @@ export function TimelineView({
 	captureStatus,
 	date,
 	recordedDays,
+	adjacentDays,
 	recordingState,
 	items,
 	gaps,
@@ -95,27 +97,22 @@ export function TimelineView({
 	const todayKey = dateInput(today);
 	const selectedKey = dateInput(date);
 	const [from, to] = dayBounds(date);
-	const previousDate = new Date(
-		date.getFullYear(),
-		date.getMonth(),
-		date.getDate() - 1,
-	);
-	const nextDate = new Date(
-		date.getFullYear(),
-		date.getMonth(),
-		date.getDate() + 1,
-	);
 	const todayStart = dayBounds(today)[0];
 	const dateButton = useRef<HTMLButtonElement>(null);
 	const chooseDate = (next: Date) => {
 		setCalendarOpen(false);
 		onDate(next);
 	};
+	const stepDate = (day: number | null | undefined) => {
+		if (day == null) return;
+		chooseDate(new Date(day));
+		// The destination can disable the pressed arrow; keep keyboard focus usable.
+		dateButton.current?.focus();
+	};
 	const activeItem = liveCard(items, recordingState, date, today.getTime());
-	const calendarTrigger = useRef<HTMLButtonElement>(null);
 	const closeCalendar = useCallback(() => {
 		setCalendarOpen(false);
-		calendarTrigger.current?.focus();
+		dateButton.current?.focus();
 	}, []);
 	const position = (ms: number) =>
 		`${Math.max(0, Math.min(100, ((ms - from) / (to - from)) * 100))}%`;
@@ -170,23 +167,6 @@ export function TimelineView({
 		<div className="timeline-page">
 			<header className="timeline-header" data-tauri-drag-region>
 				<div className="date-header calendar-anchor" data-tauri-drag-region>
-					<Button
-						aria-expanded={calendarOpen}
-						aria-haspopup="dialog"
-						className="calendar-button"
-						type="button"
-						title="选择日期"
-						aria-label="选择日期"
-						onClick={(event) => {
-							calendarTrigger.current = event.currentTarget;
-							setCalendarOpen(!calendarOpen);
-						}}
-					>
-						<svg viewBox="0 0 24 24" aria-hidden="true">
-							<rect x="3" y="5" width="18" height="16" rx="2" />
-							<path d="M7 3v4M17 3v4M3 10h18" />
-						</svg>
-					</Button>
 					{calendarOpen && (
 						<RecordCalendar
 							date={date}
@@ -200,7 +180,7 @@ export function TimelineView({
 						aria-label="按日期浏览"
 						data-tauri-drag-region
 					>
-						<div className="date-main-row">
+						<div className="date-copy">
 							<Button
 								ref={dateButton}
 								data-date={selectedKey}
@@ -210,57 +190,53 @@ export function TimelineView({
 								aria-label={`${date.getFullYear()}年${dateTitle(date)}，选择日期`}
 								aria-haspopup="dialog"
 								aria-expanded={calendarOpen}
-								onClick={(event) => {
-									calendarTrigger.current = event.currentTarget;
+								onClick={() => {
 									setCalendarOpen(!calendarOpen);
 								}}
 							>
 								<strong>{dateTitle(date)}</strong>
 							</Button>
-							<div className="date-step-controls">
-								<IconButton
-									label="前一天"
-									size="compact"
-									className="date-step"
-									onClick={() => chooseDate(previousDate)}
-								>
-									<Icon name="back" />
-								</IconButton>
-								<IconButton
-									label="后一天"
-									size="compact"
-									className="date-step"
-									disabled={from >= todayStart}
-									onClick={() => {
-										chooseDate(nextDate);
-										if (nextDate.getTime() === todayStart)
+							<div className="date-context">
+								<span>
+									{date.getFullYear() !== today.getFullYear()
+										? `${date.getFullYear()}年 · `
+										: ""}
+									{weekdays[date.getDay()]}
+									{selectedKey === todayKey ? " · 今天" : ""}
+								</span>
+								{selectedKey !== todayKey && (
+									<Button
+										size="compact"
+										className="date-today"
+										onClick={() => {
+											chooseDate(new Date(todayStart));
 											dateButton.current?.focus();
-									}}
-								>
-									<Icon name="next" />
-								</IconButton>
+										}}
+									>
+										回到今天
+									</Button>
+								)}
 							</div>
 						</div>
-						<div className="date-context">
-							<span>
-								{date.getFullYear() !== today.getFullYear()
-									? `${date.getFullYear()}年 · `
-									: ""}
-								{weekdays[date.getDay()]}
-								{selectedKey === todayKey ? " · 今天" : ""}
-							</span>
-							{selectedKey !== todayKey && (
-								<Button
-									size="compact"
-									className="date-today"
-									onClick={() => {
-										chooseDate(new Date(todayStart));
-										dateButton.current?.focus();
-									}}
-								>
-									回到今天
-								</Button>
-							)}
+						<div className="date-step-controls">
+							<IconButton
+								label="下一个有记录的日期"
+								size="compact"
+								className="date-step"
+								disabled={adjacentDays?.newer == null}
+								onClick={() => stepDate(adjacentDays?.newer)}
+							>
+								<Icon name="back" />
+							</IconButton>
+							<IconButton
+								label="上一个有记录的日期"
+								size="compact"
+								className="date-step"
+								disabled={adjacentDays?.older == null}
+								onClick={() => stepDate(adjacentDays?.older)}
+							>
+								<Icon name="next" />
+							</IconButton>
 						</div>
 					</nav>
 				</div>
@@ -362,18 +338,29 @@ export function TimelineView({
 							</div>
 						))}
 						{dayMoments.length > 0 && (
-							<div className="day-map-row">
-								<span className="day-map-source">现场记录</span>
-								<div className="day-map-moments">
-									{dayMoments.map((moment) => (
-										<span
+							<div className="day-map-moments">
+								{dayMoments.map((moment) => {
+									const item = sorted.find(
+										(entry) =>
+											entry.started_ms <= moment.anchor_ms &&
+											moment.anchor_ms < entry.ended_ms,
+									);
+									const label = `${moment.kind === "mark" ? "重点" : moment.kind === "comment" ? "笔记" : "截图"} · ${time(moment.anchor_ms)}`;
+									return (
+										<button
 											key={moment.id}
+											type="button"
 											className={`day-map-moment ${moment.kind}`}
 											style={{ left: position(moment.anchor_ms) }}
-											title={`${time(moment.anchor_ms)} · ${moment.kind === "mark" ? "重点" : moment.kind === "comment" ? "笔记" : "截图"}`}
+											title={label}
+											aria-label={label}
+											disabled={!item}
+											onClick={() => {
+												if (item) onSelect(item, moment.anchor_ms);
+											}}
 										/>
-									))}
-								</div>
+									);
+								})}
 							</div>
 						)}
 						{selectedKey === todayKey && (
@@ -429,9 +416,7 @@ export function TimelineView({
 					label="当天记录"
 				>
 					{visible.length === 0 ? (
-						<div className="list-empty">
-							{sorted.length > 0 ? "粗转内容已隐藏" : "这一天还没有记录"}
-						</div>
+						<div className="list-empty">暂无有效事件</div>
 					) : (
 						visible.map((item) => {
 							const itemMoments = moments.filter(

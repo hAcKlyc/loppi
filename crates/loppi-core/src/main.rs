@@ -3125,6 +3125,18 @@ fn handle_request(
                 });
                 read_response(envelope.id, result)
             }
+            Request::CalendarAdjacent { from_ms, to_ms } => {
+                let result = shared.readers.snapshot().and_then(|db| {
+                    let (newer_ms, older_ms) =
+                        events::calendar_adjacent(&db, from_ms, to_ms, now_ms()?)?;
+                    Ok(Response::CalendarAdjacent {
+                        id: envelope.id,
+                        newer_ms,
+                        older_ms,
+                    })
+                });
+                read_response(envelope.id, result)
+            }
             Request::EventDetail {
                 event_id,
                 offset,
@@ -5504,6 +5516,7 @@ impl Store {
             | Request::RebuildUnderstanding { .. }
             | Request::Timeline { .. }
             | Request::CalendarDays { .. }
+            | Request::CalendarAdjacent { .. }
             | Request::EventDetail { .. }
             | Request::RangeDetail { .. }
             | Request::ReorganizeEvents { .. }

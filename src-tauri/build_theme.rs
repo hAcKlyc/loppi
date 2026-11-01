@@ -29,7 +29,7 @@ mod tests {
     #[test]
     fn native_colors_follow_semantic_aliases() {
         let css = include_str!("../src/tokens.css");
-        assert_eq!(colorref(css, "--color-canvas"), 0xf2f8fa);
+        assert_eq!(colorref(css, "--color-canvas"), 0xf1f5f6);
         assert_eq!(colorref(css, "--color-text"), 0x282c29);
         assert_eq!(colorref("--a: var(--b);\n--b: #123456;", "--a"), 0x563412);
     }

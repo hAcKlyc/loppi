@@ -69,8 +69,14 @@ export function AgentAccess() {
 		: "";
 
 	return (
-		<section className="agent-access" aria-labelledby="agent-access-title">
-			<header className="agent-page-heading" data-tauri-drag-region>
+		<section
+			className="page-container agent-access"
+			aria-labelledby="agent-access-title"
+		>
+			<header
+				className="page-heading agent-page-heading"
+				data-tauri-drag-region
+			>
 				<h1 id="agent-access-title">Agent 接入</h1>
 				<p>让你的 Agent 找回 loppi 里的谈话与日常。</p>
 			</header>

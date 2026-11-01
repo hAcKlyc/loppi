@@ -26,7 +26,9 @@ struct Entry {
   Geometry geometry{};
   int mode = 0, view = 0;
   bool hover = false, drag = false, tracking = false, menu_active = false;
+  bool comment_focus = false, focus_confirmed = false;
   uint64_t generation = 0;
+  uint64_t focus_generation = 0;
   double anchor_x = 0, anchor_y = 0;
   HWND prior = nullptr;
   NOTIFYICONDATAW tray{};
@@ -42,6 +44,27 @@ static double scale(HWND w) {
 static void notify(Entry *e, int kind, int value) {
   if (e && e->callback)
     e->callback(kind, value, e->generation);
+}
+static bool confirm_focus(Entry *e) {
+  bool confirmed = e->comment_focus && e->mode == 0 && e->view != 0 &&
+                   GetForegroundWindow() == e->window;
+  if (confirmed && !e->focus_confirmed) {
+    e->focus_confirmed = true;
+    if (e->callback)
+      e->callback(9, 1, e->focus_generation);
+  }
+  return confirmed;
+}
+static void release_focus(Entry *e, bool restore) {
+  if (!e->comment_focus)
+    return;
+  bool owned = GetForegroundWindow() == e->window;
+  HWND prior = e->prior;
+  e->comment_focus = false;
+  e->focus_confirmed = false;
+  e->prior = nullptr;
+  if (restore && owned && IsWindow(prior) && prior != e->window)
+    SetForegroundWindow(prior);
 }
 static bool rounded(double x, double y, double width, double height,
                     double radius) {
@@ -168,8 +191,15 @@ static LRESULT CALLBACK procedure(HWND w, UINT msg, WPARAM wp, LPARAM lp,
   if (msg == WM_DISPLAYCHANGE || msg == WM_DPICHANGED) {
     notify(e, 3, 1);
   }
-  if (msg == WM_ACTIVATE && LOWORD(wp) == WA_INACTIVE && e->view == 2)
-    notify(e, 2, 1);
+  if (msg == WM_ACTIVATE) {
+    if (LOWORD(wp) == WA_INACTIVE && e->mode == 0 && e->view != 0) {
+      release_focus(e, false);
+      notify(e, 2, 1);
+    } else if (LOWORD(wp) != WA_INACTIVE && e->comment_focus) {
+      notify(e, 4, 1);
+      confirm_focus(e);
+    }
+  }
   return DefSubclassProc(w, msg, wp, lp);
 }
 extern "C" int loppi_entry_active() {
@@ -230,11 +260,12 @@ extern "C" Geometry loppi_entry_layout(void *value, int mode, int view,
   Geometry g = {};
   int x = 0, y = 0;
   if (mode == 0) {
+    g.band = view ? 24 : 0;
     g.width = view ? 412 : (feedback ? 280 : 44);
-    g.height = view ? (view == 2 ? 152 : 128) + (detail && view == 1 ? 40 : 0)
+    g.height = view ? g.band + 144 + (detail && view == 1 ? 40 : 0)
                     : (feedback ? 80 : 32);
-    g.rabbit_x = view ? 20 : g.width / 2 - 14;
-    g.rabbit_y = view ? 24 : 2;
+    g.rabbit_x = view ? 16 : g.width / 2 - 14;
+    g.rabbit_y = view ? g.band + 14 : 2;
     g.top_shift = 0;
     RECT tray = {};
     NOTIFYICONIDENTIFIER id = {sizeof(id), w, 42, {}};
@@ -321,21 +352,31 @@ extern "C" int loppi_entry_focus(void *value, int acquire, int restore,
   auto e = entry(static_cast<HWND>(value));
   if (!e)
     return 0;
-  if (generation < e->generation)
-    return 0;
   if (acquire) {
+    // Rust validates this original intent against its cancellation generation;
+    // feedback/detail layouts may already have advanced the native viewport.
+    if (generation > e->generation || e->mode != 0 || e->view == 0)
+      return 0;
+    if (e->comment_focus)
+      return confirm_focus(e);
     e->prior = GetForegroundWindow();
+    e->comment_focus = true;
+    e->focus_confirmed = false;
+    e->focus_generation = generation;
     LONG_PTR style = GetWindowLongPtrW(e->window, GWL_EXSTYLE);
     SetWindowLongPtrW(e->window, GWL_EXSTYLE, style & ~WS_EX_NOACTIVATE);
     ShowWindow(e->window, SW_SHOW);
     SetForegroundWindow(e->window);
     SetFocus(e->window);
-    bool ok = GetForegroundWindow() == e->window;
-    notify(e, 4, ok ? 1 : 0);
+    bool ok = confirm_focus(e);
+    // Keep a pending input window focusable until actual activation or cancel.
+    if (ok)
+      notify(e, 4, 1);
     return ok;
   }
-  if (restore && IsWindow(e->prior))
-    SetForegroundWindow(e->prior);
+  if (generation < e->generation)
+    return 0;
+  release_focus(e, restore != 0);
   notify(e, 4, 0);
   return 1;
 }
@@ -365,6 +406,7 @@ extern "C" void loppi_entry_dispose(void *value) {
   auto e = entry(w);
   if (!e)
     return;
+  release_focus(e, false);
   KillTimer(w, 42);
   Shell_NotifyIconW(NIM_DELETE, &e->tray);
   if (e->tray.hIcon)

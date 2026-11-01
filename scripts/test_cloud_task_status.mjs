@@ -57,26 +57,46 @@ test('only rejected ASR results offer an explicit paid recognition', async () =>
 });
 
 test('queue renders paid reruns separately from request retries and disables busy actions', async () => {
+ const { createRequire } = await import('node:module');
+ const { JSDOM } = createRequire(import.meta.url)('jsdom');
+ const dom = new JSDOM('<div id="root"></div>', {url:'http://localhost/'});
+ const globals = ['window','document','HTMLElement','ResizeObserver','IS_REACT_ACT_ENVIRONMENT'];
+ const previous = new Map(globals.map(name=>[name,globalThis[name]]));
+ for(const name of ['window','document','HTMLElement'])globalThis[name]=dom.window[name];
+ globalThis.ResizeObserver=class{observe(){}disconnect(){}};
+ globalThis.IS_REACT_ACT_ENVIRONMENT=true;
+ HTMLElement.prototype.scrollIntoView=function(){};
+ window.isTauri=true;
+ const {mockIPC,clearMocks}=await import('@tauri-apps/api/mocks');
+ mockIPC(()=>({type:'usage_statistics',statistics:{started_ms:0,currency:'CNY',days:[]}}));
  const { createServer } = await import('vite');
- const { createElement } = await import('react');
- const { renderToStaticMarkup } = await import('react-dom/server');
+ const { createElement, act } = await import('react');
+ const { createRoot } = await import('react-dom/client');
+ const root=createRoot(document.getElementById('root'));
  const server=await createServer({server:{middlewareMode:true},appType:'custom'});
  try {
   const { QueueView }=await server.ssrLoadModule('/src/WorkspaceViews.tsx');
   const task={id:'failed',provider:'asr',target_kind:'event',target_id:'event',source:'microphone',started_ms:1000,ended_ms:6000,state:'failed',manual:false};
-  const render=(error_code,busy=false)=>renderToStaticMarkup(createElement(QueueView,{queues:[],tasks:[{...task,error_code}],reviews:[],busy,onRefresh:async()=>{},onMutate:async()=>true}));
-  const rejected=render('provider_invalid_utterance');
+  const render=async(error_code,busy=false)=>{
+   await act(async()=>root.render(createElement(QueueView,{queues:[{provider:'asr',configured:true,paused:false,pending:0,processing:0,failed:1}],tasks:[{...task,error_code}],reviews:[],busy,onRefresh:async()=>{},onMutate:async()=>true,onSettings(){}})));
+   if(!document.querySelector('.task-row'))await act(async()=>document.querySelector('[aria-label="语音识别任务明细"]').click());
+   return document.getElementById('root').innerHTML;
+  };
+  const rejected=await render('provider_invalid_utterance');
   assert.match(rejected,/>重新识别<\/button>/);
   assert.match(rejected,/产生新的识别用量/);
-  const uncertain=render('provider_transport');
+  const uncertain=await render('provider_transport');
   assert.match(uncertain,/>重试<\/button>/);
   assert.doesNotMatch(uncertain,/产生新的识别用量/);
-  const recoverable=render('provider_unmapped_timing_audio_coverage');
+  const recoverable=await render('provider_unmapped_timing_audio_coverage');
   assert.match(recoverable,/>重试<\/button>/);
   assert.match(recoverable,/结果未保存，可重试获取/);
   assert.doesNotMatch(recoverable,/重新识别|产生新的识别用量/);
-  assert.match(render('provider_unmapped_timing_word_in_separator',true),/disabled=""[^>]*>重新识别<\/button>/);
- } finally { await server.close(); }
+  assert.match(await render('provider_unmapped_timing_word_in_separator',true),/disabled=""[^>]*>重新识别<\/button>/);
+ } finally {
+  await act(async()=>root.unmount());await server.close();clearMocks();dom.window.close();
+  for(const name of globals){if(previous.get(name)===undefined)delete globalThis[name];else globalThis[name]=previous.get(name);}
+ }
 });
 
 test('completed partial results distinguish empty audio and cropped text, with legacy fallback', async () => {

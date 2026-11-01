@@ -52,6 +52,11 @@
     const requested = new URLSearchParams(location.search).get('scene') ?? 'timeline';
     const scene = scenes.includes(requested) ? requested : 'timeline';
     const showFixtureGaps = new URLSearchParams(location.search).has('gaps');
+    const unorganizedHistory = new URLSearchParams(location.search).has('unorganized');
+    const shortRecording = new URLSearchParams(location.search).has('short');
+    // Secondary-page audit data is opt-in; the original timeline fixture stays unchanged.
+    const workspace = new URLSearchParams(location.search).get('workspace');
+    const workspaceRequests = new Set(['people','cloud_status','cloud_tasks','review_items','voice_samples','usage_statistics','models']);
     const NativeDate = Date;
     const clock = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(new URLSearchParams(location.search).get('clock') ?? '');
     const fixedNow = new NativeDate(2026, 9, 22, clock ? Number(clock[1]) : 18, clock ? Number(clock[2]) : 30).getTime();
@@ -105,7 +110,11 @@
         ...baseItem, id: `fixture-${new Date(from).getDate()}-${index}`,
         title: event.title, summary: event.summary, sources: event.sources,
         started_ms: from + event.start * 3600000, ended_ms: from + event.end * 3600000,
-      }));
+      })).filter(item => !shortRecording || item.started_ms < fixedNow);
+      if (unorganizedHistory) for (const item of items) Object.assign(item, {
+        id: null, title: null, summary: null, processing_state: 'unorganized',
+        preview: { text: '已经留下的声音，等待整理。', source: 'microphone', is_precise: false },
+      });
       if (scene === 'crossday') return [{
         ...items[0], id: 'fixture-crossday',
         title: '跨日讨论：产品信息层级与长期回看体验',
@@ -114,7 +123,7 @@
       }];
       if (isRecording && from === day(22)) items.unshift({
         ...baseItem, id: null, title: null, summary: null, revision: null,
-        started_ms: new Date(2026, 9, 22, 18, 10).getTime(), ended_ms: fixedNow,
+        started_ms: shortRecording ? fixedNow - 720000 : new Date(2026, 9, 22, 18, 10).getTime(), ended_ms: fixedNow,
         sources: 'both', processing_state: 'unorganized',
         recording_sources: ['microphone', 'system'],
         preview: {
@@ -189,6 +198,8 @@
       requests.push({ command, type: args?.request?.type ?? null });
       if (command === 'gui_ready') return null;
       if (command === 'agent_access_info') {
+        if (workspace === 'error') throw Error('模拟接入信息读取失败');
+        if (workspace === 'loading') return new Promise(() => {});
         const cli = isWindows ? 'C:\\Users\\example\\AppData\\Local\\loppi\\loppi.exe' : '/Applications/loppi.app/Contents/MacOS/loppi';
         const runCli = `${isWindows ? '& ' : ''}'${cli}'`;
         return {
@@ -213,8 +224,16 @@
       if (command !== 'core_request') throw Error(`隔离样例未执行原生命令：${command}`);
       const request = args.request;
       const response = (extra = {}) => ({ type: request.type, id: 'design-fixture', ...extra });
+      if (workspaceRequests.has(request.type)) {
+        if (workspace === 'error') throw Error('模拟辅助页面读取失败');
+        if (workspace === 'loading') return new Promise(() => {});
+      }
       if (request.type === 'status') return response({ state });
       if (request.type === 'calendar_days') return response({ days: scene === 'empty' ? [] : [day(19), day(20), day(21), day(22)] });
+      if (request.type === 'calendar_adjacent') {
+        const days = scene === 'empty' ? [] : [day(19), day(20), day(21), day(22)];
+        return response({ newer_ms: days.find(at => at >= request.to_ms) ?? null, older_ms: days.findLast(at => at < request.from_ms) ?? null });
+      }
       if (request.type === 'timeline') {
         await wait(150);
         if (scene === 'error') throw Error('模拟读取失败，请重试；此请求没有连接真实数据');
@@ -242,17 +261,20 @@
         const all = hasDetail && item ? momentsFor(item).filter(moment => moment.anchor_ms >= request.from_ms && moment.anchor_ms < request.to_ms) : [];
         return response({ moments: all.slice(request.offset ?? 0, (request.offset ?? 0) + (request.limit ?? 200)) });
       }
-      if (request.type === 'people') return response({ people });
-      if (request.type === 'cloud_status') return response({ queues: ['llm', 'asr'].map(provider => ({ provider, configured: true, paused: false, pending: 0, processing: 0, failed: 0 })) });
+      if (request.type === 'people') return response({ people: workspace === 'empty' ? [] : people });
+      if (request.type === 'cloud_status') return response({ queues: ['llm', 'asr'].map(provider => ({ provider, configured: true, paused: false, pending: workspace === 'populated' && provider === 'llm' ? 1 : 0, processing: 0, failed: workspace === 'populated' && provider === 'asr' ? 1 : 0, blocked_reason: workspace === 'populated' && provider === 'llm' ? 'provider_http_402' : null })) });
       if (request.type === 'models') return response({ state: { phase: 'ready', speaker_phase: 'ready', progress_percent: 100 } });
-      if (request.type === 'cloud_tasks') return response({ tasks: [] });
+      if (request.type === 'cloud_tasks') return response({ tasks: workspace === 'populated' ? [
+        {id:'task-failed',provider:'asr',target_kind:'event',target_id:'fixture-task',source:'microphone',started_ms:day(22)+9*3600000,ended_ms:day(22)+10*3600000,state:'failed',error_code:'provider_transport',manual:false},
+        {id:'task-pending',provider:'llm',target_kind:'reorganization',target_id:'fixture-task',source:null,sources:'both',started_ms:day(22)+12*3600000,ended_ms:day(22)+13*3600000,state:'pending',error_code:null,manual:true},
+      ].filter(task => task.provider === request.provider) : [] });
       if (request.type === 'review_items') return response({ items: [] });
       if (request.type === 'voice_samples') return response({ samples: Array.from({length: people.find(person => person.id === request.person_id)?.sample_count ?? 0}, (_, index) => ({
         id: `sample-${request.person_id}-${index}`, person_id: request.person_id, source: index % 2 ? 'system' : 'microphone',
         started_ms: day(22) + (14 * 60 + index) * 60_000, ended_ms: day(22) + (14 * 60 + index) * 60_000 + 7600,
         parts: [], audio_available: false, revision: 1,
       })) });
-      if (request.type === 'usage_statistics') return response({ statistics: { started_ms: fixedNow, days: [] } });
+      if (request.type === 'usage_statistics') return response({ statistics: { started_ms: day(16), currency:'CNY', days: workspace === 'populated' ? Array.from({length:7},(_,i)=>({started_ms:day(16+i),covered:true,partial:i===0,asr:{requests:i+1,count:i+1,input_tokens:0,output_tokens:0,cached_tokens:0,cost_nano:1000000*(i+1),incomplete:0},llm:{requests:i+1,count:i+1,input_tokens:1000*(i+1),output_tokens:240*(i+1),cached_tokens:100*i,cost_nano:2000000*(i+1),incomplete:i===2?1:0}})) : [] } });
       if (request.type === 'screenshot_data') return response({ png_base64: png });
       if (request.type === 'playback_chunk') return response({ has_audio: false, wav_base64: '', next_audio_ms: null });
       if (request.type === 'playback_valid') return response({ valid: false });
