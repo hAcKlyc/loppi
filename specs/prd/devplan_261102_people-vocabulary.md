@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: implemented
 updated: 2026-11-02
 ---
 # 人物库与词库双 Tab
@@ -30,7 +30,7 @@ updated: 2026-11-02
   - [x] 页面与词库实现
   - [x] 静态、构建、合成交互/截图与人物回归
   - [x] cross-review 与修复
-  - [ ] 显式范围提交与交付台账
+  - [x] 显式范围提交与交付台账
 
 ### Review 基线
 - Batch base：eeef7110aa6d43051975b0da02f8f51eaacdc0a9
@@ -47,3 +47,11 @@ updated: 2026-11-02
 - 2026-11-02：requirements PASS；adversarial 发现同名停用 CLI 条目无法编辑，接受为 blocker，重复名称保护限制为新建场景，已有条目仍遵循 Core 启用冲突规则。修复后 typecheck/lint/build PASS；两浏览器词库 30 项 + 人物 21 项全部通过。架构审查待完成。
 
 - 2026-11-02：adversarial 定向复查 RESOLVED；final architecture PASS，无新增 owner/protocol/store/重试。已重读完整契约，所有范围与适用验收完成；无 mandatory 遗留。最终源码组件未再变更，单批 review 覆盖整体。
+
+- 2026-11-02：功能提交 f738c6c40b347e1bc6662d7720fd1cf5dcd4decc；仅显式本任务 16 个文件入库，其余共享工作树改动保留。提交后共同静态门禁 typecheck/lint 再次 PASS，范围内无未提交差异，功能源码与最终审查/浏览器验证快照相同。所有验收满足，状态 implemented。
+
+### 交付与验收备忘
+- 核心体验：人物库入口顶部双 Tab，默认人物库；词库整行编辑，保存/失败反馈、新建/停用/删除与用途开关齐全。
+- 状态与架构：复用现有 Core vocabulary，无协议、迁移、后台队列、依赖或云策略变化；原有历史不自动改写。
+- 无待决策或 mandatory 真机遗留。主观验收 advisory：①人物页默认与切换；②新建「看山」/「开山」并修改和停用；③删除确认与三个用途开关。对应验证为双浏览器真实组件+合成 IPC，不声称已安装 App 或真实音频云端效果。
+- 证据：../research/evidence/2026-11-02-vocabulary/，含合成预览、长内容/窄窗口与逐项交互结果、三路评审结论。
