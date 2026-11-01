@@ -1,0 +1,3 @@
+# Verification
+
+Final scoped code: typecheck, lint, frontend build PASS; design assets 8/8 PASS. Existing large-main-bundle advisory remains; build succeeds. Browser results saved in browser-results.txt: WebKit32 and system Google Chrome32 PASS, including settings above list and main-page explanation removal plus previous CRUD/settings/errors/stale-read regressions. Each engine measured 1120×760 and 760×540: all three switches visible, settings before list, no root/settings overflow, no explanatory paragraphs. All fixture data synthetic; no real database/credentials/cloud calls. Scope does not change native bridge, persistent state or recognition behavior.

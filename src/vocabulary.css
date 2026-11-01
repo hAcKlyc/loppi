@@ -4,19 +4,6 @@
 .people-page .page-heading::before {
 	top: 0;
 }
-.vocabulary-actions {
-	display: flex;
-	gap: var(--space-3);
-}
-.vocabulary-intro,
-.vocabulary-settings > p {
-	color: var(--color-text-secondary);
-	font-size: var(--type-meta);
-	line-height: var(--leading-relaxed);
-}
-.vocabulary-intro {
-	margin-top: calc(-1 * var(--space-4));
-}
 .vocabulary-feedback {
 	color: var(--color-text-secondary);
 	font-size: var(--type-meta);
@@ -26,18 +13,17 @@
 }
 .vocabulary-list-heading {
 	display: flex;
-	align-items: baseline;
+	align-items: center;
 	justify-content: space-between;
 	margin-top: var(--space-9);
 	margin-bottom: var(--space-5);
 }
-.vocabulary-list-heading h2,
-.vocabulary-settings h2 {
+.vocabulary-list-heading h2 {
 	margin: 0;
 	font-size: var(--type-lead);
 	font-weight: var(--weight-semibold);
 }
-.vocabulary-list-heading > span,
+.vocabulary-list-heading > div > span,
 .vocabulary-kind,
 .vocabulary-disabled {
 	color: var(--color-text-secondary);
@@ -91,7 +77,22 @@
 	color: var(--color-text-secondary);
 }
 .vocabulary-settings {
-	margin-top: var(--space-12);
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: var(--space-9);
+	padding-bottom: var(--space-7);
+	border-bottom: var(--stroke-hairline) solid var(--color-border-subtle);
+}
+.vocabulary-settings .setting-row {
+	justify-content: flex-start;
+	padding: 0;
+	border: 0;
+	gap: var(--space-4);
+}
+.vocabulary-list-heading > div {
+	display: flex;
+	align-items: baseline;
+	gap: var(--space-4);
 }
 .vocabulary-settings .setting-row > div:first-child {
 	min-width: 0;
@@ -100,6 +101,9 @@
 	margin-right: auto;
 }
 @media (max-width: 760px) {
+	.vocabulary-settings {
+		gap: var(--space-5);
+	}
 	.vocabulary-row {
 		padding-inline: var(--space-5);
 		gap: var(--space-3);

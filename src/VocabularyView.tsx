@@ -114,26 +114,10 @@ export function VocabularyView() {
 		<div className="vocabulary-page">
 			<div className="page-heading" data-tauri-drag-region>
 				<h1>词库</h1>
-				<div className="vocabulary-actions">
-					<Button disabled={busy} onClick={() => void load()}>
-						刷新
-					</Button>
-					<Button
-						className="button-with-icon"
-						disabled={busy || !data || data.entries.length >= 100}
-						onClick={() => {
-							setError("");
-							setEditor("new");
-						}}
-					>
-						<Icon name="plus" />
-						新建词条
-					</Button>
-				</div>
+				<Button disabled={busy} onClick={() => void load()}>
+					刷新
+				</Button>
 			</div>
-			<p className="vocabulary-intro">
-				记住常用的产品名、项目名和专有名词，让转录与摘要用对词。
-			</p>
 			<p className="vocabulary-feedback" role="status">
 				{notice}
 			</p>
@@ -150,24 +134,54 @@ export function VocabularyView() {
 			>
 				{data && (
 					<>
+						<section className="vocabulary-settings" aria-label="词库设置">
+							{(
+								[
+									["llm", "摘要与理解"],
+									["local_asr", "本地转录"],
+									["cloud_asr", "云端精转"],
+								] as const
+							).map(([key, title]) => (
+								<SettingRow
+									key={key}
+									title={title}
+									action={
+										<Switch
+											label={title}
+											checked={data.settings[key]}
+											disabled={busy}
+											onChange={() =>
+												void mutate(
+													{ action: "configure", [key]: !data.settings[key] },
+													`${title}词库已${data.settings[key] ? "关闭" : "开启"}`,
+												)
+											}
+										/>
+									}
+								/>
+							))}
+						</section>
 						<div className="vocabulary-list-heading">
-							<h2>我的词条</h2>
-							<span>{data.entries.length} / 100</span>
+							<div>
+								<h2>词条</h2>
+								<span>{data.entries.length} / 100</span>
+							</div>
+							<Button
+								className="button-with-icon"
+								disabled={busy || data.entries.length >= 100}
+								onClick={() => {
+									setError("");
+									setEditor("new");
+								}}
+							>
+								<Icon name="plus" />
+								新建词条
+							</Button>
 						</div>
 						<div className="panel-card vocabulary-list">
 							{data.entries.length === 0 && (
 								<div className="list-empty">
-									<strong>从一个常用名字开始</strong>
-									<p>例如添加「看山」，把常被听成的「开山」设为别名。</p>
-									<Button
-										disabled={busy}
-										onClick={() => {
-											setError("");
-											setEditor("new");
-										}}
-									>
-										添加第一个词条
-									</Button>
+									<span>暂无词条</span>
 								</div>
 							)}
 							{data.entries.map((entry) => (
@@ -183,11 +197,9 @@ export function VocabularyView() {
 								>
 									<span className="vocabulary-word">
 										<strong>{entry.name}</strong>
-										<small>
-											{entry.aliases.length
-												? `别名 / 常见误写：${entry.aliases.join("、")}`
-												: "尚未添加别名"}
-										</small>
+										{entry.aliases.length > 0 && (
+											<small>{entry.aliases.join("、")}</small>
+										)}
 									</span>
 									<span className="vocabulary-kind">
 										{kindLabel(entry.kind)}
@@ -197,50 +209,6 @@ export function VocabularyView() {
 									)}
 									<Icon name="next" />
 								</button>
-							))}
-						</div>
-						<div className="vocabulary-settings">
-							<h2>应用词库</h2>
-							<p>
-								对后续识别和生成生效。已有文字与摘要保持原样；已提交的精转任务沿用提交时的词库。
-							</p>
-							{(
-								[
-									[
-										"llm",
-										"摘要与理解",
-										"帮助整理事件时使用规范名称，关联同一对象。",
-									],
-									[
-										"local_asr",
-										"本地转录",
-										"优先识别词库中的名称，实际效果取决于音频与模型。",
-									],
-									[
-										"cloud_asr",
-										"云端精转",
-										"将启用的规范名称作为热词随精转请求发送给云端服务。",
-									],
-								] as const
-							).map(([key, title, description]) => (
-								<SettingRow
-									key={key}
-									title={title}
-									description={description}
-									action={
-										<Switch
-											label={title}
-											checked={data.settings[key]}
-											disabled={busy}
-											onChange={() =>
-												void mutate(
-													{ action: "configure", [key]: !data.settings[key] },
-													`${title}词库已${data.settings[key] ? "关闭" : "开启"}`,
-												)
-											}
-										/>
-									}
-								/>
 							))}
 						</div>
 					</>
