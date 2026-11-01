@@ -43,10 +43,12 @@ scope: "完成 loppi Windows 支持、真实 Windows 安装验收，并将同版
 
 - [x] 双端审计、平台边界与文件分工确认。
 - [x] Windows原生/共享Rust/GUI与CLI源码实现及确认修复（正式包/真机门槛独立待验）。
-- [ ] Windows打包、资源/身份/依赖与真实安装验收。
+- [x] Windows打包、资源/身份/依赖与真实默认/Unicode安装、录制中升级和卸载保留资料。
 - [x] Mac/前端组合回归与平台规范/文档更新。
-- [ ] 独立需求/故障与最终架构审查、修复、源码提交。
-- [ ] 最终干净构建、标签/远端/Release附件一致、全部强制验收闭环。
+- [x] 独立需求/故障与最终架构审查、修复、源码提交。
+- [x] 同一干净30a源码的三端正式构建、Mac签名公证和各自产物身份/资源核对。
+- [ ] 解锁后的真实桌面截图/OCR/HWND排除恢复、物理OS入口验收。
+- [ ] main同步、v0.1.18标签/三端附件与远端摘要核对、全部强制验收闭环。
 
 ### 当前批次 Review 基线
 
@@ -102,3 +104,13 @@ scope: "完成 loppi Windows 支持、真实 Windows 安装验收，并将同版
 
 - 图标两项配置获需求/故障/原final架构定向PASS。真实NSIS3.11小型编译和写出卸载器均0，两个EXE的RT_GROUP_ICON/RT_ICON七尺寸PNG逐帧与批准ICO一致；无注册表写入、未改真实安装。源码路径/schema/兼容性门禁已关，正式新包资源与安装身份待重建验证。
 - 0fa模型负向实测：缺失model_bundle_missing、损坏model_checksum；start均退出2并提示model_not_ready，prepare-install退出0/forced=false，原模型校验值不变。失败的先前fixture期望不再混称产品缺陷。
+
+### 最终包与当前外部阻塞
+
+- 二进制源码固定为`30a04cc7879ee69f191b53c744da7483cd48c0e0`，已推送`codex/windows-support`。两份Mac薄包均签名、公证、装订、Gatekeeper通过；root独立核对8组件身份、批准ICNS和DMG校验。Mac旧应用当前录音未被重启。
+- Windows实际发行入口0，四组件同source/epoch1793489277/dirty=false，最终包388800577字节、SHA ef3b8f66…49d4c533、unsigned。真实默认安装/52资源/19PE/GUI+安装+卸载器七帧图标、双路采集/持久粗转/CLI、录制中覆盖→新转写→录制中卸载及资料保留通过；最后干净默认重装。GUI退出0；Core已停并释锁，单独退出码未捕获，不补写0。
+- 18份完整脱敏原始JSON通过公开CLI回传，56654字节SHA0941141d…966f0d，root已验传输/源身份/图标PNG字节/模型锁/前后新采集及出口。完整verify属于0fa的10项、426Rust/89Node/8Python通过及原有忽略/跳过；30a仅安装图标配置变化，不改贴执行版本。最终包与证据详见[发行准备状态](../research/evidence/2026-11-01-windows/release-readiness.md)。
+- Windows默认应用已保留，合成Core数据归档、凭据回收、startup关闭，无测试产品进程。用户/工作区前缀脱敏；未上传真实用户内容、密钥或进行付费云调用，未绕过锁屏/安全策略/被拒清理。
+- 当前仅真实锁屏阻挡三类mandatory本机验收；已向用户异步提示解锁，Windows Agent完成所有可独立事项并待命。该外部条件不引入产品/架构岔路，台账保持in-progress。旧Release及标签/main保持；发布授权本轮已明确，无需再次审批，解锁验收通过后继续合并与发布。
+- 本收尾记录仅承载事实，不更改30a产品源码；此后的文档提交号不是包内source，已验证包不为文档提交重建。
+- 2026-10-31 23:57:38 UTC最后只读复核仍锁定（Session1/WTS flags0/Default）；远端main仍1e36cf5、v0.1.18标签OID仍b093afb，旧5附件摘要与备份一致。全部可独立工作已完成，当前等用户解锁；状态和证据以本次文档提交留存，不宣告完整交付。

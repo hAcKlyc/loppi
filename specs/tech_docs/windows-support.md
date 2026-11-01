@@ -1,6 +1,6 @@
 # Windows native implementation and verification
 
-Status: in progress. This is the Windows implementation notebook; the coordinating Mac session owns the unified delivery devplan and release decision.
+Status: in progress, pending the unlocked-desktop acceptance. Final package and publication facts are authoritative in [release-readiness.md](../research/evidence/2026-11-01-windows/release-readiness.md). The source-candidate observations below are historical; the native mechanisms remain applicable.
 
 ## Contract
 
@@ -66,7 +66,7 @@ Screenshot errors: `screenshot_desktop_unavailable` for locked/unknown/inaccessi
 
 Actual console facts: process Session=1, active console=1, connection=Active, SessionFlags=0 (locked), window station=WinSta0, thread/input desktop=Default, foreground HWND=0. GDI and independent Pillow both returned black pixels. No unlocking or security bypass was attempted. Real desktop capture/HWND exclusion are **pending unlock**. Synthetic PNG OCR and WebView screenshots do not close that acceptance. Flag meanings follow [Microsoft documentation](https://learn.microsoft.com/en-us/windows/win32/api/wtsapi32/ns-wtsapi32-wtsinfoex_level1_w).
 
-## Commands and observed evidence
+## Early native candidate observations (historical)
 
 Use PowerShell, `CARGO_PROFILE_DEV_DEBUG=0`, `CARGO_INCREMENTAL=0`, and absolute `SHERPA_ONNX_LIB_DIR` pointing to the extracted pinned library. Use one `LOPPI_BUILD_EPOCH` for identity checks. Native `smoke_windows_*` commands are explicit opt-in, outside automatic test discovery.
 
@@ -85,7 +85,7 @@ Use PowerShell, `CARGO_PROFILE_DEV_DEBUG=0`, `CARGO_INCREMENTAL=0`, and absolute
 
 The builder verifies models/native archives, builds all four components with one epoch, bundles inference DLLs, app-local VC runtime, offline WebView2 installer, models, OCR, licenses and SHA inventory, checks compiled identities and writes unsigned metadata. Tested platform is one Windows 11 Pro x64 build 26300 Surface Laptop 3; no other-device/ARM64 claim. Final NSIS install/upgrade/uninstall, default-root retention, missing/corrupt models and unlocked desktop checks remain open. This is not release readiness.
 
-## Repaired source checkpoint
+## Repaired native source checkpoint (historical)
 
 Latest workspace run: Core 392 passed / 22 ignored; GUI 11, protocol 19, CLI 2, worker 2; full four-component development build passes. The curated JSON supersedes earlier incremental observations above. Phase 1 independent requirements/adversarial reviewers and focused repairs are documented in [windows-review.md](windows-review.md).
 
@@ -100,3 +100,11 @@ Windows install-cli uses an installation launcher and bounded private target met
 VC redistributables are package dependencies even when installed on this development machine. `config/windows-assets.json` pins all ten official installed VC CRT DLLs, their sizes and hashes, plus Microsoft's redistribution license document. `verify_windows_dependencies.py` checks regular and delay imports against an explicit Windows 11 inbox baseline without consulting System32. A fresh 19-image app/OCR/CRT/inference stage passes; withholding msvcp140_1.dll correctly fails. The first dirty optimized NSIS build completed (388,293,595 bytes) but predates these final repairs and is not installation or release evidence. Rebuild the complete package before acceptance.
 
 Both PowerShell entrypoints use the same Node build owner; release rejects dirty source as intended. Initial frontend lint encounters inherited Windows CRLF formatting, while type checking passes; coordinator-owned frontend files were not normalized here. Mac source/runtime verification belongs to the coordinator after candidate push.
+
+## Final combined package checkpoint
+
+Source `30a04cc7879ee69f191b53c744da7483cd48c0e0` builds the final clean four-component Windows package and both notarized thin Mac packages. Actual default Windows install, active-recording upgrade, new persisted capture/VAD/X-ASR/CLI read after relaunch, active uninstall, retained SQLite/media/notes, final default reinstall, 52 asset hashes, 19-image PE closure and all three approved rabbit icon resource sets pass. Unicode and missing/corrupt models passed on the preceding source; only installer icon configuration changed afterwards. The complete Windows offline entry passes, including lint after repository LF attributes and portable Python test imports/fixtures.
+
+The final Windows installer is 388800577 bytes, SHA256 `ef3b8f66ee206a2e7c852a0d9a6ac6a6952336f96c2f658ef077523249d4c533`, genuinely unsigned. Its NSIS shell is x86; the four application components are x64. GUI exit0 is captured; Core stopped and released its files, but its individual process exit code was not separately captured. Final default Core test data is archived, test credentials removed, startup off and no test product processes remain.
+
+The full generated NSIS uses read-only final occupancy checks, with no forceful shutdown. The real desktop remains locked: successful GDI capture/OCR, HWND hide/restore and physical OS entry interaction remain mandatory. No release assets, tag or main changes have been made; this checkpoint is not a published delivery. Full path-redacted original JSON and source attribution are linked from the readiness record.
