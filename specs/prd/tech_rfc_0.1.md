@@ -11,9 +11,11 @@ review: "按 2026-09-27 PRD 逐项复核，并对照 MyAgents 源码及 Apple、
 
 > 当前实现口径（2026-10-22）：本文保留技术方案演进与早期实测。现行 ASR 输入为一分钟已知静默连接，文字按原请求时间轴发布，声纹/回放独立验原声；停止意图缺口由 ingestion 按最终封块校正。实现事实以 [整体架构](../ARCHITECTURE.md)、[核心算法](../tech_docs/algorithms.md)及 [本次修复计划](devplan_261022_asr-publication.md)为准；本文早期覆盖过滤规则已被取代。
 
+> 历史 RFC：保留最初 0.1 的方案与实测演进。当前许可为 Apache-2.0，模型随包分发，已提供只读 CLI/MCP 和 Windows 实验性实现。当前系统边界见[整体架构](../ARCHITECTURE.md)，外发范围见[隐私说明](../../PRIVACY.md)。后文注明历史的闭源、下载和平台结论不作为当前用户说明。
+
 ## 0. 文档地位
 
-[PRD](prd_0.1.md)定义产品行为，本 RFC 负责实现分层、数据关系、异常恢复和验证方法。与 PRD 冲突时以 PRD 为准。0.1 只正式支持 macOS，以直接分发的 `.dmg` 交付桌面界面和完整 CLI，不走 Mac App Store。源码现阶段闭源，未来开源与许可证尚未确定。后续平台和主题工作流不进入本轮工程验收。
+[PRD](prd_0.1.md)定义产品行为，本 RFC 负责实现分层、数据关系、异常恢复和验证方法。与 PRD 冲突时以 PRD 为准。0.1 只正式支持 macOS，以直接分发的 `.dmg` 交付桌面界面和完整 CLI，不走 Mac App Store。当前项目自有代码、文档和图像采用 Apache-2.0；此处平台范围指最初 0.1 基线。后续平台和主题工作流不进入本轮工程验收。
 
 所有经声音保留策略留下的人声音频及已有粗转文字默认持续保存；Mark 只是时刻信号，不改变音频保留。容量不足时暂停新录音并提醒，由用户手动恢复。本版两项云能力必须配置，两条队列可各自暂停；完整 CLI 与桌面界面共用同一套本机核心和产品规则，其中搜索索引与 CLI 搜索照常交付，桌面界面暂不暴露搜索入口。本文区分「已在 MyAgents 代码中存在的实现」「Apple/上游公开接口」与「为 hear 提出的方案」；前两者均不等于 hear 已完成验证。
 
@@ -178,7 +180,7 @@ DeepSeek 适配器按[官方 Chat Completions 文档](https://api-docs.deepseek.
 
 开发机已用非用户内容的公开 5.6 秒中文 WAV 与 `VOLCENGINE_API_KEY` 真实提交/查询：`volc.seedasr.auc` 均返回 HTTP 200、`X-Api-Status-Code=20000000`；`audio.data` 内嵌上传可用，查询结果含 `utterances` 的相对毫秒时间及 `additions.speaker` 字段。另用一秒合成纯音验证配置，查询实际返回 `20000003`：这是请求成功但无有效语音的终态，适配器保存空精转结果，不当作密钥错误；`20000001`/`20000002` 则继续查询。该验证不上传用户原声。首个适配器因此选内嵌上传，避免新增对象存储；较长文件的大小、时长与多人/双路质量仍待验证，超限时只在本机按来源和真实时间分块。火山托管声纹功能不替代 hear 本机全局人物库。极速版是另一份[独立合同](https://docs.volcengine.com/docs/DoubaoVoice/recording-file-recognition-lite-http?lang=zh)，只作为后续对照，不默认为标准版失败时自动切换，以免改变外发与计费行为。
 
-云 LLM 只接收用于事件拟合的粗文字、时间/来源和人声检测状态；云 ASR 只接收需精转的相应音频。人物列表、声纹特征、截图不因这两项配置自动上传。本机截图 OCR 只构建本地索引；无单独授权不外发画面。0.1 不实施应用侧预算上限或拦截；供应商接口、计量、成本与错误码要核实，用户界面不得显示推测的精确价格，也不能承诺云结果必优于本地结果。声纹匹配是本地任务，不算第三条云队列；其积压不得拖停录音或已完成文字稿。
+云 LLM 只接收用于事件拟合的粗文字、时间/来源和人声检测状态；云 ASR 只接收需精转的相应音频。人物库和声纹特征不因这两项配置自动上传。当前新保存的主动截图保留本机原图和 OCR，并在配置 LLM 后将原图加入同一云队列；启动或配置不回填历史截图。0.1 不实施应用侧预算上限或拦截；供应商接口、计量、成本与错误码要核实，用户界面不得显示推测的精确价格，也不能承诺云结果必优于本地结果。声纹匹配是本地任务，不算第三条云队列；其积压不得拖停录音或已完成文字稿。
 
 采集、媒体落盘、粗转、事件拟合、精转、身份匹配和每条云队列的暂停分别记录状态。界面和 CLI 不以单个“已处理”遮盖待办、失败、未命名、未知说话人或不可回放。任务跨重启持久，结果发布始终检查输入版本与清理墓碑。任务表和诊断日志只保留运行必需的引用、状态、版本与脱敏错误，不复制整段转录、音频、截图、声纹或密钥；外发临时文件及失败请求残留须登记生命周期并受同一清理范围约束。
 
@@ -296,7 +298,7 @@ macOS 的 Core Audio 可在音频 I/O 时持有阻止空闲睡眠的系统断言
 
 本批新增的来源级状态与模型控制改变了本机 IPC 的必填报文，协议号升至 `2`；旧客户端访问新核心时明确得到版本错误。`media_gaps` 直接创建最终可表示开放缺口的结构，未保留本批开发过程中临时表格式的运行时兼容迁移。
 
-许可边界分别看运行库、权重与应用源码：sherpa-onnx 本体为 Apache-2.0；[Silero VAD](https://github.com/snakers4/silero-vad/blob/master/LICENSE) 为 MIT；SenseVoice 压缩包内 `LICENSE` 指向 [FunASR 模型协议 1.1](https://github.com/modelscope/FunASR/blob/main/MODEL_LICENSE)，要求标注来源、作者并保留模型名，其条款与 FunASR 工具代码的 MIT 许可不同。hear 的安装/关于页及分发材料须呈现相应归属与许可链接。MyAgents 应用代码为 AGPL-3.0，当前闭源 hear **不复制其源码**；下文的“复用”仅指独立实现同一公开 API、算法思路或测试口径，除非另有明确授权及兼容许可。
+许可边界分别看运行库、权重与应用源码：sherpa-onnx 本体为 Apache-2.0；[Silero VAD](https://github.com/snakers4/silero-vad/blob/master/LICENSE) 为 MIT；SenseVoice 压缩包内 `LICENSE` 指向 [FunASR 模型协议 1.1](https://github.com/modelscope/FunASR/blob/main/MODEL_LICENSE)，要求标注来源、作者并保留模型名，其条款与 FunASR 工具代码的 MIT 许可不同。hear 的安装/关于页及分发材料须呈现相应归属与许可链接。MyAgents 应用代码为 AGPL-3.0，当时闭源的 hear **不复制其源码**；下文的“复用”仅指独立实现同一公开 API、算法思路或测试口径，除非另有明确授权及兼容许可。
 
 ### 10.4 Batch 4 人物、修订与清理实现核对
 
@@ -312,20 +314,20 @@ Batch 4 架构审查要求把同场声纹合组当作可撤销投影：当前版
 
 ### 11.1 核查范围与结论
 
-以下结论来自相邻 `MyAgents` 工作树当前源码，核对基准 commit 为 `613340796d3c20f69cbc9f36bcdb2ab588589531`（工作树当时无未提交改动），不代表其他分支或后续发布版。整体判断：其采集、媒体与本地推理的模块边界可作为**设计参考和对照测试依据**，但当前闭源 hear 不能直接复制 AGPL-3.0 应用源码，也不能把单条 Record 当成全天时间轴。hear 使用各依赖自己的许可和公开 API 独立实现；下表的“复用”仅指设计与验证经验，并不授权源码复制，也不代表功能已通过 hear 验收。
+以下结论来自相邻 `MyAgents` 工作树当前源码，核对基准 commit 为 `613340796d3c20f69cbc9f36bcdb2ab588589531`（工作树当时无未提交改动），不代表其他分支或后续发布版。整体判断：其采集、媒体与本地推理的模块边界可作为**设计参考和对照测试依据**，但当时闭源的 hear 不能直接复制 AGPL-3.0 应用源码，也不能把单条 Record 当成全天时间轴。hear 使用各依赖自己的许可和公开 API 独立实现；下表的“复用”仅指设计与验证经验，并不授权源码复制，也不代表功能已通过 hear 验收。
 
 | 模块与源码证据 | MyAgents 当前实现 | hear 复用判断与必要改造 |
 |---|---|---|
-| [平台采集](../../../MyAgents/src-tauri/src/recording/capture.rs) | 麦克风用 CPAL；macOS 系统声用 ScreenCaptureKit `SCStream`，配置排除当前进程输出；两路独立 sink 和采集异常事件 | **按公开 API 独立实现**。复用来源适配、许可检查、回调隔离；重做全天生命周期、设备/睡眠恢复、实际来源覆盖验证。当前 `preflight` 在要求双路时任一路许可/设备失败可能阻止启动，hear 须允许另一可用来源继续 |
-| [实时缓冲与时间映射](../../../MyAgents/src-tauri/src/recording/audio.rs)、[时间线](../../../MyAgents/src-tauri/src/recording/timing.rs) | 有界环形缓冲、采样坐标与时钟质量；归档和分析分开消费 | **借鉴抽象并独立实现**。保留每来源缺口和时钟映射；把单 Record 的样本坐标改为可跨多采集段的稳定坐标，明示缓冲溢出而不是无声 |
-| [live 预处理](../../../MyAgents/src-tauri/media-worker/src/record_live.rs)、[来源预处理](../../../MyAgents/src-tauri/media-worker/src/record_preprocessing.rs)、[AEC](../../../MyAgents/src-tauri/media-worker/src/record_aec.rs)、[回声证据](../../../MyAgents/src-tauri/media-worker/src/record_echo_evidence.rs) | 双路按采集时钟对齐，参考可靠时在分析副本上做回声消除；不可靠时绕过并保留原始输入 | **可作为分析链设计候选**。不能把 AEC 后的分析音频当成唯一原声，也不能把系统声活动自动视为麦克风回声；需比较近端人声误伤、耳机/外放及双路缺席场景 |
-| [Ogg Opus 归档与恢复](../../../MyAgents/src-tauri/src/recording/archive.rs)、[分析缓冲](../../../MyAgents/src-tauri/src/recording/analysis.rs) | 采到的样本立即归档为 Ogg Opus，另写可重读的分析缓冲；支持部分崩溃文件恢复；分析上限为每路 8 小时 | **参照编解码/恢复行为，以独立实现替代**。现状会保存所有声音，未实现 hear 的独立声音保留策略；全天需短封块、待判定缓冲、静音省写、可按时间/来源裁剪和多日恢复。不能简单增大 8 小时常量 |
-| [worker 协议](../../../MyAgents/src-tauri/media-worker-protocol/src/lib.rs)、[worker 入口](../../../MyAgents/src-tauri/media-worker/src/main.rs) | 独立进程承载 live ASR、backfill ASR、分段与附件任务；有代次、帧确认、心跳、停止/让出和版本检查；每路媒体限制 8 小时 | **选择性借鉴**。保留进程隔离与有界消息，但换成 hear 的连续采集段/短任务输入与重启游标；协议中的 8 小时上限、`RecordArtifacts` 和单 Record 身份不能照搬。新任务不得直接改权威事件/人物库 |
-| [VAD + 粗转链](../../../MyAgents/src-tauri/media-worker/src/main.rs)、[本地适配器](../../../MyAgents/src-tauri/media-worker/src/native_adapter.rs)、[原生实现](../../../MyAgents/src-tauri/media-worker/native/myagents_speech_adapter.cc) | Silero VAD 弹出片段后，调用离线 SenseVoice 并发布带来源/样本时间的文字；一次 ASR 输入上限为 60 秒 | **可作为首个粗转设计参照**。它提供录制中逐段出字，而非真正逐帧流式 ASR。保留判断必须另做；ASR 返回空文字不能决定删除；长连续语音的切段、延迟与多路积压需实测。60 秒是当前适配器约束，不是 hear 事件长度 |
-| [模型包源锁](../../../MyAgents/src-tauri/media-worker/model-pack-source-lock.json)、[安装管理](../../../MyAgents/src-tauri/src/speech_model_pack_manager.rs)、[原生包校验](../../../MyAgents/src-tauri/media-worker/src/native_bundle.rs) | 锁定 SenseVoice INT8、Silero VAD、pyannote segmentation、3D-Speaker ERes2Net；当前锁文件约 210 MB 下载、285 MB 已安装，固定 sherpa-onnx/ONNX Runtime 版本与哈希；模型权重包和签名原生运行库分开 | **可借鉴校验、下载和回滚机制，需独立实现产品集成**。MyAgents 首次下载由用户发起、其 ONNX Runtime 与文档处理模块共享；hear 要在首次设置中自动准备，处理独立签名打包、失败重试、资源版本兼容与升级，不能复制 MyAgents 的私有下载 URL 当公开稳定源 |
-| [本地推理资源协调](../../../MyAgents/src-tauri/src/local_inference.rs) | 运行库身份校验 + 单一重计算 lease；`RecordLive` 优先于回填/分段，但让出为协作式，非强制抢占 | **借鉴协调思想并独立实现**。live VAD/粗转要有持续可用预算，OCR/声纹/历史补算不得饿死采集。单 lease 若长期被 live worker 持有，会压住其他任务；须验证让出、老化和积压。此模块不是可直接调用的通用模型推理服务 |
-| [局部分段](../../../MyAgents/src-tauri/media-worker/src/diarization.rs)、[原声身份核对](../../../MyAgents/src-tauri/media-worker/src/record_identity.rs)、[Record 内人工锚点](../../../MyAgents/src-tauri/src/record/speaker_identity.rs) | 有界窗分段、临时 embedding/聚类及对同一 Record 原声锚点的核验；代码明确不持久化声纹向量或推断姓名 | **借鉴有界分段与向量计算流程，独立建立身份生命周期**。hear 需要持久全局 Person/VoiceSample、跨事件匹配、人工否定、删除/重提与模型升级迁移。MyAgents 的 `person_id` 是 Record 局部 ID，不能直接充当 hear 全局 ID |
-| [语音任务管理](../../../MyAgents/src-tauri/src/speech_recognition.rs)、[候选发布](../../../MyAgents/src-tauri/src/speech_recognition/record_processing.rs)、[Record 存储](../../../MyAgents/src-tauri/src/record.rs) | 本地语音任务有状态和版本校验；完成后按单 Record 归档本地转录与说话人结果；说话人改名、合并、逐段归属可修改 | **借鉴持久任务/失效发布模式，重写 hear 领域层**。需两条可分别暂停的云队列、事件边界变化后整场云精转、全局人物、文字逐句纠错、按真实范围清理和完整 CLI。当前没有可直接搬用的这些闭环 |
+| 平台采集（本地材料 `MyAgents/src-tauri/src/recording/capture.rs`，不随仓库发布） | 麦克风用 CPAL；macOS 系统声用 ScreenCaptureKit `SCStream`，配置排除当前进程输出；两路独立 sink 和采集异常事件 | **按公开 API 独立实现**。复用来源适配、许可检查、回调隔离；重做全天生命周期、设备/睡眠恢复、实际来源覆盖验证。当前 `preflight` 在要求双路时任一路许可/设备失败可能阻止启动，hear 须允许另一可用来源继续 |
+| 实时缓冲与时间映射（本地材料 `MyAgents/src-tauri/src/recording/audio.rs`，不随仓库发布）、时间线（本地材料 `MyAgents/src-tauri/src/recording/timing.rs`，不随仓库发布） | 有界环形缓冲、采样坐标与时钟质量；归档和分析分开消费 | **借鉴抽象并独立实现**。保留每来源缺口和时钟映射；把单 Record 的样本坐标改为可跨多采集段的稳定坐标，明示缓冲溢出而不是无声 |
+| live 预处理（本地材料 `MyAgents/src-tauri/media-worker/src/record_live.rs`，不随仓库发布）、来源预处理（本地材料 `MyAgents/src-tauri/media-worker/src/record_preprocessing.rs`，不随仓库发布）、AEC（本地材料 `MyAgents/src-tauri/media-worker/src/record_aec.rs`，不随仓库发布）、回声证据（本地材料 `MyAgents/src-tauri/media-worker/src/record_echo_evidence.rs`，不随仓库发布） | 双路按采集时钟对齐，参考可靠时在分析副本上做回声消除；不可靠时绕过并保留原始输入 | **可作为分析链设计候选**。不能把 AEC 后的分析音频当成唯一原声，也不能把系统声活动自动视为麦克风回声；需比较近端人声误伤、耳机/外放及双路缺席场景 |
+| Ogg Opus 归档与恢复（本地材料 `MyAgents/src-tauri/src/recording/archive.rs`，不随仓库发布）、分析缓冲（本地材料 `MyAgents/src-tauri/src/recording/analysis.rs`，不随仓库发布） | 采到的样本立即归档为 Ogg Opus，另写可重读的分析缓冲；支持部分崩溃文件恢复；分析上限为每路 8 小时 | **参照编解码/恢复行为，以独立实现替代**。现状会保存所有声音，未实现 hear 的独立声音保留策略；全天需短封块、待判定缓冲、静音省写、可按时间/来源裁剪和多日恢复。不能简单增大 8 小时常量 |
+| worker 协议（本地材料 `MyAgents/src-tauri/media-worker-protocol/src/lib.rs`，不随仓库发布）、worker 入口（本地材料 `MyAgents/src-tauri/media-worker/src/main.rs`，不随仓库发布） | 独立进程承载 live ASR、backfill ASR、分段与附件任务；有代次、帧确认、心跳、停止/让出和版本检查；每路媒体限制 8 小时 | **选择性借鉴**。保留进程隔离与有界消息，但换成 hear 的连续采集段/短任务输入与重启游标；协议中的 8 小时上限、`RecordArtifacts` 和单 Record 身份不能照搬。新任务不得直接改权威事件/人物库 |
+| VAD + 粗转链（本地材料 `MyAgents/src-tauri/media-worker/src/main.rs`，不随仓库发布）、本地适配器（本地材料 `MyAgents/src-tauri/media-worker/src/native_adapter.rs`，不随仓库发布）、原生实现（本地材料 `MyAgents/src-tauri/media-worker/native/myagents_speech_adapter.cc`，不随仓库发布） | Silero VAD 弹出片段后，调用离线 SenseVoice 并发布带来源/样本时间的文字；一次 ASR 输入上限为 60 秒 | **可作为首个粗转设计参照**。它提供录制中逐段出字，而非真正逐帧流式 ASR。保留判断必须另做；ASR 返回空文字不能决定删除；长连续语音的切段、延迟与多路积压需实测。60 秒是当前适配器约束，不是 hear 事件长度 |
+| 模型包源锁（本地材料 `MyAgents/src-tauri/media-worker/model-pack-source-lock.json`，不随仓库发布）、安装管理（本地材料 `MyAgents/src-tauri/src/speech_model_pack_manager.rs`，不随仓库发布）、原生包校验（本地材料 `MyAgents/src-tauri/media-worker/src/native_bundle.rs`，不随仓库发布） | 锁定 SenseVoice INT8、Silero VAD、pyannote segmentation、3D-Speaker ERes2Net；当前锁文件约 210 MB 下载、285 MB 已安装，固定 sherpa-onnx/ONNX Runtime 版本与哈希；模型权重包和签名原生运行库分开 | **可借鉴校验、下载和回滚机制，需独立实现产品集成**。MyAgents 首次下载由用户发起、其 ONNX Runtime 与文档处理模块共享；hear 要在首次设置中自动准备，处理独立签名打包、失败重试、资源版本兼容与升级，不能复制 MyAgents 的私有下载 URL 当公开稳定源 |
+| 本地推理资源协调（本地材料 `MyAgents/src-tauri/src/local_inference.rs`，不随仓库发布） | 运行库身份校验 + 单一重计算 lease；`RecordLive` 优先于回填/分段，但让出为协作式，非强制抢占 | **借鉴协调思想并独立实现**。live VAD/粗转要有持续可用预算，OCR/声纹/历史补算不得饿死采集。单 lease 若长期被 live worker 持有，会压住其他任务；须验证让出、老化和积压。此模块不是可直接调用的通用模型推理服务 |
+| 局部分段（本地材料 `MyAgents/src-tauri/media-worker/src/diarization.rs`，不随仓库发布）、原声身份核对（本地材料 `MyAgents/src-tauri/media-worker/src/record_identity.rs`，不随仓库发布）、Record 内人工锚点（本地材料 `MyAgents/src-tauri/src/record/speaker_identity.rs`，不随仓库发布） | 有界窗分段、临时 embedding/聚类及对同一 Record 原声锚点的核验；代码明确不持久化声纹向量或推断姓名 | **借鉴有界分段与向量计算流程，独立建立身份生命周期**。hear 需要持久全局 Person/VoiceSample、跨事件匹配、人工否定、删除/重提与模型升级迁移。MyAgents 的 `person_id` 是 Record 局部 ID，不能直接充当 hear 全局 ID |
+| 语音任务管理（本地材料 `MyAgents/src-tauri/src/speech_recognition.rs`，不随仓库发布）、候选发布（本地材料 `MyAgents/src-tauri/src/speech_recognition/record_processing.rs`，不随仓库发布）、Record 存储（本地材料 `MyAgents/src-tauri/src/record.rs`，不随仓库发布） | 本地语音任务有状态和版本校验；完成后按单 Record 归档本地转录与说话人结果；说话人改名、合并、逐段归属可修改 | **借鉴持久任务/失效发布模式，重写 hear 领域层**。需两条可分别暂停的云队列、事件边界变化后整场云精转、全局人物、文字逐句纠错、按真实范围清理和完整 CLI。当前没有可直接搬用的这些闭环 |
 
 ### 11.2 不能直接照抄的具体原因
 
@@ -339,4 +341,9 @@ Batch 4 架构审查要求把同场声纹合组当作可撤销投影：当前版
 
 先独立实现「双路采集 + 时间映射 + 有界缓冲 + 小段 Opus 归档 + VAD/粗转 worker」形成能长跑的本地切片；再接入独立保留判断、可重放游标及完整状态；之后为事件范围接云 LLM/ASR 和本机会话分段，最后建立持久人物库与校正、清理及 CLI。每个阶段对比 MyAgents 原实现与 hear 改造后的相同音频样本，至少检查来源/时间正确性、句首和弱语音保留、长静默、两路回声、崩溃/睡眠恢复、资源占用。不能只用「模型可加载」替代声纹误认率和整天功耗验证。
 
-[MyAgents 许可证](../../../MyAgents/LICENSE)、[Rust crate 许可证字段](../../../MyAgents/src-tauri/Cargo.toml)及[原生推理声明](../../../MyAgents/src-tauri/media-worker/SPEECH_INFERENCE_NOTICES.md)将其应用代码/自定义 adapter 标为 `AGPL-3.0-only`，模型权重与各第三方库另有各自条款。hear 0.1 当前闭源，未来可能选择的 Apache-2.0 或 AGPL-3.0 均未生效；**技术上可移植不代表可任意闭源照抄**。复制 MyAgents 模块前，逐项记录代码来源、著作权与重新授权依据；无法核实的部分先独立实现，不把许可证问题留到 `.dmg` 发布时才处理。模型、运行库的许可和分发条件另行核对；本 RFC 不替代正式许可判断，也不把第三方 sherpa-onnx 的许可误认为 MyAgents 自定义 adapter 的许可。
+MyAgents 许可证（本地材料 `MyAgents/LICENSE`，不随仓库发布）、Rust crate 许可证字段（本地材料 `MyAgents/src-tauri/Cargo.toml`，不随仓库发布）及原生推理声明（本地材料 `MyAgents/src-tauri/media-worker/SPEECH_INFERENCE_NOTICES.md`，不随仓库发布）将其应用代码/自定义 adapter 标为 `AGPL-3.0-only`，模型权重与各第三方库另有各自条款。历史核查时 hear 0.1 尚未选择开源许可；**技术上可移植不代表可任意闭源照抄**。复制 MyAgents 模块前，逐项记录代码来源、著作权与重新授权依据；无法核实的部分先独立实现，不把许可证问题留到 `.dmg` 发布时才处理。模型、运行库的许可和分发条件另行核对；本 RFC 不替代正式许可判断，也不把第三方 sherpa-onnx 的许可误认为 MyAgents 自定义 adapter 的许可。
+
+
+## 许可决策更新（2026-11-01）
+
+版权持有人 Ethan L 已确认拥有本仓库所涉 MyAgents 复用内容的版权，并授权按 Apache-2.0 分发。当前根目录 LICENSE / NOTICE 记录该决策，开发技能已适配 loppi。历史来源仓库的 AGPL 条款不会被当作所有第三方内容的新许可；运行库、模型及其他外部内容仍保留各自许可和声明。

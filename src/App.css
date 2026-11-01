@@ -101,6 +101,7 @@ p {
 .brand {
 	display: flex;
 	align-items: center;
+	justify-content: center;
 	gap: var(--space-5);
 	padding: 0 calc(var(--space-5) + var(--stroke-hairline));
 	font-size: var(--type-heading);
@@ -2055,7 +2056,6 @@ body.floating-body .float-wrap {
 	}
 	.brand {
 		padding: 0 var(--space-4);
-		justify-content: center;
 	}
 	.brand-symbol {
 		display: block;

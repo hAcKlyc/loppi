@@ -85,8 +85,8 @@
     },
     {
       "path": "DESIGN.md",
-      "bytes": 24425,
-      "sha256": "52620df3b01d1f3bdf388ce61e5fa495a8af15e2b80fbf56abba22c4f7c9f663"
+      "bytes": 24573,
+      "sha256": "41155c6c793fa0048fee63c56979f6f2993a015b37fea6ee08974f62474f2764"
     },
     {
       "path": "icons/app-1024.png",
@@ -305,13 +305,13 @@
     },
     {
       "path": "README.md",
-      "bytes": 4670,
-      "sha256": "aa99f227f898f6aa631ea70ebffb5d7fd8f09820e02049cafb726aa58e14b52d"
+      "bytes": 4737,
+      "sha256": "bfb22ca15f880bf865dc851974512b25e7730ee9f3ef6597aeb78dc267677054"
     },
     {
       "path": "release/copy.md",
-      "bytes": 966,
-      "sha256": "81c05471b003cd3c71b11c0a5239a6668445f93b62445ce0b60111b46ccec217"
+      "bytes": 976,
+      "sha256": "8c542916fffaad2d433cd9ab0220fe21f8bf5b55ea9a0c0bb1e6eb4f2ebe1b62"
     },
     {
       "path": "release/readme-header.png",

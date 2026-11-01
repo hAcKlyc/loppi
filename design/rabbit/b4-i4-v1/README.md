@@ -58,3 +58,8 @@ rabbit.dispose();
 使用内置 image_gen 生成；生成提示词及引用见 `source/prompts.json`。按用户授权，生成后裁切、统一网格和颜色、派生呼吸/眨眼帧、导出尺寸和平台遮罩。
 `build-assets.cjs` 仅使用本地 Sharp；产出姿态、精灵图、动画、PNG、ICO 与 iconset。`iconutil -c icns icons/loppi.iconset -o icons/loppi.icns` 生成 macOS 容器。
 UI 预览中的截图、重点和评论都是视觉演示，不产生实际数据。
+
+
+## 许可与署名
+
+项目自有图像、动画和素材代码采用[Apache-2.0](../../../LICENSE)，版权署名 Ethan L。商标权与背书不随版权许可授予，见[品牌说明](../../../docs/brand.md)。提示词中的项目引用使用仓库相对路径；`local-generation/` 表示不随仓库提供的本地生成记录。

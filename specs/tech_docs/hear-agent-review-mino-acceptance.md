@@ -1,5 +1,8 @@
 # Mino 真机验收与回退兼容性
 
+> 历史记录：以下名称、路径示例、命令和验收结果属于当时版本。公开版路径已脱敏，不应直接作为当前操作指引；当前使用与开发入口见[文档索引](../../docs/README.md)。
+
+
 ## 验收范围与结果
 
 2026-10-29，Mino 使用本机 debug 包、原数据库和真实 CLI/stdio MCP 路径独立验收，录音保持暂停。以下来自 Mino 的验收回执；与开发阶段的副本测试分开记录。
@@ -17,7 +20,7 @@
 | 健康度与自检 | health_7d 含各音源 gap 原因及占比；tool_inventory 提供 expected。 |
 | 词库 | 临时词条写、读、删成功；已清理，entries 为空。 |
 
-Mino 结论：验收通过，授权提交 PR。正式合并与发布由 Ethan 在另一台机器完成。原始问题文档与本机验收脚本位于 `/Users/zhihu/Documents/project/mino/workspace/1029-hear-agent-review/`；仓库不复制用户谈话正文、数据库或本机 debug 产物。
+Mino 结论：验收通过，授权提交 PR。正式合并与发布由 Ethan 在另一台机器完成。原始问题文档与本机验收脚本位于 `<USER_HOME>/Documents/project/mino/workspace/1029-hear-agent-review/`；仓库不复制用户谈话正文、数据库或本机 debug 产物。
 
 ## 三点反馈的处理
 

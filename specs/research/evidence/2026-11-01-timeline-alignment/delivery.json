@@ -2,7 +2,7 @@
   "version": "0.1.17",
   "source_commit": "e705b714f5e52449f4f9671af002b8b0290c4372",
   "application": "/Applications/loppi.app",
-  "dmg": "/Users/ethan/Projects/hear/build/releases/0.1.17/macos-universal2/loppi_0.1.17_macos-universal2.dmg",
+  "dmg": "<USER_HOME>/Projects/hear/build/releases/0.1.17/macos-universal2/loppi_0.1.17_macos-universal2.dmg",
   "dmg_sha256": "a9d367ba38e1e9c7c85a7e5a46bf951dfd0f992320d1685c114522a3773fe936",
   "architectures": [
     "arm64",

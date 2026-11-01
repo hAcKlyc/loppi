@@ -4391,12 +4391,14 @@ fn handle_request(
                     // The host repeats this with its existing state refresh, so
                     // a restarted query-only Core can recover. Only the first
                     // activation of this instance restores current intent.
-                    if !shared.normal_run.load(Ordering::Acquire) {
+                    if !shared.normal_run.load(Ordering::Acquire)
+                        || !shared.allow_capture.load(Ordering::Acquire)
+                    {
                         if store.state()?.recording_schedule.enabled {
                             store.settle_schedule()?;
-                            store.clear_quit()?;
-                            shared.allow_capture.store(true, Ordering::Release);
                         }
+                        store.clear_quit()?;
+                        shared.allow_capture.store(true, Ordering::Release);
                         shared.normal_run.store(true, Ordering::Release);
                     }
                     Response::Status {

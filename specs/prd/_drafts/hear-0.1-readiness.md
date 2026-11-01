@@ -204,7 +204,7 @@
 - 用户特别强调：要先确认这一处理架构；“15分钟无文本音频”只是事件拟合层中的细节策略，可作为抽象环节精确调试和替换，不能把该数值写死成产品架构或当作当前必须向用户决策的核心问题。
 - 示例：12:15–12:17两段相邻声音成为一个候选；13:10–13:21三段声音成为下一候选；15:01以后至16:02若内部无超过阈值的空档，可作为第三候选。候选只是事件整理输入，是否为真实活动边界待第二阶段判定。
 - 可行性判断：带时间区间的本地粗文本可在事件拟合层低成本地产生候选，LLM再结合相邻粗文本的上下文做活动级拆分、相邻合并与命名；内部换话题不等于换活动，会后延续原话题也不等于仍在同一场会议。LLM推断只调整虚拟事件轴，不重排真实层。
-- 跨层接口需要保留可靠状态：MyAgents当前Media Worker在VAD段被ASR识别为空字符串时不发布`TranscriptSegment`（`/Users/ethan/Projects/MyAgents/src-tauri/media-worker/src/main.rs`约951行）。因此第二层主要消费粗文本，但第一层应同时提供“检测到人声却没识别出文本/识别失败”等状态，避免候选策略误把识别空白当成确定静默。这是实现质量要求，不改变两层架构。
+- 跨层接口需要保留可靠状态：MyAgents当前Media Worker在VAD段被ASR识别为空字符串时不发布`TranscriptSegment`（`<USER_HOME>/Projects/MyAgents/src-tauri/media-worker/src/main.rs`约951行）。因此第二层主要消费粗文本，但第一层应同时提供“检测到人声却没识别出文本/识别失败”等状态，避免候选策略误把识别空白当成确定静默。这是实现质量要求，不改变两层架构。
 - “15分钟”建议作为可校准的候选边界，而非不可跨越的真实事件边界：同场活动可有长间歇，两场活动也可无间歇；LLM只沿时间顺序调整相邻边界/合并候选，人工边界优先。具体阈值和使用的空档信号在样本上调试。
 - 精转与后处理：当形成符合既有事件准则的命名事件且云端处理处于运行状态时，对整段活动精转；不要按粗转文字字数/时长单独决定价值。未来主题化Prompt/Skill可留扩展接口，但自动摘要/关键结论仍属下版需求，除非用户另作范围决定。
 - 架构已明确；首版云端LLM和云端ASR须在首次启用前分别配置，一期无应用侧预算限制，云端处理可暂停/继续。待后续收敛的是故障重试、在途任务、供应商接口与后处理的版本范围。15分钟数值、空档信号与误差处理属于策略调试和工程验证。
@@ -324,7 +324,7 @@
 - 用户原话：「文本实际上在不断生成，你去看我的 MyAgents 客户端仓库里面关于『录音记录』这个功能的逻辑。」
 - 归组偏好：「在时间轴上连续的事件，能合并的合并，不能合并的不合并。可以接受漏合并。」这确定了不确定时宁可保留分开的事件。
 - 用户提出的工作模型：全天采集期间形成大量带音频区间、时间戳和粗转文字的小片段；后续明确，这些是底层采集/转录单位，真实会议应按整场起止时间形成大块虚拟 group，而非逐段挑选小片段拼接。仍需在架构中区分识别句段与物理封块，不能因停顿停止底层采集。
-- 已核对 MyAgents 当前实现：`/Users/ethan/Projects/MyAgents/src-tauri/src/recording/manager.rs` 持有一次 Record 的采集和双路归档；`src-tauri/src/recording/analysis.rs` 将分析副本持续写入有界 PCM spool；`src-tauri/src/speech_recognition.rs` 向独立 Media Worker 发送已落盘的 PCM 并发布增量转录；`src-tauri/media-worker/src/main.rs` 由 VAD 自然端点或最长语音边界产生句段，再做本地 ASR；`src-tauri/src/record.rs` 持久记录带来源、样本时间范围和 revision 的句段。
+- 已核对 MyAgents 当前实现：`<USER_HOME>/Projects/MyAgents/src-tauri/src/recording/manager.rs` 持有一次 Record 的采集和双路归档；`src-tauri/src/recording/analysis.rs` 将分析副本持续写入有界 PCM spool；`src-tauri/src/speech_recognition.rs` 向独立 Media Worker 发送已落盘的 PCM 并发布增量转录；`src-tauri/media-worker/src/main.rs` 由 VAD 自然端点或最长语音边界产生句段，再做本地 ASR；`src-tauri/src/record.rs` 持久记录带来源、样本时间范围和 revision 的句段。
 - 复用边界：MyAgents 现有 Record 是用户手动开启的一次录音，live transcript 单 Record 上限为8小时；hear 需要另行定义连续采集、物理封块、长期存储、事件虚拟引用及全局清理，不能把 MyAgents Record 直接当作全天事件容器。
 
 ### 2026-09-27：清理窗口需单独设计

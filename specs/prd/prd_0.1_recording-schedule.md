@@ -195,7 +195,7 @@ Core 内部日历计算与时间来源须可注入测试；使用平台日历/�
 ### 进展日志
 - 2026-10-20：用户接受 PRD，readiness 完成，讨论台账已吸收删除，开始单批次实现。仓库无 CLAUDE.md / AGENTS.md / build_dev.sh，采用已有 scripts/build_macos.sh 构建路径。
 
-- 2026-10-20：共享 dev 并发合入 PR #10，并有入口 polish 修改；本功能迁移到 /Users/ethan/.codex/worktrees/recording-schedule/hear，基于新 dev 的 07b966b。只复制本功能精确 hunks 并从共享工作区移除相同 hunks，其他工作保持原样。6 项日历/恢复定向测试通过。
+- 2026-10-20：共享 dev 并发合入 PR #10，并有入口 polish 修改；本功能迁移到 <USER_HOME>/.codex/worktrees/recording-schedule/hear，基于新 dev 的 07b966b。只复制本功能精确 hunks 并从共享工作区移除相同 hunks，其他工作保持原样。6 项日历/恢复定向测试通过。
 - 2026-10-20：Core/协议/CLI/设置及状态展示已实现；原生日历覆盖 DST 与午夜，定时暂停缺口保留到恢复。自动验证：workspace Rust 293 passed / 6 既有 ignored；前端 typecheck/lint/build 通过；17 项状态/入口/时间辅助 Node 测试通过；浏览器设置交互 13 项通过；既有隔离 Core/CLI smoke 通过。完整签名构建进行中。
 
 ### 本批次 Review Contract

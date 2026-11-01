@@ -1,0 +1,35 @@
+{
+  "passed": true,
+  "core_build": {
+    "component": "core",
+    "version": "0.1.18",
+    "protocol_version": 24,
+    "git_sha": "9559b84a5566b8144769910458b6586bae5843b8",
+    "dirty": true,
+    "built_at_epoch": 1793506866
+  },
+  "cases": [
+    {
+      "paused": false,
+      "query_stays_query": true,
+      "first_use_stays_disabled": true,
+      "GUI_restores_run_and_capture_permission": true,
+      "normal_handoff_promoted": true,
+      "quit_then_reopen": true,
+      "sources_and_pause_preserved": true,
+      "fixture_Core_process_exit_waited": true,
+      "audio_recorded": false
+    },
+    {
+      "paused": true,
+      "query_stays_query": true,
+      "first_use_stays_disabled": true,
+      "GUI_restores_run_and_capture_permission": true,
+      "normal_handoff_promoted": true,
+      "quit_then_reopen": true,
+      "sources_and_pause_preserved": true,
+      "fixture_Core_process_exit_waited": true,
+      "audio_recorded": false
+    }
+  ]
+}

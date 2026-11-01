@@ -58,20 +58,20 @@
 
 - [候选prompt v15](prompt-v15.txt)：重整为输入、内容选择、字段更新和两个示例，保留完整Schema，共4917字符。
 - [最新候选prompt v16](prompt-v16.txt)：更明确先取完整证据再近原文转述、每条保留条件，以及新事件可理解时必须生成摘要；定向4例结构4/4，但语义有明显回退，未通过。
-- [v16定向4例实际结果](private/v16-probe-examples.md)：包含条件修复与年龄/活动划分回退，整轮不通过。
+- v16定向4例实际结果（本地材料 `private/v16-probe-examples.md`，不随仓库发布）：包含条件修复与年龄/活动划分回退，整轮不通过。
 - [完整输出Schema](output.schema.json)。
-- [v13全12例：摘要、要点、对象和逐窗变化](private/v13-all-a-examples.md)。
-- [v15生产推理档位：全12例实际保存结果](private/v15-all-a-examples.md)。
-- [v15高推理对照：全12例实际保存结果](private/v15-high-a-examples.md)。
-- [原始样本与冻结标准](private/suite.json)、[逐轮修改理由](private/iteration-notes.md)、[人工标准勘误](private/gold-errata.md)。
-- [审计器故障注入](private/auditor-selfcheck-final.json)、[独立审查裁决](review-decisions.md)。
+- v13全12例：摘要、要点、对象和逐窗变化（本地材料 `private/v13-all-a-examples.md`，不随仓库发布）。
+- v15生产推理档位：全12例实际保存结果（本地材料 `private/v15-all-a-examples.md`，不随仓库发布）。
+- v15高推理对照：全12例实际保存结果（本地材料 `private/v15-high-a-examples.md`，不随仓库发布）。
+- 原始样本与冻结标准（本地材料 `private/suite.json`，不随仓库发布）、逐轮修改理由（本地材料 `private/iteration-notes.md`，不随仓库发布）、人工标准勘误（本地材料 `private/gold-errata.md`，不随仓库发布）。
+- 审计器故障注入（本地材料 `private/auditor-selfcheck-final.json`，不随仓库发布）、[独立审查裁决](review-decisions.md)。
 
 真实转录、完整JSON及语义问题细节在本地private目录中，已Git忽略；该目录不提交。汇总文件直接读取实际保存快照，不修订模型输出。
 
 ## 当前交付边界与后续门槛
 
 - 同一固定候选连续两轮全12例的结构/语义通过仍未完成，不能将本次报告称为验收通过。
-- [v15逐项语义映射与具体失败证据](private/v15-semantic-review.md)已记录；需要后续新候选重新获得通过证据。
+- v15逐项语义映射与具体失败证据（本地材料 `private/v15-semantic-review.md`，不随仓库发布）已记录；需要后续新候选重新获得通过证据。
 - 通过后才能将该prompt作为正式替换候选交付；目前不宣称已稳定或已开发完成。
 
 ## 供应商配置依据

@@ -1,6 +1,6 @@
 ---
 name: cross-review-code
-description: "Run a staged, fresh-context review of MyAgents changes: requirements and adversarial correctness first, then architecture and entropy on the final repaired code. The main Agent adjudicates findings, fixes only in-scope blockers, re-verifies, and reports. Use for cross review, /cross-review-code, 三视角审查, 全面审查改动, review-and-fix requests, and the start-dev pre-commit gate."
+description: "Run a staged, fresh-context review of loppi changes: requirements and adversarial correctness first, then architecture and entropy on the final repaired code. The main Agent adjudicates findings, fixes only in-scope blockers, re-verifies, and reports. Use for cross review, /cross-review-code, 三视角审查, 全面审查改动, review-and-fix requests, and the start-dev pre-commit gate."
 ---
 
 # Cross Code Review

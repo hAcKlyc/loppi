@@ -33,7 +33,7 @@ updated: 2026-10-31
 - [x] 三路审查、提交与需求闭环。
 
 ### Review基线
-Base da55f130c2427d9963e31336acb6601eef67c421，/Users/ethan/Projects/hear，branch dev；范围仅本批最终diff，原本机忽略资料/归档/运行中正式App均不属于改动。
+Base da55f130c2427d9963e31336acb6601eef67c421，<USER_HOME>/Projects/hear，branch dev；范围仅本批最终diff，原本机忽略资料/归档/运行中正式App均不属于改动。
 
 ### 待用户决策
 本项修复无岔路。“隐藏粗转”后续是否改名/取消需用户理解当前规则后继续讨论，本批不预先改变该行为。

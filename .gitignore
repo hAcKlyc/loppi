@@ -17,3 +17,14 @@ __pycache__/
 
 # Regenerable standalone design prototype
 /playground/loppi-style-comparison.html
+
+# Private research inputs and local credential/database artifacts
+/specs/research/**/private/
+*.p8
+*.p12
+*.pfx
+*.pem
+*.key
+*.sqlite
+*.sqlite-*
+*.db

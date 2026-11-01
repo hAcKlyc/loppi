@@ -1,0 +1,46 @@
+[
+  {
+    "border": "0px",
+    "bottom": 0,
+    "fill": "rgb(244, 166, 134)",
+    "height": 24,
+    "kind": "day-map-event raw is-recording",
+    "radius": "2px",
+    "shadow": "none",
+    "top": 0,
+    "width": 7.609375
+  },
+  {
+    "border": "0px",
+    "bottom": 0,
+    "fill": "rgb(178, 207, 187)",
+    "height": 24,
+    "kind": "day-map-event raw",
+    "radius": "2px",
+    "shadow": "none",
+    "top": 0,
+    "width": 57.125
+  },
+  {
+    "border": "0px",
+    "bottom": 0,
+    "fill": "rgb(244, 166, 134)",
+    "height": 24,
+    "kind": "day-map-event raw is-recording",
+    "radius": "2px",
+    "shadow": "none",
+    "top": 0,
+    "width": 7.609375
+  },
+  {
+    "border": "0px",
+    "bottom": 0,
+    "fill": "rgb(178, 207, 187)",
+    "height": 24,
+    "kind": "day-map-event raw",
+    "radius": "2px",
+    "shadow": "none",
+    "top": 0,
+    "width": 57.125
+  }
+]

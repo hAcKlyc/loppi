@@ -12,6 +12,6 @@ loppi 是一只安静待在桌边的兔子。在你启用记录、电脑可用�
 
 A quiet companion for your everyday audio.
 
-loppi keeps the human speech from your microphone and computer audio while recording is enabled and your Mac is available. Return to a conversation through a daily timeline, read its transcript, listen again, and find the notes or screenshots you saved at the time.
+loppi keeps the human speech from your microphone and computer audio while recording is enabled and your computer is available. Return to a conversation through a daily timeline, read its transcript, listen again, and find the notes or screenshots you saved at the time.
 
-Records are stored primarily on your Mac. Configured cloud services handle content organization, precise transcription, and supported screenshot understanding.
+Records are stored primarily on your computer. Configured cloud services handle content organization, precise transcription, and supported screenshot understanding.

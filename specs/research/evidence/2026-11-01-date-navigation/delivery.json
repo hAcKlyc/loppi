@@ -59,7 +59,7 @@
   "intent_restore": "Normal Quit ends enabled intent; continued recording once in new GUI to restore measured before-state. Final complete preference snapshots equal.",
   "icon_sha256": "26a29addba67cfb6d527bdbb7a69b9ceb07b84f1a3042a31c930cc387494f920",
   "backup": "build/backups/loppi-0.1.17-replaced.app",
-  "private_native_screenshot": "/Users/ethan/.codex/visualizations/2026/10/31/01a191bb-2496-74b3-a35c-33d87122b6f6/loppi-0.1.18/main.jpg",
+  "private_native_screenshot": "<USER_HOME>/.codex/visualizations/2026/10/31/01a191bb-2496-74b3-a35c-33d87122b6f6/loppi-0.1.18/main.jpg",
   "limits": [
     "Intel runtime checked under Rosetta, no Intel hardware acceptance",
     "minimumOS13 runtime not separately tested",

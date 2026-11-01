@@ -8,7 +8,7 @@
 
 实验没有隐式重试。生产仍用既有最多三次格式重试，默认 low / 60 秒未变，本轮 high 的质量和时延不能直接视为生产默认表现。实际调用记录、响应 ID、输入/提示哈希及最终 SQLite 均核验；原始私有材料不提交 Git。
 
-[冻结方案](/Users/ethan/Projects/hear/specs/research/2026-10-24-fit-publication-summary/PLAN.md) · [候选 prompt](/Users/ethan/Projects/hear/specs/research/2026-10-24-fit-publication-summary/prompt.txt) · [输出 schema](/Users/ethan/Projects/hear/specs/research/2026-10-24-fit-publication-summary/output.schema.json) · [全部前后摘要与 JSON](/Users/ethan/Projects/hear/specs/research/2026-10-24-fit-publication-summary/private/OUTPUTS.md)
+[冻结方案](PLAN.md) · [候选 prompt](prompt.txt) · [输出 schema](output.schema.json) · 全部前后摘要与 JSON（本地材料 `private/OUTPUTS.md`，不随仓库发布）
 
 ## 2. 量化比较
 
@@ -103,4 +103,4 @@
 
 Core 333 passed / 15 ignored，workspace check/build 通过；fresh requirements/adversarial/architecture 代码审查通过。新增摘要审计一度将 null 误作清空，已修复并独立验证；旧粗转基线重新只读核验仍为 33/36，不改变基线判分。没有安装覆盖用户当前应用。
 
-[量化数据](/Users/ethan/Projects/hear/specs/research/2026-10-24-fit-publication-summary/metrics.json) · [全部前后保存结果](/Users/ethan/Projects/hear/specs/research/2026-10-24-fit-publication-summary/private/OUTPUTS.md) · [逐例评分](/Users/ethan/Projects/hear/specs/research/2026-10-24-fit-publication-summary/private/semantic-scores.json) · [评分裁决](/Users/ethan/Projects/hear/specs/research/2026-10-24-fit-publication-summary/private/scoring-errata.md) · [结构审计](/Users/ethan/Projects/hear/specs/research/2026-10-24-fit-publication-summary/private/structure-audit.json) · [审查记录](/Users/ethan/Projects/hear/specs/research/2026-10-24-fit-publication-summary/REVIEW.md)
+[量化数据](metrics.json) · 全部前后保存结果（本地材料 `private/OUTPUTS.md`，不随仓库发布） · 逐例评分（本地材料 `private/semantic-scores.json`，不随仓库发布） · 评分裁决（本地材料 `private/scoring-errata.md`，不随仓库发布） · 结构审计（本地材料 `private/structure-audit.json`，不随仓库发布） · [审查记录](REVIEW.md)

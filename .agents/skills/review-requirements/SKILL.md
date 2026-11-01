@@ -1,6 +1,6 @@
 ---
 name: review-requirements
-description: "Review MyAgents changes for requirement fidelity, acceptance coverage, source-of-truth correctness, and scope discipline. Use as the requirements lens inside cross-review-code or for an explicit requirements/PRD completeness review."
+description: "Review loppi changes for requirement fidelity, acceptance coverage, source-of-truth correctness, and scope discipline. Use as the requirements lens inside cross-review-code or for an explicit requirements/PRD completeness review."
 ---
 
 # Requirement Compliance Review

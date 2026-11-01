@@ -1,0 +1,14 @@
+{
+  "live": {
+    "background": "rgb(252, 234, 224)",
+    "hover": true,
+    "labelBackground": "rgba(0, 0, 0, 0)",
+    "text": "rgb(166, 83, 60)"
+  },
+  "completed": {
+    "background": "rgb(244, 240, 232)",
+    "canvas": "rgb(250, 248, 242)",
+    "hover": true,
+    "text": "rgb(98, 94, 87)"
+  }
+}

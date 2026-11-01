@@ -1,0 +1,27 @@
+{
+  "default": {
+    "band": "rgb(255, 240, 231)",
+    "card": "rgb(255, 240, 231)",
+    "cardStatus": "rgb(98, 94, 87)",
+    "header": "rgb(166, 83, 60)",
+    "headerDot": "rgb(166, 83, 60)",
+    "pointer": "rgb(166, 83, 60)"
+  },
+  "bandHover": {
+    "color": "rgb(252, 234, 224)",
+    "filter": "none",
+    "hover": true
+  },
+  "cardHover": {
+    "color": "rgb(252, 234, 224)",
+    "hover": true
+  },
+  "markerBeforeEnter": {
+    "selected": 2,
+    "selectedAt": 1792144800000
+  },
+  "markerAfterEnter": {
+    "selected": 3,
+    "selectedAt": 1792144800000
+  }
+}

@@ -1,0 +1,4 @@
+- heading "时间线 · 未开始录音" [level=1]
+- status: "[{\"command\":\"open_setup_help\",\"provider\":\"llm\"},{\"command\":\"open_setup_help\",\"provider\":\"asr\"},{\"command\":\"core_request\",\"type\":\"configure_cloud\",\"provider\":\"llm\"},{\"command\":\"core_request\",\"type\":\"set_source\",\"source\":\"microphone\"},{\"command\":\"complete_onboarding\"}]"
+- button "运行首次引导回归"
+- status: PASS · 6 项首次引导检查

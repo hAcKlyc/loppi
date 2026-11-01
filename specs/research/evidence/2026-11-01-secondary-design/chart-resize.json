@@ -1,0 +1,16 @@
+{
+  "wide": {
+    "width": 790,
+    "viewBox": "0 0 790 252",
+    "font": "12px",
+    "labelHeight": 14
+  },
+  "narrow": {
+    "font": "12px",
+    "labelHeight": 14,
+    "viewBox": "0 0 582 252",
+    "width": 582
+  },
+  "keyboard": "ArrowLeft: 10/21",
+  "pointer": "chart center: 10/19"
+}

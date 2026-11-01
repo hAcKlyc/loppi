@@ -1,0 +1,14 @@
+{
+  "package.json": "0.1.20",
+  "package-lock.json": "0.1.20",
+  "package-lock root": "0.1.20",
+  "src-tauri/tauri.conf.json": "0.1.20",
+  "Cargo.toml": "0.1.20",
+  "src-tauri/Cargo.toml": "0.1.20",
+  "loppi-cli": "0.1.20",
+  "loppi-core": "0.1.20",
+  "loppi-desktop": "0.1.20",
+  "loppi-protocol": "0.1.20",
+  "loppi-worker": "0.1.20",
+  "LoppiCore-Info.plist": "0.1.20"
+}

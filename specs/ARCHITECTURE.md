@@ -44,7 +44,7 @@ flowchart LR
 
 GUI 首次 IPC 经协议库 `lifecycle` 的会话屏障核对实际 Core 与随包构建身份；`lifecycle.lock` 串行化多个 GUI 的交接。稳定的 `Status` / `Lifecycle` 控制消息不受业务协议版本限制；业务命令仍严格检查。新版先验证随包 helper，再请求旧 owner 优雅交接，等待 `core.lock` 释放（采集线程已 join、本机 IPC 端点已关闭），随后在原目录启动新版并传递原内存采集/正常运行许可。不提供 hear 历史协议 17–19 的适配。更新不降级较新构建，不直接写 SQLite，不强杀或移除活跃 IPC 端点。
 
-显式退出 GUI 先排空本会话 IPC、封闭后续请求，再向现存 Core 发跨版本退出指令并等待 owner 锁释放；没有后台时不为退出而启动一个后台。程序请求退出失败时保留 GUI 并提示实际错误；macOS 原生 terminate（菜单、Cmd-Q、Dock）绕过 ExitRequested，必须在最终 Exit 事件同样执行幂等清理，此阶段系统已决定退出，失败显示实际错误及重新打开后重试的说明，不强杀 Core。关闭主窗口仍只是隐藏窗口。新 Core 的交接不写用户退出标记，正常退出则仍记录当前登录会话的退出状态；新后台保留来源、暂停与容量限制，运行许可不能绕过这些条件。交接初始化后的 AppOpened 仍按既有语义启用定时运行。
+显式退出 GUI 先排空本会话 IPC、封闭后续请求，再向现存 Core 发跨版本退出指令并等待 owner 锁释放；没有后台时不为退出而启动一个后台。程序请求退出失败时保留 GUI 并提示实际错误；macOS 原生 terminate（菜单、Cmd-Q、Dock）绕过 ExitRequested，必须在最终 Exit 事件同样执行幂等清理，此阶段系统已决定退出，失败显示实际错误及重新打开后重试的说明，不强杀 Core。关闭主窗口仍只是隐藏窗口。新 Core 的交接不写用户退出标记，正常退出则记录当前登录会话的退出状态。GUI显式打开后，既有AppOpened在Core首次激活时清除该退出标记、提升正常运行与采集许可，恢复保存的记录意图；如启用定时计划则先结算当前窗口。该操作不改enabled_intent、主动暂停或声源选择，不能绕过权限、容量和资源边界；CLI/Agent查询仍不提升许可。首次未选择开始的用户仍须完成原有开始流程。
 
 权威数据在 macOS 位于 `~/Library/Application Support/loppi/`，Windows 位于 `%LOCALAPPDATA%\app.loppi.core`（测试可用 `LOPPI_DATA_DIR` 隔离）。安装程序与 GUI 路由配置另有目录，默认卸载保留 Core 资料：
 

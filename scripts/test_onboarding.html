@@ -20,7 +20,8 @@ const queues=[{provider:'llm',configured:ready},{provider:'asr',configured:ready
 const calls=[];window.calls=calls;
 mockIPC((command,args)=>{
  // Deliberately omit entered test keys from the visible call log.
- calls.push({command,type:args?.request?.type,source:args?.source??args?.request?.source,provider:args?.request?.provider});
+ calls.push({command,type:args?.request?.type,source:args?.source??args?.request?.source,provider:args?.provider??args?.request?.provider});
+ if(command==='open_setup_help'&&flags.has('helpfail'))throw new Error('测试浏览器打开失败');
  if(command==='complete_onboarding')return {completed:true};
  if(command==='request_microphone_permission')privacy.microphone=3;
  if(command==='request_system_audio_permission'){privacy.tap_ready=true;if(windows)privacy.system_audio=1;}
@@ -51,6 +52,9 @@ if(flags.has('frame')){const frame=document.createElement('iframe');frame.width=
 if(flags.has('regression')){
  const run=document.createElement('button'),out=document.createElement('output');out.id='result';run.textContent='运行首次引导回归';document.body.append(run,out);
  run.onclick=async()=>{const wait=ms=>new Promise(r=>setTimeout(r,ms));let n=0;const check=(v,m)=>{if(!v)throw Error(m);n++};try{await wait(100);
+  document.querySelector('[aria-label="获取DeepSeek密钥"]').click();document.querySelector('[aria-label="获取火山引擎密钥"]').click();await wait(30);
+  check(calls.filter(c=>c.command==='open_setup_help').map(c=>c.provider).join(',')==='llm,asr','获取密钥分服务商直达原生命令');
+  check(!calls.some(c=>c.type==='configure_cloud'),'获取密钥不会提交凭据');
   const key=document.querySelector('input[aria-label="DeepSeek API Key"]');key.focus();Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(key,'test-only-onboarding');key.dispatchEvent(new Event('input',{bubbles:true}));await wait(30);key.blur();await wait(100);
   check(calls.filter(c=>c.type==='configure_cloud').length===1,'compact 失焦提交一次');check(key.value==='••••••••••••','成功恢复掩码');
   document.querySelector('[aria-label="选择声音来源与授权帮助"]').click();await wait(30);document.querySelector('input[type=checkbox]').click();await wait(100);check(!state.microphone_enabled&&calls.some(c=>c.type==='set_source'),'compact 来源选择继续生效');

@@ -1,0 +1,11 @@
+{
+  "default": {
+    "background": "rgb(236, 235, 229)",
+    "color": "rgb(98, 101, 95)"
+  },
+  "hover": {
+    "background": "rgb(228, 228, 220)",
+    "color": "rgb(98, 101, 95)",
+    "hover": true
+  }
+}

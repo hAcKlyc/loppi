@@ -122,7 +122,7 @@ review: "pending user acceptance（产品 / 架构岔路已关闭；等待用户
 
 **正文开头必须有一段「执行须知(给空 session 的你)」**——这是让 PRD 能自举的关键。它要告诉一个零上下文的 AI：
 
-- 先读哪些文件（CLAUDE.md 自动加载之外，本 PRD 引用的 ARCHITECTURE / tech_docs / 研究报告要主动 Read）；
+- 先读哪些文件（CONTRIBUTING.md 自动加载之外，本 PRD 引用的 ARCHITECTURE / tech_docs / 研究报告要主动 Read）；
 - 本 PRD 是一个原子交付单元，开发批次只用于实现 / 验证 / review / commit，全部完成后统一上线；
 - 哪些实现内验证是发布硬门槛；
 - 引用为什么给符号名而非行号。

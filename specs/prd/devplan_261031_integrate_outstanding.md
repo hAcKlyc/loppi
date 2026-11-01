@@ -45,7 +45,7 @@ updated: 2026-10-31
 
 ### 当前review基线
 
-Base9c9cbd83bbd55be29d58a698bfd20e0f8e44297b，工作分支codex/integrate-outstanding-0.1.14，工作目录/Users/ethan/.codex/worktrees/hear-update-0-1-12/hear。实际scope在review前列清；原项目和其它工作树的用户文件只读/保留，最终本地main仅干净fast-forward。
+Base9c9cbd83bbd55be29d58a698bfd20e0f8e44297b，工作分支codex/integrate-outstanding-0.1.14，工作目录<USER_HOME>/.codex/worktrees/hear-update-0-1-12/hear。实际scope在review前列清；原项目和其它工作树的用户文件只读/保留，最终本地main仅干净fast-forward。
 
 ### 待用户决策
 

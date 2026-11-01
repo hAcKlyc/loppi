@@ -1,0 +1,34 @@
+{
+  "version": 3,
+  "created": "2026-11-01",
+  "license": "Apache-2.0",
+  "copyright": "Copyright 2026 Ethan L",
+  "header": {
+    "source": "design/system-v1/release/readme-header.svg",
+    "files": [
+      "readme-header-v3.svg",
+      "readme-header-v3.png"
+    ],
+    "tool": "Native SVG adaptation; PNG exported with existing Sharp dependency.",
+    "changes": [
+      "Removed subtitle. Reduced canvas height to 280. Repositioned existing wordmark, rabbit and separator vertically."
+    ],
+    "invariants": [
+      "Original wordmark paths, rabbit image bytes and brand colors unchanged."
+    ]
+  },
+  "assets": [
+    {
+      "file": "record-to-agent-v3.png",
+      "tool": "Built-in image_gen",
+      "prompt": "Use case: infographic-diagram.\nAsset type: a compact, extremely minimal structural diagram for the Chinese loppi README.\nPrimary request: the structure itself explains the product. Communicate only this: inputs are quietly recorded into personal context in loppi, and ANY Agent can access that context through either CLI or MCP. Do not explain with sentences. Do not make a presentation slide.\nReference image: palette and restraint reference only, not an edit target. Use a perfectly flat warm off-white #F6F5F1 background, charcoal #292C28 text, small muted sage #93B29C retained-record accents, tiny terracotta #B65B42 accents. Clean modern sans-serif, medium weight. Crisp thin strokes, generous spacing, no gradients, texture or shadows.\nCanvas: short horizontal strip, approximately 1600x480. Diagram should fill the usable width, and fit in the central vertical band with comfortable but not excessive margins. Major labels large enough to read at 800px display width, minimum about 48px at native width. Small labels minimum 40px. Not a tall poster.\nExact diagram, left to right, FOUR groups:\n1. INPUTS: two short lines, exactly \"声音\" and \"截图 · 重点 · 观点\". A tiny line microphone beside the first line and a tiny note mark beside the second line are optional. No other text.\n2. Both input lines converge via two fine arrows into one small neutral record/timeline shape labelled exactly \"loppi\". Inside or directly underneath, show three small sage timeline segments and the label \"你的上下文\". No laptop, no rabbit, no large database cylinder. This is the context store.\n3. The store's output splits into two short parallel alternative interface labels, exactly \"CLI\" above \"MCP\". Make them clearly alternatives and equally weighted, not a sequence in which CLI feeds MCP. No boxes around each label, no interface explanations.\n4. Both interfaces converge via fine arrows into one final label, exactly \"任何 Agent\". No robot, no brain icon, no specific vendor logos or product names.\nText restrictions: The ONLY text on the entire image is exactly these seven labels: \"声音\", \"截图 · 重点 · 观点\", \"loppi\", \"你的上下文\", \"CLI\", \"MCP\", \"任何 Agent\". Absolutely no headline, subtitle, captions, footnotes, numerals, slogans, annotations, paragraph explanations, watermarks or text inside icons.\nVisual restrictions: no decorative illustration, no human scene, no panels/cards, no repeated headings, no giant bold Chinese typography, no background artwork, no automatic screen-monitoring imagery. Subtle linework and precise alignment should carry the meaning. Clear directional arrows, no tangled connectors, no ambiguous reverse arrows.",
+      "references": [
+        "design/system-v1/release/readme-header.png"
+      ]
+    }
+  ],
+  "notes": [
+    "Reference paths are relative to the repository root; filenames are relative to this file.",
+    "Selected generated PNG copied unchanged. The structural diagram is not an application screenshot."
+  ]
+}

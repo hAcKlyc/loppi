@@ -1,0 +1,416 @@
+[
+  {
+    "checks": [
+      {
+        "afterText": "已就绪",
+        "color": "rgb(71, 116, 91)"
+      },
+      {
+        "afterText": "已授权",
+        "color": "rgb(71, 116, 91)"
+      },
+      {
+        "afterText": "已准备",
+        "color": "rgb(71, 116, 91)"
+      }
+    ],
+    "footer": [
+      {
+        "box": {
+          "bottom": 487.484375,
+          "height": 26.5,
+          "right": 794.59375,
+          "width": 26,
+          "x": 768.59375,
+          "y": 460.984375
+        },
+        "size": "13px",
+        "text": "稍后"
+      },
+      {
+        "box": {
+          "bottom": 491.6328125,
+          "height": 34.796875,
+          "right": 908,
+          "width": 93.40625,
+          "x": 814.59375,
+          "y": 456.8359375
+        },
+        "size": "13px",
+        "text": "完成设置 →"
+      }
+    ],
+    "headings": [
+      {
+        "size": "16px",
+        "text": "① 检查本地组件"
+      },
+      {
+        "size": "16px",
+        "text": "② 授权声音访问"
+      },
+      {
+        "size": "16px",
+        "text": "③ 配置云服务"
+      }
+    ],
+    "height": 760,
+    "oldHelp": false,
+    "overflow": false,
+    "rows": [
+      [
+        {
+          "box": {
+            "bottom": 316.3359375,
+            "height": 30,
+            "right": 540,
+            "width": 144,
+            "x": 396,
+            "y": 286.3359375
+          },
+          "overflow": false,
+          "text": "事件分析 · DeepSeek"
+        },
+        {
+          "box": {
+            "bottom": 324.3359375,
+            "height": 38,
+            "right": 596,
+            "width": 48,
+            "x": 548,
+            "y": 286.3359375
+          },
+          "overflow": false,
+          "text": "setup-text-button setup-key-link"
+        },
+        {
+          "box": {
+            "bottom": 326.8359375,
+            "height": 40.5,
+            "right": 908,
+            "width": 304,
+            "x": 604,
+            "y": 286.3359375
+          },
+          "overflow": false,
+          "text": "cloud-provider-key cloud-provider-key-compact"
+        }
+      ],
+      [
+        {
+          "box": {
+            "bottom": 368.8359375,
+            "height": 30,
+            "right": 540,
+            "width": 144,
+            "x": 396,
+            "y": 338.8359375
+          },
+          "overflow": false,
+          "text": "语音识别 · 火山引擎"
+        },
+        {
+          "box": {
+            "bottom": 376.8359375,
+            "height": 38,
+            "right": 596,
+            "width": 48,
+            "x": 548,
+            "y": 338.8359375
+          },
+          "overflow": false,
+          "text": "setup-text-button setup-key-link"
+        },
+        {
+          "box": {
+            "bottom": 379.3359375,
+            "height": 40.5,
+            "right": 908,
+            "width": 304,
+            "x": 604,
+            "y": 338.8359375
+          },
+          "overflow": false,
+          "text": "cloud-provider-key cloud-provider-key-compact"
+        }
+      ]
+    ],
+    "width": 1120
+  },
+  {
+    "checks": [
+      {
+        "afterText": "已就绪",
+        "color": "rgb(71, 116, 91)"
+      },
+      {
+        "afterText": "已授权",
+        "color": "rgb(71, 116, 91)"
+      },
+      {
+        "afterText": "已准备",
+        "color": "rgb(71, 116, 91)"
+      }
+    ],
+    "footer": [
+      {
+        "box": {
+          "bottom": 487.484375,
+          "height": 26.5,
+          "right": 614.59375,
+          "width": 26,
+          "x": 588.59375,
+          "y": 460.984375
+        },
+        "size": "13px",
+        "text": "稍后"
+      },
+      {
+        "box": {
+          "bottom": 491.6328125,
+          "height": 34.796875,
+          "right": 728,
+          "width": 93.40625,
+          "x": 634.59375,
+          "y": 456.8359375
+        },
+        "size": "13px",
+        "text": "完成设置 →"
+      }
+    ],
+    "headings": [
+      {
+        "size": "16px",
+        "text": "① 检查本地组件"
+      },
+      {
+        "size": "16px",
+        "text": "② 授权声音访问"
+      },
+      {
+        "size": "16px",
+        "text": "③ 配置云服务"
+      }
+    ],
+    "height": 540,
+    "oldHelp": false,
+    "overflow": false,
+    "rows": [
+      [
+        {
+          "box": {
+            "bottom": 316.3359375,
+            "height": 30,
+            "right": 360,
+            "width": 144,
+            "x": 216,
+            "y": 286.3359375
+          },
+          "overflow": false,
+          "text": "事件分析 · DeepSeek"
+        },
+        {
+          "box": {
+            "bottom": 324.3359375,
+            "height": 38,
+            "right": 416,
+            "width": 48,
+            "x": 368,
+            "y": 286.3359375
+          },
+          "overflow": false,
+          "text": "setup-text-button setup-key-link"
+        },
+        {
+          "box": {
+            "bottom": 326.8359375,
+            "height": 40.5,
+            "right": 728,
+            "width": 304,
+            "x": 424,
+            "y": 286.3359375
+          },
+          "overflow": false,
+          "text": "cloud-provider-key cloud-provider-key-compact"
+        }
+      ],
+      [
+        {
+          "box": {
+            "bottom": 368.8359375,
+            "height": 30,
+            "right": 360,
+            "width": 144,
+            "x": 216,
+            "y": 338.8359375
+          },
+          "overflow": false,
+          "text": "语音识别 · 火山引擎"
+        },
+        {
+          "box": {
+            "bottom": 376.8359375,
+            "height": 38,
+            "right": 416,
+            "width": 48,
+            "x": 368,
+            "y": 338.8359375
+          },
+          "overflow": false,
+          "text": "setup-text-button setup-key-link"
+        },
+        {
+          "box": {
+            "bottom": 379.3359375,
+            "height": 40.5,
+            "right": 728,
+            "width": 304,
+            "x": 424,
+            "y": 338.8359375
+          },
+          "overflow": false,
+          "text": "cloud-provider-key cloud-provider-key-compact"
+        }
+      ]
+    ],
+    "width": 760
+  },
+  {
+    "checks": [
+      {
+        "afterText": "已就绪",
+        "color": "rgb(71, 116, 91)"
+      },
+      {
+        "afterText": "已授权",
+        "color": "rgb(71, 116, 91)"
+      },
+      {
+        "afterText": "已准备",
+        "color": "rgb(71, 116, 91)"
+      }
+    ],
+    "footer": [
+      {
+        "box": {
+          "bottom": 487.484375,
+          "height": 26.5,
+          "right": 1194.59375,
+          "width": 26,
+          "x": 1168.59375,
+          "y": 460.984375
+        },
+        "size": "13px",
+        "text": "稍后"
+      },
+      {
+        "box": {
+          "bottom": 491.6328125,
+          "height": 34.796875,
+          "right": 1308,
+          "width": 93.40625,
+          "x": 1214.59375,
+          "y": 456.8359375
+        },
+        "size": "13px",
+        "text": "完成设置 →"
+      }
+    ],
+    "headings": [
+      {
+        "size": "16px",
+        "text": "① 检查本地组件"
+      },
+      {
+        "size": "16px",
+        "text": "② 授权声音访问"
+      },
+      {
+        "size": "16px",
+        "text": "③ 配置云服务"
+      }
+    ],
+    "height": 1080,
+    "oldHelp": false,
+    "overflow": false,
+    "rows": [
+      [
+        {
+          "box": {
+            "bottom": 316.3359375,
+            "height": 30,
+            "right": 940,
+            "width": 144,
+            "x": 796,
+            "y": 286.3359375
+          },
+          "overflow": false,
+          "text": "事件分析 · DeepSeek"
+        },
+        {
+          "box": {
+            "bottom": 324.3359375,
+            "height": 38,
+            "right": 996,
+            "width": 48,
+            "x": 948,
+            "y": 286.3359375
+          },
+          "overflow": false,
+          "text": "setup-text-button setup-key-link"
+        },
+        {
+          "box": {
+            "bottom": 326.8359375,
+            "height": 40.5,
+            "right": 1308,
+            "width": 304,
+            "x": 1004,
+            "y": 286.3359375
+          },
+          "overflow": false,
+          "text": "cloud-provider-key cloud-provider-key-compact"
+        }
+      ],
+      [
+        {
+          "box": {
+            "bottom": 368.8359375,
+            "height": 30,
+            "right": 940,
+            "width": 144,
+            "x": 796,
+            "y": 338.8359375
+          },
+          "overflow": false,
+          "text": "语音识别 · 火山引擎"
+        },
+        {
+          "box": {
+            "bottom": 376.8359375,
+            "height": 38,
+            "right": 996,
+            "width": 48,
+            "x": 948,
+            "y": 338.8359375
+          },
+          "overflow": false,
+          "text": "setup-text-button setup-key-link"
+        },
+        {
+          "box": {
+            "bottom": 379.3359375,
+            "height": 40.5,
+            "right": 1308,
+            "width": 304,
+            "x": 1004,
+            "y": 338.8359375
+          },
+          "overflow": false,
+          "text": "cloud-provider-key cloud-provider-key-compact"
+        }
+      ]
+    ],
+    "width": 1920
+  }
+]

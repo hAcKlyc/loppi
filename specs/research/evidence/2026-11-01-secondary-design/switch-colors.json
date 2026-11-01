@@ -1,0 +1,26 @@
+[
+  {
+    "color": "rgb(182, 91, 66)",
+    "name": "登录时启动",
+    "on": "true",
+    "thumb": "matrix(1, 0, 0, 1, 18, 0)"
+  },
+  {
+    "color": "rgb(182, 91, 66)",
+    "name": "麦克风",
+    "on": "true",
+    "thumb": "matrix(1, 0, 0, 1, 18, 0)"
+  },
+  {
+    "color": "rgb(182, 91, 66)",
+    "name": "电脑声音",
+    "on": "true",
+    "thumb": "matrix(1, 0, 0, 1, 18, 0)"
+  },
+  {
+    "color": "rgb(98, 101, 95)",
+    "name": "定时录制",
+    "on": "false",
+    "thumb": "none"
+  }
+]

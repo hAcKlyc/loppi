@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useRef, useState } from "react";
 import { type CloudQueue, type ServiceState, userError } from "./api";
+import wordmark from "./assets/brand/wordmark.svg";
 import { CloudKeyInput } from "./CloudKeyInput";
 import { Button } from "./Controls";
 import { LoadBoundary } from "./LoadingState";
@@ -69,7 +70,9 @@ export function OnboardingView({
 			<div className="onboarding-drag" data-tauri-drag-region />
 			<div className="onboarding-content">
 				<header>
-					<h1>准备 loppi</h1>
+					<h1>
+						准备 <img className="setup-wordmark" src={wordmark} alt="loppi" />
+					</h1>
 				</header>
 				{state?.enabled_intent && (
 					<p className="setup-notice">
@@ -121,9 +124,22 @@ export function OnboardingView({
 								{(["llm", "asr"] as const).map((provider) => (
 									<div className="setup-cloud" key={provider}>
 										<div className="setup-cloud-label">
-											{provider === "llm" ? "DeepSeek" : "火山引擎"}
-											<small>{provider === "llm" ? "整理" : "转录"}</small>
+											{provider === "llm"
+												? "事件分析 · DeepSeek"
+												: "语音识别 · 火山引擎"}
 										</div>
+										<button
+											type="button"
+											className="setup-text-button setup-key-link"
+											aria-label={`获取${provider === "llm" ? "DeepSeek" : "火山引擎"}密钥`}
+											onClick={() =>
+												void invoke("open_setup_help", { provider }).catch(
+													(e) => setFailure(userError(e)),
+												)
+											}
+										>
+											获取密钥
+										</button>
 										<CloudKeyInput
 											compact
 											provider={provider}
@@ -137,29 +153,6 @@ export function OnboardingView({
 										/>
 									</div>
 								))}
-								<details className="setup-help setup-key-help">
-									<summary>获取密钥 ↗</summary>
-									{(["llm", "asr"] as const).map((provider) => (
-										<div key={provider}>
-											<p>
-												{provider === "llm"
-													? "DeepSeek：在开放平台创建 API Key，确认可用余额。"
-													: "火山引擎：开通录音文件识别标准版，创建有对应权限的 API Key。"}
-											</p>
-											<button
-												type="button"
-												className="setup-text-button"
-												onClick={() =>
-													void invoke("open_setup_help", { provider }).catch(
-														(e) => setFailure(userError(e)),
-													)
-												}
-											>
-												{provider === "llm" ? "DeepSeek" : "火山引擎"}官方说明 ↗
-											</button>
-										</div>
-									))}
-								</details>
 								<details className="setup-help setup-disclosure">
 									<summary>云端处理 · 按量付费</summary>
 									<p>
@@ -182,7 +175,7 @@ export function OnboardingView({
 				<footer>
 					<button
 						type="button"
-						className="setup-text-button"
+						className="setup-text-button setup-later"
 						disabled={busy || sourceBusy}
 						onClick={onLater}
 					>

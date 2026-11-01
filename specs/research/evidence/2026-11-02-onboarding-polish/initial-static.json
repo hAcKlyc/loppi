@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "suite": "static",
+  "passed": true,
+  "checks": [
+    {
+      "name": "typecheck",
+      "command": [
+        "npm",
+        "run",
+        "typecheck"
+      ],
+      "seconds": 1.42,
+      "exit_code": 0
+    },
+    {
+      "name": "lint",
+      "command": [
+        "npm",
+        "run",
+        "lint"
+      ],
+      "seconds": 0.23,
+      "exit_code": 0
+    },
+    {
+      "name": "rust-check",
+      "command": [
+        "cargo",
+        "check",
+        "--workspace",
+        "--locked"
+      ],
+      "seconds": 29.47,
+      "exit_code": 0
+    }
+  ],
+  "excluded": [
+    "private fixture tests",
+    "cloud API tests",
+    "permission/capture/sleep acceptance",
+    "signed installation",
+    "browser visual acceptance"
+  ]
+}

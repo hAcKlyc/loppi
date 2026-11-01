@@ -67,7 +67,7 @@ python3 scripts/verify.py --suite smoke
 
 macOS、Node 24、当前稳定 Rust、Xcode 26.0.1 或更新版本（含 macOS 26 SDK）是前提；发行工具链保持该 SDK 基线，Audio Tap 通过公开的 14.2 API 动态解析，部署最低版本仍为 macOS 13。GitHub Actions 采用相同入口与 [macos-15 runner](https://github.com/actions/runner-images/blob/main/images/macos/macos-15-arm64-Readme.md)。CI 通过 `DEVELOPER_DIR` 选择 runner 已安装的 Xcode 26.0.1，避免默认 Xcode 16.4 头文件缺字段。测试依赖由 package-lock/Cargo.lock 固定，React 交互测试不再依赖开发者 `/tmp` 下手动安装的 jsdom。
 
-2026-10-22 验证发现一个既有入口问题：unittest discovery 会导入手动 `scripts/test_model_preparation.py` 并把 `discover` 当作模型目录，导致默认 `all` 返回失败。该手动入口不属于本次修复；普通 Python 模块的 6 项测试、native entry policy 和 `--suite smoke` 已独立补验通过，完整结果见本次 devplan。不能把这些结果写成默认 `all` 已通过。
+历史问题已在 0.1.4 修复：手动模型入口改名为 `scripts/smoke_model_preparation.py`，不再被普通 unittest discovery 导入。下方保留修复记录；当前默认入口以 `scripts/verify.py` / `verify_windows.py` 实际结果为准。
 
 默认门禁包含前端静态检查、Rust workspace check/test、Node 逻辑/React 交互、Python 资源测试、真实 native entry policy、全工作区构建、四组件身份校验、隔离 Core 和诊断导出烟测。禁用私有 fixture 环境；不启用 ignored 测试、不读用户活跃库、不调用付费 API。脚本及 CI 报告明列未覆盖项。
 
@@ -134,3 +134,14 @@ HTTP 402 在既有 cloud_queues.blocked_reason 表达账号阻塞，独立于用
 前端回归包含真实 App 的同日在途合并、变更时立即失效及串行新快照；原生输出的会话/epoch、旧关闭与取消，以及原有连续播放清理/边界回归。原生 AVAudioPlayer 硬件时钟验证只使用合成静音，不录音、不调用云；无声音设备环境不能据此声称完成真实设备验收。电源消息注入验证 CanSleep/WillSleep 立即确认、不阻止系统休眠、早期 Wake 不恢复、完成 Wake 才恢复。
 
 冻结库的读取基准只复制数据库并移除凭据引用/停用云队列；报告存摘要哈希、数量、时延和构建身份，禁止写出记录正文。范围与最终证据见本轮 devplan 与两机问题合集。
+
+
+## 资源观测与精转排查
+
+长时资源观测可运行 `zsh scripts/measure_macos.sh 600 /tmp/loppi-process-usage.csv /Applications/loppi.app new /tmp/loppi-resource-report.html`。脚本每分钟记录安装版核心、worker 与界面的实际可执行路径/PID、CPU 累计时间、物理内存足迹、常驻内存、磁盘 IO 和进程能耗计数；允许短暂重叠的 worker，并在重启或进程缺席时留下可追溯样本。报告每 15 次采样自动更新一次，同时生成同名 `.html.json` 摘要；`LOPPI_REPORT_EVERY` 可调整频率。意外停止后以 `resume` 代替 `new` 续写同一个 CSV，先校验表头，不覆盖原曲线。也可用 `python3 scripts/report_macos_resources.py <一个或多个 CSV> --output /tmp/loppi-resource-report.html --summary /tmp/loppi-resource-report.json` 合并重叠采样。报告按 PID 分段显示内存和单核 CPU 曲线、峰值、P95、末值与超过 150 秒的采样空档；空档内的峰值未知。进程能耗计数只能用于同机趋势，不能替代整机电池续航实测。录音覆盖、可回放性与来源缺口仍须以核心状态和媒体清单单独核对。
+
+CLI 的 `transcribe-range` 返回 `range_id` 和 `tasks`；每条任务有可用于 `cloud retry` 的真实 `id`、`source`、起止时间和当前 `state`。双路或长范围可能产生多条任务；无可用原声会返回 `range_no_audio`，不会留下空的精转范围。
+
+精转文字优先保留完整内容与供应商时间：时间能映射到原请求且当前归属有效，就保存文字，允许偶发长静默跨度；VAD、当前原声留存和声纹质量不再导致整段文字丢失。声纹和回放各自检查真实原声。最新修复、证据与安装状态见 [精转失败调查](../research/2026-10-22-asr-publication-failures.md)。
+
+已有事件可以在详情的「音频信息」中重新精转；命令行可运行 `loppi event retranscribe <event-id> <revision>`。新任务按当前云端适配器处理整场可用原声，原有人工修正只在可确认的同一时段自动恢复，其余进入待核对。

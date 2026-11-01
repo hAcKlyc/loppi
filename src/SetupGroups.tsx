@@ -60,7 +60,10 @@ export function ModelPreparation({
 				<div className="setup-model-compact">
 					{models?.phase === "ready" ? (
 						<span className="setup-ready" role="status">
-							✓ 已就绪
+							已就绪
+							<span className="setup-success-check" aria-hidden="true">
+								✓
+							</span>
 						</span>
 					) : (
 						<Button
@@ -272,7 +275,10 @@ export function SourcePreparation({
 								<div className="setup-permission-item" key={source}>
 									{ready && !unavailable ? (
 										<span className="setup-permission-ready" role="status">
-											{label} · {readyLabel} ✓
+											{label} · {readyLabel}
+											<span className="setup-success-check" aria-hidden="true">
+												✓
+											</span>
 										</span>
 									) : (
 										<Button

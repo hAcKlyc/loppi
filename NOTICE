@@ -1,0 +1,17 @@
+loppi
+Copyright 2026 Ethan L
+https://github.com/hAcKlyc/loppi
+
+Original project code, documentation and project-owned artwork are licensed
+under the Apache License, Version 2.0, unless a file states otherwise.
+
+Development workflow documents were adapted from MyAgents with the copyright
+owner's authorization to distribute them under Apache-2.0. Their historical
+origin does not make MyAgents an installation or runtime dependency of loppi.
+
+Third-party components, model weights and their notices retain their own
+licenses. See THIRD_PARTY_NOTICES.md, licenses/ and the resource manifests.
+
+No trademark rights are granted by the copyright license. See docs/brand.md.
+
+Project contact: Ethan L <myagents.io@gmail.com>

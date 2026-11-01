@@ -1,0 +1,18 @@
+{
+  "default": {
+    "band": "rgb(248, 220, 203)",
+    "card": "rgb(248, 220, 203)",
+    "now": "rgb(166, 83, 60)",
+    "text": "rgb(98, 94, 87)",
+    "track": "rgb(237, 233, 225)"
+  },
+  "bandHover": {
+    "color": "rgb(245, 212, 193)",
+    "filter": "none",
+    "hover": true
+  },
+  "cardHover": {
+    "color": "rgb(245, 212, 193)",
+    "hover": true
+  }
+}

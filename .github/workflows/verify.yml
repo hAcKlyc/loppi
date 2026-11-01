@@ -1,6 +1,7 @@
 name: Verify
 on:
   pull_request:
+  workflow_dispatch:
   push:
     branches: [dev, main]
 permissions:
@@ -16,8 +17,8 @@ jobs:
       # Existing Core Audio Tap fields require the macOS 26 SDK.
       DEVELOPER_DIR: /Applications/Xcode_26.0.1.app/Contents/Developer
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
           cache: npm
@@ -29,8 +30,50 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Verify the same gate as local development
         run: python3 scripts/verify.py --report build/verification.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: verification
           path: build/verification.json
+
+  offline-windows:
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
+        with:
+          arch: x64
+      - name: Install frontend test dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Prepare checksum-locked inference libraries
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $spec = Get-Content config/windows-assets.json -Raw | ConvertFrom-Json
+          $cache = Join-Path $PWD 'build/cache/windows'
+          New-Item -ItemType Directory -Force -Path $cache | Out-Null
+          $archive = Join-Path $cache 'sherpa-onnx-2.0.0.tar.bz2'
+          Invoke-WebRequest -Uri $spec.native.url -OutFile $archive
+          if ((Get-Item $archive).Length -ne $spec.native.bytes) { throw 'Native archive size mismatch' }
+          if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $spec.native.sha256) { throw 'Native archive checksum mismatch' }
+          tar -xjf $archive -C $cache
+          if ($LASTEXITCODE -ne 0) { throw 'Native archive extraction failed' }
+          $native = Join-Path $cache ($spec.native.directory + '/lib')
+          if (-not (Test-Path $native -PathType Container)) { throw 'Native library directory missing' }
+          "SHERPA_ONNX_LIB_DIR=$native" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $native | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Verify Windows offline gate
+        run: python scripts/verify.py --report build/verification-windows.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: verification-windows
+          path: build/verification-windows.json

@@ -1,5 +1,8 @@
 # hear debug 真机验收交接
 
+> 历史记录：以下名称、路径示例、命令和验收结果属于当时版本。公开版路径已脱敏，不应直接作为当前操作指引；当前使用与开发入口见[文档索引](../../docs/README.md)。
+
+
 2026-10-29，按 Ethan 指示构建并启动。本文记录首次交接时的环境；Mino 验收通过后已验证兼容性，并通过正常应用启动路径恢复原 GUI 和采集通道，录音仍暂停。最新结果见 [Mino 验收与回退](hear-agent-review-mino-acceptance.md)。未替换 `/Applications/hear.app`，云端词库效果留待 release 验收。
 
 本文所列 debug app 是首轮验收历史包，不含后续 compact 与轻结构范围修订。最终行为以 PR 源码和最新验收记录为准；后续复验使用新构建的 `target/debug` 二进制及隔离数据库副本。
@@ -7,7 +10,7 @@
 ## 构建交接时的状态
 
 - Debug Core PID：`31785`（实时状态以 `control.py status` 为准）。GUI 未启动。
-- 使用原数据库：`/Users/zhihu/Library/Application Support/hear/hear.sqlite`，不是数据副本或测试 dispatcher。
+- 使用原数据库：`<USER_HOME>/Library/Application Support/hear/hear.sqlite`，不是数据副本或测试 dispatcher。
 - 原 GUI/Core 已正常退出；旧 stdio MCP 进程可能仍存在，它们是协议 21 的客户端，需重连到下面的新版 CLI。
 - `allow_capture=false`、`normal_run=false`、`paused_intent=true`，两个音源均 idle。Core 以 `serve --on-demand` 启动。
 - LLM/ASR 队列均暂停；切换前均未暂停。录音时间表配置保留，但当前 Core 不会执行正常采集调度。验收期间不要启动 GUI、执行 start/resume 或恢复云端队列。
@@ -15,25 +18,25 @@
 
 ## 包和路径
 
-包：`/Users/zhihu/Documents/project/hear/build/agent-review-debug/hear-debug.app`。这是本机 arm64 debug 包，包含模型，未签名/公证，不是发布产物。
+包：`<USER_HOME>/Documents/project/hear/build/agent-review-debug/hear-debug.app`。这是本机 arm64 debug 包，包含模型，未签名/公证，不是发布产物。
 
 CLI 二进制：
-`/Users/zhihu/Documents/project/hear/build/agent-review-debug/hear-debug.app/Contents/MacOS/hear`
+`<USER_HOME>/Documents/project/hear/build/agent-review-debug/hear-debug.app/Contents/MacOS/hear`
 
 Core 二进制：
-`/Users/zhihu/Documents/project/hear/build/agent-review-debug/hear-debug.app/Contents/Library/LoginItems/HearCore.app/Contents/MacOS/hear-core`
+`<USER_HOME>/Documents/project/hear/build/agent-review-debug/hear-debug.app/Contents/Library/LoginItems/HearCore.app/Contents/MacOS/hear-core`
 
 Worker 二进制：同一 `Contents/MacOS` 目录下的 `hear-worker`。
 
 推荐验收入口：
-`/Users/zhihu/Documents/project/hear/build/agent-review-debug/bin/hear`
+`<USER_HOME>/Documents/project/hear/build/agent-review-debug/bin/hear`
 
 这是固定 `HEAR_DATA_DIR` 为原目录、`HEAR_CORE_BIN` 为本包 Core 的薄包装，随后 exec 真实 CLI。它避免调用管理命令时意外寻找旧 Core，不模拟 IPC 或数据。
 
 ## CLI 验收
 
 ```sh
-hear_debug=/Users/zhihu/Documents/project/hear/build/agent-review-debug/bin/hear
+hear_debug=<USER_HOME>/Documents/project/hear/build/agent-review-debug/bin/hear
 "$hear_debug" build-info
 "$hear_debug" context status
 "$hear_debug" context list --date 2026-10-28
@@ -53,7 +56,7 @@ hear_debug=/Users/zhihu/Documents/project/hear/build/agent-review-debug/bin/hear
 可直接执行：
 
 ```sh
-/Users/zhihu/Documents/project/hear/build/agent-review-debug/bin/hear mcp serve
+<USER_HOME>/Documents/project/hear/build/agent-review-debug/bin/hear mcp serve
 ```
 
 配置已写到 `build/agent-review-debug/mcp.json`：
@@ -62,14 +65,14 @@ hear_debug=/Users/zhihu/Documents/project/hear/build/agent-review-debug/bin/hear
 {
   "mcpServers": {
     "hear-debug": {
-      "command": "/Users/zhihu/Documents/project/hear/build/agent-review-debug/bin/hear",
+      "command": "<USER_HOME>/Documents/project/hear/build/agent-review-debug/bin/hear",
       "args": ["mcp", "serve"]
     }
   }
 }
 ```
 
-若必须直接指向二进制，将 command 改为上面的 CLI 二进制绝对路径，并传 env：`HEAR_DATA_DIR=/Users/zhihu/Library/Application Support/hear` 和 `HEAR_CORE_BIN=上面的 Core 二进制路径`。现有会话的老 MCP 进程不会自动换版本；本次未改 MyAgents 全局或工作区配置。
+若必须直接指向二进制，将 command 改为上面的 CLI 二进制绝对路径，并传 env：`HEAR_DATA_DIR=<USER_HOME>/Library/Application Support/hear` 和 `HEAR_CORE_BIN=上面的 Core 二进制路径`。现有会话的老 MCP 进程不会自动换版本；本次未改 MyAgents 全局或工作区配置。
 
 预期 7 个工具：hear_status、hear_list_context、hear_search_context、hear_get_event、hear_read_context、hear_digest、hear_list_people。启动后向 hear_status 传实际可见的 `client_tools` 数组，应返回 `tool_inventory.state=matched`。
 
@@ -78,26 +81,26 @@ hear_debug=/Users/zhihu/Documents/project/hear/build/agent-review-debug/bin/hear
 两个版本共用数据目录、`core.lock` 和 `core.sock`，不能同时启动 Core。新版已取得唯一 owner 锁。启动时新增词库/实体/ASR 词库快照表及触发器，增加索引，重建查询视图；没有替换生产数据库，也没有主动重建历史理解或 ASR。
 
 启动前通过 SQLite backup 保存并检查了：
-`/Users/zhihu/Documents/project/hear/build/agent-review-debug/backup/hear-before-debug.sqlite`
+`<USER_HOME>/Documents/project/hear/build/agent-review-debug/backup/hear-before-debug.sqlite`
 
 这是数据库备份，不是媒体目录备份。Core 的常规恢复和维护逻辑仍运行。验收词库修改和正常维护写入不会随停止 debug Core 自动撤销。
 
 查看状态：
 
 ```sh
-python3 /Users/zhihu/Documents/project/hear/build/agent-review-debug/control.py status
+python3 <USER_HOME>/Documents/project/hear/build/agent-review-debug/control.py status
 ```
 
 只停 debug Core：
 
 ```sh
-python3 /Users/zhihu/Documents/project/hear/build/agent-review-debug/control.py stop
+python3 <USER_HOME>/Documents/project/hear/build/agent-review-debug/control.py stop
 ```
 
 验收结束切回安装版：
 
 ```sh
-python3 /Users/zhihu/Documents/project/hear/scripts/restore_debug_session.py --session-dir /Users/zhihu/Documents/project/hear/build/agent-review-debug
+python3 <USER_HOME>/Documents/project/hear/scripts/restore_debug_session.py --session-dir <USER_HOME>/Documents/project/hear/build/agent-review-debug
 /Applications/hear.app/Contents/MacOS/hear build-info
 /Applications/hear.app/Contents/MacOS/hear context status
 ```

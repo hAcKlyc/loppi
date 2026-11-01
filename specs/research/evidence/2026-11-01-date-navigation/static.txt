@@ -3,11 +3,11 @@
 > biome check src
 
 Checked 49 files in 42ms. No fixes applied.
-   Compiling loppi-protocol v0.1.18 (/Users/ethan/Projects/hear/crates/loppi-protocol)
-   Compiling loppi-desktop v0.1.18 (/Users/ethan/Projects/hear/src-tauri)
-   Compiling loppi-core v0.1.18 (/Users/ethan/Projects/hear/crates/loppi-core)
-    Checking loppi-worker v0.1.18 (/Users/ethan/Projects/hear/crates/loppi-worker)
-    Checking loppi-cli v0.1.18 (/Users/ethan/Projects/hear/crates/loppi-cli)
+   Compiling loppi-protocol v0.1.18 (<USER_HOME>/Projects/hear/crates/loppi-protocol)
+   Compiling loppi-desktop v0.1.18 (<USER_HOME>/Projects/hear/src-tauri)
+   Compiling loppi-core v0.1.18 (<USER_HOME>/Projects/hear/crates/loppi-core)
+    Checking loppi-worker v0.1.18 (<USER_HOME>/Projects/hear/crates/loppi-worker)
+    Checking loppi-cli v0.1.18 (<USER_HOME>/Projects/hear/crates/loppi-cli)
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 13.39s
 
 > loppi@0.1.18 build

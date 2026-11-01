@@ -1,6 +1,6 @@
 ---
 name: review-architecture
-description: "Review the final MyAgents code change for architecture correctness, owner and lifecycle placement, reuse of existing abstractions, scope discipline, and unnecessary complexity. Use as the final architecture lens inside cross-review-code or for an explicit architecture/entropy review."
+description: "Review the final loppi code change for architecture correctness, owner and lifecycle placement, reuse of existing abstractions, scope discipline, and unnecessary complexity. Use as the final architecture lens inside cross-review-code or for an explicit architecture/entropy review."
 ---
 
 # Architecture Review

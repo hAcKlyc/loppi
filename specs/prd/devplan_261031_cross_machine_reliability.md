@@ -64,7 +64,7 @@ updated: 2026-10-31
 - 批次：两机可靠性完整修复。
 - Batch base：3651aa14ece9206fdfa499eb90086ad57129ad6f。
 - 范围：C01–C18 所属的现有 Core/native/协议/GUI/测试/owner 文档和版本文件；review 前列出实际改动清单。
-- 不在范围：原 /Users/ethan/Projects/hear 分支上的额外界面提交、108 个原有本地文件及所有用户历史内容。
+- 不在范围：原 <USER_HOME>/Projects/hear 分支上的额外界面提交、108 个原有本地文件及所有用户历史内容。
 
 ### 待用户决策
 
@@ -103,4 +103,4 @@ updated: 2026-10-31
 - C08后续窄批次三路fresh-context审查全部PASS，无阻塞或必要证据缺口；新失败回归先红后绿、四项账号回归及最终完整21项通过（Core376 passed/20 ignored）。在现有outbound gate内记录账号事实，common handler跳过第二次402状态写，events只对真正变更的任务写阻塞，保留显式ASR重试和原付费ID。准备提交并从该clean来源重建正式包。
 
 - 最终交付完成：生产提交2b740c0与56f6802，发行源码为clean 56f6802331c92562f296fae9df27b8b0cb331fb3，v0.1.13，协议23，四组件epoch1793388482一致。Universal2/最低macOS13、模型和Unicode只读路径烟测通过；Apple公证dd6c02af-7fec-4833-9024-85381a494f3a Accepted，装订及DMG/app Gatekeeper通过。正式DMG SHA256 a1d7a693bce7053b5c05e15702414f2691fc727a62a02d2b88436b7824c8a49a，GitHub发行已发布https://github.com/hAcKlyc/hear/releases/tag/v0.1.13，三附件完整且远端digest与本机一致。
-- 已原子交换安装/Applications/hear.app；Codex Computer Use关于面板显示0.1.13，原声授权准备成功，历史日期正常打开。运行Core PID52631确认为上述clean构建，模型/声纹ready、Normal，当前run唯一started且验收窗口无warn/error。原08:00–23:00规则、计划暂停、10GiB上限与revision78保留，下一次10/31 08:00开始；未手动提前录制。保护的事件/精转/人工纠错/绑定/人物/现场记录六表与升级前逐行哈希相同，DB quick_check=ok。备份位于/Users/ethan/Library/Application Support/hear-update-backups/20261031-to-0.1.13，含0.1.12app、一致DB和媒体。最终记录specs/research/2026-10-31-release-0.1.13.md；其后文档提交仅留存已完成的交付事实，发行来源仍以v0.1.13/manifest为准。
+- 已原子交换安装/Applications/hear.app；Codex Computer Use关于面板显示0.1.13，原声授权准备成功，历史日期正常打开。运行Core PID52631确认为上述clean构建，模型/声纹ready、Normal，当前run唯一started且验收窗口无warn/error。原08:00–23:00规则、计划暂停、10GiB上限与revision78保留，下一次10/31 08:00开始；未手动提前录制。保护的事件/精转/人工纠错/绑定/人物/现场记录六表与升级前逐行哈希相同，DB quick_check=ok。备份位于<USER_HOME>/Library/Application Support/hear-update-backups/20261031-to-0.1.13，含0.1.12app、一致DB和媒体。最终记录specs/research/2026-10-31-release-0.1.13.md；其后文档提交仅留存已完成的交付事实，发行来源仍以v0.1.13/manifest为准。
