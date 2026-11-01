@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: implemented
 updated: 2026-11-02
 ---
 # 人物词库标题式 Tab
@@ -18,7 +18,7 @@ updated: 2026-11-02
 
 ### 清单
 - [x] 实现与验证
-- [ ] 三路审查与提交
+- [x] 三路审查与提交
 
 ### 待决策
 无。
@@ -30,3 +30,5 @@ updated: 2026-11-02
 - 2026-11-02：共享设计验收people/person×macOS/Windows呈现×760/1120共8组PASS，合成数据预览已保存。requirements/adversarial均PASS，无需修复；最终架构审查待完成。
 
 - 2026-11-02：final architecture PASS，无发现；三路完整审查结束。最终源码与通过的验证快照一致；已重读全契约，无遗漏范围、新机制或mandatory遗留。
+
+- 2026-11-02：实现提交fda52b8470b46b542a7afff77ed309d33228fa61；原子交付门禁完成，状态implemented。仅显式本任务文件提交，其余共享改动保留。主观advisory验收：顶部标题式Tab点击切换、应用范围三开关、词条管理新增/编辑；相应行为已由合成组件和双浏览器验证，无新增OS/native发布声明。
