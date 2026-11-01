@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "version": "0.1.18",
+  "source": "9559b84a5566b8144769910458b6586bae5843b8",
+  "epoch": "1793504166",
+  "dirty": false,
+  "platform": "windows-x64",
+  "minimum_build": 22000,
+  "authenticode": "unsigned",
+  "stage": "C:\\Users\\hackl\\Documents\\project\\loppi\\build\\windows\\x86_64-pc-windows-msvc-1793504166-11876",
+  "components": {
+    "gui": {
+      "component": "gui",
+      "version": "0.1.18",
+      "protocol_version": 24,
+      "git_sha": "9559b84a5566b8144769910458b6586bae5843b8",
+      "dirty": false,
+      "built_at_epoch": 1793504166
+    },
+    "core": {
+      "component": "core",
+      "version": "0.1.18",
+      "protocol_version": 24,
+      "git_sha": "9559b84a5566b8144769910458b6586bae5843b8",
+      "dirty": false,
+      "built_at_epoch": 1793504166
+    },
+    "worker": {
+      "component": "worker",
+      "version": "0.1.18",
+      "protocol_version": 24,
+      "git_sha": "9559b84a5566b8144769910458b6586bae5843b8",
+      "dirty": false,
+      "built_at_epoch": 1793504166
+    },
+    "cli": {
+      "component": "cli",
+      "version": "0.1.18",
+      "protocol_version": 24,
+      "git_sha": "9559b84a5566b8144769910458b6586bae5843b8",
+      "dirty": false,
+      "built_at_epoch": 1793504166
+    }
+  },
+  "artifacts": [
+    {
+      "path": "C:\\Users\\hackl\\Documents\\project\\loppi\\target\\x86_64-pc-windows-msvc\\release\\bundle\\nsis\\loppi_0.1.18_x64-setup.exe",
+      "bytes": 388814566,
+      "sha256": "0f7e94d624667217a92c725b55b84310f1d5cccc33a16e9d7ada2e7532a5fb49"
+    }
+  ]
+}
