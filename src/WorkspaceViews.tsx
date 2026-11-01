@@ -40,8 +40,10 @@ import { desktopPlatform } from "./platform";
 import { RecordingScheduleSettings } from "./RecordingScheduleSettings";
 import { recognitionServices } from "./recognition-services";
 import { ModelPreparation, SourcePreparation } from "./SetupGroups";
+import { SoftwareUpdate } from "./SoftwareUpdate";
 import type { ModelState, PrivacyStatus } from "./setup";
 import { UsageStatisticsView } from "./UsageStatistics";
+import type { AppUpdate } from "./useAppUpdate";
 
 type Mutation = (
 	request: { type: string; [key: string]: unknown },
@@ -504,6 +506,7 @@ export function QueueView({
 }
 
 export function SettingsView({
+	update,
 	queuesReady = true,
 	loadErrors = {},
 	date,
@@ -519,6 +522,7 @@ export function SettingsView({
 	onMessage,
 	cloudProvider,
 }: {
+	update?: AppUpdate;
 	date: Date;
 	state: ServiceState | null;
 	queues: CloudQueue[];
@@ -745,6 +749,7 @@ export function SettingsView({
 			</div>
 			<h2>通用</h2>
 			<div className="panel-card setting-panel">
+				{update && <SoftwareUpdate update={update} />}
 				<LoadBoundary
 					ready={entryMode !== null}
 					error={entryError}

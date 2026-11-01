@@ -7,6 +7,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync, execFileSync } from 'node:child_process';
 import { parseEnv } from 'node:util';
+import { createMacUpdateArchive, signingEnv, writePlatformManifest } from './updater-artifacts.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const settings = JSON.parse(readFileSync(join(root, 'config/build-targets.json')));
@@ -108,7 +109,7 @@ function main() {
   const version = versionCheck();
   const source = output('git', ['rev-parse', 'HEAD']);
   const epoch = Math.floor(Date.now() / 1000).toString();
-  const env = { ...process.env, MACOSX_DEPLOYMENT_TARGET: settings.minimum_system_version, LOPPI_BUILD_EPOCH: epoch, CARGO_TARGET_DIR: resolve('target') };
+  const env = { ...signingEnv(root, release), MACOSX_DEPLOYMENT_TARGET: settings.minimum_system_version, LOPPI_BUILD_EPOCH: epoch, CARGO_TARGET_DIR: resolve('target') };
   const local = existsSync('.env') ? parseEnv(readFileSync('.env', 'utf8')) : {};
   for (const key of ['APPLE_SIGNING_IDENTITY', 'APPLE_NOTARY_PROFILE', 'APPLE_API_KEY', 'APPLE_API_ISSUER', 'APPLE_API_KEY_PATH']) {
     if (env[key] === undefined && local[key] !== undefined) env[key] = local[key];
@@ -166,7 +167,7 @@ function buildTarget(target, { release, version, source, epoch, dirty, env: base
   cpSync('THIRD_PARTY_NOTICES.md', join(helper, 'Contents/Resources/THIRD_PARTY_NOTICES.md'));
   cpSync('licenses', join(helper, 'Contents/Resources/licenses'), { recursive: true });
   const override = join(stage, 'tauri.json');
-  writeFileSync(override, JSON.stringify({ bundle: { macOS: { files: { 'Library/LoginItems/LoppiCore.app': helper, 'MacOS/loppi': join(stage, 'loppi') } } } }));
+  writeFileSync(override, JSON.stringify({ bundle: { createUpdaterArtifacts: false, macOS: { files: { 'Library/LoginItems/LoppiCore.app': helper, 'MacOS/loppi': join(stage, 'loppi') } } } }));
   // Signing/notarizing is deliberately deferred until the entire bundle is final.
   const unsignedEnv = { ...env };
   for (const key of Object.keys(unsignedEnv).filter(k => k.startsWith('APPLE_'))) delete unsignedEnv[key];
@@ -223,8 +224,17 @@ function buildTarget(target, { release, version, source, epoch, dirty, env: base
   report.dmg = dmg.split('/').pop();
   report.dmg_bytes = lstatSync(dmg).size;
   report.dmg_sha256 = sha(readFileSync(dmg));
+  let checksums = `${report.dmg_sha256}  ${report.dmg}\n`;
+  if (release) {
+    const archive = join(destination, `loppi_${version}_${platform.name}.app.tar.gz`);
+    // package_macos.sh notarizes and staples the final App before this archive.
+    createMacUpdateArchive(app, archive);
+    const targets = platform.architectures.map(arch => `darwin-${arch === 'arm64' ? 'aarch64' : arch}`);
+    report.updater = writePlatformManifest({ root, artifact: archive, version, source, targets, env });
+    checksums += `${report.updater.sha256}  ${report.updater.artifact}\n`;
+  }
   writeFileSync(join(destination, release ? 'release-info.json' : 'build-info.json'), JSON.stringify(report, null, 2) + '\n');
-  writeFileSync(join(destination, 'SHA256SUMS'), `${report.dmg_sha256}  ${report.dmg}\n`);
+  writeFileSync(join(destination, 'SHA256SUMS'), checksums);
   return dmg;
 }
 

@@ -160,6 +160,8 @@ GUI 上下文刷新合并在途请求，仅前台聚焦时周期刷新。连续�
 
 ## 6. 构建与分发形态
 
+应用更新由 GUI 原生宿主的 `updater` 模块负责，Core 不检查网络版本或管理安装。主窗口启动检查及设置检查共用宿主会话内的单飞 Update 对象及已验签匿名临时文件，固定读取 GitHub Releases 的 latest.json；下载验签完成后仅在左下角侧边栏显示绿色重启更新按钮，点击时版本必须与已下载对象一致，不弹窗且不重新联网。Tauri 校验包签名和签名版本后，才调用既有 quit_gui_core 等待录音封存及 owner 退出，再安装并重启。更新失败由 resume_gui_core 重新打开会话屏障，下一次 IPC 重新核对 Core 身份，不建立第二个录音 owner。前端无 updater 插件安装权限，仅通过宿主命令操作。最终 App 公证并装订后生成 Mac 更新归档；Windows 使用已完成的 NSIS 安装包。三平台清单与仓库发布流程见[应用内更新](../docs/updates.md)。
+
 常驻入口复用同一个 `float` WebView / NSWindow。[`EntryRuntime`](../src-tauri/src/entry.rs)每 5 秒单飞查询 core 状态，主窗口和入口订阅同一快照；动作唤醒刷新，动画不查询核心。刷新锁只覆盖 IPC 与快照归并，必须在窗口可见性查询和事件发布前释放；退出在主线程排空该锁，不能与等待主线程的窗口调用形成互等。[结构化来源诊断](../crates/loppi-core/src/diagnostics.rs)从实际采集、意图、启动/停止和阻断条件推导，UI 不解析原因文本。异常全部停止只在会话内轻提醒一次，完整正常恢复后重新启用提醒。
 
 时间线日期右侧 [`CaptureStatus`](../src/CaptureStatus.tsx)复用该快照的 appearance/control 与 `EntryRequests`/`entry_action` 控制路径，不另建查询或录音 owner。App 保存完整快照，按 sequence 接受事件/初始读取/显式刷新；[`capture-status`](../src/capture-status.ts)仅映射文案与展示，不从错误文字推断原因。`useCaptureControl`仍在App会话中保存原请求/反馈，时间线切页卸载角色展示不丢待确认ID；真实启停由后续快照裁决。三处录音/暂停/等待/部分/中断都使用entryAppearance与同一个Rabbit，不再保留首页私有睡眠分支；本地桥接请求失败只显示错误，不伪造宿主快照。展示随页面卸载停动画，不测音量。控件不在其它页面显示。

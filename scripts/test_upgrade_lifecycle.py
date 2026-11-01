@@ -69,6 +69,10 @@ def main():
             assert not (directory / 'core.sock').exists()
             assert drive(directory, 'quit').returncode == 0
             assert not (directory / 'core.sock').exists()
+            result = drive(directory, 'update-abort')
+            assert result.returncode == 0, result.stderr
+            assert not (directory / 'core.sock').exists()
+            print('PASS aborted update reopens GUI barrier, re-inspects Core and exits cleanly', flush=True)
             print('PASS concurrent initialization and complete exit; no relaunch', flush=True)
         finally:
             if (directory / 'core.sock').exists():

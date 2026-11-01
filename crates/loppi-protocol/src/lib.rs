@@ -7,7 +7,7 @@ pub mod platform;
 pub mod vocabulary;
 pub use diagnostic::*;
 use ipc::Stream as UnixStream;
-pub use lifecycle::quit_gui_core;
+pub use lifecycle::{quit_gui_core, resume_gui_core};
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs;

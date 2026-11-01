@@ -4,6 +4,7 @@ import {existsSync,readFileSync,writeFileSync,mkdirSync,cpSync,readdirSync,statS
 import {resolve,join,dirname} from 'node:path';
 import {spawnSync,execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
+import {signingEnv,writePlatformManifest} from './updater-artifacts.mjs';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const spec=JSON.parse(readFileSync(join(root,'config/windows-assets.json')));
 const hash=path=>createHash('sha256').update(readFileSync(path)).digest('hex');
@@ -17,6 +18,7 @@ export async function main(argv=process.argv.slice(2)){
   const [command='release',...args]=argv;if(!['build','release'].includes(command)||args.length)throw new Error('Usage: node scripts/build_windows.mjs [build|release]');
   const release=command==='release';
   if(release&&output('git',['status','--porcelain']))throw new Error('Release requires a clean committed checkout');
+  const updaterEnv=signingEnv(root,release);
   const version=JSON.parse(readFileSync('package.json')).version;
   const tauri=JSON.parse(readFileSync('src-tauri/tauri.conf.json'));
   const npmLock=JSON.parse(readFileSync('package-lock.json'));
@@ -30,7 +32,7 @@ export async function main(argv=process.argv.slice(2)){
   for(const language of spec.ocr.languages)asset(join(ocr,'tessdata',language.path),language);
   run(process.execPath,['scripts/prepare_windows_assets.mjs']);
   const epoch=process.env.LOPPI_BUILD_EPOCH??Math.floor(Date.now()/1000).toString();
-  const env={...process.env,SHERPA_ONNX_LIB_DIR:native,LOPPI_BUILD_EPOCH:epoch,CARGO_PROFILE_DEV_DEBUG:'0',CARGO_INCREMENTAL:'0',CARGO_BUILD_JOBS:process.env.CARGO_BUILD_JOBS??'2'};
+  const env={...updaterEnv,SHERPA_ONNX_LIB_DIR:native,LOPPI_BUILD_EPOCH:epoch,CARGO_PROFILE_DEV_DEBUG:'0',CARGO_INCREMENTAL:'0',CARGO_BUILD_JOBS:process.env.CARGO_BUILD_JOBS??'2'};
   // Build all four identities from the same source and epoch; no external task mutates this stage.
   run('cargo',['build','--locked','--release','--target',spec.target,'-p','loppi-core','-p','loppi-worker','-p','loppi-cli'],env);
   const stage=resolve('build/windows',`${spec.target}-${epoch}-${process.pid}`);mkdirSync(stage,{recursive:true});
@@ -56,7 +58,7 @@ export async function main(argv=process.argv.slice(2)){
   const inventory=files(stage).map(path=>({path:path.slice(stage.length+1).replaceAll('\\','/'),bytes:statSync(path).size,sha256:hash(path)}));
   writeFileSync(join(stage,'resources/windows-assets.json'),JSON.stringify({schema:1,minimum_build:spec.minimum_build,files:inventory},null,2)+'\n');
   const resources=Object.fromEntries(readdirSync(stage).map(name=>[join(stage,name).replaceAll('\\','/'),name]));
-  const config=join(stage,'bundle-config.json');writeFileSync(config,JSON.stringify({bundle:{resources}},null,2));
+  const config=join(stage,'bundle-config.json');writeFileSync(config,JSON.stringify({bundle:{resources,createUpdaterArtifacts:false}},null,2));
   run(process.execPath,['node_modules/typescript/bin/tsc','--noEmit'],env);run(process.execPath,['node_modules/vite/bin/vite.js','build'],env);
   run(process.execPath,['node_modules/@tauri-apps/cli/tauri.js','build','--target',spec.target,'--bundles','nsis','--config',config],env);
   const binary=resolve('target',spec.target,'release/loppi-desktop.exe');
@@ -69,6 +71,13 @@ export async function main(argv=process.argv.slice(2)){
   if(!existsSync(installer)||!statSync(installer).isFile())throw new Error('Current-version NSIS installer missing');
   const artifacts=[installer];
   const report={schema:1,version,source,epoch,dirty:expected.dirty,platform:'windows-x64',minimum_build:spec.minimum_build,authenticode:'unsigned',stage,components:identities,artifacts:artifacts.map(path=>({path,bytes:statSync(path).size,sha256:hash(path)}))};
+  if(release){
+    const destination=resolve('build/releases',version,'windows-x64');mkdirSync(destination,{recursive:true});
+    const finalInstaller=join(destination,`${tauri.productName}_${version}_x64-setup.exe`);cpSync(installer,finalInstaller);
+    report.updater=writePlatformManifest({root,artifact:finalInstaller,version,source,targets:['windows-x86_64'],env});
+    writeFileSync(join(destination,'release-info.json'),JSON.stringify(report,null,2)+'\n');
+    writeFileSync(join(destination,'SHA256SUMS'),`${report.updater.sha256}  ${report.updater.artifact}\n`);
+  }
   writeFileSync(resolve('build/windows/release-info-windows-x64.json'),JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report,null,2));
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url))await main();

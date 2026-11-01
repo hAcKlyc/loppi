@@ -32,7 +32,9 @@ import { adjacentRecordedDay, monthBoundaries } from "./timeline-view";
 import { QueueView, SettingsView } from "./WorkspaceViews";
 import "./App.css";
 import { OnboardingView } from "./OnboardingView";
+import { RestartUpdate } from "./SoftwareUpdate";
 import type { ModelState, PrivacyStatus } from "./setup";
+import { useAppUpdate } from "./useAppUpdate";
 
 type Page =
 	| "timeline"
@@ -55,6 +57,7 @@ function errorText(error: unknown): string {
 }
 
 function App() {
+	const update = useAppUpdate();
 	const [page, setPage] = useState<Page>("timeline");
 	const [settingsProvider, setSettingsProvider] =
 		useState<CloudProvider | null>(null);
@@ -951,6 +954,7 @@ function App() {
 						</button>
 					))}
 				</nav>
+				<RestartUpdate update={update} />
 			</aside>
 			<main key={page} className="main-area" tabIndex={-1} data-focus-fallback>
 				{setupCompleted === false && (
@@ -1042,6 +1046,7 @@ function App() {
 				{page === "agents" && <AgentAccess />}
 				{page === "settings" && (
 					<SettingsView
+						update={update}
 						cloudProvider={settingsProvider}
 						queuesReady={contextReady.queues}
 						loadErrors={{

@@ -10,6 +10,7 @@ use tauri::Manager;
 mod entry;
 mod onboarding;
 mod playback_output;
+mod updater;
 use entry::{EntryRuntime, entry_action, entry_focus, entry_layout, entry_mode, entry_snapshot};
 use std::sync::{Arc, Mutex};
 static PRIVACY_REQUEST: Mutex<()> = Mutex::new(());
@@ -399,6 +400,8 @@ pub fn run() {
     }));
     builder
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(updater::Updates::default())
         .setup(|app| {
             #[cfg(target_os = "windows")]
             if let Some(main) = app.get_webview_window("main") {
@@ -444,6 +447,8 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            updater::check_update,
+            updater::install_update,
             build_info,
             agent_access_info,
             copy_agent_text,

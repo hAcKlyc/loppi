@@ -58,6 +58,15 @@ pub fn quit_gui_core() -> Result<(), String> {
     wait_stopped(&directory)
 }
 
+/// Reopen this GUI's IPC barrier after an aborted update. The next request must
+/// inspect the owner again: shutdown may have succeeded before installation failed.
+pub fn resume_gui_core() -> Result<(), String> {
+    let mut session = SESSION.write().map_err(|e| e.to_string())?;
+    session.ready = false;
+    session.stopped = false;
+    Ok(())
+}
+
 // Raw JSON intentionally decouples this stable handshake from ServiceState.
 fn inspect() -> Result<Option<BuildInfo>, String> {
     let status = match exchange(PROTOCOL_VERSION, json!({"type":"status"})) {
