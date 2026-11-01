@@ -2,7 +2,7 @@
   "date": "2026-11-02",
   "status": "in-progress",
   "published": false,
-  "committed": false,
+  "committed": true,
   "source": "eeef7110aa6d43051975b0da02f8f51eaacdc0a9",
   "dirty": true,
   "offline_gate": {
@@ -464,5 +464,17 @@
     "scope": "updater changes only; preserve unrelated work",
     "release_acceptance_complete": false,
     "publish_requested": false
+  },
+  "code_commit": "ad036e2fd7d7be673612f8e070327128c89fcdd4",
+  "commit_validation": {
+    "isolated_task_only_snapshot": true,
+    "frontend_typecheck": "passed",
+    "frontend_lint": "passed",
+    "targeted_tests_passed": 24,
+    "rust_workspace_check_locked": "passed",
+    "rust_updater_lifecycle_tests_passed": 2,
+    "unrelated_worktree_changes_preserved": true,
+    "pushed": false,
+    "published": false
   }
 }
