@@ -124,7 +124,7 @@ CLI 根入口在请求 Core 前处理 readme；和现有 guide/schema 一样，h
   - [x] 完整 CLI 帮助。
   - [x] 页面精简、提示词与回归资料。
   - [x] 自验证、烟测、文档同步（本机可执行范围）；Windows 原生执行为下述 mandatory 验收缺口。
-  - [ ] Cross-review、修复、提交。
+  - [x] Cross-review、修复、提交。
 
 ### 当前批次 Review 基线
 - Batch base：eeef7110aa6d43051975b0da02f8f51eaacdc0a9
@@ -148,3 +148,5 @@ CLI 根入口在请求 Core 前处理 readme；和现有 guide/schema 一样，h
 - mandatory 未完成：Windows 原生环境运行 `python scripts/test_agent_cli.py`（先构建 CLI），核对中文/空格/相对数据目录、更新/幂等/失败分支；在 Windows App 的 Agent 接入页复制提示词并验证能访问源目录、Skill/MCP 名称均为 loppi。
 - 因上述 Windows 证据缺口，状态保持 in-progress，未完成、不可发布；按用户授权提交已验证代码供验收。不存在待拍的产品/架构决策。
 - advisory：宿主 Agent 的技能发现/重载方式依其自身实现，提示词与指南已说明应如实反馈生效条件；不承诺控制外部 Agent。
+
+- 2026-11-02：代码与正式 PRD 已提交为 `6096f1e`（feat: let agents discover and refresh loppi skills through the CLI）。仅暂存本次 18 个文件/差异；共享 src-tauri/src/lib.rs 只提交 agent_access_info 的错误传播，其他会话改动保持原样。此收尾记录维持 in-progress，待 Windows 原生验收后再关闭。
