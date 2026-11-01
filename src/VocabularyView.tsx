@@ -112,8 +112,8 @@ export function VocabularyView() {
 	};
 	return (
 		<div className="vocabulary-page">
-			<div className="page-heading" data-tauri-drag-region>
-				<h1>词库</h1>
+			<div className="vocabulary-scope-heading">
+				<h2 id="vocabulary-scope-title">应用范围</h2>
 				<Button disabled={busy} onClick={() => void load()}>
 					刷新
 				</Button>
@@ -134,7 +134,10 @@ export function VocabularyView() {
 			>
 				{data && (
 					<>
-						<section className="vocabulary-settings" aria-label="词库设置">
+						<section
+							className="vocabulary-settings"
+							aria-labelledby="vocabulary-scope-title"
+						>
 							{(
 								[
 									["llm", "摘要与理解"],
@@ -163,7 +166,7 @@ export function VocabularyView() {
 						</section>
 						<div className="vocabulary-list-heading">
 							<div>
-								<h2>词条</h2>
+								<h2>词条管理</h2>
 								<span>{data.entries.length} / 100</span>
 							</div>
 							<Button

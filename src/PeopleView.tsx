@@ -23,18 +23,23 @@ export function PeopleView(props: PeopleViewProps) {
 	const [tab, setTab] = useState<"people" | "vocabulary">("people");
 	return (
 		<section className="page-container people-page">
-			<Tabs
-				id="library"
-				label="人物与词库"
-				value={tab}
-				items={[
-					{ value: "people", label: "人物库" },
-					{ value: "vocabulary", label: "词库" },
-				]}
-				onChange={setTab}
-				disabled={props.busy}
-				className="library-tabs"
-			/>
+			<header className="library-heading" data-tauri-drag-region>
+				<h1 className="library-page-title">
+					{tab === "people" ? "人物库" : "词库"}
+				</h1>
+				<Tabs
+					id="library"
+					label="人物与词库"
+					value={tab}
+					items={[
+						{ value: "people", label: "人物库" },
+						{ value: "vocabulary", label: "词库" },
+					]}
+					onChange={setTab}
+					disabled={props.busy}
+					className="library-tabs"
+				/>
+			</header>
 			<TabPanel tabsId="library" value="people" selected={tab}>
 				{tab === "people" && <PeopleContent {...props} />}
 			</TabPanel>
@@ -75,8 +80,7 @@ function PeopleContent({
 				/>
 			) : (
 				<>
-					<div className="page-heading" data-tauri-drag-region>
-						<h1>人物库</h1>
+					<div className="people-list-actions">
 						<Button
 							type="button"
 							tone="quiet"

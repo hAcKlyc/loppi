@@ -59,7 +59,7 @@ function inspect(){
   check(win.getComputedStyle(toggle,'::after').transform===(on?'matrix(1, 0, 0, 1, 18, 0)':'none'),'开关颜色与圆钮位置不一致');
  }
  if(kind!=='detail'&&kind!=='onboarding'&&kind!=='person'){
-  const heading=doc.querySelector('.page-heading h1'),container=doc.querySelector('.page-container'),style=win.getComputedStyle(container);
+  const heading=doc.querySelector('.library-tabs [aria-selected=true],.page-heading h1'),container=doc.querySelector('.page-container'),style=win.getComputedStyle(container);
   check(!!heading&&win.getComputedStyle(heading).fontSize==='26px','公共标题层级');
   check(Math.abs(heading.getBoundingClientRect().left-container.getBoundingClientRect().left-parseFloat(style.paddingLeft))<1,'标题与公共内容起点不齐');
   check(style.paddingTop==='60px','独立页面另配顶部边距');
