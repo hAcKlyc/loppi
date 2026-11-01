@@ -1,0 +1,42 @@
+webkit { passed: 39 }
+webkit 1120 {
+  rows: 40,
+  noOverflow: true,
+  maxRowHeight: 39,
+  nameSize: '14px',
+  allSingleLine: true,
+  longTruncated: true,
+  noAliasFullWidth: '100%'
+}
+webkit 1120 full long text in editor and last row reachable PASS
+webkit 760 {
+  rows: 40,
+  noOverflow: true,
+  maxRowHeight: 39,
+  nameSize: '14px',
+  allSingleLine: true,
+  longTruncated: true,
+  noAliasFullWidth: '100%'
+}
+webkit 760 full long text in editor and last row reachable PASS
+chrome { passed: 39 }
+chrome 1120 {
+  rows: 40,
+  noOverflow: true,
+  maxRowHeight: 41,
+  nameSize: '14px',
+  allSingleLine: true,
+  longTruncated: true,
+  noAliasFullWidth: '100%'
+}
+chrome 1120 full long text in editor and last row reachable PASS
+chrome 760 {
+  rows: 40,
+  noOverflow: true,
+  maxRowHeight: 41,
+  nameSize: '14px',
+  allSingleLine: true,
+  longTruncated: true,
+  noAliasFullWidth: '100%'
+}
+chrome 760 full long text in editor and last row reachable PASS
