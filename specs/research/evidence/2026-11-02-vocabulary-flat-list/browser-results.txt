@@ -1,0 +1,8 @@
+webkit { passed: 39 }
+webkit 1120 { rows: 40, flat: true, noRowLines: true, noOverflow: true }
+webkit 760 { rows: 40, flat: true, noRowLines: true, noOverflow: true }
+webkit hover and editor PASS
+chrome { passed: 39 }
+chrome 1120 { rows: 40, flat: true, noRowLines: true, noOverflow: true }
+chrome 760 { rows: 40, flat: true, noRowLines: true, noOverflow: true }
+chrome hover and editor PASS

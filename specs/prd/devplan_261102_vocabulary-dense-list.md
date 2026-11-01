@@ -1,5 +1,5 @@
 ---
-status: implemented
+status: in-progress
 updated: 2026-11-02
 ---
 # 词条紧凑单行列表
@@ -31,3 +31,15 @@ updated: 2026-11-02
 - 2026-11-02：最终架构PASS，无发现。完整契约重读及单批整体门禁通过，最终CSS与已验证/评审快照一致，无新机制、未覆盖范围或mandatory遗留。
 
 - 2026-11-02：提交b79930925d146b0da9338e3c133f15305dbc3390。全部适用验证和三路审查通过，状态implemented；仅显式本任务范围提交。主观advisory验收：滚动长列表、长名称省略与点击编辑查看完整内容；对应合成浏览器检查已覆盖。无backend/native/安装行为变化。
+
+## 追加修订：移除列表装饰
+- 用户反馈：去掉圆角与横线，列表过乱。当前原子范围只移除词条行圆角、行间分隔线和列表外框圆角，保持单行密度/字号/悬停/焦点/编辑入口；上方Tab选中标识与应用范围分组不变。
+- 基线c9660f44bb28182f78ea2c923e66124322c32d36；scope src/vocabulary.css、本台账、新evidence/2026-11-02-vocabulary-flat-list；起始CSS无他人修改，其余共享改动排除。
+- 无新状态/字段/owner/store/protocol/retry，无数据或生命周期改动。
+- 验收：静态/build/设计资产、双浏览器39项原回归、40条列表两尺寸检查所有行及外框radius0、border0、无横向溢出；截图确认，悬停与编辑入口保留。源码仅CSS，不重测录音/桥接/模型；无mandatory OS遗留，主观观感advisory。
+- 三路fresh review结束后显式提交和收尾；新增契约不回审此前已交付批次。
+- [x] 扁平化样式与验证
+- [ ] 审查提交与收尾
+- 2026-11-02：移除两处圆角与行间border规则；静态/build/设计8项PASS，WebKit/Chrome各39项回归、两尺寸40行零圆角零分隔线无溢出及悬停/编辑PASS；requirements/adversarial均PASS，无需修复。
+
+- 2026-11-02：最终architecture PASS。追加修订全契约与原子门禁通过，CSS自验证后未再变化，无新机制或mandatory缺口；仅显式范围提交。

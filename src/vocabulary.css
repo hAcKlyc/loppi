@@ -59,6 +59,7 @@
 }
 .panel-card.vocabulary-list {
 	padding: var(--space-3);
+	border-radius: 0;
 }
 .vocabulary-row {
 	display: flex;
@@ -68,13 +69,10 @@
 	min-height: var(--control-height-default);
 	padding: var(--space-5) var(--space-7);
 	border: 0;
-	border-radius: var(--radius-control);
+	border-radius: 0;
 	background: transparent;
 	text-align: left;
 	color: var(--color-text);
-}
-.vocabulary-row + .vocabulary-row {
-	border-top: var(--stroke-hairline) solid var(--color-border-subtle);
 }
 .vocabulary-row:hover:not(:disabled) {
 	background: var(--color-surface-hover);
