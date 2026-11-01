@@ -1,0 +1,107 @@
+.library-tabs {
+	margin-bottom: var(--space-9);
+}
+.people-page .page-heading::before {
+	top: 0;
+}
+.vocabulary-actions {
+	display: flex;
+	gap: var(--space-3);
+}
+.vocabulary-intro,
+.vocabulary-settings > p {
+	color: var(--color-text-secondary);
+	font-size: var(--type-meta);
+	line-height: var(--leading-relaxed);
+}
+.vocabulary-intro {
+	margin-top: calc(-1 * var(--space-4));
+}
+.vocabulary-feedback {
+	color: var(--color-text-secondary);
+	font-size: var(--type-meta);
+}
+.vocabulary-feedback:empty {
+	display: none;
+}
+.vocabulary-list-heading {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	margin-top: var(--space-9);
+	margin-bottom: var(--space-5);
+}
+.vocabulary-list-heading h2,
+.vocabulary-settings h2 {
+	margin: 0;
+	font-size: var(--type-lead);
+	font-weight: var(--weight-semibold);
+}
+.vocabulary-list-heading > span,
+.vocabulary-kind,
+.vocabulary-disabled {
+	color: var(--color-text-secondary);
+	font-size: var(--type-caption);
+}
+.panel-card.vocabulary-list {
+	padding: var(--space-3);
+}
+.vocabulary-row {
+	display: flex;
+	align-items: center;
+	gap: var(--space-5);
+	width: 100%;
+	padding: var(--space-7) var(--space-8);
+	border: 0;
+	border-radius: var(--radius-control);
+	background: transparent;
+	text-align: left;
+	color: var(--color-text);
+}
+.vocabulary-row + .vocabulary-row {
+	border-top: var(--stroke-hairline) solid var(--color-border-subtle);
+}
+.vocabulary-row:hover:not(:disabled) {
+	background: var(--color-surface-hover);
+}
+.vocabulary-word {
+	display: grid;
+	gap: var(--space-2);
+	flex: 1;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+.vocabulary-word strong {
+	font-size: var(--type-lead);
+	font-weight: var(--weight-semibold);
+}
+.vocabulary-word small {
+	font-size: var(--type-meta);
+	color: var(--color-text-secondary);
+}
+.vocabulary-kind {
+	max-width: 25%;
+	overflow-wrap: anywhere;
+}
+.vocabulary-disabled {
+	white-space: nowrap;
+}
+.vocabulary-row > .control-icon {
+	flex: none;
+	color: var(--color-text-secondary);
+}
+.vocabulary-settings {
+	margin-top: var(--space-12);
+}
+.vocabulary-settings .setting-row > div:first-child {
+	min-width: 0;
+}
+.vocabulary-delete {
+	margin-right: auto;
+}
+@media (max-width: 760px) {
+	.vocabulary-row {
+		padding-inline: var(--space-5);
+		gap: var(--space-3);
+	}
+}

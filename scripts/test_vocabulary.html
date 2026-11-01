@@ -1,0 +1,66 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>人物与词库 · 隔离交互验证</title>
+<div id="root"></div><output id="result" style="position:fixed;bottom:0;background:white;z-index:99">合成数据，不连接真实资料</output>
+<script type="module">
+import React from 'react';import{createRoot}from'react-dom/client';import{mockIPC}from'@tauri-apps/api/mocks';import{PeopleView}from'/src/PeopleView.tsx';import'/src/App.css';
+const h=React.createElement,wait=ms=>new Promise(r=>setTimeout(r,ms));
+const fixture=()=>({entries:[],settings:{llm:true,local_asr:true,cloud_asr:true}});
+let data=fixture(),requests=[],readFail=false,writeFail=false,lag=0,pendingRead=null;
+window.isTauri=true;
+mockIPC(async(command,args)=>{
+ if(command!=='core_request')throw Error('unexpected native '+command);
+ const r=args.request;requests.push(structuredClone(r));
+ if(r.type==='voice_samples')return{type:'voice_samples',id:r.id,samples:[]};
+ if(r.type!=='vocabulary')throw Error('unexpected '+r.type);
+ const a=r.action;
+ if(a.action==='list'){
+  const snapshot=structuredClone(data);
+  if(pendingRead){const resolve=pendingRead;pendingRead=null;await new Promise(resolve);}
+  if(readFail)throw Error('read_busy: 读取繁忙');
+  return{type:'context',id:r.id,result:{ok:true,data:snapshot}};
+ }
+ await wait(lag);
+ if(writeFail)return{type:'context',id:r.id,result:{ok:false,error:{code:'invalid_argument',message:'vocabulary name or alias is already assigned to another active entity'}}};
+ if(a.action==='upsert'){
+  const id=a.id??data.entries.find(e=>e.name.toLowerCase()===a.name.toLowerCase())?.entity_id??crypto.randomUUID();
+  data.entries=data.entries.filter(e=>e.entity_id!==id);
+  data.entries.push({entity_id:id,name:a.name,kind:a.kind,aliases:a.aliases,enabled:a.enabled});
+ }
+ if(a.action==='configure')for(const key of ['llm','local_asr','cloud_asr'])if(key in a)data.settings[key]=a[key];
+ if(a.action==='remove')data.entries=data.entries.filter(e=>e.entity_id!==a.id);
+ return{type:'context',id:r.id,result:{ok:true,data:structuredClone(data)}};
+},{shouldMockEvents:true});
+createRoot(document.getElementById('root')).render(h('div',{className:'app-shell'},h('aside',{className:'sidebar'},h('div',{className:'brand'},'loppi'),h('nav',null,h('button',{className:'active'},'人物库'))),h('main',{className:'main-area'},h(PeopleView,{people:[{id:'a',display_name:'陈以宁',sample_count:0,revision:1,created_ms:0}],busy:false,onMutate:async()=>true}))));
+const visible=e=>e&&e.getClientRects().length>0;
+const button=text=>[...document.querySelectorAll('main button,dialog button')].find(b=>visible(b)&&b.textContent.trim()===text);
+const click=async el=>{if(!el)throw Error('找不到按钮');el.click();await wait(50)};
+const input=async(el,value)=>{Object.getOwnPropertyDescriptor(el.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype,'value').set.call(el,value);el.dispatchEvent(new Event('input',{bubbles:true}));await wait(10)};
+const fields=()=>({name:document.querySelector('dialog input'),aliases:document.querySelector('dialog textarea'),kind:document.querySelector('dialog select')});
+const writes=()=>requests.filter(r=>r.type==='vocabulary'&&r.action.action!=='list');
+window.runRegression=async()=>{let n=0;const check=(v,m)=>{if(!v)throw Error(m);n++};
+ try{
+ await wait(100);check(document.querySelector('[role=tab][aria-selected=true]').textContent==='人物库','默认人物库');check(!requests.length,'人物页不预加载词库');
+ await click(document.getElementById('library-tab-vocabulary'));check(document.querySelector('.list-empty').textContent.includes('从一个常用名字开始'),'词库真实空态');
+ await click(button('新建词条'));await input(fields().name,' 看山 ');await input(fields().aliases,'开山\n看山\n开山');
+ lag=100;const form=document.querySelector('dialog form');form.requestSubmit();form.requestSubmit();await wait(150);lag=0;
+ check(writes().length===1,'重复提交仅一次');check(data.entries[0].aliases.join()==='开山'&&data.entries[0].name==='看山','去空白和重复别名');check(!document.querySelector('dialog[open]'),'成功关闭编辑');
+ const id=data.entries[0].entity_id;
+ await click(document.querySelector('.vocabulary-row'));await input(fields().name,'看山产品');await click(button('保存词条'));check(data.entries[0].entity_id===id&&data.entries.length===1,'改名保留身份');
+ await click(document.querySelector('.vocabulary-row'));await click(document.querySelector('dialog [role=switch]'));await click(button('保存词条'));check(!data.entries[0].enabled&&document.querySelector('.vocabulary-disabled'),'停用保留词条');
+ await click(button('新建词条'));await input(fields().name,'MyAgents');writeFail=true;await click(button('保存词条'));check(!!document.querySelector('dialog [role=alert]')&&fields().name.value==='MyAgents','内层错误保留草稿');writeFail=false;await click(button('保存词条'));check(data.entries.length===2,'失败重试成功');
+ await click(button('新建词条'));await input(fields().name,'MyAgents');const before=writes().length;await click(button('保存词条'));check(writes().length===before&&!!document.querySelector('dialog [role=alert]'),'同名冲突不误更新已有词条');await click(document.querySelector('dialog [role=switch]'));await click(button('保存词条'));check(writes().length===before,'新建停用同名词条也不能覆盖已有词条');await click(button('取消'));
+ await click(button('新建词条'));await input(fields().name,'新项目');await input(fields().aliases,Array.from({length:21},(_,i)=>'alias'+i).join('\n'));await click(button('保存词条'));check(document.querySelector('dialog [role=alert]').textContent.includes('20'),'别名数量校验');await click(button('取消'));
+ await click(document.querySelector('.vocabulary-settings [aria-label="本地转录"]'));check(!data.settings.local_asr&&document.querySelector('.vocabulary-settings [aria-label="本地转录"]').getAttribute('aria-checked')==='false','用途开关使用服务返回状态');
+ writeFail=true;await click(document.querySelector('.vocabulary-settings [aria-label="云端精转"]'));check(data.settings.cloud_asr&&document.querySelector('.vocabulary-settings [aria-label="云端精转"]').getAttribute('aria-checked')==='true','开关失败不伪造关闭');writeFail=false;
+ await click(document.querySelector('.vocabulary-row'));await click(button('删除词条'));check(document.querySelector('dialog').textContent.includes('已有记录不会改变'),'删除说明');await click(button('返回编辑'));check(fields().name.value==='看山产品','返回保留草稿');await click(button('删除词条'));await click(button('确认删除'));check(data.entries.length===1,'删除指定条目');
+ await click(document.getElementById('library-tab-people'));check(!!document.querySelector('.people-list-row'),'切回人物');await click(document.querySelector('.people-list-row'));check(!!document.querySelector('.person-profile'),'人物详情可用');await click(document.getElementById('library-tab-vocabulary'));check(document.querySelectorAll('.vocabulary-row').length===1,'切回重新读取词库');
+ data.entries[0].kind='custom-kind';await click(button('刷新'));await click(document.querySelector('.vocabulary-row'));check(fields().kind.value==='custom-kind','CLI 自定义类型保留');await click(button('保存词条'));check(data.entries[0].kind==='custom-kind','自定义类型往返保存');
+ const duplicateId=crypto.randomUUID();data.entries.push({...data.entries[0],entity_id:duplicateId,enabled:false});await click(button('刷新'));await click(document.querySelectorAll('.vocabulary-row')[1]);await input(fields().aliases,'历史别名');await click(button('保存词条'));check(data.entries.find(e=>e.entity_id===duplicateId).aliases[0]==='历史别名'&&data.entries.length===2,'可编辑 CLI 创建的同名停用条目');
+ await click(document.querySelectorAll('.vocabulary-row')[0]);await click(document.querySelector('dialog [role=switch]'));await click(button('保存词条'));check(data.entries.every(e=>!e.enabled),'存在同名停用条目时仍可停用当前条目');data.entries=data.entries.filter(e=>e.entity_id!==duplicateId);await click(button('刷新'));
+ let release;pendingRead=resolve=>{release=resolve};await click(button('刷新'));await click(document.querySelector('.vocabulary-row'));await input(fields().name,'MyAgents 新名称');await click(button('保存词条'));release();await wait(50);check(document.querySelector('.vocabulary-row').textContent.includes('新名称'),'迟到读取不覆盖写入');
+ readFail=true;await click(document.getElementById('library-tab-people'));await click(document.getElementById('library-tab-vocabulary'));check(!!document.querySelector('[role=alert]')&&!document.querySelector('.vocabulary-row'),'加载失败不显示空库');readFail=false;await click(button('重试'));check(document.querySelectorAll('.vocabulary-row').length===1,'加载重试');
+ await click(document.querySelector('.vocabulary-row'));await click(button('删除词条'));writeFail=true;await click(button('确认删除'));check(!!document.querySelector('dialog[open] [role=alert]')&&data.entries.length===1,'删除失败保留确认');writeFail=false;await click(button('确认删除'));check(data.entries.length===0,'删除后空态');
+ document.getElementById('result').textContent=`PASS · ${n} 项人物与词库交互检查`;return{passed:n};
+ }catch(error){document.getElementById('result').textContent='FAIL · '+error.message;throw error;}
+};
+window.showLongFixture=async()=>{data={entries:[{entity_id:'long',name:'跨语言会议项目与产品专有名称'.repeat(6),kind:'project',aliases:['Long mixed language product vocabulary '.repeat(5),'容易被误识别的词'.repeat(12)],enabled:true},{entity_id:'off',name:'MyAgents',kind:'product',aliases:['My Agents'],enabled:false}],settings:{llm:true,local_asr:true,cloud_asr:false}};await click(button('刷新'));};
+</script></html>
