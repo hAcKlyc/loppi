@@ -51,6 +51,7 @@
     const scenes = ['timeline', 'detail', 'recording', 'empty', 'error', 'crossday'];
     const requested = new URLSearchParams(location.search).get('scene') ?? 'timeline';
     const scene = scenes.includes(requested) ? requested : 'timeline';
+    const showFixtureGaps = new URLSearchParams(location.search).has('gaps');
     const NativeDate = Date;
     const clock = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(new URLSearchParams(location.search).get('clock') ?? '');
     const fixedNow = new NativeDate(2026, 9, 22, clock ? Number(clock[1]) : 18, clock ? Number(clock[2]) : 30).getTime();
@@ -218,7 +219,10 @@
         await wait(150);
         if (scene === 'error') throw Error('模拟读取失败，请重试；此请求没有连接真实数据');
         fixtureItems = itemsFor(request.from_ms);
-        return response({ items: fixtureItems, gaps: [] });
+        return response({ items: fixtureItems, gaps: showFixtureGaps ? [
+          { source: 'microphone', started_ms: request.from_ms + 17 * 3600000, ended_ms: request.from_ms + (17 * 60 + 12) * 60000, reason: 'source_failure' },
+          { source: 'system', started_ms: request.from_ms + 19 * 3600000, ended_ms: request.from_ms + (19 * 60 + 6) * 60000, reason: 'manual_pause' },
+        ] : [] });
       }
       if (request.type === 'event_detail' || request.type === 'range_detail') {
         const item = fixtureItems.find(item => request.event_id ? item.id === request.event_id : item.started_ms === request.started_ms) ?? fixtureItems[0];

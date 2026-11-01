@@ -17,12 +17,15 @@ using Callback = void (*)(int, int, uint64_t);
 struct Geometry {
   double width, height, band, rabbit_x, rabbit_y, top_band, top_shift, menu_y;
 };
+extern "C" Geometry loppi_entry_layout(void *value, int mode, int view,
+                                       int feedback, int detail, int suppress,
+                                       uint64_t generation);
 struct Entry {
   HWND window;
   Callback callback;
   Geometry geometry{};
   int mode = 0, view = 0;
-  bool hover = false, drag = false, tracking = false;
+  bool hover = false, drag = false, tracking = false, menu_active = false;
   uint64_t generation = 0;
   double anchor_x = 0, anchor_y = 0;
   HWND prior = nullptr;
@@ -66,6 +69,7 @@ static LRESULT CALLBACK procedure(HWND w, UINT msg, WPARAM wp, LPARAM lp,
   if (!e)
     return DefSubclassProc(w, msg, wp, lp);
   if (msg == WM_APP + 43) {
+    EndMenu();
     notify(e, 12, 1);
     return 0;
   }
@@ -85,6 +89,9 @@ static LRESULT CALLBACK procedure(HWND w, UINT msg, WPARAM wp, LPARAM lp,
       return 0;
     }
     if (event == WM_CONTEXTMENU || event == WM_RBUTTONUP) {
+      if (e->menu_active)
+        return 0;
+      e->menu_active = true;
       HMENU menu = CreatePopupMenu();
       AppendMenuW(menu, MF_STRING, 1, L"Open loppi");
       AppendMenuW(menu, MF_STRING, 2, L"Quit loppi");
@@ -96,11 +103,14 @@ static LRESULT CALLBACK procedure(HWND w, UINT msg, WPARAM wp, LPARAM lp,
       int chosen = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_NONOTIFY, p.x, p.y,
                                   0, w, nullptr);
       DestroyMenu(menu);
+      e->menu_active = false;
       PostMessageW(w, WM_NULL, 0, 0);
       if (chosen == 1)
         notify(e, 11, 1);
-      if (chosen == 2)
-        notify(e, 12, 1);
+      if (chosen == 2) {
+        EndMenu();
+        PostMessageW(w, WM_APP + 43, 0, 0);
+      }
       return 0;
     }
   }
@@ -111,6 +121,8 @@ static LRESULT CALLBACK procedure(HWND w, UINT msg, WPARAM wp, LPARAM lp,
     if (inside != e->hover && !e->drag) {
       e->hover = inside;
       notify(e, 1, inside ? 1 : 0);
+      if (!inside)
+        notify(e, 7, 0);
     }
     return 0;
   }
@@ -132,6 +144,10 @@ static LRESULT CALLBACK procedure(HWND w, UINT msg, WPARAM wp, LPARAM lp,
   if (msg == WM_NCLBUTTONDOWN && wp == HTCAPTION) {
     POINT before, after;
     GetCursorPos(&before);
+    // A WebView collapse can update geometry while the OS move loop pumps
+    // messages. Preserve the grabbed rabbit's offset for the release anchor.
+    const auto drag_geometry = e->geometry;
+    const double drag_scale = scale(w);
     e->drag = true;
     notify(e, 5, 1);
     LRESULT result = DefSubclassProc(w, msg, wp, lp);
@@ -139,9 +155,11 @@ static LRESULT CALLBACK procedure(HWND w, UINT msg, WPARAM wp, LPARAM lp,
     e->drag = false;
     RECT r;
     GetWindowRect(w, &r);
-    double dpi = scale(w);
-    e->anchor_x = r.left + e->geometry.rabbit_x * dpi + 26 * dpi;
-    e->anchor_y = r.top + e->geometry.rabbit_y * dpi + 26 * dpi;
+    e->anchor_x = r.left + (drag_geometry.rabbit_x + 26) * drag_scale;
+    e->anchor_y = r.top + (drag_geometry.rabbit_y + 26) * drag_scale;
+    // Reconcile the HWND with the collapsed geometry before publishing and
+    // saving release; the OS move loop may have retained the expanded offset.
+    loppi_entry_layout(w, e->mode, 0, 0, 0, 0, e->generation);
     notify(e, 5, 0);
     if (std::abs(after.x - before.x) + std::abs(after.y - before.y) < 4)
       notify(e, 10, 1);

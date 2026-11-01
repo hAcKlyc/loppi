@@ -59,6 +59,25 @@ struct Position {
     x: f64,
     y: f64,
 }
+impl Position {
+    fn valid(&self) -> bool {
+        if !self.x.is_finite() || !self.y.is_finite() {
+            return false;
+        }
+        #[cfg(target_os = "windows")]
+        {
+            self.display_uuid == "windows-desktop"
+                && (-1_000_000.0..=1_000_000.0).contains(&self.x)
+                && (-1_000_000.0..=1_000_000.0).contains(&self.y)
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            Uuid::parse_str(&self.display_uuid).is_ok()
+                && (0.0..=1.0).contains(&self.x)
+                && (0.0..=1.0).contains(&self.y)
+        }
+    }
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct Preferences {
     schema_version: u8,
@@ -267,16 +286,7 @@ impl EntryRuntime {
         let prefs = std::fs::read(&path)
             .ok()
             .and_then(|b| serde_json::from_slice::<Preferences>(&b).ok())
-            .filter(|p| {
-                p.schema_version == 1
-                    && p.floating.as_ref().is_none_or(|f| {
-                        Uuid::parse_str(&f.display_uuid).is_ok()
-                            && f.x.is_finite()
-                            && f.y.is_finite()
-                            && (0.0..=1.0).contains(&f.x)
-                            && (0.0..=1.0).contains(&f.y)
-                    })
-            })
+            .filter(|p| p.schema_version == 1 && p.floating.as_ref().is_none_or(Position::valid))
             .unwrap_or_default();
         Arc::new(Self {
             inner: Mutex::new(Inner {
@@ -880,6 +890,52 @@ pub async fn entry_action(app: tauri::AppHandle, action: Action) -> Result<Actio
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn saved_platform_position_preserves_floating_mode_on_reload() {
+        #[cfg(target_os = "windows")]
+        let (display, x, y) = ("windows-desktop".to_string(), -800.0, 700.0);
+        #[cfg(not(target_os = "windows"))]
+        let (display, x, y) = (Uuid::new_v4().to_string(), 0.3, 0.7);
+        let path = std::env::temp_dir().join(format!("loppi-position-{}.json", Uuid::new_v4()));
+        std::fs::write(
+            &path,
+            serde_json::to_vec(&serde_json::json!({
+                "schema_version":1,"mode":"floating",
+                "floating":{"display_uuid":display,"x":x,"y":y}
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let runtime = EntryRuntime::new(path.clone());
+        let inner = runtime.inner.lock().unwrap();
+        assert_eq!(inner.prefs.mode, Mode::Floating);
+        assert_eq!(inner.prefs.floating.as_ref().unwrap().x, x);
+        assert!(
+            !Position {
+                display_uuid: display.clone(),
+                x: f64::NAN,
+                y
+            }
+            .valid()
+        );
+        assert!(
+            !Position {
+                display_uuid: "bad-display".into(),
+                x,
+                y
+            }
+            .valid()
+        );
+        assert!(
+            !Position {
+                display_uuid: display,
+                x: 1_000_001.0,
+                y
+            }
+            .valid()
+        );
+        std::fs::remove_file(path).unwrap();
+    }
     fn state() -> ServiceState {
         serde_json::from_value(serde_json::json!({"revision":1,"enabled_intent":true,"paused_intent":false,"storage_paused":false,"microphone_enabled":true,"system_enabled":true,"capture_state":"recording","reason":null,"microphone_recording":true,"system_recording":true,"microphone_reason":null,"system_reason":null,"microphone_phase":"recording","system_phase":"recording","capture_blocker":"none"})).unwrap()
     }

@@ -400,6 +400,10 @@ pub fn run() {
     builder
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            #[cfg(target_os = "windows")]
+            if let Some(main) = app.get_webview_window("main") {
+                windows_host::style_main_window(&main).map_err(std::io::Error::other)?;
+            }
             app.manage(onboarding::Preferences::new(
                 std::env::var_os("LOPPI_DATA_DIR")
                     .map(|p| std::path::PathBuf::from(p).join("gui"))

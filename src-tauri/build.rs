@@ -1,5 +1,15 @@
+mod build_theme;
+
 fn main() {
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+        println!("cargo:rerun-if-changed=../src/tokens.css");
+        let theme = include_str!("../src/tokens.css");
+        for (name, token) in [("CANVAS", "--color-canvas"), ("TEXT", "--color-text")] {
+            println!(
+                "cargo:rustc-env=LOPPI_WINDOW_{name}={}",
+                build_theme::colorref(theme, token)
+            );
+        }
         println!("cargo:rerun-if-changed=native/windows.cpp");
         cc::Build::new()
             .cpp(true)

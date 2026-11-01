@@ -463,6 +463,14 @@ extern "C" int loppi_capture_png(const char *path, const uint32_t *ids,
                                  size_t count, int peer) {
   if (!path || count > 8 || peer <= 0)
     return 0;
+  auto previous_dpi =
+      SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+  if (!previous_dpi)
+    return 0;
+  struct RestoreDpi {
+    DPI_AWARENESS_CONTEXT previous;
+    ~RestoreDpi() { SetThreadDpiAwarenessContext(previous); }
+  } restore_dpi{previous_dpi};
   std::vector<HWND> windows;
   for (size_t i = 0; i < count; ++i) {
     HWND hwnd = static_cast<HWND>(LongToHandle((LONG)ids[i]));

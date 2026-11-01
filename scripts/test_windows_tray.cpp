@@ -31,11 +31,27 @@ int main() {
   selected = 2;
   SendMessageW(window, WM_APP + 42, MAKELPARAM(600, 700),
                MAKELPARAM(WM_CONTEXTMENU, 42));
-  assert(popup_count == 2 && observed_kind == 12);
+  assert(popup_count == 2 && observed_kind != 12);
+  MSG pending{};
+  bool dispatched_quit = false;
+  while (PeekMessageW(&pending, window, WM_APP + 43, WM_APP + 43, PM_REMOVE)) {
+    DispatchMessageW(&pending);
+    dispatched_quit = true;
+  }
+  assert(dispatched_quit && observed_kind == 12);
   assert(popup_anchor.x == 600 && popup_anchor.y == 700);
   selected = 1;
   SendMessageW(window, WM_APP + 42, 42, MAKELPARAM(WM_RBUTTONUP, 42));
   assert(popup_count == 3 && observed_kind == 11);
+  // Leaving the rabbit rearms the existing UI suppression; a drag must not.
+  entry(window)->hover = true;
+  entry(window)->drag = true;
+  observed_kind = 0;
+  SendMessageW(window, WM_TIMER, 42, 0);
+  assert(observed_kind == 0);
+  entry(window)->drag = false;
+  SendMessageW(window, WM_TIMER, 42, 0);
+  assert(!entry(window)->hover && observed_kind == 7);
   loppi_entry_dispose(window);
   DestroyWindow(window);
 }

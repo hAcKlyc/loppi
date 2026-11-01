@@ -180,6 +180,22 @@ try {
   assert.equal(actions.filter(a => a.kind === 'mark').length, marks + 2, 'native physical click uses the existing mark action');
   await settle(() => emit('loppi-entry-native', { kind: 5, value: 0, error: 'position save failed' }));
   assert.match(document.querySelector('[role=status]').textContent, /position save failed/, 'position save errors remain visible');
+  const platformDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { platform: 'Win32' } });
+  try {
+    const windowsMarks = actions.filter(a => a.kind === 'mark').length;
+    await settle(() => rabbit.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 })));
+    assert.equal(drags.length, 1, 'Windows WebView pointer starts the existing native move loop');
+    await settle(() => rabbit.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 })));
+    assert.equal(actions.filter(a => a.kind === 'mark').length, windowsMarks, 'physical click waits for native release ownership');
+    await native(10, 1);
+    assert.equal(actions.filter(a => a.kind === 'mark').length, windowsMarks + 1, 'one native release creates one mark');
+    await click(rabbit);
+    assert.equal(actions.filter(a => a.kind === 'mark').length, windowsMarks + 2, 'Windows keyboard activation still marks');
+  } finally {
+    if (platformDescriptor) Object.defineProperty(globalThis, 'navigator', platformDescriptor);
+    else delete globalThis.navigator;
+  }
   console.log('PASS: hover/click, suppression, idempotence, comment focus/cancel/failure/retry, floating click/drag');
 } finally {
   await settle(() => root.unmount());

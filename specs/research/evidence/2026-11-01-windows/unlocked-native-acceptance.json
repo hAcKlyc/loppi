@@ -1,0 +1,1266 @@
+{
+  "schema": 1,
+  "scope": "Windows unlocked native acceptance; source30a plus exactly reviewed leased repairs/root patches; dirty development runtime, not final release",
+  "baseline_source": "30a04cc7879ee69f191b53c744da7483cd48c0e0",
+  "development_epoch": 1793501175,
+  "original_clean_installer_unchanged": {
+    "bytes": 388800577,
+    "sha256": "ef3b8f66ee206a2e7c852a0d9a6ac6a6952336f96c2f658ef077523249d4c533"
+  },
+  "returned_lease_patch": {
+    "bytes": 6769,
+    "sha256": "c7563733fb3f11ee2e91f232a36761986352a4dad67055f8f93214abbc6b70e5",
+    "lease_returned": true
+  },
+  "root_patch_hashes": [
+    "0a1f93e8a6f69a5179c9e3cb809c53f38c6e2e5ba97e0e92489ee215f7078fdc",
+    "2603976f036a21be55dc6c9c838a2f3a45ac84e76f8654957a7c369d0ab4aa1e",
+    "24b0a00a1eb7bdd0daf308a164fe361d6579261b8c842a4cb86b1c8375a8486a",
+    "b06f2f96966a1f5db8bdc53ec45d3e8c17f3d870b104032073314b22a1dcc06d"
+  ],
+  "DPI_native": {
+    "caller_awareness": 0,
+    "before_context": 24592,
+    "after_context": 24592,
+    "capture_result": 1,
+    "context_restored_success": true,
+    "failure_result": 0,
+    "context_restored_encoding_failure": true,
+    "image_size": [
+      2496,
+      1664
+    ],
+    "corner_pixels": [
+      [
+        255,
+        0,
+        0
+      ],
+      [
+        0,
+        255,
+        0
+      ],
+      [
+        0,
+        0,
+        255
+      ],
+      [
+        255,
+        255,
+        0
+      ]
+    ],
+    "expected_corner_pixels": [
+      [
+        255,
+        0,
+        0
+      ],
+      [
+        0,
+        255,
+        0
+      ],
+      [
+        0,
+        0,
+        255
+      ],
+      [
+        255,
+        255,
+        0
+      ]
+    ],
+    "full_physical_size": [
+      2496,
+      1664
+    ],
+    "corners_pass": true,
+    "size_pass": true
+  },
+  "Core_GDI_OCR_and_ownership": [
+    {
+      "name": "repaired-GUI-Core-capture-persisted-physical-fullscreen-OCR",
+      "response": {
+        "type": "moment_saved",
+        "id": "6be167d3-4c4a-4378-a11d-3423325f4da7",
+        "moment": {
+          "id": "882d3a0f-6521-471f-95c8-de6cb321bec2",
+          "kind": "screenshot",
+          "anchor_ms": 1793502668467,
+          "created_ms": 1793502669200,
+          "captured_ms": 1793502668623,
+          "text": null,
+          "ocr_text": "TOP LEFT 7391                                                     FAR RIGHT 98765\r\nLOPPI WINDOWS OCR 12345\r\n\r\nBOTTOM RIGHT 24680\r\n\r\n",
+          "ocr_state": "complete",
+          "image_summary": null,
+          "image_transcript": null,
+          "image_state": "paused"
+        }
+      },
+      "sqlite": [
+        [
+          "882d3a0f-6521-471f-95c8-de6cb321bec2",
+          "complete",
+          "TOP LEFT 7391                                                     FAR RIGHT 98765\r\nLOPPI WINDOWS OCR 12345\r\n\r\nBOTTOM RIGHT 24680\r\n\r\n"
+        ]
+      ],
+      "image": {
+        "size": [
+          2496,
+          1664
+        ],
+        "sha256": "6a85889cce589b8406049b1b3b9bb9be86f1e8aa699806d2af094461b2690db1",
+        "corners": [
+          [
+            255,
+            0,
+            0
+          ],
+          [
+            0,
+            255,
+            0
+          ],
+          [
+            0,
+            0,
+            255
+          ],
+          [
+            255,
+            255,
+            0
+          ]
+        ]
+      },
+      "all_four_corners": true,
+      "expected_text": [
+        "7391",
+        "98765",
+        "24680",
+        "12345"
+      ],
+      "pass": true
+    },
+    {
+      "name": "repaired-real-GUI-PID-HWND-exclusion-and-restore",
+      "gui_pid": 14300,
+      "hwnd": 3802732,
+      "baseline": {
+        "path": "<workspace>\\build\\windows-unlocked-final-fcb10d2c-384d-476e-a4ed-fce1e01ad270\\data\\screenshots\\728787a5-edae-4fa9-ba8d-b4fc92a8880f.png",
+        "sha256": "07f1038c1cbf17da523c1d87ee4596d6baebe03214b50abec4dad32cc92c820a",
+        "size": [
+          2496,
+          1664
+        ],
+        "colors": 92,
+        "magenta_marker_pixels": 4565,
+        "nonblack_pixels": 4153344
+      },
+      "excluded": {
+        "path": "<workspace>\\build\\windows-unlocked-final-fcb10d2c-384d-476e-a4ed-fce1e01ad270\\data\\screenshots\\54ec9e37-20b3-4994-89a7-566cb69fdf89.png",
+        "sha256": "abf4460bab81e17dcd214bcb601fa54dc8ea8cbd05d5d2a6370c3b0c880cd53f",
+        "size": [
+          2496,
+          1664
+        ],
+        "colors": 199,
+        "magenta_marker_pixels": 0,
+        "nonblack_pixels": 4153344
+      },
+      "receipt": {
+        "type": "moment_saved",
+        "id": "ed1e5265-c4ed-4352-b5fb-efd286a9c980",
+        "moment": {
+          "id": "54ec9e37-20b3-4994-89a7-566cb69fdf89",
+          "kind": "screenshot",
+          "anchor_ms": 1793502686928,
+          "created_ms": 1793502687605,
+          "captured_ms": 1793502687103,
+          "text": null,
+          "ocr_text": "TOP LEFT 7391                                                     FAR RIGHT 98765\r\n\r\nLOPPI WINDOWS OCR 12345\r\n\r\nBOTTOM RIGHT 24680\r\n\r\n",
+          "ocr_state": "complete",
+          "image_summary": null,
+          "image_transcript": null,
+          "image_state": "paused"
+        }
+      },
+      "foreign_rejection": {
+        "type": "error",
+        "id": "6ac771dd-c520-4150-9dbf-f3a5cec0755f",
+        "code": "screenshot_window_owner",
+        "message": "cannot verify excluded windows belong to caller"
+      },
+      "events": [
+        {
+          "event": 32771,
+          "hwnd": 3802732,
+          "object": 0,
+          "thread": 17892,
+          "event_ms": 2484351625,
+          "received_ns": 2484351790101900
+        },
+        {
+          "event": 32770,
+          "hwnd": 3802732,
+          "object": 0,
+          "thread": 17892,
+          "event_ms": 2484351796,
+          "received_ns": 2484351962802900
+        }
+      ],
+      "restored_visible": true,
+      "pass": true
+    }
+  ],
+  "final_release_layout_entry": [
+    {
+      "name": "real-SendInput-floating-drag",
+      "hwnd": 18023774,
+      "before": [
+        2277,
+        99,
+        2475,
+        444
+      ],
+      "after": [
+        749,
+        649,
+        851,
+        751
+      ],
+      "from": [
+        2424,
+        150
+      ],
+      "to": [
+        800,
+        700
+      ],
+      "changed": true
+    },
+    {
+      "name": "real-cross-desktop-drag-release-vs-visible-rabbit",
+      "rows": [
+        {
+          "target": [
+            2424,
+            150
+          ],
+          "visible_center_after_release": [
+            2424,
+            150
+          ],
+          "saved": {
+            "display_uuid": "windows-desktop",
+            "x": 2424,
+            "y": 150
+          },
+          "visible_center_after_reentry": [
+            2424,
+            150
+          ]
+        },
+        {
+          "target": [
+            800,
+            700
+          ],
+          "visible_center_after_release": [
+            800,
+            700
+          ],
+          "saved": {
+            "display_uuid": "windows-desktop",
+            "x": 800,
+            "y": 700
+          },
+          "visible_center_after_reentry": [
+            800,
+            700
+          ]
+        }
+      ]
+    },
+    {
+      "name": "hover-rearms-after-real-drag",
+      "buttons": [
+        {
+          "text": "开始",
+          "classes": ""
+        },
+        {
+          "text": "评论",
+          "classes": ""
+        },
+        {
+          "text": "截屏",
+          "classes": ""
+        },
+        {
+          "text": "",
+          "classes": "entry-rabbit"
+        }
+      ],
+      "pass": true
+    },
+    {
+      "name": "final-hover-fix-click-exactly-one-mark",
+      "before": 0,
+      "after": 1,
+      "pass": true
+    },
+    {
+      "name": "hover-rearms-after-real-click",
+      "buttons": [
+        {
+          "text": "开始",
+          "classes": ""
+        },
+        {
+          "text": "评论",
+          "classes": ""
+        },
+        {
+          "text": "截屏",
+          "classes": ""
+        },
+        {
+          "text": "",
+          "classes": "entry-rabbit"
+        }
+      ],
+      "pass": true
+    },
+    {
+      "name": "final-hover-fix-exact-release-anchor",
+      "preferences": {
+        "schema_version": 1,
+        "mode": "floating",
+        "floating": {
+          "display_uuid": "windows-desktop",
+          "x": 800,
+          "y": 700
+        }
+      },
+      "pass": true
+    },
+    {
+      "name": "final-release-layout-fresh-login-restore",
+      "saved": {
+        "schema_version": 1,
+        "mode": "floating",
+        "floating": {
+          "display_uuid": "windows-desktop",
+          "x": 800,
+          "y": 700
+        }
+      },
+      "visible_rabbit_center": [
+        800,
+        700
+      ],
+      "windows": [
+        {
+          "hwnd": 3934214,
+          "pid": 10936,
+          "title": "loppi · 快速操作",
+          "entry": true,
+          "visible": true,
+          "rect": [
+            749,
+            649,
+            851,
+            751
+          ]
+        },
+        {
+          "hwnd": 9832494,
+          "pid": 10936,
+          "title": "loppi",
+          "entry": false,
+          "visible": true,
+          "rect": [
+            266,
+            266,
+            1968,
+            1462
+          ]
+        },
+        {
+          "hwnd": 8062438,
+          "pid": 10936,
+          "title": "app.loppi.desktop-siw",
+          "entry": false,
+          "visible": true,
+          "rect": [
+            0,
+            0,
+            22,
+            22
+          ]
+        },
+        {
+          "hwnd": 10749408,
+          "pid": 10936,
+          "title": "",
+          "entry": false,
+          "visible": true,
+          "rect": [
+            0,
+            0,
+            22,
+            22
+          ]
+        },
+        {
+          "hwnd": 5572774,
+          "pid": 10936,
+          "title": "Default IME",
+          "entry": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "hwnd": 13763546,
+          "pid": 10936,
+          "title": "MSCTFIME UI",
+          "entry": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "startup": 0,
+      "four_development_roles": {
+        "gui": {
+          "identity": {
+            "component": "gui",
+            "version": "0.1.18",
+            "protocol_version": 24,
+            "git_sha": "30a04cc7879ee69f191b53c744da7483cd48c0e0",
+            "dirty": true,
+            "built_at_epoch": 1793501175
+          },
+          "binary_sha256": "4e0ab92e74b1968b4cc089755e1eb5bfd9ee08a0607440e5f45d48010ff84350"
+        },
+        "core": {
+          "identity": {
+            "component": "core",
+            "version": "0.1.18",
+            "protocol_version": 24,
+            "git_sha": "30a04cc7879ee69f191b53c744da7483cd48c0e0",
+            "dirty": true,
+            "built_at_epoch": 1793501175
+          },
+          "binary_sha256": "28e92bc86d23b7d780053bfb9fcca459cc91767512a85ac73d245c3a2f0d2375"
+        },
+        "worker": {
+          "identity": {
+            "component": "worker",
+            "version": "0.1.18",
+            "protocol_version": 24,
+            "git_sha": "30a04cc7879ee69f191b53c744da7483cd48c0e0",
+            "dirty": true,
+            "built_at_epoch": 1793501175
+          },
+          "binary_sha256": "dbfc9bb82ec5dc74dd511014c8c95c7879511f4e486400251722cc971c2cf749"
+        },
+        "cli": {
+          "identity": {
+            "component": "cli",
+            "version": "0.1.18",
+            "protocol_version": 24,
+            "git_sha": "30a04cc7879ee69f191b53c744da7483cd48c0e0",
+            "dirty": true,
+            "built_at_epoch": 1793501175
+          },
+          "binary_sha256": "a772da9d5706d1b68461ebe2db8044eb6ec21897f17361fc4a46b7168b5a73e5"
+        }
+      },
+      "pass": true
+    }
+  ],
+  "earlier_native_operations_unchanged_by_final_layout_fix": [
+    {
+      "name": "real-mouse-tray-Quit-no-Escape",
+      "input": {
+        "mode": "mouse",
+        "focus": {
+          "rect": [
+            1827,
+            1506,
+            60,
+            60
+          ],
+          "is_chevron": false,
+          "offscreen": false,
+          "class": "SystemTray.NormalButton",
+          "is_loppi": true
+        },
+        "menu_hwnd": 5441430,
+        "menu_hmenu": 9699524,
+        "owner_pid": 8120,
+        "selected_item_rect": [
+          1860,
+          1498,
+          2086,
+          1533
+        ],
+        "input": {
+          "sent": 2,
+          "x": 1973,
+          "y": 1515,
+          "button": "left"
+        },
+        "item_index": 1
+      },
+      "after": {
+        "app_exit": 0,
+        "windows": [],
+        "gui_pid": 8120
+      },
+      "pass": true
+    },
+    {
+      "name": "real-keyboard-tray-Quit-no-Escape",
+      "input": {
+        "mode": "keyboard",
+        "focus": {
+          "rect": [
+            1827,
+            1506,
+            60,
+            60
+          ],
+          "is_chevron": false,
+          "offscreen": false,
+          "class": "SystemTray.NormalButton",
+          "is_loppi": true
+        },
+        "menu_hwnd": 3213450,
+        "menu_hmenu": 3016898,
+        "owner_pid": 10612,
+        "menu_highlight_state": [
+          0,
+          128
+        ],
+        "item_index": 1
+      },
+      "after": {
+        "app_exit": 0,
+        "windows": [],
+        "gui_pid": 10612
+      },
+      "pass": true
+    },
+    {
+      "name": "titlebar-native-color-readback-facts",
+      "attrs": {
+        "34": {
+          "hresult": -2147024809,
+          "value": 0,
+          "readback_supported": false
+        },
+        "35": {
+          "hresult": -2147024809,
+          "value": 0,
+          "readback_supported": false
+        },
+        "36": {
+          "hresult": -2147024809,
+          "value": 0,
+          "readback_supported": false
+        }
+      },
+      "contract": "official enum documents attributes 34/35/36 for DwmSetWindowAttribute; unsupported Get is not fabricated success"
+    },
+    {
+      "name": "actual-GDI-blended-caption-and-onboarding",
+      "receipt": "6a0e8622-c2fb-41d8-9b0e-d91b8b9cb299",
+      "synthetic_only": true,
+      "caption_canvas_pixels": [
+        [
+          250,
+          248,
+          242
+        ],
+        [
+          250,
+          248,
+          242
+        ]
+      ],
+      "matching_pixels": true,
+      "file": "<workspace>\\build\\windows-unlocked-final-141a615f-3eb0-4ff1-b153-c0573df5444f\\titlebar-onboarding.webp",
+      "bytes": 8108,
+      "sha256": "b0c2bcd3a58bf7e376f21906683200b56a75fb9566dc2541afb310b8d640c241"
+    },
+    {
+      "name": "titlebar-OS-drag",
+      "before": [
+        228,
+        228,
+        1930,
+        1424
+      ],
+      "after": [
+        328,
+        278,
+        2030,
+        1474
+      ],
+      "pass": true
+    },
+    {
+      "name": "caption-doubleclick-maximize-restore",
+      "maximized": true,
+      "restored": true,
+      "pass": true
+    },
+    {
+      "name": "native-right-edge-resize",
+      "before": [
+        328,
+        278,
+        2030,
+        1474
+      ],
+      "after": [
+        328,
+        278,
+        2110,
+        1474
+      ],
+      "pass": true
+    },
+    {
+      "name": "native-caption-minimize-restore",
+      "minimized_by_real_mouse": true,
+      "restored_by_AltTab": true,
+      "fallback_ShowWindow_restore": false,
+      "restored": true
+    },
+    {
+      "name": "native-close-hides-main-Core-keeps-dual-recording",
+      "hidden": true,
+      "state": {
+        "type": "status",
+        "id": "3a13022c-75e5-4990-ab94-e8c79af5abae",
+        "state": {
+          "recording_schedule": {
+            "enabled": false,
+            "start_minute": 480,
+            "stop_minute": 1380,
+            "paused_by_schedule": false,
+            "next_at_ms": null,
+            "next_action": null,
+            "error": null
+          },
+          "revision": 1,
+          "enabled_intent": true,
+          "paused_intent": false,
+          "storage_paused": false,
+          "storage_recoverable": false,
+          "audio_used_bytes": 108877,
+          "audio_limit_bytes": 10737418240,
+          "disk_free_bytes": 4043288576,
+          "storage_warning": false,
+          "microphone_enabled": true,
+          "system_enabled": true,
+          "capture_state": "recording",
+          "reason": null,
+          "microphone_recording": true,
+          "system_recording": true,
+          "microphone_phase": "recording",
+          "system_phase": "recording",
+          "capture_blocker": "none",
+          "microphone_reason": null,
+          "system_reason": null
+        }
+      },
+      "pass": true
+    },
+    {
+      "name": "real-tray-mouse-Open",
+      "input": {
+        "mode": "mouse",
+        "focus": {
+          "rect": [
+            1779,
+            1446,
+            60,
+            60
+          ],
+          "is_chevron": false,
+          "offscreen": false,
+          "class": "SystemTray.NormalButton",
+          "is_loppi": true
+        },
+        "menu_hwnd": 461010,
+        "menu_hmenu": 1867581419,
+        "owner_pid": 10544,
+        "selected_item_rect": [
+          1812,
+          1479,
+          2038,
+          1514
+        ],
+        "input": {
+          "sent": 2,
+          "x": 1925,
+          "y": 1496,
+          "button": "left"
+        },
+        "item_index": 0
+      },
+      "visible_main": true,
+      "pass": true
+    },
+    {
+      "name": "real-tray-keyboard-Open-after-verified-shell-focus",
+      "input": {
+        "mode": "keyboard",
+        "focus": {
+          "rect": [
+            1779,
+            1446,
+            60,
+            60
+          ],
+          "is_chevron": false,
+          "offscreen": false,
+          "class": "SystemTray.NormalButton",
+          "is_loppi": true
+        },
+        "menu_hwnd": 3213234,
+        "menu_hmenu": 788556,
+        "owner_pid": 10544,
+        "menu_highlight_state": [
+          128,
+          0
+        ],
+        "item_index": 0
+      },
+      "visible_main": true,
+      "pass": true
+    },
+    {
+      "name": "actual-login-visible-interactive-without-startup-registration",
+      "runtime": {
+        "component": "gui",
+        "version": "0.1.18",
+        "protocol_version": 24,
+        "git_sha": "30a04cc7879ee69f191b53c744da7483cd48c0e0",
+        "dirty": true,
+        "built_at_epoch": 1793501175
+      },
+      "windows": [
+        {
+          "hwnd": 6948140,
+          "pid": 18860,
+          "title": "loppi · 快速操作",
+          "entry": true,
+          "visible": true,
+          "rect": [
+            749,
+            649,
+            851,
+            751
+          ]
+        },
+        {
+          "hwnd": 7865952,
+          "pid": 18860,
+          "title": "loppi",
+          "entry": false,
+          "visible": true,
+          "rect": [
+            190,
+            190,
+            1892,
+            1386
+          ]
+        },
+        {
+          "hwnd": 6620228,
+          "pid": 18860,
+          "title": "app.loppi.desktop-siw",
+          "entry": false,
+          "visible": true,
+          "rect": [
+            0,
+            0,
+            22,
+            22
+          ]
+        },
+        {
+          "hwnd": 9241966,
+          "pid": 18860,
+          "title": "",
+          "entry": false,
+          "visible": true,
+          "rect": [
+            0,
+            0,
+            22,
+            22
+          ]
+        },
+        {
+          "hwnd": 9438520,
+          "pid": 18860,
+          "title": "Default IME",
+          "entry": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "hwnd": 198876,
+          "pid": 18860,
+          "title": "MSCTFIME UI",
+          "entry": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "startup": 0,
+      "pass": true
+    },
+    {
+      "name": "actual-floating-menu-control-input",
+      "resume_or_start": {
+        "label": "继续",
+        "input": {
+          "sent": 2,
+          "x": 848,
+          "y": 706,
+          "button": "left"
+        },
+        "state": {
+          "type": "status",
+          "id": "63f4e0d0-6179-4001-86cd-510d549abb24",
+          "state": {
+            "recording_schedule": {
+              "enabled": false,
+              "start_minute": 480,
+              "stop_minute": 1380,
+              "paused_by_schedule": false,
+              "next_at_ms": null,
+              "next_action": null,
+              "error": null
+            },
+            "revision": 2,
+            "enabled_intent": true,
+            "paused_intent": false,
+            "storage_paused": false,
+            "storage_recoverable": false,
+            "audio_used_bytes": 221704,
+            "audio_limit_bytes": 10737418240,
+            "disk_free_bytes": 3981500416,
+            "storage_warning": false,
+            "microphone_enabled": true,
+            "system_enabled": true,
+            "capture_state": "recording",
+            "reason": null,
+            "microphone_recording": true,
+            "system_recording": true,
+            "microphone_phase": "recording",
+            "system_phase": "recording",
+            "capture_blocker": "none",
+            "microphone_reason": null,
+            "system_reason": null
+          }
+        }
+      },
+      "pause": {
+        "label": "暂停",
+        "input": {
+          "sent": 2,
+          "x": 848,
+          "y": 706,
+          "button": "left"
+        },
+        "state": {
+          "type": "status",
+          "id": "1f4599ad-70b0-4adc-a9a5-85f96280bfe0",
+          "state": {
+            "recording_schedule": {
+              "enabled": false,
+              "start_minute": 480,
+              "stop_minute": 1380,
+              "paused_by_schedule": false,
+              "next_at_ms": null,
+              "next_action": null,
+              "error": null
+            },
+            "revision": 3,
+            "enabled_intent": true,
+            "paused_intent": true,
+            "storage_paused": false,
+            "storage_recoverable": false,
+            "audio_used_bytes": 226554,
+            "audio_limit_bytes": 10737418240,
+            "disk_free_bytes": 3981484032,
+            "storage_warning": false,
+            "microphone_enabled": true,
+            "system_enabled": true,
+            "capture_state": "paused",
+            "reason": "recording was paused by the user",
+            "microphone_recording": false,
+            "system_recording": false,
+            "microphone_phase": "idle",
+            "system_phase": "idle",
+            "capture_blocker": "none",
+            "microphone_reason": null,
+            "system_reason": null
+          }
+        }
+      },
+      "pass": true
+    }
+  ],
+  "recording_quit_original_exit_facts": [
+    {
+      "name": "recording-real-tray-mouse-Quit-drains-Core-and-workers",
+      "before": {
+        "type": "status",
+        "id": "d5356c53-00ce-46d7-8966-b332b60b36f6",
+        "state": {
+          "recording_schedule": {
+            "enabled": false,
+            "start_minute": 480,
+            "stop_minute": 1380,
+            "paused_by_schedule": false,
+            "next_at_ms": null,
+            "next_action": null,
+            "error": null
+          },
+          "revision": 1,
+          "enabled_intent": true,
+          "paused_intent": false,
+          "storage_paused": false,
+          "storage_recoverable": false,
+          "audio_used_bytes": 0,
+          "audio_limit_bytes": 10737418240,
+          "disk_free_bytes": 3962040320,
+          "storage_warning": false,
+          "microphone_enabled": true,
+          "system_enabled": true,
+          "capture_state": "recording",
+          "reason": null,
+          "microphone_recording": true,
+          "system_recording": true,
+          "microphone_phase": "recording",
+          "system_phase": "recording",
+          "capture_blocker": "none",
+          "microphone_reason": null,
+          "system_reason": null
+        }
+      },
+      "input": {
+        "mode": "mouse",
+        "focus": {
+          "rect": [
+            1779,
+            1506,
+            60,
+            60
+          ],
+          "is_chevron": false,
+          "offscreen": false,
+          "class": "SystemTray.NormalButton",
+          "is_loppi": true
+        },
+        "menu_hwnd": 919772,
+        "menu_hmenu": 3999846,
+        "owner_pid": 14300,
+        "selected_item_rect": [
+          1812,
+          1498,
+          2038,
+          1533
+        ],
+        "input": {
+          "sent": 2,
+          "x": 1925,
+          "y": 1515,
+          "button": "left"
+        },
+        "item_index": 1
+      },
+      "after": {
+        "app_exit": 0,
+        "windows": [],
+        "gui_pid": 14300
+      },
+      "process_exits": [
+        {
+          "ProcessId": 6184,
+          "Name": "loppi-core.exe",
+          "exit_code": 0
+        },
+        {
+          "ProcessId": 10336,
+          "Name": "loppi-core.exe",
+          "exit_code": 0
+        },
+        {
+          "ProcessId": 5012,
+          "Name": "loppi-core.exe",
+          "exit_code": 0
+        }
+      ],
+      "pass": true,
+      "extra_Escape": false,
+      "forced": false
+    },
+    {
+      "name": "recording-real-tray-keyboard-Quit-drains-Core-and-workers",
+      "before": {
+        "type": "status",
+        "id": "5454385f-08a9-4d80-82bf-6d747298ba28",
+        "state": {
+          "recording_schedule": {
+            "enabled": false,
+            "start_minute": 480,
+            "stop_minute": 1380,
+            "paused_by_schedule": false,
+            "next_at_ms": null,
+            "next_action": null,
+            "error": null
+          },
+          "revision": 2,
+          "enabled_intent": true,
+          "paused_intent": false,
+          "storage_paused": false,
+          "storage_recoverable": false,
+          "audio_used_bytes": 0,
+          "audio_limit_bytes": 10737418240,
+          "disk_free_bytes": 3965526016,
+          "storage_warning": false,
+          "microphone_enabled": true,
+          "system_enabled": true,
+          "capture_state": "recording",
+          "reason": null,
+          "microphone_recording": true,
+          "system_recording": true,
+          "microphone_phase": "recording",
+          "system_phase": "recording",
+          "capture_blocker": "none",
+          "microphone_reason": null,
+          "system_reason": null
+        }
+      },
+      "input": {
+        "mode": "keyboard",
+        "focus": {
+          "rect": [
+            1779,
+            1506,
+            60,
+            60
+          ],
+          "is_chevron": false,
+          "offscreen": false,
+          "class": "SystemTray.NormalButton",
+          "is_loppi": true
+        },
+        "menu_hwnd": 9308150,
+        "menu_hmenu": 7407230,
+        "owner_pid": 20464,
+        "menu_highlight_state": [
+          0,
+          128
+        ],
+        "item_index": 1
+      },
+      "after": {
+        "app_exit": 0,
+        "windows": [],
+        "gui_pid": 20464
+      },
+      "process_exits": [
+        {
+          "ProcessId": 7840,
+          "Name": "loppi-core.exe",
+          "exit_code": 0
+        },
+        {
+          "ProcessId": 15056,
+          "Name": "loppi-worker.exe",
+          "exit_code": 1
+        },
+        {
+          "ProcessId": 14620,
+          "Name": "loppi-core.exe",
+          "exit_code": 0
+        },
+        {
+          "ProcessId": 2784,
+          "Name": "loppi-core.exe",
+          "exit_code": 0
+        }
+      ],
+      "pass": false,
+      "extra_Escape": false,
+      "forced": false
+    }
+  ],
+  "onboarding_correct_final_GDI_picture": [
+    {
+      "name": "actual-onboarding-GDI-after-final-Z-order-raise",
+      "response": {
+        "type": "moment_saved",
+        "id": "7b2817e8-7799-4b56-ae78-24c9f9f95911",
+        "moment": {
+          "id": "570759c9-bb95-420f-af05-431ee89ec0fc",
+          "kind": "screenshot",
+          "anchor_ms": 1793503263759,
+          "created_ms": 1793503264981,
+          "captured_ms": 1793503263922,
+          "text": null,
+          "ocr_text": "TOP LEFT 7391                                                     FAR RIGHT 98765\r\n\r\n& lop                                                                                                                                                                                                                                              一\r\n准备 loppi\r\n@ 检查本地组件                  V 已就绪\r\n@ 检查声音来源                                麦克风 . 已授权 /                                 检查电脑声音                   调整\r\n@ REARS                    DeepSeek 整理           API Key\r\n\r\n火山引擎 转录          API Key\r\n\r\n> FRDENA 7\r\n> 云端处理 . 按量付费\r\n\r\nBOTTOM RIGHT 24680\r\n",
+          "ocr_state": "complete",
+          "image_summary": null,
+          "image_transcript": null,
+          "image_state": null
+        }
+      },
+      "file": "<workspace>\\build\\windows-unlocked-final-29ced962-96e5-429c-a0ae-40f9553e377b\\titlebar-onboarding-final.webp",
+      "bytes": 5470,
+      "sha256": "f4639f03aa1f8995e936cff258caa92f43ed70eee3a6f09a2b49fe6b5e9f0920",
+      "synthetic_only": true
+    }
+  ],
+  "affected_checks": {
+    "cargo_GUI_lib": {
+      "exit": 0,
+      "passed": 12,
+      "failed": 0
+    },
+    "rustc_theme_build": 0,
+    "theme_tests": {
+      "exit": 0,
+      "passed": 2
+    },
+    "Win32_geometry_tray": {
+      "schema": 1,
+      "passed": true,
+      "real_win32": true,
+      "desktop_capture": false,
+      "cases": 18,
+      "checks": [
+        "restored off-work-area anchors remain visible",
+        "native region contains rabbit center at actual DPI",
+        "tray WM_CONTEXTMENU Open/Quit and anchor routing; modal popup choice stubbed",
+        "legacy tray mouse event routing; physical taskbar interaction not claimed"
+      ],
+      "root_added_assertions": [
+        "async posted Quit message pumped before assertion",
+        "drag suppresses outside hover notification",
+        "pointer leave emits kind7 before hover-leave notification"
+      ]
+    },
+    "node_entry_interaction": {
+      "exit": 0,
+      "raw_result": "PASS: hover/click, suppression, idempotence, comment focus/cancel/failure/retry, floating click/drag"
+    },
+    "lint": 0,
+    "typecheck": 0
+  },
+  "WTS_final": {
+    "schema": 1,
+    "process_session": 1,
+    "active_console_session": 1,
+    "WTS_INFO_EX_level": 1,
+    "WTS_session_id": 1,
+    "WTS_connect_state": 0,
+    "WTS_session_flags": 1,
+    "thread_desktop": "Default",
+    "locked_on_windows11": false,
+    "security_changes": false,
+    "screenshot_attempted": false
+  },
+  "cleanup": {
+    "test_product_processes": [],
+    "default_core_data_absent": true,
+    "default_installed_gui_sha256": "facd2b405a2de0f507207fd8291709c50c2a91d887d4bb72a2a99eea24050174",
+    "model_attribute_restored_file_count": 10,
+    "GUI_preferences_and_webview_isolated": true,
+    "startup_status_observed": 0,
+    "startup_registration_mutations": false,
+    "credentials_written_by_unlocked_tests": false,
+    "test_data_retained_in_ignored_build": true,
+    "synthetic_covers_closed_normally": true,
+    "no_release_upload": true,
+    "production_edits_only_exact_authorized_patches": true,
+    "normal_default_installation_preserved": true
+  },
+  "limits": [
+    "DwmGetWindowAttribute34/35/36 each E_INVALIDARG; setters documented, actual caption/canvas RGB250,248,242 match and OS interactions passed",
+    "One observed worker exit1 during normal keyboard tray shutdown; GUI/Core/source processes exit0 and all children ended. Existing analysis owner has kill/wait Drop; runtime reason for that individual worker was not captured; no operator force kill",
+    "Initial stale tray harness timed out due synchronous assertion, exact root async regression now passes",
+    "Fixed-coordinate hover/click fixtures had false negatives; fresh actual HWND/DOM geometry rechecks passed",
+    "Earlier image filename says onboarding but shows synthetic timeline; correct onboarding GDI image separate",
+    "Two onboarding picture attempts captured covering fixture; final Z-order raise captured real onboarding, only final picture is offered",
+    "Final clean-source package rebuild and root review/publication remain; dirty runtime is not relabeled as final package"
+  ],
+  "production_worktree_hashes": {
+    "crates/loppi-core/native/windows.cpp": "bc9b6382b9d705bb265a3df166d5f6e6f5ac62e2dd311acd7dc7c1c79db9a591",
+    "src-tauri/native/windows.cpp": "39db85e2c2b92d4409ff98cb72a65fa28139600668c0eeeaa50c82f1657ea51c",
+    "src-tauri/src/entry.rs": "19608effab90172b2e1e2138b3b61913ffcfe3de3a801ff1b1549d78ce069faa",
+    "src/FloatingWidget.tsx": "66dccd5f42d3125c4728855f70d0566ab3cbf52d6c0881267c405bd71e3a6afa",
+    "src-tauri/src/windows_host.rs": "48c258a1913e45586f38a1b48d1c266ef267e4efccc774670487fafc7639ecaa",
+    "src-tauri/src/lib.rs": "157d398f6a260d6c2039346b6b1005a255f63b9005bff2208edf92689f3f1d67",
+    "src-tauri/build.rs": "a7f3d5d473adf8500a1da5010dc9b631af2cbee5f2101bbd6da54a141531452e"
+  },
+  "production_worktree_diff_sha256": "2deaa74cf299064dd0089fee1a68bfad09a466f1fcb9683c7924078255801487",
+  "evidence_transport_only": true,
+  "native_titlebar_picture": {
+    "filename": "native-titlebar.webp",
+    "bytes": 8108,
+    "sha256": "b0c2bcd3a58bf7e376f21906683200b56a75fb9566dc2541afb310b8d640c241",
+    "original_GDI_frame_size": [
+      2496,
+      1664
+    ],
+    "physical_crop_bounds": [
+      228,
+      228,
+      1930,
+      1424
+    ],
+    "resized_dimensions": [
+      680,
+      478
+    ],
+    "page": "isolated synthetic timeline with fresh test recording; no real notes",
+    "scope": "actual Windows native caption and empty synthetic page; not final homepage height-token fix"
+  },
+  "report_note": "Original worker exit1 is retained as an observation, not silently changed to exit0. Core-owned bounded model child cancellation is pre-existing analysis.rs OwnedChild::drop kill/wait; exact per-worker cause not captured."
+}

@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { userError } from "./api";
 import {
@@ -649,11 +650,26 @@ export function FloatingWidget() {
 						}}
 						aria-label={isTop ? "loppi 快速操作" : "标记重点；拖动以移动兔子"}
 						title={!isTop && snapshot.detail ? snapshot.detail : undefined}
+						onPointerDown={(event) => {
+							if (
+								desktopPlatform() !== "windows" ||
+								isTop ||
+								event.button !== 0
+							)
+								return;
+							event.preventDefault();
+							void getCurrentWindow()
+								.startDragging()
+								.catch((error) => showFeedback(userError(String(error))));
+						}}
 						onMouseEnter={() => {
 							pointerInside.current = true;
 							openPanel();
 						}}
-						onClick={() => {
+						onClick={(event) => {
+							// Windows' native drag owner emits one synthetic click when released
+							// without movement; keyboard activation also has detail === 0.
+							if (desktopPlatform() === "windows" && event.detail !== 0) return;
 							if (isTop) openPanel(true);
 							else if (!dragging.current) void perform("mark");
 						}}

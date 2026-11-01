@@ -1,8 +1,8 @@
 # 0.1.18 跨平台发行准备状态
 
-**尚未发布，台账保持 in-progress。** 三端安装包、源码审查与可在锁屏条件下完成的真实验收已通过；剩余真实桌面与 OS 入口测试需要用户解锁 Windows。现有 Release、标签和 main 保留原状态。
+**尚未发布，台账保持 in-progress。** 用户已确认解锁；真实桌面验收发现高DPI裁边、悬浮拖动和托盘退出缺陷，正在定向修复。此外用户追加轨道满高和Windows标题栏融合。以下30a安装包仅作为已验证的历史候选保留，最终三包会从包含本轮修正的同一干净源码重建。现有 Release、标签和 main 保留原状态。
 
-## 已验证的最终包
+## 已验证的30a历史候选包
 
 二进制统一来自干净源码 `30a04cc7879ee69f191b53c744da7483cd48c0e0`，版本均为 0.1.18。后续只记录证据的提交不改变这份二进制来源，不将文档提交号冒充内置身份。
 
@@ -31,12 +31,12 @@ Windows 证据由公开 MyAgents CLI 回传，56654 字节、SHA256 `0941141d626
 2. 同一GUI PID的HWND排除、隐藏和恢复；不能把合成PNG OCR或WebView内部图当成此项。
 3. OS实际托盘点击/键盘菜单、悬浮输入及`--login`呈现；既有Win32消息/几何检查不冒充物理输入。
 
-保持原Windows Agent Session与已安装30a运行时即可续测，无需重建未改变的包、重跑其它已通过检查或再次取得发布授权。用户本轮已经明确授权发布；缺的是实际解锁条件。
+保持原Windows Agent Session续测。用户本轮已明确授权发布；追加改动和实测缺陷须重新核验受影响的运行结果，并从新源码生成三份最终包。未受影响的30a业务证据继续保留其原始来源，不重新标记执行版本。
 
 [最后只读复核](unlock-last-check.json)为2026-10-31 23:57:38 UTC：进程与活动控制台均Session1，WTS flags0、Default桌面，Windows11仍锁定；未尝试解锁、截图或更改安全设置。
 
 ## 随后的发布动作
 
-解锁门槛关闭后，ff同步main，保存并核对旧标签OID `b093afbca1dfa414d658736dafe64f834478aef1`，用精确lease把v0.1.18指向二进制源码30a。原标签/Release与两Mac包备份在`build/backups/v0.1.18-before-windows/`。统一替换现有Release ID430124887的Mac两包/报告、加入Windows包/报告和三包SHA256SUMS；Windows上传须由root明确给现有Agent最后指令，不创建额外Release。上传后独立核对远端大小/摘要，并下载Windows EXE复核实际SHA，再写最终状态收尾提交。Windows签名状态必须仍如实为unsigned。
+全部门槛关闭后，ff同步main，保存并核对旧标签OID `b093afbca1dfa414d658736dafe64f834478aef1`，用精确lease把v0.1.18指向新二进制源码。原标签/Release与两Mac包备份在`build/backups/v0.1.18-before-windows/`。统一替换现有Release ID430124887的Mac两包/报告、加入Windows包/报告和三包SHA256SUMS；Windows上传须由root明确给现有Agent最后指令，不创建额外Release。上传后独立核对远端大小/摘要，并下载Windows EXE复核实际SHA，再写最终状态收尾提交。Windows签名状态必须仍如实为unsigned。
 
 仓库简介已更新为macOS和Windows；可见性和许可证未变。其它设备、Windows ARM64/Windows10、真实付费云API、最低版本实机与多日稳定性不在本次已验证范围内。
