@@ -1,0 +1,28 @@
+# Review Contract: Agent Skill / CLI discovery
+
+- Mode: repair. Main agent adjudicates and edits; reviewers read only, no nested reviewers.
+- Requirement: specs/prd/prd_0.1.18_agent-skill-cli-discovery.md, including latest user naming addition: external Skill name/directory and MCP server name/title are loppi, not loppi-context. The repository's historical template directory may keep its path for existing documentation links; it is not an installed name.
+- Baseline: eeef7110aa6d43051975b0da02f8f51eaacdc0a9. Target: current working files (single batch). Do not review entire dirty workspace.
+- In scope (complete file diff):
+  - crates/loppi-protocol/src/agent_assets.rs
+  - crates/loppi-cli/src/main.rs
+  - crates/loppi-cli/src/context_cli.rs
+  - crates/loppi-cli/src/mcp.rs
+  - resources/agent/loppi-context/SKILL.md
+  - resources/agent/readme.md (new)
+  - src/AgentAccess.tsx, src/AgentAccess.css
+  - scripts/test_agent_access.html, scripts/test_agent_access.mjs (new)
+  - scripts/test_agent_cli.py (new)
+  - scripts/test_design_scene.html (only skill_prompt fixture)
+  - specs/tech_docs/agent-context.md
+  - requirement PRD and this evidence directory (new)
+- Shared-file scope: src-tauri/src/lib.rs ONLY the agent_access_info call from agent_assets::info(&cli) to agent_assets::info(&cli)?; all updater/other changes in that file belong to others and are out of scope.
+- Out of scope: all other tracked/untracked changes, Cargo manifests/lock, lifecycle, package/build/updater/license/docs edits. Do not revert, stage or review those changes.
+- Required guarantees: installed local source before giving path; thin complete-capability Skill, independent Skill version and active update/re-read instructions; local readme without Core/cloud/capture; complete accurate help for public commands/args; exact prompt copy, requested UI removals; same metadata source and complete atomic Skill file; existing context/management parsing and explicit legacy installer no-overwrite behavior; names loppi.
+- Non-goals: new business operations, user data migration, remote Agent distribution, application release/install, worktree scanning or automatic edits to third-party workspaces, MCP business API changes, resisting a malicious same-user racing filesystem attacker, cross-file transactional publication (source is one SKILL.md).
+- In-scope defects: introduced/materially exposed by this diff, or explicitly owned above. Existing shared-worktree flaws are non-blocking.
+- Allowed architecture: reuse agent_assets compiled content/rendering and platform filesystem helpers; one rebuildable derived SKILL.md, no new business owner, database, protocol, queue, daemon, retry/fallback mechanism.
+- Required lenses: requirements + adversarial phase 1, then fresh architecture on repaired final candidate.
+- Evidence: verification.json: all 21 npm verify checks PASS (workspace check/tests, 114 frontend tests, 11 Python tests, native policy builds/runs, frontend/binary build, component identity, isolated Core/diagnostics/owner). Targeted CLI/protocol tests + test_agent_cli.py passed; after final help refinements same targeted checks run in /tmp/loppi-agent-targeted-tests.log and /tmp/loppi-agent-cli-build.log. Windows GNU target cargo check passed. Browser real AgentAccess fixture wide and 760px interactions both PASS (MCP formats/name, keyboard, exact prompt copy, clipboard failure, five states and no horizontal overflow). Mac full dev build ongoing /tmp/loppi-agent-dev-build.log.
+- Coverage limits: Windows native execution unavailable on this Mac and remains mandatory release acceptance. PRD explicitly allows reviewed/tested code commit for validation while status stays in-progress and no release is claimed. Do not turn missing Windows runtime into new production architecture. Reading private records or cloud APIs is not required/authorized.
+- Invalidations: source Rust/Skill/readme changes rerun relevant Rust + real CLI tests; UI changes rerun typecheck/lint + component regression/browser as affected; help-only changes need help traversal/parser tests and CLI build, not all capture/signature checks. Build metadata evidence may include unrelated dirty files; do not equate it to a released artifact.

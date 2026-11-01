@@ -1,23 +1,25 @@
 # Agent Context v1
 
-2026-10-26。同一 macOS 用户下，loppi 保持运行，其他 Agent 通过随包 CLI 或 stdio MCP 消费已有记录。侧栏「Agent 接入」展示实际路径、连接状态与复制入口。
+2026-11-02。同一 macOS/Windows 用户下，loppi 保持运行，其他 Agent 通过随包 CLI 或 stdio MCP 消费已有记录。侧栏「Agent 接入」展示实际路径、连接状态与复制入口。
 
 ## 架构与边界
 
 ```mermaid
 flowchart LR
   Agent --> MCP[loppi mcp serve · stdio]
-  Agent --> Skill[loppi-context Skill]
-  Skill --> CLI[loppi context …]
+  Agent --> Skill[loppi Skill]
+  Skill --> CLI[loppi CLI · 完整能力]
+  CLI --> Management[既有业务管理请求]
+  Management --> Core
   MCP --> Contract[loppi_protocol::context]
   CLI --> Contract
-  Contract --> IPC[现有本机 Unix socket]
+  Contract --> IPC[既有 Unix socket / Windows 命名管道]
   IPC --> Core[Core 读取池]
   Core --> Data[(现有 SQLite + 可重建搜索投影)]
   Capture[既有采集与整理] --> Data
 ```
 
-Core 是数据、有效性和查询的唯一 owner。新入口只用 `send_existing`，不启动 Core、采集、精转或云任务；没有网络监听、独立 daemon 或客户端内容缓存。内部 IPC 版本为 25；对外结果版本为 `loppi.context.v1`。同 UID 的 socket 检查沿用现有实现。读取能力不意味着云端 Agent 的模型推理离线。
+Core 是数据、有效性和查询的唯一 owner。只读 context/MCP 入口只用 `send_existing`，不启动 Core、采集、精转或云任务；没有网络监听、独立 daemon 或客户端内容缓存。内部 IPC 版本为 25；对外结果版本为 `loppi.context.v1`。同 UID 的 socket 检查沿用现有实现。读取能力不意味着云端 Agent 的模型推理离线。
 
 GUI 日期导航使用只读 `CalendarAdjacent {from_ms,to_ms}`：输入为客户端本地日界（23–25 小时），输出 `newer_ms`/`older_ms` 为两侧最近可用材料的时间点或 `null`。GUI 以本地日界归日，不把时间点当 UTC 日期。投影与 `CalendarDays` 共用音频、粗转、未删除事件、现场记录及可见人工范围的可用性规则，排除 gap 与未来材料；一次查询覆盖全历史，无日期枚举或历史截断。协议 25 与 GUI/CLI/Core/worker 同步发布；旧组件按既有版本不匹配路径拒绝请求，无存储迁移或新增业务状态。
 
@@ -54,11 +56,13 @@ CLI/MCP 的默认参数、校验、描述、schema 和执行入口共用 `crates
 
 ## 渐进式披露与安装
 
-`resources/agent/loppi-context/SKILL.md` 只包含触发范围、入口选择、检索顺序和证据原则；五个 references 分别承载 CLI、MCP、证据语义、排障、场景工作流。MCP 本身的 server instructions 与七个 tool descriptions 足以独立使用，不要求先装 Skill。
+`resources/agent/loppi-context/SKILL.md` 是覆盖完整 CLI 的薄入口：产品心智、适用场景、核心能力和独立 Skill 版本。`agent_assets` 维护同一模板/版本，在数据目录的 `skills/loppi/SKILL.md` 生成可复制副本，原子替换且相同内容不重写。源副本可重新生成，不是业务事实或用户自定义文件。新安装提示词提供这个本机目录，由接收 Agent 按当前工作区的技能约定复制；应用不扫描外部项目。Skill 要求每任务首次运行 `loppi readme`，发现新版主动更新副本、保留自定义内容并重新读取。
 
-`integrations inspect` 提供真实可执行路径和配置；`configure --target codex|generic` 只生成配置；`doctor` existing-only 自检；`install-skill --destination PATH` 显式安装随包说明，替换路径占位符，相同内容重复安装无操作，自定义副本拒绝覆盖；`install-cli --directory DIR` 显式创建符号链接，不改 PATH、不覆盖无关命令。
+`loppi readme` 离线输出当前完整 Agent 指南、Skill 版本、官方来源与真实 CLI 路径；具体参数和语义来自逐级 `--help`。原有五个 references 通过 `context guide` 保留。CLI 的完整管理能力与只读 MCP 的边界不同，调用仍以用户当前请求为准；MCP `serverInfo.name/title` 和配置名均为 `loppi`，工具接口不变。
 
-配置以安装目录中的 loppi 为目标，应用移动后需要重新生成；GUI 不承诺自动修改所有 Agent 的配置。Codex 示例使用 `[mcp_servers.loppi]`，通用示例使用 `mcpServers`。
+`integrations inspect` 提供真实路径、MCP 配置、Skill 版本、来源和安装提示词；`configure --target codex|generic` 只输出配置；`doctor` existing-only 自检。上述接入入口准备官方 Skill 来源时可能返回文件错误，不能将不存在/陈旧来源当成功。旧 `install-skill --destination PATH` 保留显式安装：同内容幂等、自定义副本拒绝覆盖；`install-cli --directory DIR` 创建符号链接或 Windows 启动器，不改 PATH、不覆盖无关命令。
+
+配置依据实际安装路径，应用移动后需要重新生成；GUI 不自动修改所有 Agent 配置。Codex 使用 `[mcp_servers.loppi]`，通用 JSON 使用 `mcpServers.loppi`。
 
 ## 验证
 

@@ -95,15 +95,7 @@
 	color: var(--color-text-secondary);
 	line-height: var(--leading-body);
 }
-.agent-footnote {
-	margin-top: var(--space-9);
-	font-size: var(--type-caption);
-	line-height: var(--leading-body);
-	color: var(--color-text-muted);
-}
-.agent-footnote p {
-	margin: var(--space-3) 0 0;
-}
+
 .agent-connection-notice {
 	color: var(--color-warning-text);
 	font-size: var(--type-caption);
@@ -117,15 +109,7 @@
 .agent-muted {
 	color: var(--color-text-muted);
 }
-.agent-cli-example {
-	margin-top: var(--space-9);
-	font-size: var(--type-meta);
-}
-.agent-cli-example summary {
-	cursor: pointer;
-	color: var(--color-text-secondary);
-	padding: var(--space-4) 0;
-}
+
 @media (max-width: 1100px) {
 	.agent-method-intro {
 		align-items: flex-start;

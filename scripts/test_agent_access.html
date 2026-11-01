@@ -1,85 +1,52 @@
-<!-- Run npm run dev, open /scripts/test_date_navigation.html in a visible browser tab, then click the regression button. Uses mocked IPC only. -->
 <!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>loppi Agent 接入回归</title>
-<div id="root"></div><aside style="position:fixed;bottom:8px;right:8px;z-index:10000;background:white;padding:12px;border-radius:12px;max-width:650px;font:13px system-ui"><button id="run">运行接入回归</button><output id="result">使用本地模拟数据，不连接录音或云端</output></aside>
+<style>#root{padding:40px;max-width:1200px;margin:auto}aside{position:fixed;bottom:8px;right:8px;z-index:10000;background:white;padding:12px;border-radius:12px;max-width:650px;font:13px system-ui}</style>
+<div id="root"></div><aside><button id="run">运行接入回归</button><output id="result">合成数据，不连接录音或云端</output></aside>
 <script type="module">
 import React from 'react';
 import {createRoot} from 'react-dom/client';
-import {flushSync} from 'react-dom';
 import {mockIPC} from '@tauri-apps/api/mocks';
-import App from '/src/App.tsx';
-const NativeDate=Date, fixedNow=new NativeDate(2026,9,17,12).getTime();
-window.Date=class extends NativeDate {
-  constructor(...args){super(...(args.length?args:[fixedNow]));}
-  static now(){return fixedNow;}
-};
-const now=new Date(), y=now.getFullYear(), m=now.getMonth();
-const day=n=>new Date(y,m,n).getTime();
-const current=now.getDate();
-const older=Math.max(1,current-10), oldest=Math.max(1,current-11);
-const days=[day(oldest-1),day(oldest),day(older),day(current)];
-let failCalendar=false;
-let connectionMode='online',copyFails=false,copied='';
+import {AgentAccess} from '/src/AgentAccess.tsx';
+import '/src/App.css';
+let connectionMode=new URLSearchParams(location.search).get('state')||'online',copyFails=false,copied='';
 const cli='/Applications/loppi.app/Contents/MacOS/loppi';
-const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-const state={revision:1,enabled_intent:true,paused_intent:true,storage_paused:false,microphone_enabled:true,system_enabled:true,capture_state:'paused',microphone_phase:'idle',system_phase:'idle',microphone_recording:false,system_recording:false};
-if(!window.isTauri)window.isTauri=true;
+const isWindows=new URLSearchParams(location.search).get('platform')==='windows';
+const source=isWindows?'D:\\用户资料 with spaces\\skills\\loppi':'/Users/example/Library/Application Support/loppi/skills/loppi';
+const prompt=`请将下列本机文件夹中的 loppi Skill 复制并安装到当前工作区适用的技能目录，然后读取 SKILL.md，按其中指引运行 CLI 的 readme 和 --help 验证接入。保留已有的用户自定义内容。\n\nSkill 文件夹：\n${source}`;
+window.isTauri=true;
 mockIPC(async(command,args)=>{
-  if(command==='agent_access_info') {
-    if(connectionMode==='error') throw Error('offline fixture');
-    return {cli_path:cli,cli_available:connectionMode!=='missing',codex_config:`[mcp_servers.loppi]\ncommand = "${cli}"\nargs = ["mcp", "serve"]`,mcp_config:{mcpServers:{loppi:{command:cli,args:['mcp','serve']}}},skill_command:`'${cli}' integrations install-skill --destination '/Users/example/.agents/skills/loppi-context'`,example_command:`'${cli}' context list --date today`,status:{ok:connectionMode!=='incompatible',data:{online:connectionMode==='online'},error:connectionMode==='incompatible'?{code:'core_incompatible'}:undefined}};
-  }
-  if(command==='copy_agent_text') {if(copyFails) throw Error('clipboard fixture');copied=args.text;return null;}
-  if(command==='onboarding_status') return {completed:true};
-  if(command==='entry_snapshot') return {sequence:1,state,error:null,mode:'top',appearance:'sleeping',detail:null,control:'resume',notice:null};
-  if(command==='privacy_status') return {microphone:1,screen_and_system_audio:1,tap_required:false,tap_ready:true};
-  if(command==='login_item_status') return 1;
-  if(command!=='core_request') return null;
-  const r=args.request;
-  if(r.type==='calendar_adjacent') return {type:r.type,newer_ms:days.find(d=>d>=r.to_ms)??null,older_ms:days.findLast(d=>d<r.from_ms)??null};
-  if(r.type==='calendar_days') {await wait(80);if(failCalendar){failCalendar=false;throw Error('simulated calendar failure')}return {type:r.type,days};}
-  if(r.type==='timeline') {
-    await wait(r.from_ms===day(older)?700:150);
-    const d=new Date(r.from_ms).getDate();
-    return {type:'timeline',gaps:[],items:[{id:`fixture-${d}`,manual_range_id:null,title:`日期 ${d} 的记录`,summary:'测试记录，用来核对日期与内容是否一致。',started_ms:r.from_ms+3600000,ended_ms:r.from_ms+7200000,sources:'microphone',revision:1,processing_state:'transcribed',recording_sources:[],preview:null,coarse_segments:[],precise_segments:[]}]};
-  }
-  if(r.type==='moments') return {type:r.type,moments:[]};
-  if(r.type==='cloud_status') return {type:r.type,queues:[]};
-  if(r.type==='people') return {type:r.type,people:[]};
-  if(r.type==='models') return {type:r.type,state:{phase:'ready',speaker_phase:'ready',progress_percent:100}};
-  return {type:r.type,state,items:[],tasks:[]};
+ if(command==='agent_access_info'){
+  if(connectionMode==='error')throw 'Official SKILL.md is not a regular file';
+  return {cli_path:cli,cli_available:connectionMode!=='missing',codex_config:`[mcp_servers.loppi]\ncommand = "${cli}"\nargs = ["mcp", "serve"]`,mcp_config:{mcpServers:{loppi:{command:cli,args:['mcp','serve']}}},skill_prompt:prompt,status:{ok:connectionMode!=='incompatible',data:{online:connectionMode==='online'},error:connectionMode==='incompatible'?{code:'core_incompatible'}:undefined}};
+ }
+ if(command==='copy_agent_text'){if(copyFails)throw Error('fixture');copied=args.text;return;}
+ throw Error(command);
 },{shouldMockEvents:true});
-createRoot(document.getElementById('root')).render(React.createElement(App));
-
-const waitFor=async(fn)=>{for(let i=0;i<100;i++){if(fn())return;await wait(50)}throw Error('UI timeout')};
+createRoot(document.getElementById('root')).render(React.createElement(AgentAccess));
+const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+const waitFor=async fn=>{for(let i=0;i<100;i++){if(fn())return;await wait(30)}throw Error('UI timeout')};
 const button=text=>[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===text);
 const assert=(condition,message)=>{if(!condition)throw Error(message)};
-await waitFor(()=>button('Agent 接入'));button('Agent 接入').click();
-await waitFor(()=>button('复制配置'));
 document.getElementById('run').onclick=async()=>{
-  const output=document.getElementById('result'); output.textContent='检查中…';
-  try {
-    await waitFor(()=>document.querySelector('.agent-online'));
-    button('复制配置').click();await waitFor(()=>document.querySelector('.agent-copy-feedback').textContent==='已复制');
-    assert(copied.includes('mcpServers'),'默认通用配置复制内容错误');
-    document.querySelector('input[value=codex]')?.click();
-    await wait(30);assert(document.querySelector('.agent-code').textContent.includes('[mcp_servers.loppi]'),'Codex配置未切换');
-    const tab=document.querySelector('[role=tab][aria-selected=true]');tab.focus();
-    tab.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
-    assert(document.activeElement?.textContent==='CLI + Skill','方向键焦点错误');
-    document.activeElement.click();
-    await waitFor(()=>button('复制安装命令'));
-    assert(document.activeElement?.textContent==='CLI + Skill','键盘焦点未跟随 tab');
-    button('复制安装命令').click();await wait(50);assert(copied.includes('install-skill'),'Skill命令复制错误');
-    copyFails=true;button('复制安装命令').click();await waitFor(()=>document.querySelector('.agent-copy-feedback').textContent.includes('复制失败'));copyFails=false;
-    for(const mode of ['offline','incompatible','missing','error','online']) {
-      connectionMode=mode;button('刷新').click();await wait(100);
-      const text=document.querySelector('.agent-access').textContent;
-      assert(text.includes({offline:'后台未连接',incompatible:'需要重新打开',missing:'未找到随 App',error:'暂时无法读取',online:'本机可用'}[mode]),'状态显示错误 '+mode);
-    }
-    assert(document.querySelector('.agent-access').scrollWidth<=document.querySelector('.agent-access').clientWidth,'页面横向溢出');
-    assert(!document.querySelector('.agent-access').querySelector('[data-tauri-drag-region] button'),'拖拽区域覆盖操作');
-    button('MCP').click();await wait(30);document.querySelector('input[value=generic]')?.click();
-    output.textContent='PASS · 两种配置 / 键盘切换 / 复制成功与失败 / 五种连接状态';
-  } catch(error){output.textContent='FAIL · '+error.message;throw error;}
+ const output=document.getElementById('result');output.textContent='检查中…';
+ try{
+  await waitFor(()=>button('复制配置'));
+  button('复制配置').click();await waitFor(()=>copied.includes('mcpServers'));
+  document.querySelector('input[value=codex]')?.click();await wait(30);
+  assert(document.querySelector('.agent-code').textContent.includes('[mcp_servers.loppi]'),'MCP配置名不正确');
+  const tab=document.querySelector('[role=tab][aria-selected=true]');tab.focus();tab.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
+  assert(document.activeElement?.textContent==='CLI + Skill','键盘焦点错误');document.activeElement.click();
+  await waitFor(()=>button('复制安装提示词'));
+  button('复制安装提示词').click();await waitFor(()=>copied===prompt);
+  assert(!document.querySelector('details')&&!document.querySelector('footer'),'冗余区域仍存在');
+  copyFails=true;button('复制安装提示词').click();await waitFor(()=>document.querySelector('.agent-copy-feedback').textContent.includes('复制失败'));copyFails=false;
+  for(const mode of ['offline','incompatible','missing','error','online']){
+   connectionMode=mode;button('刷新').click();await wait(90);
+   if(mode==='error')assert(document.querySelector('[role=alert]').textContent.includes('Official SKILL.md is not a regular file'),'未显示实际来源错误');
+   assert(document.querySelector('.agent-access').textContent.includes({offline:'后台未连接',incompatible:'需要重新打开',missing:'未找到随 App',error:'暂时无法读取',online:'本机可用'}[mode]),'状态错误 '+mode);
+  }
+  assert(document.querySelector('.agent-access').scrollWidth<=document.querySelector('.agent-access').clientWidth,'页面横向溢出');
+  assert(!document.querySelector('.agent-access [data-tauri-drag-region] button'),'拖拽区域覆盖按钮');
+  output.textContent='PASS · MCP配置 / 键盘切换 / 安装提示词 / 复制失败 / 五种连接状态 / 无横向溢出';
+ }catch(error){output.textContent='FAIL · '+error.message;throw error;}
 };
-</script>
+</script></html>

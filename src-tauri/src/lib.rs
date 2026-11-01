@@ -105,7 +105,7 @@ async fn agent_access_info() -> Result<serde_json::Value, String> {
             .parent()
             .ok_or("missing app directory")?
             .join(loppi_protocol::platform::executable("loppi"));
-        let mut info = loppi_protocol::agent_assets::info(&cli);
+        let mut info = loppi_protocol::agent_assets::info(&cli)?;
         info["status"] = loppi_protocol::context::execute(loppi_protocol::context::Query::Status(
             loppi_protocol::context::StatusArgs::default(),
         ));

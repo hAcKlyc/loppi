@@ -207,7 +207,7 @@
           codex_config: `[mcp_servers.loppi]\ncommand = ${JSON.stringify(cli)}\nargs = ["mcp", "serve"]`,
           mcp_config: {mcpServers: {loppi: {command: cli, args: ['mcp', 'serve']}}},
           codex_command: `codex mcp add loppi -- '${cli}' mcp serve`,
-          skill_command: `${runCli} integrations install-skill --destination '${isWindows ? 'C:\\Users\\example\\.agents\\skills\\loppi-context' : '/Users/example/.agents/skills/loppi-context'}'`,
+          skill_prompt: "请将下列本机文件夹中的 loppi Skill 复制并安装到当前工作区：/Users/example/Library/Application Support/loppi/skills/loppi",
           example_command: `${runCli} context list --date today`,
           status: {ok: true, data: {online: true}},
         };
