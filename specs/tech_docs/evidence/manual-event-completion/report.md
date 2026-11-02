@@ -21,3 +21,9 @@ Node组件回归另覆盖默认毫秒精度、起止校验、取消与焦点返�
 - 独立requirements/adversarial及最终architecture均PASS；发现并根因修复修订冲突后无法重试的问题，[审查记录](../../../research/2026-11-02-manual-event-completion-review.md)。
 
 未覆盖：真实付费云端语义质量、真实录音与权限、Intel/Windows/最低OS实机、正式签名安装。本次未改变这些能力，无新增mandatory真机门槛。
+
+## 用户界面反馈微调
+
+2026-11-02：移除确认弹窗标题下的解释段落；将关闭开关底色从文字灰改为浅灰 `#DEDFD7`，轨道与白色圆钮保留细描边，边缘与底色/页面对比仍达到3:1。开启颜色保持现有暖红。同步重建设计导出和离线真实组件预览。
+
+更新[confirm.png](confirm.png)、[uncertain.png](uncertain.png)，新增[settings-off.png](settings-off.png)。实际组件浏览器观察通过；typecheck/lint、8项设计资产回归、事件完成交互回归和前端生产构建通过。本小改按前端范围验证；上面的macOS开发包构建身份仍对应首次交付，当前文字与颜色效果以源码和更新后的截图为准。

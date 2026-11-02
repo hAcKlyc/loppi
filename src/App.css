@@ -896,6 +896,18 @@ p {
 .switch.on:after {
 	transform: translateX(calc(var(--space-7) + var(--space-1)));
 }
+.switch:not(.on):before {
+	content: "";
+	position: absolute;
+	inset: var(--space-1);
+	border: var(--stroke-hairline) solid var(--color-switch-off-border);
+	border-radius: inherit;
+}
+.switch:not(.on):after {
+	box-shadow:
+		0 0 0 var(--stroke-hairline) var(--color-switch-off-border),
+		var(--shadow-control);
+}
 .queue-counts {
 	display: flex;
 	align-items: flex-start;

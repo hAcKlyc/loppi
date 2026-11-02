@@ -1695,7 +1695,6 @@ export function DetailDrawer({
 					title="确认事件已结束？"
 					busy={busy}
 					feedback={completionError}
-					description="确认后将按事件范围开始处理。修改时间会重新整理内容，并参考你调整的时间判断边界。"
 					onClose={() => setCompletion(null)}
 				>
 					<div className="field-grid">
