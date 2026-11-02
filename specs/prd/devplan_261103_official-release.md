@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: implemented
 updated: 2026-11-03
 ---
 
@@ -47,10 +47,10 @@ updated: 2026-11-03
 - Batch 4：修复草稿查询并完成同源产物发布
   - [x] 将GitHub发布适配器改为支持草稿的完整分页列表查询，保持精确tag匹配和所有源码/签名/字节验证。
   - [x] 真实适配器边界回归、自验证及fresh三路审查。
-  - [ ] 从727e0ff干净main工作树，以修复后的GitHub客户端调用既有finalize发布同源原产物；不移动已创建tag、不重编译、不重标二进制来源。
-  - [ ] 将发布适配器修复合入main，保障后续新版本自动发行。
-- [ ] 公开完整v0.1.21，核对三平台附件、更新签名、main/tag/source及匿名latest.json。
-- [ ] 保存最终事实并更新文档/台账。
+  - [x] 从727e0ff干净main工作树，以修复后的GitHub客户端调用既有finalize发布同源原产物；不移动已创建tag、不重编译、不重标二进制来源。
+  - [x] 将发布适配器修复随最终记录合入main，保障后续新版本自动发行。
+- [x] 公开完整v0.1.21，核对三平台附件、更新签名、main/tag/source及匿名latest.json。
+- [x] 保存最终事实并更新文档/台账。
 
 ### Review基线
 
@@ -90,3 +90,6 @@ updated: 2026-11-03
 - Batch 4 review契约：repair；base为当前dev `ad0ba8b962e01b1176691665ed76f2f0aa71ab32`，新增生产范围仅`scripts/publish_update.mjs`及对应`scripts/test_release_pipeline.mjs`，附本台账和事实文档/证据。requirements与adversarial先审固定快照，修复后fresh architecture。保证分页完整、精确tag、草稿/公开状态新鲜、权限错误不伪装不存在、原全部发布校验与不可变附件不变；不新增缓存、状态、重试或产品机制。现有三平台二进制727e0ff证据不失效，修复只影响GitHub元数据读取；发布用原干净main根目录及既有finalize，以原source/tag完成，随后仅发布脚本和事实记录合入main。
 
 - 2026-11-03：Batch 4 requirements PASS；adversarial发现整段分页历史经execFileSync默认1MiB缓冲会溢出，属于新增all-pages保证的阻塞。修复为`gh --paginate --jq`在捕获前按精确tag过滤并仅投影原有验证所需字段，不增大缓冲、不缓存、不重试；定向复核PASS。12项发行/真实CLI签名回归、语法/排版、真实草稿读取与实际第二页历史公开Release读取均通过；fresh最终architecture PASS。三平台原产物签名/版本绑定、四组件身份、两DMG实际字节/哈希已重新验证；三个实际包中的24份源码许可/声明逐字节一致。
+
+- 2026-11-03：发布适配器修复提交`98a93d7`，从仍为727e0ff的干净main工作树调用原finalize与修复客户端，复用同一源码的三个原始CI产物继续原草稿。全部13附件上传并校验成功；北京时间06:27:48正式公开v0.1.21并设为Latest，匿名latest.json通过，版本/标签/字节均未替换。随后使用原main源码的`--verify-published`独立只读复核通过。
+- 2026-11-03：仅重跑原Release失败发布job（已成功平台产物保留）；attempt3最终success。它读取已经公开的原版本，重新验证全部附件、源码及匿名更新地址，没有重复发布或覆盖附件。GitHub连接器缺少Actions重跑权限，改用现有已登录维护者账号完成；没有扩大权限或新增凭据。最终记录见`specs/research/2026-11-03-github-release-0.1.21.md`及同目录证据。此后的main提交仅含已审查发布适配器修复与事实收尾，不改变v0.1.21二进制归属。

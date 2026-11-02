@@ -1,0 +1,157 @@
+{
+  "source": "727e0ffe00514a3fd3ce6fefc2dac1cd68db2f4e",
+  "version": "0.1.21",
+  "tag": "v0.1.21",
+  "method": "original clean-source finalize with reviewed draft lookup adapter from dev98a93d7",
+  "published": true,
+  "anonymous_manifest_verified": true,
+  "assets": [
+    {
+      "name": "loppi_0.1.21_macos-arm64.app.tar.gz",
+      "bytes": 178184152,
+      "sha256": "5e29129b2c60b8c2e960087d8bb770ab10123cd4decc8c23858705800abbe3ff"
+    },
+    {
+      "name": "loppi_0.1.21_macos-arm64.app.tar.gz.sig",
+      "bytes": 448,
+      "sha256": "654f945a58d92fbdc0dae6743ca6c890252e7440931176891cd3f5f956cc1bb1"
+    },
+    {
+      "name": "loppi_0.1.21_macos-x86_64.app.tar.gz",
+      "bytes": 180445014,
+      "sha256": "95c85f1bcb5ab13aef071096080b3b4808f3f49ff8932dcd5d40f80e00a690e6"
+    },
+    {
+      "name": "loppi_0.1.21_macos-x86_64.app.tar.gz.sig",
+      "bytes": 448,
+      "sha256": "be4d6693ab94a817a8d3e831ac381a80b89a3159b47bfcb2ea2a260c5900fca2"
+    },
+    {
+      "name": "loppi_0.1.21_x64-setup.exe",
+      "bytes": 389868815,
+      "sha256": "56a31749f45e21ddfcf54e28659a35614ab75df0d88d9b2513e03cc381652bfd"
+    },
+    {
+      "name": "loppi_0.1.21_x64-setup.exe.sig",
+      "bytes": 436,
+      "sha256": "ff9a1ca03e0c844b00c121e6cbbc618dd8d549c0485f20efc73ba921601358ed"
+    },
+    {
+      "name": "loppi_0.1.21_macos-arm64.release-info.json",
+      "bytes": 2993,
+      "sha256": "b3c97c571ddde731407ee25962db2a9ceb87f3ccb49ae4fa3480110c6fb21b58"
+    },
+    {
+      "name": "loppi_0.1.21_macos-arm64.dmg",
+      "bytes": 184116527,
+      "sha256": "7714cc83816d79c0c901513520dac4d0c5cbe7f7efb6462478332331a577e4ae"
+    },
+    {
+      "name": "loppi_0.1.21_macos-x86_64.release-info.json",
+      "bytes": 2976,
+      "sha256": "9479bd9da9892907801bef40a54db78ba37767c62f3cb3bd3ae568b8071cf1ad"
+    },
+    {
+      "name": "loppi_0.1.21_macos-x86_64.dmg",
+      "bytes": 187982771,
+      "sha256": "f796872007647dc8dfe2f3f6c65b0c8f6fc2bbd9f9bca960c611c8817d05aa86"
+    },
+    {
+      "name": "loppi_0.1.21_windows-x64.release-info.json",
+      "bytes": 2370,
+      "sha256": "f89b34b744e9b20788931bb5256782bc8ea6050bc9c02043683797d371b20f34"
+    },
+    {
+      "name": "latest.json",
+      "bytes": 3479,
+      "sha256": "4ea465c41aff72a2d878445a6da1a5a4ee026a88f3f4a65e63c33092368fc063"
+    },
+    {
+      "name": "SHA256SUMS",
+      "bytes": 1205,
+      "sha256": "9f2ae108ce975a4e17ffacbed2e689cdc1863fc28fc04bd1cdddf3537f9910e9"
+    }
+  ],
+  "release_id": 432025669,
+  "release_url": "https://github.com/hAcKlyc/loppi/releases/tag/v0.1.21",
+  "published_at": "2026-11-02T22:27:48Z",
+  "verified_at": "2026-11-02T22:31:41.766701+00:00",
+  "latest": true,
+  "main_verify_run": 41524386296,
+  "main_verify_result": "success (Mac and Windows)",
+  "release_run": 41524386506,
+  "release_attempt": 3,
+  "release_result": "success (all platforms and publish)",
+  "tag_object": "3f2187f09568cb40cdc65a7d348a24785a0ebf52",
+  "tag_commit": "727e0ffe00514a3fd3ce6fefc2dac1cd68db2f4e",
+  "updater_key_rotated": false,
+  "windows_authenticode": "unsigned",
+  "acceptance": "User confirmed Windows final install, recording and upgrade acceptance: 已验收通过，按三平台正式发行. Not represented as Agent-performed physical-device testing.",
+  "source_license_audits": [
+    {
+      "platform": "macos-arm64",
+      "passed": true,
+      "files": 24,
+      "source": "727e0ffe00514a3fd3ce6fefc2dac1cd68db2f4e",
+      "artifact": "loppi_0.1.21_macos-arm64.app.tar.gz"
+    },
+    {
+      "platform": "macos-x86_64",
+      "passed": true,
+      "files": 24,
+      "source": "727e0ffe00514a3fd3ce6fefc2dac1cd68db2f4e",
+      "artifact": "loppi_0.1.21_macos-x86_64.app.tar.gz"
+    },
+    {
+      "platform": "windows-x64",
+      "passed": true,
+      "files": 24,
+      "source": "727e0ffe00514a3fd3ce6fefc2dac1cd68db2f4e",
+      "artifact": "loppi_0.1.21_x64-setup.exe"
+    }
+  ],
+  "binary_artifacts": [
+    {
+      "platform": "macos-arm64",
+      "source": "727e0ffe00514a3fd3ce6fefc2dac1cd68db2f4e",
+      "version": "0.1.21",
+      "updater_signature": "verified",
+      "component_identity": "four components agree",
+      "artifact": "loppi_0.1.21_macos-arm64.app.tar.gz",
+      "bytes": 178184152,
+      "sha256": "5e29129b2c60b8c2e960087d8bb770ab10123cd4decc8c23858705800abbe3ff",
+      "dmg": {
+        "name": "loppi_0.1.21_macos-arm64.dmg",
+        "bytes": 184116527,
+        "sha256": "7714cc83816d79c0c901513520dac4d0c5cbe7f7efb6462478332331a577e4ae"
+      }
+    },
+    {
+      "platform": "macos-x86_64",
+      "source": "727e0ffe00514a3fd3ce6fefc2dac1cd68db2f4e",
+      "version": "0.1.21",
+      "updater_signature": "verified",
+      "component_identity": "four components agree",
+      "artifact": "loppi_0.1.21_macos-x86_64.app.tar.gz",
+      "bytes": 180445014,
+      "sha256": "95c85f1bcb5ab13aef071096080b3b4808f3f49ff8932dcd5d40f80e00a690e6",
+      "dmg": {
+        "name": "loppi_0.1.21_macos-x86_64.dmg",
+        "bytes": 187982771,
+        "sha256": "f796872007647dc8dfe2f3f6c65b0c8f6fc2bbd9f9bca960c611c8817d05aa86"
+      }
+    },
+    {
+      "platform": "windows-x64",
+      "source": "727e0ffe00514a3fd3ce6fefc2dac1cd68db2f4e",
+      "version": "0.1.21",
+      "updater_signature": "verified",
+      "component_identity": "four components agree",
+      "artifact": "loppi_0.1.21_x64-setup.exe",
+      "bytes": 389868815,
+      "sha256": "56a31749f45e21ddfcf54e28659a35614ab75df0d88d9b2513e03cc381652bfd",
+      "authenticode": "unsigned"
+    }
+  ],
+  "publication_recovery": "Original source-727e0ff CI built all three platforms. Empty same-source draft lookup failed via published-only endpoint. Reviewed adapter98a93d7 resumed the existing finalize from a clean727e0ff main checkout; no binary rebuild, tag move or source relabel. Original CI publish-only attempt3 then verified all immutable public assets and anonymous updater successfully."
+}
