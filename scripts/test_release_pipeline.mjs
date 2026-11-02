@@ -125,6 +125,53 @@ test('main assembles every platform before tagging, then publishes and verifies 
  }finally{f.dispose();}
 });
 
+test('GitHub adapter finds drafts across pages and refreshes their published state',()=>{
+ const tag='v0.1.21',state={id:7,tag_name:tag,draft:true,assets:[]};let reads=0;
+ const client=githubClient('.',(_program,args)=>{
+  if(args[0]==='api'){
+   assert.deepEqual(args.slice(0,4),['api','--paginate','repos/hAcKlyc/loppi/releases?per_page=100','--jq']);
+   assert(args[4].includes(`select(.tag_name == ${JSON.stringify(tag)})`) || args[4].includes('select(.tag_name == "v0.0.0")'));
+   reads++;
+   return args[4].includes(JSON.stringify(tag)) ? JSON.stringify(state) : '';
+  }
+  assert.deepEqual(args,['release','edit',tag,'--repo','hAcKlyc/loppi','--draft=false','--latest']);
+  state.draft=false;return '';
+ });
+ assert.equal(client.maybeRelease('v0.0.0'),null);
+ assert.throws(()=>client.release('v0.0.0'),/Release not found/);
+ assert.equal(client.release(tag).id,7);
+ assert.equal(client.release(tag).draft,true);
+ state.assets.push({name:'latest.json',state:'uploaded'});
+ assert.equal(client.release(tag).assets.length,1,'upload readback must not reuse stale metadata');
+ client.publish(tag);
+ assert.equal(client.release(tag).draft,false,'publication readback must not reuse a cached draft');
+ assert.equal(reads,6);
+});
+
+test('GitHub lookup filters unrelated release bodies before captured output',()=>{
+ const tag='v0.1.21',wanted={id:7,tag_name:tag,draft:true,prerelease:false,target_commitish:'a'.repeat(40),assets:[]};
+ const history=[...Array.from({length:100},(_,index)=>({tag_name:`v0.0.${index}`,body:'x'.repeat(12000)})),wanted];
+ assert(Buffer.byteLength(JSON.stringify(history))>1024*1024);
+ const client=githubClient('.',(_program,args,options)=>{
+  assert(args.includes('--paginate'));assert(!args.includes('--slurp'));
+  const query=args[args.indexOf('--jq')+1];
+  assert.equal(query,`.[] | select(.tag_name == ${JSON.stringify(tag)}) | {id,tag_name,target_commitish,draft,prerelease,assets:[.assets[] | {name,size,state,digest}]}`);
+  // Stand in for gh's per-page projection, then exercise the real capture limit.
+  const selected=history.find(release=>release.tag_name===tag);
+  return execFileSync(process.execPath,['-e','process.stdout.write(process.argv[1])',JSON.stringify(selected)],options);
+ });
+ assert.deepEqual(client.release(tag),wanted);
+});
+
+test('GitHub release lookup propagates permission and server failures',()=>{
+ for(const code of [403,500]){
+  const failure=Object.assign(new Error(`HTTP ${code}`),{stderr:`gh: denied (HTTP ${code})`});
+  const client=githubClient('.',()=>{throw failure;});
+  assert.throws(()=>client.maybeRelease('v0.1.21'),error=>error===failure);
+  assert.throws(()=>client.release('v0.1.21'),error=>error===failure);
+ }
+});
+
 test('GitHub adapter dereferences actual annotated tags and gates on the exact main Verify result',async()=>{
  const source='a'.repeat(40),calls=[];let failed=false;
  const temporary=mkdtempSync(join(tmpdir(),'loppi-watch-output-')),output=join(temporary,'watch.log');

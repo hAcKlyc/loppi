@@ -1,0 +1,129 @@
+{
+  "passed": true,
+  "source": "727e0ffe00514a3fd3ce6fefc2dac1cd68db2f4e",
+  "installer": "loppi_0.1.21_x64-setup.exe",
+  "verified_source_license_files": 24,
+  "scope": "Exact tracked licenses/ tree and THIRD_PARTY_NOTICES.md in the actual installer; separately generated Microsoft/OCR notices are not included in this count.",
+  "files": [
+    {
+      "path": "THIRD_PARTY_NOTICES.md",
+      "bytes": 3961,
+      "sha256": "d43dd37a0ae7bfe7f78b6f942099d571790f9f813b3ae81b2678eb6334097ed7"
+    },
+    {
+      "path": "licenses/MPL-2.0.txt",
+      "bytes": 16726,
+      "sha256": "fab3dd6bdab226f1c08630b1dd917e11fcb4ec5e1e020e2c16f83a0a13863e85"
+    },
+    {
+      "path": "licenses/README.md",
+      "bytes": 1477,
+      "sha256": "d26d482afa4e0b3d67df66637f1ab7ebe65a14aa4a0ad6a04340457f8262363d"
+    },
+    {
+      "path": "licenses/additional-sources.json",
+      "bytes": 270,
+      "sha256": "83cc04c3196cd41b9423fbb20e0cd5a49b119202b1825efca3b1741038557e02"
+    },
+    {
+      "path": "licenses/component-inventory.json",
+      "bytes": 432455,
+      "sha256": "83c9d5fd1c78e386dec64f854cd862fffc8e0280a588180f4bd3cd416fb2763c"
+    },
+    {
+      "path": "licenses/frontend-third-party.txt",
+      "bytes": 54155,
+      "sha256": "34bf6110f7c9118914e39e75a874d606c4e867ef0db74f8473933e90cadc8d7c"
+    },
+    {
+      "path": "licenses/kaldi-decoder.txt",
+      "bytes": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "path": "licenses/kaldi-native-fbank.txt",
+      "bytes": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "path": "licenses/kaldifst.txt",
+      "bytes": 11728,
+      "sha256": "a682d6efd1ee5dee08a8e405c233c2c198ea70ae0718129daa83ab58cfe31c5d"
+    },
+    {
+      "path": "licenses/kissfft-bsd.txt",
+      "bytes": 1830,
+      "sha256": "4d6bcab46f27d6d0c878e8305d4bdcfe040d52bf6656b9771f04c9fb9902c0ed"
+    },
+    {
+      "path": "licenses/kissfft.txt",
+      "bytes": 246,
+      "sha256": "a2840585f8411be8e6826a31ef15ae65c950bd74a2437a73b013398a934ad0c6"
+    },
+    {
+      "path": "licenses/loppi-NOTICE.txt",
+      "bytes": 720,
+      "sha256": "9bf37e17e6108970e5939ef59d85ad0f83eda0cc9143440572805bc4d2637e7e"
+    },
+    {
+      "path": "licenses/loppi-apache-2.0.txt",
+      "bytes": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "path": "licenses/onnxruntime-third-party.txt",
+      "bytes": 325054,
+      "sha256": "0e07b95f3a8d6230037707c5c4a2b554d12c4cb67369669ac255635528ffcee2"
+    },
+    {
+      "path": "licenses/onnxruntime.txt",
+      "bytes": 1073,
+      "sha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c"
+    },
+    {
+      "path": "licenses/portaudio.txt",
+      "bytes": 3524,
+      "sha256": "ec52a1952d701f94e5135719a47376da4ee0b4a0201f1cafb49f61db6480ac3d"
+    },
+    {
+      "path": "licenses/rust-third-party.txt",
+      "bytes": 1119087,
+      "sha256": "512a3091600826a0efd747616ae7db371d5edb6109eb4c032e8d66de0e01776d"
+    },
+    {
+      "path": "licenses/rust-upstream-notices.txt",
+      "bytes": 102112,
+      "sha256": "a670fbdbf6e209199c417b6483c2d8ca7676c6d2b19a5bc9c3df3041d4dfab7e"
+    },
+    {
+      "path": "licenses/sentencepiece.txt",
+      "bytes": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "path": "licenses/sherpa-onnx.txt",
+      "bytes": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "path": "licenses/sources.json",
+      "bytes": 2884,
+      "sha256": "65076e3534115350df1a1843f102dea811e26f4eefa01fb3958355bec4be6987"
+    },
+    {
+      "path": "licenses/tessdata-fast.txt",
+      "bytes": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "path": "licenses/updater-third-party.txt",
+      "bytes": 168637,
+      "sha256": "860c2f76665f899bac1e9a9f20ad0685a8e671396f07565220605bdbf6619685"
+    },
+    {
+      "path": "licenses/utf8proc.txt",
+      "bytes": 5125,
+      "sha256": "3b510150d34f248a221bb88e1d811238d6c6c18b51231822c42974c39bb07256"
+    }
+  ]
+}
