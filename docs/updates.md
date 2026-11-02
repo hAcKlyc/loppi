@@ -30,6 +30,8 @@ TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
 
 Mac 会完成最终 App 的签名、公证和票据装订，再制作 DMG 和 `.app.tar.gz` 更新归档；DMG 继续供首次安装使用。Windows 复用最终 NSIS `-setup.exe`，Tauri 更新签名不改变其 Authenticode 状态。各目录位于 `build/releases/<version>/<platform>/`，含更新资源、`.sig`、`updater.json`、构建报告及校验和。
 
+Apple票据校验必须成功。对实际观察到的CloudKit连接丢失（`stapler validate`退出68且包含`NSURLErrorDomain Code=-1005`），现有Mac打包步骤最多尝试3次，间隔2秒；其它校验错误立即失败，网络重试耗尽也阻止打包。不会因网络失败跳过票据或签名校验。
+
 跨平台构建必须来自同一提交和版本。将三个平台完整目录归集到一台机器，先准备面向用户的更新说明文件，再生成清单：
 
 ```sh

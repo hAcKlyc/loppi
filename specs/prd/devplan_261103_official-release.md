@@ -39,6 +39,10 @@ updated: 2026-11-03
   - [x] 将10个既有运行库文件锁定为实际VS2026目录与字节/哈希，保留全部验证。
   - [x] 对照来源证据、自验证、完整最终集成三路审查。
   - [ ] 提交并合入main，取得最终原生产物证据。
+- Batch 3 / Final Integration：已验证票据的Apple网络读取失败
+  - [x] 仅在现有Mac打包owner内，对`stapler validate`实际观察到的exit68且NSURLErrorDomain -1005连接丢失做最多3次尝试；其它错误立即失败，耗尽仍失败；成功校验、签名、公证门禁完整保留。
+  - [x] 通过真实zsh打包入口及隔离外部命令验证App/DMG暂态恢复、永久错误拒绝与有限次数；完成最终集成三路审查。
+  - [ ] 提交并合入main，重建最终同源三平台。
 - [ ] 跟踪三平台构建；按实际失败修复本次负责的阻塞。
 - [ ] 公开完整v0.1.21，核对三平台附件、更新签名、main/tag/source及匿名latest.json。
 - [ ] 保存最终事实并更新文档/台账。
@@ -49,6 +53,7 @@ updated: 2026-11-03
 - 预计范围：scripts/prepare_windows_ocr.mjs、scripts/build_windows.mjs、.github/workflows/release.yml、CHANGELOG.md、docs/updates.md、docs/development.md及本台账；资源锁定仅在实际证据支持时另行修复。
 - mode repair；三路required。只审本范围与本次发行阻塞；现有依赖公告和无关业务问题不扩大。
 - Batch 2 base：`851601c711cef3013f6d554761eceab7eaad9134`；新增范围限`config/windows-assets.json`、实际运行库元数据证据及开发文档的版本值。Final Review从最初base `f424813a18ee0419790c83a2099cbc31fdb9972f`覆盖两批组合态，不回卷既有业务代码。
+- Batch 3 base：`300b9f4a149ef9d3d85aef32475f1c2a1570e641`；新增范围仅`scripts/package_macos.sh`、对应外部命令边界回归、发行文档及本次证据。允许在既有构建owner对幂等外部只读校验做有界网络重试，不引入产品运行时retry/owner/store；这是已授权自动发行正常失败恢复的局部实现，结束标准不变。最终review从最初base覆盖全部构建配置组合态。
 
 ### 待用户决策
 
@@ -66,3 +71,8 @@ updated: 2026-11-03
 - 2026-11-03：Release 41507988478实际Windows日志证明旧锁定目录14.50.35710不存在，构建已在编译前安全拒绝；没有跳过检查。该runner为官方image `win25-vs2026/20261030.294`，实际编译器/重分发目录为14.51.36231，10个CRT文件版本均为14.51.36247.0。只选择这组与实际编译器匹配的微软文件，依据已获取的每文件字节数和SHA-256人工更新锁定值；旧14.29/14.44数据仅为枚举结果，不作为fallback。
 - 2026-11-03：原始日志保存在忽略构建目录，公开可审计证据位于`specs/research/evidence/2026-11-03-official-release/windows-runtime-inputs.json`。最终实际打包仍须重新按锁定值验证并运行PE依赖闭包和四组件身份检查；当前元数据不替代包验收。
 - 2026-11-03：最终组合态的脚本语法、actionlint、版本/更新说明、排版及9项发行/实际CLI签名回归通过；逐一核对10项锁定值与原始runner结果一致。全新requirements/adversarial均PASS，fresh最终architecture PASS。最终Windows安装包还须只读解包，对照包内`resources/windows-assets.json`及实际10个CRT文件字节；PE闭包检查本身不证明运行库哈希，未虚称已经完成。
+- 2026-11-03：Batch 2提交`9215adc`并合入main `300b9f4a149ef9d3d85aef32475f1c2a1570e641`，版本仍0.1.21。精确main Verify 41512164321的Mac/Windows均success；同树重复dev验证41512121294取消，未减少正式main门禁。
+- 2026-11-03：Release 41512164218的ARM与Windows构建成功；实际Windows EXE为389,852,475字节，SHA-256 `6fc902819920e5a5290b7866eb2ef8e19718a2eaba02ea0c209c2c58e044997a`。只读解包后的10个实际CRT文件、包内清单与源锁定值全部一致，四组件0.1.21/source/dirty=false一致；实际EXE的更新签名、公钥及版本绑定复核通过。证据见同目录`windows-installer-audit-300b9f4.json`，属于300b9f4候选，不冒称后续新源码产物。Windows Authenticode仍unsigned。
+- 2026-11-03：Intel首轮已完成编译、模型检查、签名，Apple公证Accepted（submission `38d6b231-3fbb-4a90-b8f2-c96d6b748b0f`），staple成功；随后独立validate遇Apple CloudKit连接丢失，exit68，属于网络失败而非公证拒绝。按既有失败job重跑流程启动attempt2，保留已成功ARM/Windows产物；源码、版本与私钥不变，未关闭任何签名校验。
+- 2026-11-03：attempt2的Intel App公证`5def9cbb-f472-4372-b596-a62f869631a8`与DMG公证`2f0ef664-fba5-4f84-8a48-6b5f7bc4fb84`均Accepted，staple均成功；App独立validate通过，DMG独立validate再次因同一CloudKit -1005连接丢失返回68。两次不是证书/公证拒绝；为避免再次仅重编译整包，按真实失败在现有打包步骤补有限网络重试，校验本身仍须返回0。源码变化后将重建同一新提交的三平台，不混入300b9f4产物，不创建同版本混源发行。
+- 2026-11-03：Batch 3真实zsh入口的6种隔离外部命令回归全部通过；与原发行/真实CLI临时签名回归组合15项通过，zsh语法、actionlint、版本/说明及排版检查通过。全新requirements/adversarial均PASS（后者独立复跑6种情况），fresh最终architecture PASS。未新增产品owner/store/队列/协议，有限只读网络重试留在既有Mac构建owner；原生产物与匿名发布证据仍待新提交的Actions，不将模拟命令当作真实Apple验收。

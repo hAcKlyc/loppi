@@ -29,6 +29,26 @@ loppi_work=$(mktemp -d "${TMPDIR:-/tmp/}loppi-dmg.XXXXXX")
 loppi_mount="$loppi_work/mounted"
 trap 'hdiutil detach "$loppi_mount" >/dev/null 2>&1 || true; rm -rf "$loppi_work"' EXIT
 
+# Apple can drop a CloudKit connection even after accepting and stapling a ticket.
+# Keep validation mandatory and retry only the observed connection-lost failure.
+loppi_validate_ticket() {
+  local loppi_ticket_target="$1" loppi_ticket_output loppi_ticket_result loppi_ticket_attempt
+  for loppi_ticket_attempt in 1 2 3; do
+    if loppi_ticket_output=$(xcrun stapler validate "$loppi_ticket_target" 2>&1); then
+      print -r -- "$loppi_ticket_output"
+      return 0
+    else
+      loppi_ticket_result=$?
+    fi
+    print -r -u2 -- "$loppi_ticket_output"
+    if (( loppi_ticket_result != 68 || loppi_ticket_attempt == 3 )) || [[ "$loppi_ticket_output" != *'NSURLErrorDomain Code=-1005'* ]]; then
+      return "$loppi_ticket_result"
+    fi
+    print -u2 "Apple ticket lookup connection lost; retrying validation ($loppi_ticket_attempt/3)."
+    sleep 2
+  done
+}
+
 if (( ! loppi_dev )); then
   loppi_notary_args=()
   if [[ -n "${APPLE_NOTARY_PROFILE:-}" ]]; then
@@ -47,7 +67,7 @@ if (( ! loppi_dev )); then
   ditto -c -k --keepParent "$loppi_app" "$loppi_work/notarization.zip"
   xcrun notarytool submit "$loppi_work/notarization.zip" "${loppi_notary_args[@]}" --wait
   xcrun stapler staple "$loppi_app"
-  xcrun stapler validate "$loppi_app"
+  loppi_validate_ticket "$loppi_app"
   codesign --verify --deep --strict "$loppi_app"
 fi
 
@@ -69,7 +89,7 @@ hdiutil detach -quiet "$loppi_mount"
 if (( ! loppi_dev )); then
 xcrun notarytool submit "$loppi_dmg" "${loppi_notary_args[@]}" --wait
 xcrun stapler staple "$loppi_dmg"
-xcrun stapler validate "$loppi_dmg"
+loppi_validate_ticket "$loppi_dmg"
 spctl -a -vv -t open --context context:primary-signature "$loppi_dmg"
 fi
 hdiutil attach -quiet -nobrowse -readonly -mountpoint "$loppi_mount" "$loppi_dmg"
