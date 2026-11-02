@@ -24,6 +24,12 @@ export async function main(argv=process.argv.slice(2)){
   const npmLock=JSON.parse(readFileSync('package-lock.json'));
   const cargoVersion=readFileSync('Cargo.toml','utf8').match(/\[workspace.package\]\s+version = "([^"]+)"/)?.[1];
   if([tauri.version,npmLock.version,npmLock.packages[''].version,cargoVersion].some(v=>v!==version))throw new Error('Project versions disagree');
+  // Reject unavailable or changed pinned inputs before downloading/building OCR and Rust.
+  const vswhere='C:/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe';
+  const visualStudio=output(vswhere,['-latest','-products','*','-requires','Microsoft.VisualStudio.Component.VC.Tools.x86.x64','-property','installationPath']);
+  const redist=join(visualStudio,'VC/Redist/MSVC',spec.vc_runtime.version_directory);
+  const crt=files(join(redist,'x64')).filter(path=>/Microsoft\.VC[0-9]+\.CRT[\\/]/i.test(path));
+  const runtime=spec.vc_runtime.files.map(item=>{const source=crt.find(path=>path.endsWith(item.name));if(!source||statSync(source).size!==item.bytes||hash(source)!==item.sha256)throw new Error(`missing or changed pinned Microsoft redistributable ${item.name}`);return {source,name:item.name};});
   const cache=resolve('build/cache/windows');mkdirSync(cache,{recursive:true});
   const archive=join(cache,'sherpa-onnx-2.0.0.tar.bz2');asset(archive,spec.native);run('tar',['-xjf',archive,'-C',cache]);
   const native=join(cache,spec.native.directory,'lib');
@@ -38,11 +44,7 @@ export async function main(argv=process.argv.slice(2)){
   const stage=resolve('build/windows',`${spec.target}-${epoch}-${process.pid}`);mkdirSync(stage,{recursive:true});
   for(const name of ['loppi-core.exe','loppi-worker.exe','loppi.exe'])cpSync(join('target',spec.target,'release',name),join(stage,name));
   for(const name of readdirSync(native).filter(n=>n.endsWith('.dll')))cpSync(join(native,name),join(stage,name));
-  const vswhere='C:/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe';
-  const visualStudio=output(vswhere,['-latest','-products','*','-requires','Microsoft.VisualStudio.Component.VC.Tools.x86.x64','-property','installationPath']);
-  const redist=join(visualStudio,'VC/Redist/MSVC',spec.vc_runtime.version_directory);
-  const crt=files(join(redist,'x64')).filter(path=>/Microsoft\.VC[0-9]+\.CRT[\\/]/i.test(path));
-  for(const item of spec.vc_runtime.files){const source=crt.find(path=>path.endsWith(item.name));if(!source||statSync(source).size!==item.bytes||hash(source)!==item.sha256)throw new Error(`missing or changed pinned Microsoft redistributable ${item.name}`);cpSync(source,join(stage,item.name));}
+  for(const item of runtime)cpSync(item.source,join(stage,item.name));
   const license=join(cache,'Visual-C-V14-License.docx');asset(license,spec.vc_runtime.license);
   mkdirSync(join(stage,'resources/licenses'),{recursive:true});cpSync(license,join(stage,'resources/licenses/Microsoft-VC-runtime.docx'));
   writeFileSync(join(stage,'resources/licenses/Microsoft-VC-runtime-provenance.json'),JSON.stringify(spec.vc_runtime,null,2)+'\n');

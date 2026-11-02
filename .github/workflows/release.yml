@@ -75,6 +75,31 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Prepare Rust target
         run: rustup target add ${{ matrix.target }}
+      - name: Report Microsoft redistributable input identities
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $spec = Get-Content config/windows-assets.json -Raw | ConvertFrom-Json
+          $root = Join-Path $env:VCINSTALLDIR 'Redist/MSVC'
+          $inputs = @(Get-ChildItem $root -Directory | ForEach-Object {
+            $versionDirectory = $_.Name
+            $x64 = Join-Path $_.FullName 'x64'
+            if (Test-Path $x64) {
+              Get-ChildItem $x64 -Recurse -File | Where-Object {
+                $_.DirectoryName -match 'Microsoft\.VC[0-9]+\.CRT$' -and $_.Name -in $spec.vc_runtime.files.name
+              } | ForEach-Object {
+                [ordered]@{
+                  version_directory = $versionDirectory
+                  name = $_.Name
+                  file_version = $_.VersionInfo.FileVersion
+                  bytes = $_.Length
+                  sha256 = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+                }
+              }
+            }
+          })
+          ConvertTo-Json -InputObject $inputs -Depth 4
       - name: Import Developer ID certificate into temporary keychain
         if: runner.os == 'macOS'
         uses: apple-actions/import-codesign-certs@288b8ec97b82c66b6f2a6baaf7acc8dfbcbe331c # v7
@@ -106,6 +131,7 @@ jobs:
       - name: Build Windows release and sign updater
         if: runner.os == 'Windows'
         env:
+          CMAKE_GENERATOR: Visual Studio 18 2026
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         shell: pwsh
