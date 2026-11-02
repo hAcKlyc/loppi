@@ -68,6 +68,11 @@ fn publish_at(destination: &Path, text: &str) -> Result<(), String> {
             .ok_or("Skill directory needs a parent")?,
     )?;
     directory(destination)?;
+    // Serialize the check and replacement across processes. On Windows, a
+    // concurrent replacement can leave the pathname pending deletion even when
+    // every individual rename is atomic. Keep the shared lock file in place.
+    let publication = crate::platform::open_directory(destination).map_err(|e| e.to_string())?;
+    fs2::FileExt::lock_exclusive(&publication).map_err(|e| e.to_string())?;
     let target = destination.join("SKILL.md");
     match fs::symlink_metadata(&target) {
         Ok(meta) if !meta.is_file() || meta.file_type().is_symlink() => {
@@ -215,7 +220,10 @@ mod tests {
             modified
         );
         assert_eq!(fs::read_to_string(path.join("SKILL.md")).unwrap(), text);
-        assert_eq!(fs::read_dir(&path).unwrap().count(), 1);
+        assert_eq!(
+            fs::read_dir(&path).unwrap().count(),
+            1 + usize::from(cfg!(windows))
+        );
         assert!(text.contains(&format!("version: \"{SKILL_VERSION}\"")));
         assert!(text.contains("主动从"));
         assert!(text.contains("重新读取"));
@@ -237,16 +245,28 @@ mod tests {
     fn concurrent_publication_exposes_only_complete_files() {
         let temp = Temporary::new();
         let path = temp.0.join("skills/loppi");
-        let text = "complete skill\n".repeat(1000);
-        std::thread::scope(|scope| {
-            for _ in 0..8 {
-                scope.spawn(|| {
-                    publish_at(&path, &text).unwrap();
-                });
-            }
-        });
-        assert_eq!(fs::read_to_string(path.join("SKILL.md")).unwrap(), text);
-        assert_eq!(fs::read_dir(&path).unwrap().count(), 1);
+        publish_at(&path, "initial skill").unwrap();
+        for round in 0..4 {
+            let versions: Vec<_> = (0..8)
+                .map(|writer| format!("complete skill {round}/{writer}\n").repeat(1000))
+                .collect();
+            let start = std::sync::Barrier::new(versions.len());
+            std::thread::scope(|scope| {
+                for text in &versions {
+                    let (path, start) = (&path, &start);
+                    scope.spawn(move || {
+                        start.wait();
+                        publish_at(path, text).unwrap();
+                    });
+                }
+            });
+            let published = fs::read_to_string(path.join("SKILL.md")).unwrap();
+            assert!(versions.contains(&published));
+            assert_eq!(
+                fs::read_dir(&path).unwrap().count(),
+                1 + usize::from(cfg!(windows))
+            );
+        }
     }
     #[test]
     fn invalid_target_is_reported_without_partial_file() {
@@ -254,7 +274,10 @@ mod tests {
         let path = temp.0.join("skills/loppi");
         fs::create_dir_all(path.join("SKILL.md")).unwrap();
         assert!(publish_at(&path, "new").is_err());
-        assert_eq!(fs::read_dir(&path).unwrap().count(), 1);
+        assert_eq!(
+            fs::read_dir(&path).unwrap().count(),
+            1 + usize::from(cfg!(windows))
+        );
     }
     #[cfg(unix)]
     #[test]
