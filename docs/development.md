@@ -9,7 +9,7 @@
 | Node.js | 24，`.nvmrc` 提供主版本；使用 `npm ci` 安装锁定依赖 |
 | Rust | stable，支持 Edition 2024；项目尚未声明独立验证的最低 Rust 版本 |
 | macOS 构建 | Xcode 26.0.1+ 与 macOS 26 SDK，选择相应开发者目录；最低部署版本仍为 macOS 13 |
-| Windows 构建 | Windows 11 x64、Rust MSVC、VS C++ 工具、Windows SDK、CMake/Ninja、Python、WebView2；发行使用锁定 VC runtime 14.50.35710 |
+| Windows 构建 | Windows 11 x64、Rust MSVC、VS C++ 工具、Windows SDK、CMake、Python、WebView2；OCR使用Visual Studio生成器，CI通过CMAKE_GENERATOR选择VS2026；发行使用锁定 VC runtime 14.50.35710 |
 
 先执行 `npm ci`、`npm run typecheck`、`npm run lint`。本机单架构候选在 Apple Silicon 上使用 `./build_dev.sh --target aarch64-apple-darwin`，Intel 使用 `--target x86_64-apple-darwin`；Windows 使用 `./build_dev.ps1`。开发候选无需发行证书，允许未提交源码，仍会完整打包离线资源。首次 Mac 构建约需下载 205 MB 模型和 41 MB 原生库，Windows 另有 OCR 与运行库。
 

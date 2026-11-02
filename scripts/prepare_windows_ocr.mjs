@@ -11,7 +11,8 @@ const env={...process.env,_CL_:'/MP2'};
 function run(p,args){const result=spawnSync(p,args,{stdio:'inherit',env,windowsHide:true});if(result.error)throw result.error;if(result.status!==0)throw new Error(`${p} failed (${result.status})`);}
 mkdirSync(base,{recursive:true});mkdirSync(join(runtime,'licenses'),{recursive:true});
 for(const item of lock.sources){const archive=join(base,item.archive);if(!existsSync(archive)||statSync(archive).size!==item.bytes||hash(archive)!==item.sha256)run('curl.exe',['--fail','--location','--silent','--show-error','--retry','3',item.url,'--output',archive]);if(statSync(archive).size!==item.bytes||hash(archive)!==item.sha256)throw new Error(`OCR source checksum mismatch: ${item.name}`);run('tar',['-xzf',archive,'-C',base]);}
-const common=['-G','Visual Studio 17 2022','-A','x64',`-DCMAKE_INSTALL_PREFIX=${prefix}`,`-DCMAKE_PREFIX_PATH=${prefix}`,'-DCMAKE_POLICY_DEFAULT_CMP0091=NEW','-DCMAKE_POLICY_VERSION_MINIMUM=3.5','-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded','-DBUILD_SHARED_LIBS=OFF','-DSW_BUILD=OFF'];
+// CMake owns generator selection; CI supplies CMAKE_GENERATOR for its VS image.
+const common=['-A','x64',`-DCMAKE_INSTALL_PREFIX=${prefix}`,`-DCMAKE_PREFIX_PATH=${prefix}`,'-DCMAKE_POLICY_DEFAULT_CMP0091=NEW','-DCMAKE_POLICY_VERSION_MINIMUM=3.5','-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded','-DBUILD_SHARED_LIBS=OFF','-DSW_BUILD=OFF'];
 for(const item of lock.sources){
   const options={
     zlib:['-DZLIB_BUILD_EXAMPLES=OFF'],

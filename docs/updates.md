@@ -55,7 +55,7 @@ node scripts/publish_update.mjs /absolute/release-notes.txt \
 
 ### GitHub Secrets
 
-在 `hAcKlyc/loppi` 的 Actions Secrets 中配置以下内容。当前工作仅提供仓库配置，没有上传这些凭据，也没有更改仓库可见性。
+在 `hAcKlyc/loppi` 的 Actions Secrets 中配置以下内容。2026-11-03已按用户授权配置现有更新私钥、Apple Developer ID证书及公证凭据；仓库已公开。更新私钥未旋转，无密码时对应密码Secret可不设置。具体发行结果以Actions和版本记录为准，不从Secrets名称存在推断构建成功。
 
 | 名称 | 内容 |
 | --- | --- |
@@ -71,7 +71,7 @@ P12 导入临时钥匙串，公证私钥只写入 runner 临时目录并在结�
 
 公开更新要求仓库可被匿名访问。私有仓库也能使用 Actions，但当前固定更新地址没有私人访问 token；新版本的正式匿名发行会在私有状态下被阻止，不会由脚本自行公开仓库。GitHub 标准 runner 的可用标签见 [官方说明](https://docs.github.com/en/actions/how-tos/write-workflows/choose-where-workflows-run/choose-the-runner-for-a-job)。
 
-首次启用需要实际验证 runner 的 SDK/锁定资源及签名凭据：Mac 使用 Xcode 26.0.1；Windows 的 VC runtime 按 `config/windows-assets.json` 的版本和精确哈希检查。托管镜像不再提供该锁定版本时必须据实际来源更新并验证资源配置，流程会报错阻止发行，不会自动放宽哈希或混入其它版本。首次真实 Actions 尚未执行，不能把本地离线测试称为远端发行成功。
+首次启用需要实际验证 runner 的 SDK/锁定资源及签名凭据：Mac 使用 Xcode 26.0.1；Windows OCR通过CMake标准`CMAKE_GENERATOR`选择生成器，发行runner显式使用Visual Studio 18 2026；VC runtime按 `config/windows-assets.json` 的版本和精确哈希在耗时构建前检查。工作流输出微软运行库的实际版本、字节数与摘要供来源核对。托管镜像不再提供该锁定版本时必须据实际来源更新并验证资源配置，流程会报错阻止发行，不会自动放宽哈希或混入其它版本。首次真实Actions执行状态见[本次发行台账](../specs/prd/devplan_261103_official-release.md)，不能把本地离线测试称为远端发行成功。
 
 ### 附件与重试
 
