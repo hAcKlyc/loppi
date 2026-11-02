@@ -1,0 +1,65 @@
+{
+  "passed": true,
+  "source": "300b9f4a149ef9d3d85aef32475f1c2a1570e641",
+  "installer": "loppi_0.1.21_x64-setup.exe",
+  "installer_sha256": "6fc902819920e5a5290b7866eb2ef8e19718a2eaba02ea0c209c2c58e044997a",
+  "version_directory": "14.51.36231",
+  "file_version": "14.51.36247.0",
+  "inventory_entry": "resources/windows-assets.json",
+  "actual_bundled_files": [
+    {
+      "name": "concrt140.dll",
+      "bytes": 374200,
+      "sha256": "54716f0738af891f283d213b5c8d11b25896bb8ee3097d301eae718560cf974e"
+    },
+    {
+      "name": "msvcp140.dll",
+      "bytes": 643512,
+      "sha256": "7c26614e1d733892c2deac7e245ce115504b1d80592dd0a01b08e3e5a55f89ca"
+    },
+    {
+      "name": "msvcp140_1.dll",
+      "bytes": 35768,
+      "sha256": "206c931bf90fdad8816de3b5e2ef80b2bcaa9406c89ecc05fe6fddffe251e982"
+    },
+    {
+      "name": "msvcp140_2.dll",
+      "bytes": 274872,
+      "sha256": "d50d7883f20d1dc6191768d3746f52dd9cac89c346ffaed5be1f110c2f34a838"
+    },
+    {
+      "name": "msvcp140_atomic_wait.dll",
+      "bytes": 57792,
+      "sha256": "3d0cbfaa1bf3eecf5a3f4491d2960ee803cb994f30292c6adc4a07c498f60e2b"
+    },
+    {
+      "name": "msvcp140_codecvt_ids.dll",
+      "bytes": 31160,
+      "sha256": "8a65c7596ef2e6938731f5a1058e7e40145b6d97967cc649231a076b9a608d78"
+    },
+    {
+      "name": "vccorlib140.dll",
+      "bytes": 350648,
+      "sha256": "09f93d5ff96ae09767f3e1af3cdd43a5a58f2598654fc63089429bb6f9f4737f"
+    },
+    {
+      "name": "vcruntime140.dll",
+      "bytes": 178616,
+      "sha256": "d1f4225df2cd877dbf130d5668a021dce3f94118455ff5ec952061c30afc9ce7"
+    },
+    {
+      "name": "vcruntime140_1.dll",
+      "bytes": 50112,
+      "sha256": "a7146c08f89fe5b04541ab507cdb59ff7b44534d4ba3c668a426c6450a03434e"
+    },
+    {
+      "name": "vcruntime140_threads.dll",
+      "bytes": 38840,
+      "sha256": "40f39e8cee5f5a531b4010e18b807e8fe265b908dc58f959ecb7ebc6ea6cb11a"
+    }
+  ],
+  "updater_signature_verified": true,
+  "updater_signature_version": "0.1.21",
+  "component_identity_verification": "All four actual Windows executables reported source 300b9f4a149ef9d3d85aef32475f1c2a1570e641, version 0.1.21, dirty=false in the successful native build.",
+  "authenticode": "unsigned"
+}
