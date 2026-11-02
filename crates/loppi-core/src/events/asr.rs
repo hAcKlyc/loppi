@@ -245,7 +245,7 @@ pub fn refresh(db: &mut Connection, now: i64) -> Result<(), String> {
     let events = {
         let mut stmt=tx.prepare("SELECT e.id,e.started_ms,e.ended_ms,e.source_mask FROM named_events e JOIN event_asr_state s ON s.event_id=e.id
         WHERE e.deleted_ms IS NULL AND coalesce(s.planned_version,'')!=printf('%d:%d:%d',e.source_mask,e.started_ms,e.ended_ms)
-        AND (e.ended_ms<=?1 OR EXISTS(SELECT 1 FROM named_events n WHERE n.deleted_ms IS NULL AND n.started_ms>=e.ended_ms AND n.started_ms<=?2 AND n.source_mask&e.source_mask=e.source_mask)) ORDER BY e.ended_ms").map_err(|e|e.to_string())?;
+        AND (e.completed_ms IS NOT NULL OR e.ended_ms<=?1 OR EXISTS(SELECT 1 FROM named_events n WHERE n.deleted_ms IS NULL AND n.started_ms>=e.ended_ms AND n.started_ms<=?2 AND n.source_mask&e.source_mask=e.source_mask)) ORDER BY e.ended_ms").map_err(|e|e.to_string())?;
         stmt.query_map(params![now - SETTLE_MS, now], |r| {
             Ok((
                 r.get::<_, String>(0)?,
@@ -260,7 +260,9 @@ pub fn refresh(db: &mut Connection, now: i64) -> Result<(), String> {
     };
     let mut planned = 0;
     for (id, start, end, mask) in events {
-        if settling_state(&tx, &id, start, end, mask)?.is_some() {
+        if completion::completed_at(&tx, &id)?.is_none()
+            && settling_state(&tx, &id, start, end, mask)?.is_some()
+        {
             continue;
         }
         planned += 1;

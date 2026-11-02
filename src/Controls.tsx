@@ -162,14 +162,19 @@ export function Button({
 
 export function IconButton({
 	label,
+	tooltip = label,
+	disabled,
+	busy,
 	className = "",
 	...props
-}: Omit<ButtonProps, "aria-label"> & { label: string }) {
+}: Omit<ButtonProps, "aria-label"> & { label: string; tooltip?: string }) {
 	return (
 		<Button
 			{...props}
+			disabled={disabled}
+			busy={busy}
 			aria-label={label}
-			data-tooltip={label}
+			data-tooltip={disabled || busy ? undefined : tooltip}
 			className={`icon-button ${className}`}
 		/>
 	);

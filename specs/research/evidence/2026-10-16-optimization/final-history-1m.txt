@@ -1,5 +1,5 @@
-   Compiling hear-protocol v0.1.0 (/Users/ethan/Projects/hear/crates/hear-protocol)
-   Compiling hear-core v0.1.0 (/Users/ethan/Projects/hear/crates/hear-core)
+   Compiling hear-protocol v0.1.0 (<USER_HOME>/Projects/hear/crates/hear-protocol)
+   Compiling hear-core v0.1.0 (<USER_HOME>/Projects/hear/crates/hear-core)
     Finished `release` profile [optimized] target(s) in 37.05s
      Running unittests src/main.rs (target/release/deps/hear_core-5ae10f0091116190)
 

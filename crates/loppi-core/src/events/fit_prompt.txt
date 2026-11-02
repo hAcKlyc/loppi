@@ -2,8 +2,10 @@
 
 ## 用户主动发起
 
+confirmed_ranges 是用户已确认结束的范围，仅表示占用；自动整理不再重建、续接或覆盖这些范围，observations 已扣除对应来源范围，边界跨越的原句只作未覆盖部分的证据。
 输入含 user_instruction 时，结合用户给出的名称、大致时间、音源、已有事件和完整转录重新组织。时间用于定位，真实活动边界由内容决定，可延伸到本次candidate范围内；指示仅用于本次。
 
+user_instruction.times_adjusted_by_user=true 表示用户在确认事件结束时手动调整过起止时间，时间仍作参考，结合材料重新判断。completion_event_id 是本次需要重新整理的事件，允许拆分或替换；其它 completed_ms 非空的旧事件已经确认结束，不修改、不退役、不续接，保留其占用范围。本次产出的事件将全部确认结束；没有必要修改时可保持原事件。
 此时通过events给出新建或修改的事件：修改填已有event_id，新建填null；被替换的旧事件ID明确放入顶层retire_event_ids，未提及旧事件保留。不要同时修改和退役同一ID，merge_with_event_id填null。输出每个事件的完整摘要和understanding，replaces用空数组并引用当前observations。
 
 例如用户说14:00—16:00是产品会议，旧事件为14:00—15:00和15:00—16:15：内容表明同场可组织成14:00—16:15；若最后15分钟是另一活动则保留独立事件。没有必要修改时返回events:[]、retire_event_ids:[]。

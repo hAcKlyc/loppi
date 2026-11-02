@@ -21,7 +21,15 @@ import {
 	time,
 	userError,
 } from "./api";
-import { Button, Dialog, Icon, IconButton, TabPanel, Tabs } from "./Controls";
+import {
+	Button,
+	Dialog,
+	Icon,
+	IconButton,
+	Modal,
+	TabPanel,
+	Tabs,
+} from "./Controls";
 import { entryTime, nearestSegmentIndex, pageCoversTime } from "./detail-entry";
 import {
 	bestSegments,
@@ -43,7 +51,7 @@ type Props = {
 	onPeopleRetry?: () => void;
 	onClose: () => void;
 	onEdit: (item: TimelineItem) => void;
-	onTools: (item: TimelineItem) => void;
+	onTools: (item: TimelineItem, mode?: "split" | "merge" | "delete") => void;
 	onQueue: () => void;
 	onDataAction: (kind: "export" | "cleanup", item: TimelineItem) => void;
 	onChanged: (manualRangeId?: string) => void;
@@ -181,6 +189,30 @@ export function DetailDrawer({
 	const speakerAnchor = useRef<HTMLButtonElement | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [infoError, setInfoError] = useState<string | null>(null);
+	const menu = useRef<HTMLDetailsElement>(null);
+	const [retranscription, setRetranscription] = useState<TimelineItem | null>(
+		null,
+	);
+	const [completion, setCompletion] = useState<{
+		item: TimelineItem;
+		from: string;
+		to: string;
+	} | null>(null);
+	const [completionError, setCompletionError] = useState("");
+	const [completionUncertain, setCompletionUncertain] = useState(false);
+	const completionRequest = useRef<{
+		id: string;
+		request: { type: string; [key: string]: unknown };
+	} | null>(null);
+	useEffect(() => {
+		const closeMenu = (event: PointerEvent) => {
+			if (menu.current && !menu.current.contains(event.target as Node))
+				menu.current.open = false;
+		};
+		document.addEventListener("pointerdown", closeMenu);
+		return () => document.removeEventListener("pointerdown", closeMenu);
+	}, []);
+
 	const [moments, setMoments] = useState<Moment[]>([]);
 	const [momentsReady, setMomentsReady] = useState(false);
 	const [momentsError, setMomentsError] = useState<string | null>(null);
@@ -366,6 +398,25 @@ export function DetailDrawer({
 		if (refreshToken >= 0 && editing === null && assigning === null)
 			void load(offset.current);
 	}, [load, refreshToken, editing, assigning]);
+	useEffect(() => {
+		if (editing !== null || assigning !== null) return;
+		const current = detailRef.current;
+		if (
+			item.revision !== current.revision ||
+			item.processing_state !== current.processing_state ||
+			item.completion_state !== current.completion_state ||
+			item.completed_ms !== current.completed_ms
+		)
+			void load(offset.current);
+	}, [
+		load,
+		editing,
+		assigning,
+		item.revision,
+		item.processing_state,
+		item.completion_state,
+		item.completed_ms,
+	]);
 	useEffect(() => {
 		const next = {
 			from: localDateTime(Math.ceil(item.started_ms / 1000) * 1000),
@@ -613,6 +664,90 @@ export function DetailDrawer({
 		);
 	};
 
+	const openCompletion = () => {
+		completionRequest.current = null;
+		setCompletionError("");
+		setCompletionUncertain(false);
+		setCompletion({
+			item: detail,
+			from: localDateTime(detail.started_ms),
+			to: localDateTime(detail.ended_ms),
+		});
+	};
+	const confirmCompletion = async () => {
+		if (!completion?.item.id || completion.item.revision == null || busy)
+			return;
+		const started_ms =
+			completion.from === localDateTime(completion.item.started_ms)
+				? completion.item.started_ms
+				: new Date(completion.from).getTime();
+		const ended_ms =
+			completion.to === localDateTime(completion.item.ended_ms)
+				? completion.item.ended_ms
+				: new Date(completion.to).getTime();
+		if (
+			!Number.isFinite(started_ms) ||
+			!Number.isFinite(ended_ms) ||
+			ended_ms <= started_ms ||
+			ended_ms - started_ms > 86400000
+		) {
+			setCompletionError("请选择有效的起止时间，范围不超过24小时");
+			return;
+		}
+		if (ended_ms > Date.now()) {
+			setCompletionError("结束时间不能晚于当前时间");
+			return;
+		}
+		const changed =
+			started_ms !== completion.item.started_ms ||
+			ended_ms !== completion.item.ended_ms;
+		if (!completionRequest.current)
+			completionRequest.current = {
+				id: crypto.randomUUID(),
+				request: {
+					type: "confirm_event_completion",
+					event_id: completion.item.id,
+					expected_revision: completion.item.revision,
+					started_ms,
+					ended_ms,
+				},
+			};
+		setBusy(true);
+		setCompletionError("");
+		try {
+			const submission = completionRequest.current;
+			await core(submission.request, submission.id);
+			completionRequest.current = null;
+			setCompletion(null);
+			await load(offset.current);
+			onChanged();
+			report(
+				changed
+					? "已提交重新整理，完成后将确认事件结束并进入精转"
+					: "已确认事件结束，正在处理精转",
+			);
+		} catch (error) {
+			const uncertain =
+				error instanceof Error && error.message.startsWith("core_transport:");
+			setCompletionUncertain(uncertain);
+			if (!uncertain) completionRequest.current = null;
+			setCompletionError(
+				uncertain
+					? "提交结果待确认，请确认上次提交，或在智能识别查看"
+					: userError(error),
+			);
+		} finally {
+			setBusy(false);
+		}
+	};
+	const menuAction = (action: () => void) => {
+		if (menu.current) {
+			menu.current.open = false;
+			menu.current.querySelector("summary")?.focus();
+		}
+		action();
+	};
+
 	const updateSpeaker = async (
 		segment: PreciseSegment,
 		action: SpeakerAction,
@@ -765,6 +900,21 @@ export function DetailDrawer({
 			"no_transcript",
 			"partial_transcript",
 		].includes(detail.processing_state);
+	const completionProcessing =
+		detail.completion_state === "pending" ||
+		detail.completion_state === "processing";
+	const completionFailed = detail.completion_state === "failed";
+	const canConfirmCompletion =
+		detail.id &&
+		detail.completed_ms == null &&
+		detail.processing_state === "settling_asr" &&
+		!completionProcessing &&
+		!completionFailed;
+	const statusText = completionProcessing
+		? "重新整理中"
+		: completionFailed
+			? "重新整理失败"
+			: processingLabel(detail.processing_state, detail.transcription);
 	const sourceText =
 		detail.processing_state === "moment_only"
 			? "时刻记录"
@@ -811,47 +961,100 @@ export function DetailDrawer({
 							{detail.title ||
 								(detail.manual_range_id ? "未命名事件" : "未整理")}
 						</h2>
+						<div className="detail-status" role="status">
+							{detail.completed_ms != null && <span>已确认结束 · </span>}
+							{canConfirmCompletion ? (
+								<button
+									type="button"
+									className="event-completion-trigger"
+									disabled={busy || !detailReady}
+									title="点击确认事件已结束"
+									onClick={(event) => {
+										event.currentTarget.focus();
+										openCompletion();
+									}}
+								>
+									等待事件稳定 <span aria-hidden="true">›</span>
+								</button>
+							) : completionProcessing || completionFailed || queueRelevant ? (
+								<button
+									type="button"
+									className="detail-status-link"
+									disabled={busy}
+									title={busy ? undefined : "查看处理进度"}
+									onClick={onQueue}
+								>
+									{statusText} <span aria-hidden="true">›</span>
+								</button>
+							) : (
+								<span>{statusText}</span>
+							)}
+						</div>
 					</div>
 					<div className="detail-header-actions">
-						<Button
-							type="button"
-							tone="quiet"
-							disabled={busy}
-							onClick={() => onDataAction("export", detail)}
-						>
-							导出
-						</Button>
-						<Button
-							type="button"
-							tone="quiet"
-							disabled={busy}
-							onClick={() => {
-								stopAudio();
-								onDataAction("cleanup", detail);
+						<details
+							className="detail-menu"
+							ref={menu}
+							onKeyDown={(event) => {
+								if (event.key === "Escape" && menu.current?.open) {
+									event.preventDefault();
+									event.stopPropagation();
+									menu.current.open = false;
+									menu.current.querySelector("summary")?.focus();
+								}
+							}}
+							onBlur={(event) => {
+								if (!event.currentTarget.contains(event.relatedTarget as Node))
+									event.currentTarget.open = false;
 							}}
 						>
-							清理
-						</Button>
-						{detail.id && (
-							<>
+							<summary aria-label="更多事件操作">
+								<Icon name="more" />
+							</summary>
+							<div className="detail-menu-items">
+								{detail.id && (
+									<Button
+										tone="quiet"
+										disabled={busy}
+										onClick={() => menuAction(() => onEdit(detail))}
+									>
+										编辑
+									</Button>
+								)}
+								{detail.id && (
+									<Button
+										tone="quiet"
+										disabled={busy}
+										onClick={() => menuAction(() => onTools(detail, "split"))}
+									>
+										调整分段
+									</Button>
+								)}
 								<Button
-									type="button"
 									tone="quiet"
 									disabled={busy}
-									onClick={() => onEdit(detail)}
+									onClick={() =>
+										menuAction(() => onDataAction("export", detail))
+									}
 								>
-									编辑
+									导出
 								</Button>
-								<IconButton
-									type="button"
-									label="更多事件操作"
+								<hr className="detail-menu-separator" />
+								<Button
+									tone="quiet"
+									className="detail-menu-cleanup"
 									disabled={busy}
-									onClick={() => onTools(detail)}
+									onClick={() =>
+										menuAction(() => {
+											stopAudio();
+											onDataAction("cleanup", detail);
+										})
+									}
 								>
-									<Icon name="more" />
-								</IconButton>
-							</>
-						)}
+									清理数据
+								</Button>
+							</div>
+						</details>
 						<IconButton
 							type="button"
 							label="关闭详情"
@@ -1240,15 +1443,6 @@ export function DetailDrawer({
 								<span>声音来源</span>
 								<strong>{sourceText}</strong>
 							</div>
-							<div>
-								<span>处理状态</span>
-								<strong>
-									{processingLabel(
-										detail.processing_state,
-										detail.transcription,
-									)}
-								</strong>
-							</div>
 							{(detail.local_analysis_failures ?? 0) > 0 && (
 								<div>
 									<span>本地分析</span>
@@ -1321,6 +1515,15 @@ export function DetailDrawer({
 								</strong>
 							</div>
 							{infoError && <p className="inline-error">{infoError}</p>}
+							{detail.id && (
+								<Button
+									tone="secondary"
+									disabled={busy || !detailReady}
+									onClick={() => setRetranscription(detail)}
+								>
+									重新识别录音
+								</Button>
+							)}
 							{!detail.id &&
 								!detail.manual_range_id &&
 								detail.processing_state !== "moment_only" && (
@@ -1360,30 +1563,6 @@ export function DetailDrawer({
 										)}
 									</div>
 								)}
-							{queueRelevant && (
-								<Button type="button" tone="secondary" onClick={onQueue}>
-									查看智能识别
-								</Button>
-							)}
-							{detail.id && (
-								<Button
-									type="button"
-									tone="secondary"
-									disabled={busy}
-									onClick={() =>
-										void mutate(
-											{
-												type: "retranscribe_event",
-												event_id: detail.id,
-												expected_revision: detail.revision,
-											},
-											"已加入精转队列",
-										)
-									}
-								>
-									重新精转
-								</Button>
-							)}
 							{!detail.id &&
 								!detail.manual_range_id &&
 								detail.processing_state !== "moment_only" && (
@@ -1490,6 +1669,87 @@ export function DetailDrawer({
 					</button>
 					<img src={shownImage} alt="主动截取的屏幕画面" />
 				</Dialog>
+			)}
+			{retranscription && (
+				<Modal
+					title="重新识别录音？"
+					description="将使用保留的录音重新识别，会产生新的识别用量。"
+					busy={busy}
+					onClose={() => setRetranscription(null)}
+				>
+					<div className="modal-actions">
+						<Button tone="quiet" onClick={() => setRetranscription(null)}>
+							取消
+						</Button>
+						<Button
+							tone="primary"
+							onClick={() => {
+								setRetranscription(null);
+								void mutate(
+									{
+										type: "retranscribe_event",
+										event_id: retranscription.id,
+										expected_revision: retranscription.revision,
+									},
+									"已加入精转队列",
+								);
+							}}
+						>
+							确认重新识别
+						</Button>
+					</div>
+				</Modal>
+			)}
+			{completion && (
+				<Modal
+					title="确认事件已结束？"
+					busy={busy}
+					feedback={completionError}
+					onClose={() => setCompletion(null)}
+				>
+					<div className="field-grid">
+						<label>
+							开始时间
+							<input
+								type="datetime-local"
+								step="1"
+								value={completion.from}
+								disabled={busy || completionUncertain}
+								onChange={(event) =>
+									setCompletion({ ...completion, from: event.target.value })
+								}
+							/>
+						</label>
+						<label>
+							结束时间
+							<input
+								type="datetime-local"
+								step="1"
+								value={completion.to}
+								disabled={busy || completionUncertain}
+								onChange={(event) =>
+									setCompletion({ ...completion, to: event.target.value })
+								}
+							/>
+						</label>
+					</div>
+					<div className="modal-actions">
+						<Button
+							tone="quiet"
+							disabled={busy}
+							onClick={() => setCompletion(null)}
+						>
+							取消
+						</Button>
+						<Button
+							tone="primary"
+							disabled={busy}
+							onClick={() => void confirmCompletion()}
+						>
+							{completionUncertain ? "确认上次提交" : "确认结束并开始处理"}
+						</Button>
+					</div>
+				</Modal>
 			)}
 		</Dialog>
 	);

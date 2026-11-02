@@ -1,0 +1,28 @@
+{
+  "version": 4,
+  "created": "2026-11-01",
+  "license": "Apache-2.0",
+  "copyright": "Copyright 2026 Ethan L",
+  "assets": [
+    {
+      "file": "processing-flow-v4.png",
+      "tool": "Built-in image_gen",
+      "prompt": "Use case: infographic-diagram.\nAsset type: one clean process diagram for the loppi README, explaining local recording, local coarse speech transcription, cloud refinement and Agent access.\nPrimary request: express the processing flow using structure and short labels. No explanatory paragraphs, slogans or decorative illustrations.\nReference image 1 is the compact previous diagram and is a style reference only, not an edit target. Preserve its quiet off-white #F6F5F1 background, charcoal #292C28 text and thin lines, muted sage #93B29C arrows/record markers and tiny terracotta #B65B42 accents. No texture, gradients, shadows or giant headings. Medium-weight modern Chinese sans-serif text. No logos or mascots need to be redrawn.\nCanvas approximately 1600x760. Use clear large labels, legible when rendered at 830px wide. Broad margins, little wasted vertical space. The diagram has a main local path on the upper row, and one cloud assistance branch below. Keep the structure simple and the arrows unambiguous.\nMAIN PATH left-to-right:\n\"声音\" -> \"录音 · 本地粗转\" -> \"本地上下文\" -> two alternative parallel labels \"CLI\" / \"MCP\" -> \"任何 Agent\".\nGroup the recording/coarse transcription and context-store nodes within one understated unboxed region titled \"本机\". For the context store only, a small restrained outline with a few sage saved-record segments is allowed. Do NOT draw a laptop or database cylinder.\nCLOUD BRANCH below the local path, in a separate unboxed region titled \"云端 · 按需\":\nThe local recording/coarse node sends a downward arrow labelled \"粗转文字\" to \"LLM 事件分析\". That cloud node has a thin forward arrow labelled \"事件范围\" to \"ASR 精细转录\". A final arrow from that ASR node goes upward into \"本地上下文\". Do not route all context through the cloud: the direct upper local path remains visible. The ASR node's short supporting line must be \"音频按需精转\", making clear that ASR processes selected audio. The cloud analysis/refinement results enrich locally saved context.\nThe ONLY text allowed is these exact labels: \"声音\", \"本机\", \"录音 · 本地粗转\", \"本地上下文\", \"CLI\", \"MCP\", \"任何 Agent\", \"云端 · 按需\", \"粗转文字\", \"LLM 事件分析\", \"事件范围\", \"ASR 精细转录\", \"音频按需精转\".\nArrows from CLI and MCP converge on the Agent as two alternatives, not a sequence. Cloud branch is visually secondary to the main local recording path. Use thin connectors with arrowheads, no arrow tangles or ambiguous bidirectional paths.\nAvoid: body copy, repeated headers, giant slide titles, step numbers, decorative icon badges, robot/brain/cloud icons, surveillance cameras, people, 3D objects, card grids, dense technical architecture details, fake UI screenshots, privacy claims, footnotes or watermark.",
+      "references": [
+        "docs/images/record-to-agent-v3.png"
+      ],
+      "use": "Technical architecture section only; the existing v3 product flow remains in the introduction."
+    }
+  ],
+  "user_provided_screenshot": {
+    "file": "island.png",
+    "original_filename": "loppi_Island.png",
+    "processing": "Copied unchanged; no generated UI or retouching.",
+    "rights_note": "Wallpaper, system and third-party marks are not included in the project-owned image license."
+  },
+  "notes": [
+    "Reference paths are relative to the repository root; filenames are relative to this file.",
+    "New generated image copied unchanged.",
+    "CLI management and read-only MCP are distinguished in README connection instructions."
+  ]
+}

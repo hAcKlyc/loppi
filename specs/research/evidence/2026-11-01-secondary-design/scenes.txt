@@ -1,0 +1,515 @@
+PASS · 64 组辅助页面/平台呈现/宽窄窗口检查
+[
+  {
+    "platform": "macos",
+    "width": 760,
+    "height": 540,
+    "page": "queue",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "macos",
+    "width": 760,
+    "height": 540,
+    "page": "statistics",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "macos",
+    "width": 760,
+    "height": 540,
+    "page": "people",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "macos",
+    "width": 760,
+    "height": 540,
+    "page": "person",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "macos",
+    "width": 760,
+    "height": 540,
+    "page": "agent",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "macos",
+    "width": 760,
+    "height": 540,
+    "page": "settings",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "macos",
+    "width": 760,
+    "height": 540,
+    "page": "detail",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "macos",
+    "width": 760,
+    "height": 540,
+    "page": "onboarding",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "macos",
+    "width": 1120,
+    "height": 760,
+    "page": "queue",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "macos",
+    "width": 1120,
+    "height": 760,
+    "page": "statistics",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "macos",
+    "width": 1120,
+    "height": 760,
+    "page": "people",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "macos",
+    "width": 1120,
+    "height": 760,
+    "page": "person",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "macos",
+    "width": 1120,
+    "height": 760,
+    "page": "agent",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "macos",
+    "width": 1120,
+    "height": 760,
+    "page": "settings",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "macos",
+    "width": 1120,
+    "height": 760,
+    "page": "detail",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "macos",
+    "width": 1120,
+    "height": 760,
+    "page": "onboarding",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "macos",
+    "width": 1440,
+    "height": 900,
+    "page": "queue",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "macos",
+    "width": 1440,
+    "height": 900,
+    "page": "statistics",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "macos",
+    "width": 1440,
+    "height": 900,
+    "page": "people",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "macos",
+    "width": 1440,
+    "height": 900,
+    "page": "person",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "macos",
+    "width": 1440,
+    "height": 900,
+    "page": "agent",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "macos",
+    "width": 1440,
+    "height": 900,
+    "page": "settings",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "macos",
+    "width": 1440,
+    "height": 900,
+    "page": "detail",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "macos",
+    "width": 1440,
+    "height": 900,
+    "page": "onboarding",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "windows",
+    "width": 760,
+    "height": 540,
+    "page": "queue",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "windows",
+    "width": 760,
+    "height": 540,
+    "page": "statistics",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "windows",
+    "width": 760,
+    "height": 540,
+    "page": "people",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "windows",
+    "width": 760,
+    "height": 540,
+    "page": "person",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "windows",
+    "width": 760,
+    "height": 540,
+    "page": "agent",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "windows",
+    "width": 760,
+    "height": 540,
+    "page": "settings",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "windows",
+    "width": 760,
+    "height": 540,
+    "page": "detail",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "windows",
+    "width": 760,
+    "height": 540,
+    "page": "onboarding",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "windows",
+    "width": 1120,
+    "height": 760,
+    "page": "queue",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "windows",
+    "width": 1120,
+    "height": 760,
+    "page": "statistics",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "windows",
+    "width": 1120,
+    "height": 760,
+    "page": "people",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "windows",
+    "width": 1120,
+    "height": 760,
+    "page": "person",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "windows",
+    "width": 1120,
+    "height": 760,
+    "page": "agent",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "windows",
+    "width": 1120,
+    "height": 760,
+    "page": "settings",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "windows",
+    "width": 1120,
+    "height": 760,
+    "page": "detail",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "windows",
+    "width": 1120,
+    "height": 760,
+    "page": "onboarding",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "windows",
+    "width": 1440,
+    "height": 900,
+    "page": "queue",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "windows",
+    "width": 1440,
+    "height": 900,
+    "page": "statistics",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "windows",
+    "width": 1440,
+    "height": 900,
+    "page": "people",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "windows",
+    "width": 1440,
+    "height": 900,
+    "page": "person",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "windows",
+    "width": 1440,
+    "height": 900,
+    "page": "agent",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "windows",
+    "width": 1440,
+    "height": 900,
+    "page": "settings",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "windows",
+    "width": 1440,
+    "height": 900,
+    "page": "detail",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "windows",
+    "width": 1440,
+    "height": 900,
+    "page": "onboarding",
+    "state": "populated",
+    "result": "PASS"
+  },
+  {
+    "platform": "macos",
+    "width": 760,
+    "height": 540,
+    "page": "queue",
+    "state": "empty",
+    "result": "PASS"
+  },
+  {
+    "platform": "macos",
+    "width": 760,
+    "height": 540,
+    "page": "statistics",
+    "state": "empty",
+    "result": "PASS"
+  },
+  {
+    "platform": "macos",
+    "width": 760,
+    "height": 540,
+    "page": "people",
+    "state": "empty",
+    "result": "PASS"
+  },
+  {
+    "platform": "macos",
+    "width": 760,
+    "height": 540,
+    "page": "agent",
+    "state": "empty",
+    "result": "PASS"
+  },
+  {
+    "platform": "macos",
+    "width": 760,
+    "height": 540,
+    "page": "settings",
+    "state": "empty",
+    "result": "PASS"
+  },
+  {
+    "platform": "macos",
+    "width": 760,
+    "height": 540,
+    "page": "queue",
+    "state": "loading",
+    "result": "PASS"
+  },
+  {
+    "platform": "macos",
+    "width": 760,
+    "height": 540,
+    "page": "statistics",
+    "state": "loading",
+    "result": "PASS"
+  },
+  {
+    "platform": "macos",
+    "width": 760,
+    "height": 540,
+    "page": "people",
+    "state": "loading",
+    "result": "PASS"
+  },
+  {
+    "platform": "macos",
+    "width": 760,
+    "height": 540,
+    "page": "agent",
+    "state": "loading",
+    "result": "PASS"
+  },
+  {
+    "platform": "macos",
+    "width": 760,
+    "height": 540,
+    "page": "settings",
+    "state": "loading",
+    "result": "PASS"
+  },
+  {
+    "platform": "macos",
+    "width": 760,
+    "height": 540,
+    "page": "queue",
+    "state": "error",
+    "result": "PASS"
+  },
+  {
+    "platform": "macos",
+    "width": 760,
+    "height": 540,
+    "page": "statistics",
+    "state": "error",
+    "result": "PASS"
+  },
+  {
+    "platform": "macos",
+    "width": 760,
+    "height": 540,
+    "page": "people",
+    "state": "error",
+    "result": "PASS"
+  },
+  {
+    "platform": "macos",
+    "width": 760,
+    "height": 540,
+    "page": "agent",
+    "state": "error",
+    "result": "PASS"
+  },
+  {
+    "platform": "macos",
+    "width": 760,
+    "height": 540,
+    "page": "settings",
+    "state": "error",
+    "result": "PASS"
+  },
+  {
+    "platform": "macos",
+    "width": 760,
+    "height": 540,
+    "page": "onboarding",
+    "state": "empty",
+    "result": "PASS"
+  }
+]

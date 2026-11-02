@@ -31,7 +31,7 @@ pub fn enqueue(
         return Err("no_coarse_text".into());
     }
     tx.execute(
-        "INSERT INTO event_reorganization_requests VALUES(?1,?2,?3,?4,?5,?6)",
+        "INSERT INTO event_reorganization_requests(id,title,started_ms,ended_ms,source_mask,created_ms) VALUES(?1,?2,?3,?4,?5,?6)",
         params![id.to_string(), title.trim(), start, end, mask, now],
     )
     .map_err(|e| e.to_string())?;
@@ -66,10 +66,22 @@ pub fn input(db: &Connection, task: &CloudTask) -> Result<String, String> {
             |r| Ok((r.get(0)?, r.get(1)?)),
         )
         .map_err(|e| e.to_string())?;
+    let completion: Option<(String,i64)> = db.query_row(
+        "SELECT completion_event_id,expected_revision FROM event_reorganization_requests WHERE id=?1 AND completion_event_id IS NOT NULL",
+        [&task.target_id], |r| Ok((r.get(0)?,r.get(1)?))).optional().map_err(|e|e.to_string())?;
+    if let Some((id, revision)) = &completion {
+        active_event(
+            db,
+            Uuid::parse_str(id).map_err(|e| e.to_string())?,
+            *revision,
+        )
+        .map_err(|_| "reorganization_revision_conflict")?;
+    }
+    let completion_id = completion.as_ref().map(|v| v.0.as_str());
     let from = (task.start - FIT_CONTINUATION_GAP_MS).max(0);
     let to = task.end.saturating_add(FIT_CONTINUATION_GAP_MS);
-    let mut stmt=db.prepare("SELECT id,started_ms,ended_ms,title,summary,revision,source_mask,boundary_locked,title_locked,understanding_json FROM named_events WHERE deleted_ms IS NULL AND started_ms<?2 AND ended_ms>?1 AND source_mask&?3!=0 ORDER BY started_ms,id").map_err(|e|e.to_string())?;
-    let linked=stmt.query_map(params![from,to,mask],|r|Ok(json!({"id":r.get::<_,String>(0)?,"start_ms":r.get::<_,i64>(1)?,"end_ms":r.get::<_,i64>(2)?,"title":r.get::<_,String>(3)?,"summary":r.get::<_,Option<String>>(4)?,"revision":r.get::<_,i64>(5)?,"source_mask":r.get::<_,i64>(6)?,"boundary_locked":r.get::<_,bool>(7)?,"title_locked":r.get::<_,bool>(8)?,"understanding":r.get::<_,Option<String>>(9)?.and_then(|v|serde_json::from_str::<Value>(&v).ok())}))).map_err(|e|e.to_string())?.collect::<Result<Vec<_>,_>>().map_err(|e|e.to_string())?;
+    let mut stmt=db.prepare("SELECT id,started_ms,ended_ms,title,summary,revision,source_mask,boundary_locked,title_locked,understanding_json,completed_ms FROM named_events WHERE deleted_ms IS NULL AND ((started_ms<?2 AND ended_ms>?1 AND source_mask&?3!=0) OR id=?4) ORDER BY started_ms,id").map_err(|e|e.to_string())?;
+    let linked=stmt.query_map(params![from,to,mask,completion_id],|r|Ok(json!({"id":r.get::<_,String>(0)?,"start_ms":r.get::<_,i64>(1)?,"end_ms":r.get::<_,i64>(2)?,"title":r.get::<_,String>(3)?,"summary":r.get::<_,Option<String>>(4)?,"revision":r.get::<_,i64>(5)?,"source_mask":r.get::<_,i64>(6)?,"boundary_locked":r.get::<_,bool>(7)?,"title_locked":r.get::<_,bool>(8)?,"completed_ms":r.get::<_,Option<i64>>(10)?,"understanding":r.get::<_,Option<String>>(9)?.and_then(|v|serde_json::from_str::<Value>(&v).ok())}))).map_err(|e|e.to_string())?.collect::<Result<Vec<_>,_>>().map_err(|e|e.to_string())?;
     let start = linked
         .iter()
         .filter_map(|v| v["start_ms"].as_i64())
@@ -104,7 +116,7 @@ pub fn input(db: &Connection, task: &CloudTask) -> Result<String, String> {
     for event in context["linked_events"].as_array_mut().unwrap() {
         event["summary_sentences"] = summary::indexed(event["summary"].as_str());
     }
-    let value=json!({"candidate":{"start_ms":start,"end_ms":end},"user_instruction":{"title":title,"start_ms":task.start,"end_ms":task.end,"sources":sources_for(mask)},"source_mask":mask,"summary_budget":{"target_chars":900,"tolerance_chars":1100},"vocabulary":crate::vocabulary::llm_context(db)?,"context":context,"observations":observations,"evidence":catalog}).to_string();
+    let value=json!({"candidate":{"start_ms":start,"end_ms":end},"user_instruction":{"title":title,"start_ms":task.start,"end_ms":task.end,"sources":sources_for(mask),"completion_event_id":completion_id,"times_adjusted_by_user":completion.is_some()},"source_mask":mask,"summary_budget":{"target_chars":900,"tolerance_chars":1100},"vocabulary":crate::vocabulary::llm_context(db)?,"context":context,"observations":observations,"evidence":catalog}).to_string();
     if value.len() > 512 * 1024 {
         return Err("reorganization_input_too_large".into());
     }
@@ -137,6 +149,16 @@ pub(super) fn apply(
             .find(|e| e["id"].as_str() == Some(id))
             .ok_or("invalid_fit_event_id")
     };
+    let completion_id = input["user_instruction"]["completion_event_id"].as_str();
+    let editable = |prior: &Value| -> Result<(), String> {
+        if completion_id.is_some()
+            && !prior["completed_ms"].is_null()
+            && prior["id"].as_str() != completion_id
+        {
+            return Err("invalid_fit_completed_event".into());
+        }
+        Ok(())
+    };
     let selected = input["source_mask"].as_i64().ok_or("invalid_fit_input")?;
     let retire: Vec<String> = result
         .get("retire_event_ids")
@@ -146,6 +168,7 @@ pub(super) fn apply(
     let mut seen = HashSet::new();
     for id in &retire {
         let prior = find(id)?;
+        editable(prior)?;
         if !seen.insert(id.clone()) || prior["source_mask"].as_i64().unwrap() & !selected != 0 {
             return Err("invalid_fit_event_source".into());
         }
@@ -172,6 +195,9 @@ pub(super) fn apply(
             _ => return Err("invalid_fit_event_id".into()),
         };
         let prior = existing.map(&find).transpose()?;
+        if let Some(prior) = prior {
+            editable(prior)?;
+        }
         if let Some(id) = existing {
             if !seen.insert(id.to_string()) {
                 return Err("invalid_fit_event_id".into());
@@ -241,7 +267,7 @@ pub(super) fn apply(
                 )
                 .map_err(|e| e.to_string())?;
             } else {
-                tx.execute("UPDATE named_events SET started_ms=?2,ended_ms=?3,source_mask=?4,title=?5,summary=?6,understanding_json=?7,origin='automatic',boundary_locked=0,title_locked=0,asr_required=1,revision=revision+1 WHERE id=?1",params![id,start,end,mask,title,summary,understanding]).map_err(|e|e.to_string())?;
+                tx.execute("UPDATE named_events SET started_ms=?2,ended_ms=?3,source_mask=?4,title=?5,summary=?6,understanding_json=?7,origin='automatic',boundary_locked=0,title_locked=0,completed_ms=NULL,asr_required=1,revision=revision+1 WHERE id=?1",params![id,start,end,mask,title,summary,understanding]).map_err(|e|e.to_string())?;
             }
         } else {
             insert_generated_event(
@@ -283,6 +309,10 @@ pub(super) fn apply(
         if *editable {
             release_suppressions(tx, *start, *end, *mask)?;
         }
+        if completion_id.is_some() && *editable {
+            completion::finish(tx, id, now)?;
+            continue;
+        }
         queue_asr(
             tx,
             "event",
@@ -294,6 +324,11 @@ pub(super) fn apply(
             true,
             now,
         )?;
+    }
+    if let Some(id) = completion_id {
+        if !retire.iter().any(|v| v == id) && !published.iter().any(|v| v.0 == id) {
+            completion::finish(tx, id, now)?;
+        }
     }
     Ok(events.len() + retire.len())
 }

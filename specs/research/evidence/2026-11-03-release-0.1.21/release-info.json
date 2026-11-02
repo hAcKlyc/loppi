@@ -1,0 +1,85 @@
+{
+  "version": "0.1.21",
+  "source": "bfc8952c35cd5735d18072dd354d8f182262d63a",
+  "dirty": false,
+  "target": "aarch64-apple-darwin",
+  "architectures": [
+    "arm64"
+  ],
+  "built_at_epoch": 1793638331,
+  "models_lock_sha256": "e0320694c4f75c3c545886ae3439079c0f9d68fc536f30d8cbc07d1287470519",
+  "models_bytes": 204642977,
+  "native": {
+    "version": "2.0.0",
+    "sha256": "8ed41bf3b27ce55d6527bbc0f7754598c5afbb18e814ff0bddbc9ecd50fb09c5"
+  },
+  "toolchain": {
+    "node": "v24.20.0",
+    "rust": "rustc 1.98.1 (48a229cea 2026-09-01)",
+    "xcode": "Xcode 27.2\nBuild version 27B52",
+    "sdk": "27.2"
+  },
+  "identity": {
+    "schema": 1,
+    "components": {
+      "gui": {
+        "component": "gui",
+        "version": "0.1.21",
+        "protocol_version": 26,
+        "git_sha": "bfc8952c35cd5735d18072dd354d8f182262d63a",
+        "dirty": false,
+        "built_at_epoch": 1793638331
+      },
+      "cli": {
+        "component": "cli",
+        "version": "0.1.21",
+        "protocol_version": 26,
+        "git_sha": "bfc8952c35cd5735d18072dd354d8f182262d63a",
+        "dirty": false,
+        "built_at_epoch": 1793638331
+      },
+      "core": {
+        "component": "core",
+        "version": "0.1.21",
+        "protocol_version": 26,
+        "git_sha": "bfc8952c35cd5735d18072dd354d8f182262d63a",
+        "dirty": false,
+        "built_at_epoch": 1793638331
+      },
+      "worker": {
+        "component": "worker",
+        "version": "0.1.21",
+        "protocol_version": 26,
+        "git_sha": "bfc8952c35cd5735d18072dd354d8f182262d63a",
+        "dirty": false,
+        "built_at_epoch": 1793638331
+      }
+    }
+  },
+  "runtime": {
+    "architecture": "aarch64",
+    "onnxruntime": "1.28.2",
+    "provider": "cpu",
+    "sherpa_onnx": "2.0.0"
+  },
+  "runtime_execution": "native",
+  "runtime_checked_architecture": "arm64",
+  "intel_native_test": "not run on Intel hardware",
+  "minimum_os_runtime_test": "not run",
+  "dmg": "loppi_0.1.21_macos-arm64.dmg",
+  "dmg_bytes": 183975085,
+  "dmg_sha256": "7247929abe16b12af577153c8319287fec64894a76e37130424c9cec5f58101b",
+  "updater": {
+    "version": "0.1.21",
+    "source": "bfc8952c35cd5735d18072dd354d8f182262d63a",
+    "platforms": {
+      "darwin-aarch64": {
+        "url": "https://github.com/hAcKlyc/loppi/releases/download/v0.1.21/loppi_0.1.21_macos-arm64.app.tar.gz",
+        "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUcmJuVWFzYi9CdXI0WjVWT2Z6eENOelZrRE1mSFBHUU1pMWg5TkExbHdXamY0aEl4R3BvWlBnVkVOdVlweHlmZG85Q0Zyb0JBTVNqQUlRYm1ZTmFHUE1TbG5QM3JRY2dVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzNjM4NzcyCWZpbGU6bG9wcGlfMC4xLjIxX21hY29zLWFybTY0LmFwcC50YXIuZ3oJdmVyc2lvbjowLjEuMjEKNlJWMFUxZ2gwZXEySStaU005RHlFN1pNTnozTS9QRUdHY0tyVlZJdVFxSFNRVGZQOVl3QVd2ajVjSzJxZHVFVVlpMERxdGZyc1JCN3RDcXBaMFVQQUE9PQo="
+      }
+    },
+    "artifact": "loppi_0.1.21_macos-arm64.app.tar.gz",
+    "bytes": 178040397,
+    "sha256": "5765f8b3e470020ecd6db6bd95f42b2cdd74b2b3102b24d255e685f6e5b635c3"
+  }
+}

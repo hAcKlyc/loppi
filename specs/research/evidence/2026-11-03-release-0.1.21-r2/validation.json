@@ -1,0 +1,14 @@
+{
+  "version": "0.1.21",
+  "source": "09b1b1a8103cdc6fcfc36c2176759e768cbae034",
+  "dirty": false,
+  "target": "aarch64-apple-darwin",
+  "protocol": 26,
+  "previous_source": "bfc8952c35cd5735d18072dd354d8f182262d63a",
+  "dmg": "loppi_0.1.21_macos-arm64.dmg",
+  "dmg_bytes": 183975215,
+  "dmg_sha256": "4e053705617deee2e51b8fbebaeca4c17260f816b9af9f7ca5b6e7d947a4f569",
+  "updater_signature": "verified; same version 0.1.21 with new source and bytes",
+  "component_identity": "all four match latest clean source",
+  "checksums": "all pass"
+}

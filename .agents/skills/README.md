@@ -1,6 +1,6 @@
 # 开发工作流技能
 
-从 MyAgents 仓库的 `.claude/skills/` 原样复制，独立纳入 loppi 的版本管理；不是指向原仓库的链接，不随源仓库自动更新。
+源自 MyAgents 的开发工作流文档，已由版权持有人 Ethan L 授权按 Apache-2.0 分发，并适配 loppi 的构建、验证、文档与进程边界。它们独立纳入本仓库，不依赖安装 MyAgents，也不随来源仓库自动更新。
 
 | 技能 | 职责 |
 |---|---|
@@ -15,4 +15,4 @@
 
 调用关系：`prd-discuss → prd-writer → start-dev → cross-review-code → dev 验收 → merge-release`；审查协调器先执行 requirements / adversarial，再执行 architecture；正式发行由 main 上的 Release Actions 执行。
 
-本次仅复制技能，未启动开发或审查流程。正文保留了 MyAgents 的名称、架构文档路径、构建命令和示例；这些不是 loppi 已存在的实现或工具链。正式使用前，应按 loppi 的实际项目指令与文件核对并适配，不能为满足源项目示例而引入其架构。loppi 当前 PRD 仍为 draft，复制技能不改变其就绪状态。
+构建与测试的实际入口见 [CONTRIBUTING.md](../../CONTRIBUTING.md)和[开发指南](../../docs/development.md)。`.claude/skills` 是指向本目录的仓库内相对链接。技能属于可选协作工具，不要求每位贡献者使用相同 Agent 或完整流程；项目许可见 [LICENSE](../../LICENSE)。

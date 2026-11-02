@@ -1,0 +1,26 @@
+{
+  "default": {
+    "band": "rgb(214, 160, 138)",
+    "canvas": "rgb(246, 245, 241)",
+    "completed": "rgb(253, 253, 252)",
+    "leftBorder": "0px",
+    "live": "rgb(253, 253, 252)",
+    "liveBefore": "none",
+    "shadow": "none",
+    "tag": {
+      "background": "rgb(246, 232, 225)",
+      "color": "rgb(156, 80, 60)",
+      "radius": "4px",
+      "text": "正在记录"
+    }
+  },
+  "recordingHover": {
+    "background": "rgb(239, 239, 233)",
+    "hover": true,
+    "tagBackground": "rgb(246, 232, 225)"
+  },
+  "completedHover": {
+    "background": "rgb(239, 239, 233)",
+    "hover": true
+  }
+}

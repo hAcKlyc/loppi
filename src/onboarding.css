@@ -20,8 +20,16 @@
 	margin: auto;
 }
 .onboarding-content h1 {
+	display: flex;
+	align-items: center;
+	gap: var(--space-4);
 	font-size: var(--type-title);
 	margin: 0;
+}
+.setup-wordmark {
+	display: block;
+	width: var(--brand-wordmark-width);
+	height: auto;
 }
 .onboarding-content header {
 	margin-bottom: var(--space-9);
@@ -44,7 +52,7 @@
 	padding-top: 0;
 }
 .setup-group h2 {
-	font-size: var(--type-body);
+	font-size: var(--type-lead);
 	font-weight: var(--weight-semibold);
 	margin: var(--space-5) 0 0;
 	white-space: nowrap;
@@ -64,7 +72,9 @@
 }
 .setup-cloud {
 	display: grid;
-	grid-template-columns: var(--setup-cloud-columns);
+	grid-template-columns:
+		calc(var(--space-14) * 2 + var(--space-7)) max-content
+		minmax(0, 1fr);
 	align-items: start;
 	gap: var(--space-4);
 	margin-bottom: var(--space-6);
@@ -74,10 +84,10 @@
 	padding-top: var(--space-5);
 	white-space: nowrap;
 }
-.setup-cloud-label small {
-	font-size: var(--type-caption);
-	color: var(--color-text-secondary);
-	margin-left: var(--space-3);
+.setup-key-link {
+	align-self: start;
+	min-height: calc(var(--space-11) - var(--space-1));
+	white-space: nowrap;
 }
 .setup-help {
 	font-size: var(--type-caption);
@@ -88,16 +98,13 @@
 	cursor: pointer;
 	width: fit-content;
 }
-.setup-key-help > summary {
-	margin-left: auto;
-}
 .onboarding-content .error {
 	color: var(--color-danger);
 }
 .onboarding-content footer {
 	display: flex;
 	align-items: center;
-	justify-content: space-between;
+	justify-content: flex-end;
 	gap: var(--space-8);
 	padding-top: var(--space-9);
 }
@@ -130,9 +137,16 @@
 	font-size: var(--type-caption);
 	color: var(--color-text-secondary);
 }
+.setup-later {
+	font-size: var(--type-meta);
+}
+.setup-success-check {
+	color: var(--color-complete-text);
+}
 .setup-ready {
 	display: inline-flex;
 	align-items: center;
+	gap: var(--space-3);
 	min-height: calc(var(--space-11) - var(--space-1));
 	font-size: var(--type-body);
 	color: var(--color-brand);
@@ -162,6 +176,7 @@
 	display: flex;
 	align-items: center;
 	justify-content: center;
+	gap: var(--space-3);
 	border: var(--stroke-hairline) solid var(--color-border-strong);
 	border-radius: var(--radius-sm);
 	font-size: var(--type-meta);

@@ -76,7 +76,7 @@
     {
       "name": "python-regressions",
       "command": [
-        "/Users/zhihu/miniconda3/bin/python3",
+        "<USER_HOME>/miniconda3/bin/python3",
         "-m",
         "unittest",
         "discover",
@@ -168,7 +168,7 @@
     {
       "name": "component-identities",
       "command": [
-        "/Users/zhihu/miniconda3/bin/python3",
+        "<USER_HOME>/miniconda3/bin/python3",
         "scripts/verify_build_identity.py",
         "--directory",
         "target/debug"
@@ -179,7 +179,7 @@
     {
       "name": "isolated-core",
       "command": [
-        "/Users/zhihu/miniconda3/bin/python3",
+        "<USER_HOME>/miniconda3/bin/python3",
         "scripts/smoke_core.py"
       ],
       "seconds": 4.66,
@@ -188,7 +188,7 @@
     {
       "name": "isolated-diagnostics",
       "command": [
-        "/Users/zhihu/miniconda3/bin/python3",
+        "<USER_HOME>/miniconda3/bin/python3",
         "scripts/smoke_diagnostics.py"
       ],
       "seconds": 3.39,

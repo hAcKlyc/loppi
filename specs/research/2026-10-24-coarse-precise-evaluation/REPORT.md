@@ -15,7 +15,7 @@
 
 精转保留自己的句段边界，没有额外加入说话人身份。因此这是“现有两种转录表示”的实际效果对照，不能单独归因于识别文字准确率。c07 原精转任务时间映射失败，先用相同保留音频补转一次，再冻结实验输入；原失败、音频映射和补转证据均保留。
 
-[冻结方案](/Users/ethan/Projects/hear/specs/research/2026-10-24-coarse-precise-evaluation/PLAN.md) · [固定 prompt](/Users/ethan/Projects/hear/specs/research/2026-10-24-coarse-precise-evaluation/prompt.txt) · [Schema](/Users/ethan/Projects/hear/specs/research/2026-10-24-coarse-precise-evaluation/output.schema.json) · [全部摘要与实际保存 JSON](/Users/ethan/Projects/hear/specs/research/2026-10-24-coarse-precise-evaluation/private/OUTPUTS.md)
+[冻结方案](PLAN.md) · [固定 prompt](prompt.txt) · [Schema](output.schema.json) · 全部摘要与实际保存 JSON（本地材料 `private/OUTPUTS.md`，不随仓库发布）
 
 ## 2. 量化结果
 
@@ -138,7 +138,7 @@ c05 第二遍中，两组各有一次把未明确的说话人或亲属关系具�
 
 其余 c01、c02、c03、c04、c07 的明确核心信息整体较稳定；其中 c02/c03/c04 的精转仍各出现一次结构失败。c03 关于当前配置方案与未来自动适配设想有原话歧义，复核后统一撤销过严的“条件矛盾”判罚，没有拿精转反推粗转真值。全部裁决及原始评分保留。
 
-[逐例三轮摘要、源文与 JSON](/Users/ethan/Projects/hear/specs/research/2026-10-24-coarse-precise-evaluation/private/OUTPUTS.md) · [最终评分](/Users/ethan/Projects/hear/specs/research/2026-10-24-coarse-precise-evaluation/private/semantic-scores.json) · [评分勘误](/Users/ethan/Projects/hear/specs/research/2026-10-24-coarse-precise-evaluation/private/scoring-errata.md)
+逐例三轮摘要、源文与 JSON（本地材料 `private/OUTPUTS.md`，不随仓库发布） · 最终评分（本地材料 `private/semantic-scores.json`，不随仓库发布） · 评分勘误（本地材料 `private/scoring-errata.md`，不随仓库发布）
 
 ## 5. high 的延迟与用量
 
@@ -182,10 +182,10 @@ c05 第二遍中，两组各有一次把未明确的说话人或亲属关系具�
 
 ## 8. 证据与复核
 
-- [量化数据](/Users/ethan/Projects/hear/specs/research/2026-10-24-coarse-precise-evaluation/metrics.json)：72 行指标、两组汇总和 12 组配对结果，无源转录正文。
-- [完整阅读版](/Users/ethan/Projects/hear/specs/research/2026-10-24-coarse-precise-evaluation/private/OUTPUTS.md)：72 份实际 summary、每项评分依据、源文及最终保存 JSON 链接。
-- [结构审计](/Users/ethan/Projects/hear/specs/research/2026-10-24-coarse-precise-evaluation/private/structure-audit.json) / [原始响应与 SQLite 一致性诊断](/Users/ethan/Projects/hear/specs/research/2026-10-24-coarse-precise-evaluation/private/diagnostics.json)。
-- [评分口径](/Users/ethan/Projects/hear/specs/research/2026-10-24-coarse-precise-evaluation/private/semantic-rubric.md) / [冻结事实清单](/Users/ethan/Projects/hear/specs/research/2026-10-24-coarse-precise-evaluation/private/gold.json) / [统一裁决](/Users/ethan/Projects/hear/specs/research/2026-10-24-coarse-precise-evaluation/private/scoring-errata.md)。
-- [审查记录](/Users/ethan/Projects/hear/specs/research/2026-10-24-coarse-precise-evaluation/REVIEW.md)。原始转录、响应、数据库与音频映射证据保存在本地 private/，不纳入 Git。
+- [量化数据](metrics.json)：72 行指标、两组汇总和 12 组配对结果，无源转录正文。
+- 完整阅读版（本地材料 `private/OUTPUTS.md`，不随仓库发布）：72 份实际 summary、每项评分依据、源文及最终保存 JSON 链接。
+- 结构审计（本地材料 `private/structure-audit.json`，不随仓库发布） / 原始响应与 SQLite 一致性诊断（本地材料 `private/diagnostics.json`，不随仓库发布）。
+- 评分口径（本地材料 `private/semantic-rubric.md`，不随仓库发布） / 冻结事实清单（本地材料 `private/gold.json`，不随仓库发布） / 统一裁决（本地材料 `private/scoring-errata.md`，不随仓库发布）。
+- [审查记录](REVIEW.md)。原始转录、响应、数据库与音频映射证据保存在本地 private/，不纳入 Git。
 
 工具层验证：Core 329 tests passed / 14 ignored，cargo check 与 production build 通过；固定窗口、来源绑定、缺失结果分母故障注入及汇总合成数据校验通过。测试工具复用生产分析链路；本次没有把实验 prompt 或精转输入策略安装为默认行为。

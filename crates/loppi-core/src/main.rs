@@ -3280,6 +3280,40 @@ fn handle_request(
                     },
                 }
             }
+            Request::ConfirmEventCompletion {
+                event_id,
+                expected_revision,
+                started_ms,
+                ended_ms,
+            } => {
+                let _outbound = shared.asr_outbound.lock().map_err(|e| e.to_string())?;
+                let result = {
+                    let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                    store.mutate_response(envelope.id, &mutation_fingerprint, |tx| {
+                        let object_id = events::completion::confirm(
+                            tx,
+                            envelope.id,
+                            event_id,
+                            expected_revision,
+                            started_ms,
+                            ended_ms,
+                            now_ms()?,
+                        )?;
+                        Ok(Response::Accepted {
+                            id: envelope.id,
+                            object_id,
+                        })
+                    })
+                };
+                match result {
+                    Ok(response) => response,
+                    Err(error) => Response::Error {
+                        id: envelope.id,
+                        code: "event_invalid".into(),
+                        message: error,
+                    },
+                }
+            }
             Request::RetranscribeEvent {
                 event_id,
                 expected_revision,
@@ -4391,12 +4425,14 @@ fn handle_request(
                     // The host repeats this with its existing state refresh, so
                     // a restarted query-only Core can recover. Only the first
                     // activation of this instance restores current intent.
-                    if !shared.normal_run.load(Ordering::Acquire) {
+                    if !shared.normal_run.load(Ordering::Acquire)
+                        || !shared.allow_capture.load(Ordering::Acquire)
+                    {
                         if store.state()?.recording_schedule.enabled {
                             store.settle_schedule()?;
-                            store.clear_quit()?;
-                            shared.allow_capture.store(true, Ordering::Release);
                         }
+                        store.clear_quit()?;
+                        shared.allow_capture.store(true, Ordering::Release);
                         shared.normal_run.store(true, Ordering::Release);
                     }
                     Response::Status {
@@ -5522,6 +5558,7 @@ impl Store {
             | Request::ReorganizeEvents { .. }
             | Request::CreateEvent { .. }
             | Request::EditEvent { .. }
+            | Request::ConfirmEventCompletion { .. }
             | Request::RetranscribeEvent { .. }
             | Request::DeleteEvent { .. }
             | Request::SplitEvent { .. }

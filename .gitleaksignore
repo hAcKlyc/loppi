@@ -1,0 +1,3 @@
+# One historical English-prose false positive, not a credential.
+# The matched words are "publishing/replacing" after a reference to authentication.
+ad036e2fd7d7be673612f8e070327128c89fcdd4:specs/research/evidence/2026-11-02-updater/review-contract.md:generic-api-key:8

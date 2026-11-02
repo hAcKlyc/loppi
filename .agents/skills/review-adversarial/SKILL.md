@@ -1,6 +1,6 @@
 ---
 name: review-adversarial
-description: "Perform a fresh-context, failure-seeking review of MyAgents state, concurrency, lifecycle, resources, errors, security boundaries, and unexpected inputs. Use as the adversarial lens inside cross-review-code or for an explicit failure-path review."
+description: "Perform a fresh-context, failure-seeking review of loppi state, concurrency, lifecycle, resources, errors, security boundaries, and unexpected inputs. Use as the adversarial lens inside cross-review-code or for an explicit failure-path review."
 ---
 
 # Adversarial Correctness Review

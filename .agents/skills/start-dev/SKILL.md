@@ -1,9 +1,9 @@
 ---
 name: start-dev
-description: "Full MyAgents workflow from a PRD or settled conversation through implementation, verification, cross-review, commits, and acceptance summary. One PRD is one atomic delivery; development batches only organize implementation/review/commit. Use for /start-dev, 'start dev', '开始开发', '按 PRD 开发', or equivalent end-to-end implementation requests; small conversational requirements use the same workflow through a devplan."
+description: "Full loppi workflow from a PRD or settled conversation through implementation, verification, cross-review, commits, and acceptance summary. One PRD is one atomic delivery; development batches only organize implementation/review/commit. Use for /start-dev, 'start dev', '开始开发', '按 PRD 开发', or equivalent end-to-end implementation requests; small conversational requirements use the same workflow through a devplan."
 ---
 
-# MyAgents 需求开发全流程
+# loppi 需求开发全流程
 
 你即将独立完成一个完整的开发周期。用户通常不在场，可能几小时后才回来做**一次**真机验收——中间的设计判断、验证、review、提交全由你负责。两样东西决定这次交付的质量：**磁盘上的执行台账**（你的工作记忆，防长任务/上下文压缩后失忆）和**最后的交付摘要**（用户重新进入上下文的唯一入口）。
 
@@ -44,10 +44,10 @@ description: "Full MyAgents workflow from a PRD or settled conversation through 
 - 必须保证：<本次交付承诺的行为、可靠性与兼容边界>
 - 明确不做 / 不保证：<例如不自动重试、不跨重启恢复、不提供跨文件事务；从 PRD 反向边界提炼>
 - 本次负责的问题：<本次改动引入、显著放大，或 PRD 明确要求解决的问题>
-- 状态来源与生命周期（涉及配置、持久状态、Session 或 Runtime 时）：<按 CLAUDE.md 列出每个相关事实的 source of truth、生效阶段、派生状态和写入入口；不涉及则写 N/A>
+- 状态来源与生命周期（涉及配置、持久状态、Session 或 Runtime 时）：<按 CONTRIBUTING.md 列出每个相关事实的 source of truth、生效阶段、派生状态和写入入口；不涉及则写 N/A>
 - 复用的既有抽象：<grep 核实过的真实符号/模块名；写不出来就先去搜，别凭印象>
 - 新增架构机制：<新增 state/store/owner/protocol/retry/fallback 及其必要性；目标是无>
-- 适用的架构不变量：<CLAUDE.md 常驻架构心智模型及对应 owner 文档中与本次相关的约束>
+- 适用的架构不变量：<CONTRIBUTING.md 常驻架构心智模型及对应 owner 文档中与本次相关的约束>
 
 ### 验收与结束条件（动第一行代码前写完）
 - 验收标准：<哪些结果成立才算完成>
@@ -87,7 +87,7 @@ description: "Full MyAgents workflow from a PRD or settled conversation through 
 
 ## Step 1: 实现需求
 
-遵循需求目标、CLAUDE.md 与项目现有代码模式。设计判据以 CLAUDE.md 的工作方法与常驻架构心智模型为准，不在此复述；方案定型前做归零自检：
+遵循需求目标、CONTRIBUTING.md 与项目现有代码模式。设计判据以 CONTRIBUTING.md 的工作方法与常驻架构心智模型为准，不在此复述；方案定型前做归零自检：
 
 - (a) 引入了几个新概念？趋向零——若需要新的 enum、优先级体系或注册协议，视为设计异味，项目中几乎必然存在同构结构尚未被识别。
 - (b) 仅用已有原语的最简实现是什么？
@@ -110,11 +110,11 @@ description: "Full MyAgents workflow from a PRD or settled conversation through 
 npm run typecheck && npm run lint
 ```
 
-Rust 变更加 `cargo check`。测试选池与补测义务（修 bug 补回归、新增纯函数配单测等）照 CLAUDE.md「验证与维护」执行，不在此复述。
+Rust 变更加 `cargo check`。测试选池与补测义务（修 bug 补回归、新增纯函数配单测等）照 CONTRIBUTING.md及 docs/development.md 的验证要求执行，不在此复述。
 
 ### 2b. 构建验证
 
-按变更范围选：仅 Rust → `cargo build`（要产出二进制才能做后续烟测）；仅前端 → `npm run build`；全栈 → `./build_dev.sh`。构建失败意味着交付物有问题。
+按变更范围选：仅 Rust → `cargo build --workspace --locked`（要产出二进制才能做后续烟测）；仅前端 → `npm run build`；全栈 → macOS `./build_dev.sh --target <本机 Rust target>` / Windows `./build_dev.ps1`。构建失败意味着交付物有问题。
 
 ### 2c. 针对性烟测
 
@@ -126,11 +126,11 @@ Rust 变更加 `cargo check`。测试选池与补测义务（修 bug 补回归�
 - **前端组件变更** → 有浏览器能力则截图验证，否则记入「真机验收指南」标明具体验证步骤
 - **桌面 / OS 集成变更** → 无真实 Tauri / OS surface 时不能声称已烟测；Step 4 cross-review 必须执行，并在「真机验收指南」给出可复现的 OS 级证据步骤，不能只验 UI 状态。
 
-烟测脚本放 `/tmp/myagents-verify-*`，用完即删。**所有「自动验证覆盖不到」的项，当场记入台账并标记 `mandatory` 或 `advisory`**：属于 PRD 验收、关键技术假设、安全 / 权限、跨平台或 OS 集成正确性的都是发布硬门槛 `mandatory`；仅用于主观观感微调或额外观察、且不影响完成定义的才是 `advisory`。Step 6 聚合成真机验收指南——不要靠最后回忆，也不要把 mandatory 写成建议项来绕过完成门禁。
+烟测脚本放 `/tmp/loppi-verify-*`，用完即删。**所有「自动验证覆盖不到」的项，当场记入台账并标记 `mandatory` 或 `advisory`**：属于 PRD 验收、关键技术假设、安全 / 权限、跨平台或 OS 集成正确性的都是发布硬门槛 `mandatory`；仅用于主观观感微调或额外观察、且不影响完成定义的才是 `advisory`。Step 6 聚合成真机验收指南——不要靠最后回忆，也不要把 mandatory 写成建议项来绕过完成门禁。
 
 ### 2d. 回归风险评估
 
-改了共享模块（Sidecar 生命周期、agent-session 状态、Tab context、工作区文件 IO、config 持久化、plugin bridge、runtime 路由、共享 UI 原语等）时，对相邻路径也做基本验证。
+改了共享模块（Core/GUI/CLI/worker 生命周期、受限 IPC、媒体与数据库 IO、云队列、凭据、平台桥接、共享 UI 原语等）时，对相邻路径也做基本验证。
 
 如果改动涉及同一产品概念在不同 lifecycle phase 的表示，至少验证 source of truth 已经成立、但下游 Runtime 或 UI 状态尚未建立的过渡阶段；不能只验证所有状态都已稳定后的路径。
 
@@ -141,7 +141,7 @@ Rust 变更加 `cargo check`。测试选池与补测义务（修 bug 补回归�
 - 功能点是否完整覆盖？边界情况和细节是否处理？
 - 有没有引入需求范围之外的行为（scope creep）？
 - 是否还有验收标准未被任何验证覆盖？
-- 本次变更是否让 CLAUDE.md 路由到的架构 / tech docs / DESIGN 陈述失真，或新增了必须教给后续开发者的承重抽象？有则在本次开发内更新，不留给周期性文档审计。
+- 本次变更是否让 CONTRIBUTING.md 路由到的架构 / tech docs / DESIGN 陈述失真，或新增了必须教给后续开发者的承重抽象？有则在本次开发内更新，不留给周期性文档审计。
 
 Step 2 验证「代码能不能跑」，这一步验证「跑出来的对不对」。检查完同步勾选台账行动清单。
 
@@ -167,7 +167,7 @@ Step 2 验证「代码能不能跑」，这一步验证「跑出来的对不对�
 
 ## Step 5: 提交 Git
 
-只有 required lenses 全部完成、当前契约内的阻塞问题已根因修复、验收要求的证据缺口已关闭、最终 architecture 审查结论为 PASS，且修复后的受影响验证通过，才进入提交。已裁决为超出范围、既有问题或误报的审查发现不阻塞提交，也不得继续驱动加固。并发 writer、显式 staging 与提交前验证纪律仍照 CLAUDE.md「Git 与共享工作区」执行。
+只有 required lenses 全部完成、当前契约内的阻塞问题已根因修复、验收要求的证据缺口已关闭、最终 architecture 审查结论为 PASS，且修复后的受影响验证通过，才进入提交。已裁决为超出范围、既有问题或误报的审查发现不阻塞提交，也不得继续驱动加固。并发 writer、显式 staging 与提交前验证纪律仍照 CONTRIBUTING.md「Git 与共享工作区」执行。
 
 ### Commit message 硬闸
 
@@ -195,7 +195,7 @@ Step 2 验证「代码能不能跑」，这一步验证「跑出来的对不对�
 
 收尾动作：模式 A 的 PRD 与模式 B 的 devplan 使用同一终态门禁——只有全部必做范围、实现内验证、发布硬门槛真机验收与 Step 5.5 整体门禁完成才写 `status: implemented`；任何一项未完成都保持 `status: in-progress`，在台账说明剩余项，并明确**不得把部分完成当成可发布交付**；`updated` 更新为当天。
 
-状态与最终台账不能只留在工作树：若需求源是 tracked 文件，显式 stage 该文件并创建一个只承载交付状态 / 最终证据的收尾 commit（遵守 CLAUDE.md 的并发 writer 与 commit message 纪律）；若它位于默认 ignored 的 `specs/prd/` 且未被跟踪，禁止 `git add -f`，保留本地状态并在交付备忘说明“未纳入 Git（按仓库规则）”。mandatory 用户真机验收在稍后才完成时，也在确认后执行同一状态更新与 tracked closeout commit。
+状态与最终台账不能只留在工作树：若需求源是 tracked 文件，显式 stage 该文件并创建一个只承载交付状态 / 最终证据的收尾 commit（遵守 CONTRIBUTING.md 的并发 writer 与 commit message 纪律）；本仓库通常跟踪 `specs/prd/` 文档；遇到忽略路径时先用 `git check-ignore` 核对，不强行加入私有资料。mandatory 用户真机验收在稍后才完成时，也在确认后执行同一状态更新与 tracked closeout commit。
 
 然后输出产品导向的摘要。不要以逐文件变更清单或测试命令清单开头——那是工程记录，不是用户的验收框架。只有 `status: implemented` 才使用“开发完成”；若仍是 `in-progress`，标题必须是“开发进展（未完成，不可发布）”，置顶说明缺失的必做范围，不能用完成态措辞制造部分交付已经成立的印象。结构：
 
@@ -213,7 +213,7 @@ Step 2 验证「代码能不能跑」，这一步验证「跑出来的对不对�
 [少数几个决定行为正确性的结构性决策，不是实现流水账，不逐文件罗列。]
 
 ### 4. 架构判断与影响
-[方案是否符合 MyAgents 架构；行为变化、权限/安全影响、兼容与迁移风险、已知负面影响。没有就明说。]
+[方案是否符合 loppi 架构；行为变化、权限/安全影响、兼容与迁移风险、已知负面影响。没有就明说。]
 
 ### 5. 待决策 + 真机验收指南
 [「待用户决策」条目置顶（如有）。然后聚合整个 run 中所有自动验证覆盖不到的点，按风险排序给 3–7 个验收场景，每个：操作步骤（点哪里、输入什么）/ 预期结果 / 为什么测这个（一句话说明覆盖了什么风险）。桌面/OS 集成类给 OS 级硬证据步骤。这是用户唯一需要亲手做的事。]

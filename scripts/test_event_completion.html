@@ -1,0 +1,24 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>loppi · 事件结束隔离验收</title><div id="root"></div>
+<script type="module">
+import React from 'react';import {createRoot} from 'react-dom/client';import {mockIPC} from '@tauri-apps/api/mocks';import {DetailDrawer} from '/src/DetailDrawer.tsx';import '/src/App.css';
+window.isTauri=true;
+const start=new Date(2026,10,2,10,0).getTime()+123;
+const initial={id:'00000000-0000-0000-0000-000000000001',title:'产品设计评审',started_ms:start,ended_ms:start+1800000,sources:'both',revision:1,processing_state:'settling_asr',coarse_segments:[{id:'coarse',source:'microphone',started_ms:start+60000,ended_ms:start+90000,text:'我们确认了事件结束后的处理方式，接下来补充交互和验证。'}],precise_segments:[]};
+let current={...initial},version=0,requestCount=0,receipt=null;
+const params=new URLSearchParams(location.search);const root=createRoot(document.getElementById('root'));
+function render(){root.render(React.createElement(DetailDrawer,{item:current,people:[],refreshToken:version,onClose:()=>root.render(null),onEdit:()=>alert('合成预览：编辑事件'),onTools:(_item,mode)=>alert('合成预览：'+mode),onDataAction:kind=>alert('合成预览：'+kind),onQueue:()=>alert('合成预览：查看智能识别'),onChanged:()=>{version++;render()},onMessage:()=>{}}))}
+mockIPC(async(command,args)=>{
+ const r=args.request;
+ if(r.type==='event_detail')return {type:'event',event:current};
+ if(r.type==='moments')return {type:'moments',moments:[{id:'note',kind:'comment',anchor_ms:start+1200000,created_ms:start+1200000,text:'合成样本：会后立即检查内容，允许人工校正起止时间。'}]};
+ if(r.type==='confirm_event_completion'){
+  requestCount++;
+  if(params.has('uncertain')&&requestCount===1){receipt=args.requestId;throw Error('合成回执丢失')}
+  if(receipt&&receipt!==args.requestId)throw Error('wrong receipt identity');
+  const changed=r.started_ms!==initial.started_ms||r.ended_ms!==initial.ended_ms;
+  current={...current,completion_state:changed?'pending':undefined,completed_ms:changed?null:Date.now(),processing_state:changed?'settling_asr':'pending_asr',revision:changed?1:2};
+  return {type:'accepted',object_id:r.event_id};
+ }
+ return {type:'ok'};
+});render();
+</script></html>

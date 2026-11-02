@@ -1,7 +1,10 @@
 [package]
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
 name = "loppi-desktop"
-version = "0.1.19"
-description = "A private, continuous context recorder for macOS"
+version = "0.1.21"
+description = "A local-first audio memory companion for macOS and Windows"
 edition = "2024"
 
 [lib]

@@ -1,0 +1,53 @@
+[
+  {
+    "centerDifference": 0.5,
+    "height": 760,
+    "logo": {
+      "center": 91.5,
+      "class": "brand-wordmark",
+      "width": 96,
+      "x": 43.5
+    },
+    "navCount": 5,
+    "sidebar": {
+      "center": 92,
+      "width": 184,
+      "x": 0
+    },
+    "width": 1120
+  },
+  {
+    "centerDifference": 0.5,
+    "height": 540,
+    "logo": {
+      "center": 51.5,
+      "class": "brand-symbol",
+      "width": 32,
+      "x": 35.5
+    },
+    "navCount": 5,
+    "sidebar": {
+      "center": 52,
+      "width": 104,
+      "x": 0
+    },
+    "width": 760
+  },
+  {
+    "centerDifference": 0.5,
+    "height": 1080,
+    "logo": {
+      "center": 91.5,
+      "class": "brand-wordmark",
+      "width": 96,
+      "x": 43.5
+    },
+    "navCount": 5,
+    "sidebar": {
+      "center": 92,
+      "width": 184,
+      "x": 0
+    },
+    "width": 1920
+  }
+]

@@ -51,6 +51,6 @@ updated: 2026-10-17
 
 - 2026-10-17：Cross-review requirements、adversarial、final architecture均PASS，无阻塞发现、无需修复；范围与契约未扩张。协议兼容6/6、JS合计11/11（视图3+播放器8）、静态检查及release构建通过。
 - 2026-10-17：最终签名包构建及codesign深度验证通过。旧GUI正常退出，旧debug core通过Quit正常退出；启动新release包，恢复重启前的双路记录意图。真实PID GUI2288/core2293均位于target/release/bundle/macos/hear.app；status确认两来源recording、capture_blocker=none。
-- 2026-10-17：mandatory真机验收已完成：首页真实卡片显示粗转摘录和来源、两路图形和缺口、未整理色块可打开17:26—17:37详情，关闭后返回首页。最终截图：/Users/ethan/.codex/visualizations/2026/10/17/01a14936-c656-7503-b05f-6efbc017a5ad/home-native-final.png。新包保持打开；无额外用户决策。长期录音稳定性仅属既有系统观察，未作为本轮新增保证。
+- 2026-10-17：mandatory真机验收已完成：首页真实卡片显示粗转摘录和来源、两路图形和缺口、未整理色块可打开17:26—17:37详情，关闭后返回首页。最终截图：<USER_HOME>/.codex/visualizations/2026/10/17/01a14936-c656-7503-b05f-6efbc017a5ad/home-native-final.png。新包保持打开；无额外用户决策。长期录音稳定性仅属既有系统观察，未作为本轮新增保证。
 
 - 2026-10-17：实现提交826bf33。整体门禁复核完成，最终共同typecheck/lint、diff检查通过；所有mandatory证据已关闭，单批次review覆盖最终源码。保留原有无关未跟踪素材/研究文件；临时合成验证服务及目录已清理。状态implemented。

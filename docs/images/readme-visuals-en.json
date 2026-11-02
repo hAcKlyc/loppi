@@ -1,0 +1,31 @@
+{
+  "language": "en",
+  "created": "2026-11-01",
+  "license": "Apache-2.0",
+  "copyright": "Copyright 2026 Ethan L",
+  "assets": [
+    {
+      "file": "record-to-agent-v3.en.png",
+      "tool": "Built-in image_gen",
+      "mode": "text-localization",
+      "prompt": "Use case: text-localization.\nAsset type: English version of the loppi README overview diagram.\nThe input image is the EDIT TARGET. Translate only its Chinese text into English. Preserve the existing image's aspect ratio, canvas size, warm-white background, all icons, exact loppi wordmark, small saved-record marks, colors, arrow directions, node positions, whitespace and visual style. Do not redesign, redraw the logo, add headings, explanatory prose, new nodes or decorations.\nExact text replacements:\n\"声音\" -> \"Audio\"\n\"截图 · 重点 · 观点\" -> \"Screenshots\" on the first line and \"Highlights · Notes\" on the second line, within the same left-hand input label area. Adjust only that label's type size and wrapping enough to avoid colliding with the note icon or arrow. It must remain clearly readable at 830px display width.\n\"你的上下文\" -> \"Your context\"\n\"任何 Agent\" -> \"Any Agent\"\nKeep \"loppi\", \"CLI\" and \"MCP\" exactly as they are.\nUse clean English sans-serif lettering matching the original weight and scale, with restrained readable label sizing. The ONLY words on the final image are Audio, Screenshots, Highlights, Notes, loppi, Your context, CLI, MCP, Any Agent. No Chinese characters remain.\nPreserve the structural meaning exactly: audio and user notes enter loppi; CLI and MCP are parallel alternative paths to any Agent. Do not edit the original Chinese source file; produce a separate localized image.",
+      "references": [
+        "docs/images/record-to-agent-v3.png"
+      ]
+    },
+    {
+      "file": "processing-flow-v4.en.png",
+      "tool": "Built-in image_gen",
+      "mode": "text-localization",
+      "prompt": "Use case: text-localization.\nAsset type: English version of the loppi README technical architecture diagram.\nThe input image is the EDIT TARGET. Replace only its Chinese labels with English. Preserve the existing aspect ratio, canvas, all icon artwork, rounded node outlines, dashed local/cloud boundaries, sage connector arrows, record markers, background, positions, colors, spacing, and visual style. Keep every arrow and its direction unchanged. Do not redesign the diagram or invent processing paths.\nExact text replacements:\n\"声音\" -> \"Audio\"\n\"本机\" -> \"On device\"\n\"录音 · 本地粗转\" -> \"Recording\" on the first line and \"First-pass ASR\" on the second line, inside the same node.\n\"本地上下文\" -> \"Local context\"\n\"任何 Agent\" -> \"Any Agent\"\n\"云端 · 按需\" -> \"Cloud · On demand\"\n\"粗转文字\" -> \"Initial transcript\"\n\"LLM 事件分析\" -> \"LLM\" on the first line and \"Event analysis\" on the second line, inside the same node.\n\"事件范围\" -> \"Event range\"\n\"ASR 精细转录\" -> \"ASR\" on the first line and \"Refined transcript\" on the second line, inside the same node.\n\"音频按需精转\" -> \"Selected audio only\"\nKeep \"CLI\" and \"MCP\" unchanged.\nUse clean English sans-serif lettering in the original medium weight. Adapt only each label's font size or line breaks to fit its current space with comfortable padding; avoid overlap or tiny type. Labels should remain readable at 830px display width. No Chinese characters remain.\nNo new text, explanatory sentences, titles, slogans, step numbers, watermarks, extra icons, shapes or branches. This is a separate English localization; leave the Chinese source image unchanged.",
+      "references": [
+        "docs/images/processing-flow-v4.png"
+      ]
+    }
+  ],
+  "notes": [
+    "Reference paths are relative to the repository root; output filenames are relative to this file.",
+    "Selected generated images were copied unchanged.",
+    "Chinese diagrams remain unchanged. Actual application screenshots are shared between the two READMEs without retouching."
+  ]
+}

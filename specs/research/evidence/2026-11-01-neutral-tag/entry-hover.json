@@ -1,0 +1,13 @@
+{
+  "mark": {
+    "background": "rgb(65, 71, 59)",
+    "hover": true,
+    "text": "rgb(227, 175, 152)"
+  },
+  "save": {
+    "background": "rgb(65, 71, 59)",
+    "disabled": false,
+    "hover": true,
+    "text": "rgb(227, 175, 152)"
+  }
+}

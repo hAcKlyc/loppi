@@ -236,9 +236,9 @@ mod tests {
 #[tauri::command]
 pub fn open_setup_help(provider: String) -> Result<(), String> {
     let url = match provider.as_str() {
-        "llm" => "https://api-docs.deepseek.com/api/deepseek-api/",
+        "llm" => "https://platform.deepseek.com/api_keys",
         "asr" => {
-            "https://docs.volcengine.com/docs/DoubaoVoice/LargemodelrecordingfilerecognitionstandardversionAPI?lang=zh"
+            "https://console.volcengine.com/speech/new/setting/apikeys?projectName=default"
         }
         _ => return Err("未知服务".into()),
     };
@@ -255,7 +255,7 @@ pub fn open_setup_help(provider: String) -> Result<(), String> {
         if status.success() {
             Ok(())
         } else {
-            Err("无法打开官方帮助，请在浏览器访问对应服务商文档".into())
+            Err("无法打开密钥页面，请在浏览器访问对应服务商控制台".into())
         }
     }
 }

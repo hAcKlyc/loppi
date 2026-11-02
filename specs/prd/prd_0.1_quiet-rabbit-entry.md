@@ -155,7 +155,7 @@ hover 展开后，顶部小兔子消失，面板左侧是兔子，右侧依次�
 
 定位入口：[悬浮组件](../../src/FloatingWidget.tsx)、[主窗口评论](../../src/App.tsx)、[Tauri 宿主](../../src-tauri/src/lib.rs)、[状态与幂等回执](../../crates/loppi-core/src/main.rs)、[时刻/截图校验](../../crates/loppi-core/src/moments.rs)、[屏幕选择](../../crates/loppi-core/native/moments.m)、[协议](../../crates/loppi-protocol/src/lib.rs)。
 
-[技术 RFC](tech_rfc_0.1_quiet-rabbit-entry.md)记录当前代码事实、拟定方案和原生验证门槛；[B4 / I4 素材及动态预览](../../design/rabbit/b4-i4-v1/index.html)为已接受的设计基准。[旧 HTML Playground](../../playground/hear-island.html)仍有整入口隐藏、无刘海回退悬浮、200 字限制等过时演示，不作为行为依据。用户关键原话与决策缘由已完整吸收，接受后移除讨论台账。
+[技术 RFC](tech_rfc_0.1_quiet-rabbit-entry.md)记录当前代码事实、拟定方案和原生验证门槛；[B4 / I4 素材及动态预览](../../design/rabbit/b4-i4-v1/index.html)为已接受的设计基准。[旧 HTML Playground](../../playground/loppi-island.html)仍有整入口隐藏、无刘海回退悬浮、200 字限制等过时演示，不作为行为依据。用户关键原话与决策缘由已完整吸收，接受后移除讨论台账。
 
 选择两种入口保留不同操作，是因为用户要求「悬浮球则是原来的代码逻辑和功能顺序」；评论草稿仅保留会话内，是为了不丢当前输入又避免增加持久队列；异常只提醒一次，是为了兼顾安静与漏记风险。普通位置、草稿等细节按用户「不需要的你自己决策保持整体逻辑一致性，且去掉冗余信息」的授权收敛。
 

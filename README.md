@@ -1,125 +1,34 @@
-# loppi
+简体中文 · [English](README.en.md)
 
-![loppi · 声音留在这里](design/system-v1/release/readme-header.png)
+![loppi](docs/images/readme-header-v3.png)
 
-持续情境记录器。持续留下声音，通过初步识别、片段筛选与会话归组，形成包含音频、转写、截图、重点和评论的情境记录。
+**loppi 是一只住在你电脑里的小兔子，它可以 7×24 小时为你和 Agent 默默记录共同的上下文。通过 MCP 和 CLI，让任何 Agent 都能便捷读取与管理。**
 
-## 当前状态
+![声音与随手保存的截图、重点、观点汇入 loppi，成为你的上下文，通过 CLI 或 MCP 供任何 Agent 访问。](docs/images/record-to-agent-v3.png)
 
-0.1.18 面向 macOS 13+（Apple Silicon / Intel）与 Windows 11 x64（Build 22000+）。客户端包含离线语音模型，通过同一本机核心完成录音、转写与找回。安装包、签名状态与构建身份以 [Release](https://github.com/hAcKlyc/loppi/releases/tag/v0.1.18) 附件为准；组合验收见 [Windows 执行台账](specs/prd/devplan_261101_windows-release.md)。短时功能验收与长期稳定性、其它硬件/系统版本覆盖分别记录，不将单机结果推及所有设备。
+我们每天都在如此深入地和 Agent 一起工作，但我真的受够了：把刚刚发生的讨论、刚刚结束的会议，一遍遍复述给 AI。而面前这台 MacBook，原本就在场，就在那些讨论、会议、决定和想法发生的地方。
 
-| 文档 | 职责 |
-|---|---|
-| [PRD](specs/prd/prd_0.1.md) | 定位、用户路径、产品行为、数据语义、范围与待确认决策 |
-| [整体架构](specs/ARCHITECTURE.md) | 工作树中的进程、模块与数据边界；区分实现与未通过的验收 |
-| [核心算法](specs/tech_docs/README.md) | 声音处理工作流、事件拟合与全局声纹匹配 |
-| [本地ASR评测与选型](specs/tech_docs/local-asr-benchmark.md) | 当前X-ASR具体权重、20组测试集、五模型效果/成本与升级依据 |
-| [技术 RFC](specs/prd/tech_rfc_0.1.md) | 进程与职责、采集和处理流程、数据生命周期、策略频率、性能与验证 |
-| [设计系统](specs/DESIGN.md) | 视觉原则、组件规则与语义样式 token |
-| [开发计划](plan.md) | 批次、验收证据与未完成的发布门槛 |
-| [方案自审](specs/prd/REVIEW.md) | 本次审查发现、已做修正、仍需决策或实测的事项 |
-| [界面交互 Playground](playground/loppi-0.1.html) | 基于 0.1 PRD 的单文件 HTML 交互试验稿；直接在浏览器中打开 |
+所以我开发了 loppi，让电脑成为实时的 Context 收集器。它使用电脑的存储与本地算力，在录音的同时用本地模型完成语音识别粗转录，再结合云端 LLM 和 ASR，对有价值的事件进行分析与精细转录。开启后，你不必每场会议都想着按下录音键，因为 loppi 一直在场。
 
-## 设计与资源
+![loppi 时间线，使用合成资料的界面示例](docs/images/timeline.png)
 
-[设计系统](specs/DESIGN.md)定义整个项目的视觉与交互规则；[正式资源包](design/system-v1/README.md)包含矢量字标、角色、应用图标、设计变量、离线样板和发布物料。
+你可以随时通过灵动岛或悬浮球，随手进行「截图」「标记重点」「评论记录」。让技术真正解放你的注意力。
 
-## 设计主线
+![loppi 灵动岛入口：截图、重点与评论输入框](docs/images/island.png)
 
-**持续采集 → 语音检测与本地粗转 → LLM 事件拟合 → 需要时整段精转 → 时间线找回。**
+## 下载与使用
 
-保留下来的人声音频与已有粗转文字默认持续保存，直到用户主动清理或达到全局空间边界而暂停录音。用户主动截图、Mark 和评论关联到发生时刻。产品自身完成记录、整理、找回和回放，桌面客户端与命令行共用同一个本机核心。
+前往 [Releases](https://github.com/hAcKlyc/loppi/releases) 下载适合你系统与芯片的安装包。平台支持、安装要求与已知限制见对应 Release 的说明。
 
-`loppi` 是产品正式名称，macOS 以 `.dmg` 直接分发，不通过 Mac App Store。项目计划开源；具体许可证与公开发布步骤待确定。第三方库与随包模型的许可见 `THIRD_PARTY_NOTICES.md` 和 `licenses/`；开发机密钥与真实录音不进入仓库或安装包。
+1. 安装后，授权麦克风与电脑声音采集。
+2. 配置 DeepSeek 和火山引擎凭据。
+3. 主动开启记录，让 loppi 保持运行。
 
-更名后的应用使用全新的数据目录、系统身份和凭据配置，不读取或迁移旧 hear 数据。首次使用需重新完成系统授权、Provider 配置和 Agent 接入；旧资料不主动删除。
+记录需要电脑保持唤醒。截图、重点和观点由你随手补充。详见[使用指南](docs/usage.md)。
 
-## Windows 构建与使用
+## 连接 Agent
 
-需要 Windows 11 x64、Node.js/npm、Rust MSVC、Visual Studio C++ 工具与 Windows SDK、CMake/Ninja、Python，以及 WebView2。首次在具备 MSVC 环境的 PowerShell 中运行：
-
-```powershell
-npm ci
-./build_dev.ps1
-# 干净、已提交源码的发行构建：
-./build_release.ps1
-```
-
-两入口共用 `scripts/build_windows.mjs`：生成 x64 NSIS 安装包，随包提供语音模型、离线中英文 OCR、推理 DLL、VC 运行库、WebView2 离线安装程序与第三方许可。发行入口要求干净源码，当前没有 Windows 代码签名证书，报告如实标记 `unsigned`。输出及精确依赖要求见 [Windows 支持说明](specs/tech_docs/windows-support.md)。
-
-默认程序目录是 `%LOCALAPPDATA%\loppi`，录音和数据库另存于 `%LOCALAPPDATA%\app.loppi.core`；默认卸载保留资料。Windows 麦克风使用桌面应用访问权限，电脑声音由 WASAPI 获取。锁屏时录音可以继续，桌面截图会明确提示不可用。系统托盘和悬浮入口共享同一只状态兔子。CLI/MCP 接入请从应用的「Agent 接入」复制当前安装路径和 PowerShell 命令。
-
-## macOS 发行构建
-
-在已安装 Rust、Node.js/npm、Xcode Command Line Tools，并有 Developer ID Application 证书的 Mac 上，从仓库根目录执行：
-
-```sh
-npm ci # 首次构建或依赖更新后执行
-./build_release.sh
-```
-
-默认顺序生成 **Apple Silicon（ARM64）和 Intel（x86_64）两份独立安装包**。每个包的 GUI、CLI、Core 和 worker 都只含对应架构；每包各带一份约 **204.64 MB（195.16 MiB）** 的 X-ASR、VAD 和声纹模型。安装后自动检查和加载本地组件，无需额外下载。
-
-先安装两个 Rust target：`rustup target add aarch64-apple-darwin x86_64-apple-darwin`。发行须从干净且已提交的源码构建，分别完成编译、资源与启动检查、签名、DMG、公证和装订。输出为：
-
-- `build/releases/<版本>/macos-arm64/loppi_<版本>_macos-arm64.dmg`
-- `build/releases/<版本>/macos-x86_64/loppi_<版本>_macos-x86_64.dmg`
-
-各目录附 `release-info.json` 和 `SHA256SUMS`。同次执行的两包使用同一版本、源码和构建时间；按架构分发即可。签名证书通过 `APPLE_SIGNING_IDENTITY` 指定，未指定时选择本机 Developer ID Application 证书。
-
-开发候选也默认生成两份 DMG，允许未提交源码，不要求 Developer ID 或公证：
-
-```sh
-./build_dev.sh
-# scripts/build_macos.sh 也是同一个开发构建入口
-```
-
-输出在 `build/dev/<版本>/macos-arm64/` 和 `macos-x86_64/`，文件名带 `-dev`，各附 `build-info.json` 和 `SHA256SUMS`。开发候选使用优化编译，供内部安装测试；`npm run dev` 仍只启动前端开发服务。
-
-需要只构建一个架构，或显式生成 Universal2 时：
-
-```sh
-./build_dev.sh --target aarch64-apple-darwin
-./build_release.sh --target x86_64-apple-darwin
-./build_release.sh --target universal-apple-darwin
-```
-
-中间 App 位于 `target/<target>/release/bundle/macos/loppi.app`。宿主架构执行原生检查；ARM Mac 已有 Rosetta 时也执行 Intel 包的翻译环境检查。无法执行的异架构仅验证编译、切片、最低系统版本和资源哈希，报告明确标记，不冒充原生验收。脚本不会更新 `/Applications/loppi.app`。完整布局与验证边界见[离线资源与 Mac 打包说明](specs/tech_docs/offline-macos-packaging.md)。
-
-对外分发前需要完成 Apple 公证。`build_release.sh` 自动读取根目录 `.env` 中的以下配置（已有环境变量优先），不会把 `.env` 或私钥文件放进安装包：
-
-```dotenv
-APPLE_SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)"
-APPLE_API_KEY=YOUR_KEY_ID
-APPLE_API_ISSUER=YOUR_ISSUER_ID
-APPLE_API_KEY_PATH=/absolute/path/to/AuthKey_YOUR_KEY_ID.p8
-```
-
-`APPLE_API_KEY` 是 App Store Connect API Key 的 ID，私钥放在 `APPLE_API_KEY_PATH` 指定的文件中。团队 API Key 需要 Issuer ID，个人 API Key 不应填写 Issuer ID。私钥路径支持绝对路径、相对仓库根目录的路径和 `~/`。配置后直接运行 `./build_release.sh`，即可依次完成构建、DMG 打包、公证、装订票据和 Gatekeeper 验证。
-
-也支持钥匙串凭据：首次在本机终端运行 `xcrun notarytool store-credentials loppi-notary`，按提示输入开发者 Apple ID、App 专用密码与 Team ID，然后执行：
-
-```sh
-APPLE_NOTARY_PROFILE=loppi-notary ./build_release.sh
-```
-
-`APPLE_NOTARY_PROFILE` 是钥匙串中的配置名，也可写入 `.env`；设置后优先使用钥匙串认证。缺少签名或公证配置时，发行入口在编译前退出。`scripts/build_macos.sh` 同样默认生成两架构开发 DMG；单独重新打包须显式传入 App 和输出 DMG 路径：`zsh scripts/package_macos.sh /absolute/loppi.app /absolute/output.dmg`，并自行传入签名、公证环境变量。内部未公证包可在该命令后加 `--dev`（放在两个路径之前）。
-
-长时资源观测可运行 `zsh scripts/measure_macos.sh 600 /tmp/loppi-process-usage.csv /Applications/loppi.app new /tmp/loppi-resource-report.html`。脚本每分钟记录安装版核心、worker 与界面的实际可执行路径/PID、CPU 累计时间、物理内存足迹、常驻内存、磁盘 IO 和进程能耗计数；允许短暂重叠的 worker，并在重启或进程缺席时留下可追溯样本。报告每 15 次采样自动更新一次，同时生成同名 `.html.json` 摘要；`LOPPI_REPORT_EVERY` 可调整频率。意外停止后以 `resume` 代替 `new` 续写同一个 CSV，先校验表头，不覆盖原曲线。也可用 `python3 scripts/report_macos_resources.py <一个或多个 CSV> --output /tmp/loppi-resource-report.html --summary /tmp/loppi-resource-report.json` 合并重叠采样。报告按 PID 分段显示内存和单核 CPU 曲线、峰值、P95、末值与超过 150 秒的采样空档；空档内的峰值未知。进程能耗计数只能用于同机趋势，不能替代整机电池续航实测。录音覆盖、可回放性与来源缺口仍须以核心状态和媒体清单单独核对。
-
-CLI 的 `transcribe-range` 返回 `range_id` 和 `tasks`；每条任务有可用于 `cloud retry` 的真实 `id`、`source`、起止时间和当前 `state`。双路或长范围可能产生多条任务；无可用原声会返回 `range_no_audio`，不会留下空的精转范围。
-
-精转文字优先保留完整内容与供应商时间：时间能映射到原请求且当前归属有效，就保存文字，允许偶发长静默跨度；VAD、当前原声留存和声纹质量不再导致整段文字丢失。声纹和回放各自检查真实原声。最新修复、证据与安装状态见 [精转失败调查](specs/research/2026-10-22-asr-publication-failures.md)。
-
-已有事件可以在详情的「音频信息」中重新精转；命令行可运行 `loppi event retranscribe <event-id> <revision>`。新任务按当前云端适配器处理整场可用原声，原有人工修正只在可确认的同一时段自动恢复，其余进入待核对。
-
-## 开发验证用云端配置
-
-本机原型从仓库根目录 `.env` 读取 `DEEPSEEK_API_KEY`（事件拟合 LLM）和 `VOLCENGINE_API_KEY`（火山引擎录音文件 ASR）；变量名示例见 [`.env.example`](.env.example)。`.env` 已被 Git 忽略，不在文档、日志或测试输出中保存密钥值。当前优先验证 DeepSeek 官方 API 与火山引擎「录音文件识别标准版HTTP」，具体接口与尚待验证的限制见[技术 RFC](specs/prd/tech_rfc_0.1.md)。正式客户端由用户在设置中配置凭据并存入系统安全存储（macOS Keychain / Windows Credential Manager），不能把开发机 `.env` 打进安装包。
-
-## Agent 接入
-
-保持 loppi 运行，同机 Agent 可以通过只读 CLI 或 stdio MCP 找回已有记录。侧栏「Agent 接入」提供当前安装路径对应的配置与 Skill 安装命令；不需要网络端口，也不自动修改 Agent 配置。
+从侧栏「Agent 接入」复制 CLI、MCP 配置或 Skill，供同机 Agent 使用。macOS 默认安装位置示例：
 
 ```sh
 /Applications/loppi.app/Contents/MacOS/loppi context list --date today
@@ -127,4 +36,24 @@ CLI 的 `transcribe-range` 返回 `range_id` 和 `tasks`；每条任务有可用
 /Applications/loppi.app/Contents/MacOS/loppi mcp serve
 ```
 
-两种入口共享七项能力：状态、时间浏览、关键词检索、事件理解、证据读取、概览、人物查询。使用说明与边界见 [Agent Context 契约](specs/tech_docs/agent-context.md)。
+MCP 提供只读查询；CLI 还提供管理命令。详见 [Agent Context 契约](specs/tech_docs/agent-context.md)与 [CLI 说明](resources/agent/loppi-context/references/cli.md)。
+
+## 技术架构
+
+![声音在本机录音并完成本地粗转，直接形成可由 CLI 或 MCP 读取的本地上下文；云端 LLM 分析粗转文字，按事件范围调用 ASR 精转音频，结果补充回本地上下文。](docs/images/processing-flow-v4.png)
+
+## 隐私与费用
+
+资料保存在本机；精转、整理和截图理解会将相应音频、文字或截图发送到你配置的云服务，按量计费。Agent 读取结果后的外发取决于其自身配置。详见[隐私与数据说明](PRIVACY.md)。
+
+## 文档与参与
+
+[使用指南](docs/usage.md) · [开发指南](docs/development.md) · [版本与已知限制](docs/releases.md) · [文档索引](docs/README.md)
+
+[贡献指南](CONTRIBUTING.md) · [提交问题](https://github.com/hAcKlyc/loppi/issues) · [安全报告](SECURITY.md)
+
+## 许可证
+
+代码、文档及项目自有图像采用 [Apache-2.0](LICENSE)。[NOTICE](NOTICE) · [第三方声明](THIRD_PARTY_NOTICES.md) · [品牌与商标](docs/brand.md)
+
+Copyright 2026 **Ethan L** · [myagents.io@gmail.com](mailto:myagents.io@gmail.com)

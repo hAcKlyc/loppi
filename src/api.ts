@@ -74,6 +74,13 @@ export function userError(error: unknown): string {
 		return "无法提交整理，请检查名称、时间和声音来源";
 	}
 	if (code === "event_invalid") {
+		if (message.includes("event_completion_future_range"))
+			return "结束时间不能晚于当前时间";
+		if (message.includes("event_completion_pending"))
+			return "这个事件正在重新整理，可在智能识别查看";
+		if (message.includes("no_coarse_text"))
+			return "这段时间暂无可重新整理的文字";
+
 		if (isEventStale(error)) {
 			return "事件已更新，请在时间线查看最新内容后再试";
 		}
@@ -240,6 +247,8 @@ export interface PreciseSegment extends CoarseSegment {
 }
 
 export interface TimelineItem {
+	completed_ms?: number | null;
+	completion_state?: string | null;
 	transcription?: {
 		total: number;
 		complete: number;

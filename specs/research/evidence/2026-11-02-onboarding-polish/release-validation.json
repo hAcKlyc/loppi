@@ -1,0 +1,15 @@
+{
+  "version": "0.1.20",
+  "source": "a592b23479bed37110fda49d9f0d11fed5a1f295",
+  "dirty": false,
+  "architecture": "arm64",
+  "app_notarization": "Accepted",
+  "dmg_notarization": "Accepted",
+  "gatekeeper": "accepted, Notarized Developer ID",
+  "app_and_dmg_tickets_stapled_and_validated": true,
+  "checksums_verified": true,
+  "project_and_updater_notices_bundled": true,
+  "dmg": "loppi_0.1.20_macos-arm64.dmg",
+  "bytes": 183962866,
+  "sha256": "9e387aa529d4f637a9e8c36f5091260a6738a7e647fe157e6e15ccaf353effcf"
+}

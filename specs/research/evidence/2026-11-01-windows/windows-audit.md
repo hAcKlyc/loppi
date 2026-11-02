@@ -2,7 +2,7 @@
 
 我先做只读审计，确认仓库现状、Windows 环境和已有实现；本轮不会编辑、提交、推送或发布。先返回基础事实，再补充平台缺口与建议分工。
 
-初步事实已确认：本机是 Windows 11 Pro x64（Build 26300），工作区为 `C:\Users\hackl\Documents\project\loppi`。`main` 工作树干净，HEAD 与 Mac 提供的 `1e36cf56…` 完全一致，origin 已指向 `git@github.com:hAcKlyc/loppi.git`；本地只有 main，已知远端分支为 main/dev。Node 24.13.0、npm 11.6.2 和 Rust 1.96.0 MSVC 已安装。
+初步事实已确认：本机是 Windows 11 Pro x64（Build 26300），工作区为 `C:/Users/USER\Documents\project\loppi`。`main` 工作树干净，HEAD 与 Mac 提供的 `1e36cf56…` 完全一致，origin 已指向 `git@github.com:hAcKlyc/loppi.git`；本地只有 main，已知远端分支为 main/dev。Node 24.13.0、npm 11.6.2 和 Rust 1.96.0 MSVC 已安装。
 
 代码中已有可复用的 CPAL 麦克风模块，但核心 IPC、进程监管、权限和多处 GUI 原生调用仍直接依赖 Unix/macOS，尚未发现完整 Windows 后端。我继续核实工具链、设备、缓存及具体文件边界。
 
@@ -15,7 +15,7 @@
 1. **设备与仓库**
 
    - Surface Laptop 3，Windows 11 Pro x64，版本 `10.0.26300`。
-   - 工作区：`C:\Users\hackl\Documents\project\loppi`。
+   - 工作区：`C:/Users/USER\Documents\project\loppi`。
    - 当前分支 `main`，HEAD：`1e36cf56c5c49b9cc4ba9d9305131e7e83782ca9`，与 Mac 一致。
    - origin：`git@github.com:hAcKlyc/loppi.git`；本地仅 main，远端 main/dev。没有未提交工作、开放 PR，未发现既有完整 Windows 实现或 Windows 专用分支。
    - `v0.1.18` 是附注标签，标签对象为 `b093afb…`，**解引用提交为预期的 `4969899afd8d2e9d4dc632d568ef33a843cc56bc`**。

@@ -20,7 +20,7 @@ updated: 2026-10-25
 - 状态来源：model_pack固定URL/哈希和installed_path为安装身份，Core既有ModelState/PrepareModels为准备状态，worker只计算；coarse_segments.model_version为每条已发布结果的模型归属。评测数字来自已冻结私有benchmark，不把摘要另造为识别真值。
 - 复用：model_pack::{download,verify,check_space,copy_synced,clean_staging,install}，OfflineRecognizer/OfflineTransducerModelConfig，AnalysisClient，coarse::publish，scripts/verify.py、smoke_model_preparation.py、既有benchmark的framed runner和冻结输入。
 - 新增架构机制：无。独立模型包版本是固定资产身份，不增加模型选择器、fallback、配置owner、数据库、队列、协议或自动恢复层。
-- 隔离：Batch base `a498c65b01fc83e9663207544e4981e1c77a66a4`，使用已附加 /Users/ethan/.codex/worktrees/xasr-default/hear 验证。当前hear中既有0.1.6/摘要/界面等未提交改动均out-of-scope，初始diff/指纹保存在本机build/xasr-switch；只合入和暂存本任务补丁，两个共享文档只提交自己的差异。
+- 隔离：Batch base `a498c65b01fc83e9663207544e4981e1c77a66a4`，使用已附加 <USER_HOME>/.codex/worktrees/xasr-default/hear 验证。当前hear中既有0.1.6/摘要/界面等未提交改动均out-of-scope，初始diff/指纹保存在本机build/xasr-switch；只合入和暂存本任务补丁，两个共享文档只提交自己的差异。
 - 文档：客户端README和技术索引提供持续入口；专文记录测试集位置/版本/规模/参考SHA、五配置结果/成本与不确定性、决策日期、完整权重/包SHA与来源、模型准备及安装边界。仓库只存脱敏数值/身份摘要，音频、正文、模型和运行仍在平级benchmark并保持原指纹。
 
 ### 验收与结束条件

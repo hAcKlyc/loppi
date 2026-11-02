@@ -4,9 +4,9 @@
 
 ## 评测集在哪里
 
-- 工程：`/Users/ethan/Projects/hear-asr-benchmark`，与客户端仓库平级。相对入口：[工程说明](../../../hear-asr-benchmark/README.md)、[方法](../../../hear-asr-benchmark/docs/METHOD.md)、[复现](../../../hear-asr-benchmark/docs/REPRODUCE.md)。
+- 工程：`<USER_HOME>/Projects/hear-asr-benchmark`，与客户端仓库平级。相对入口：工程说明（本地材料 `hear-asr-benchmark/README.md`，不随仓库发布）、方法（本地材料 `hear-asr-benchmark/docs/METHOD.md`，不随仓库发布）、复现（本地材料 `hear-asr-benchmark/docs/REPRODUCE.md`，不随仓库发布）。
 - 当前冻结输入：`data/v2`，原有10事件＋工作电脑新增10事件，**682段/81.36分钟、1248份原始Opus**。工作集来自4个工作日的独立活动；按实际场景/工作价值兼顾难例，未按新模型成绩选样。
-- 答案：`data/v2/reference-v1`，**626段/79.19分钟计分，56段不计准确率但保留输出**。每例保留可播放音频、TXT、原始精转、修订及来源，见[音频与答案索引](../../../hear-asr-benchmark/data/v2/INDEX.md)。生产VAD分段和逐块重采样固定，对所有模型相同；未测试端到端VAD召回。
+- 答案：`data/v2/reference-v1`，**626段/79.19分钟计分，56段不计准确率但保留输出**。每例保留可播放音频、TXT、原始精转、修订及来源，见音频与答案索引（本地材料 `hear-asr-benchmark/data/v2/INDEX.md`，不随仓库发布）。生产VAD分段和逐块重采样固定，对所有模型相同；未测试端到端VAD召回。
 - 参考是既有精转经FireRed AED与Qwen1.7B自动交叉核验的银标准，不是人工金标准。Qwen参与核验，故并列未修订精转敏感性；w02/w10等弱参考与部分时间覆盖另列。原始10例及旧正式报告保持冻结。
 - 本仓库的[数值摘要](../research/2026-10-25-local-asr-selection/results-summary.json)记录输入、参考、完整结果和正式证据清单SHA256；不复制私人音频、转录正文、数据库或权重。恢复完整测试集需备份整个benchmark目录，只有客户端Git不够。
 
@@ -36,7 +36,7 @@
 
 RTF为处理秒/音频秒；RSS和macOS物理足迹口径不同，干净映射权重页可回收，峰值不是未来上限。线程参数2不是核硬绑定；X-ASR实际平均约2.11核。模型资产不是最终安装包；本轮原生程序/必要库X-ASR约26.3MB，产品UI和共同组件另计。进程能量是macOS同机估算，不能换算电池续航或承诺省电比例。
 
-SenseVoice首末RTF变化+7.46%、CPU+2.88%、进程能量+3.24%；Qwen1.7B三轮RTF为0.598/0.510/0.454。后台负载和温度不可完全隔离，不用小差距作稳定领先结论。完整冷启动、P95、控制、逐例结果和证据见[最终评估](../../../hear-asr-benchmark/reports/selection20-v1/DECISION.md)、[完整成本表](../../../hear-asr-benchmark/reports/selection20-v1/REPORT.md)、[分层及参考QA](../../../hear-asr-benchmark/reports/selection20-v1/COHORTS.md)。
+SenseVoice首末RTF变化+7.46%、CPU+2.88%、进程能量+3.24%；Qwen1.7B三轮RTF为0.598/0.510/0.454。后台负载和温度不可完全隔离，不用小差距作稳定领先结论。完整冷启动、P95、控制、逐例结果和证据见最终评估（本地材料 `hear-asr-benchmark/reports/selection20-v1/DECISION.md`，不随仓库发布）、完整成本表（本地材料 `hear-asr-benchmark/reports/selection20-v1/REPORT.md`，不随仓库发布）、分层及参考QA（本地材料 `hear-asr-benchmark/reports/selection20-v1/COHORTS.md`，不随仓库发布）。
 
 ## 为什么选择X-ASR
 
@@ -69,6 +69,13 @@ X-ASR也有回退：c08为48.27%（SenseVoice37.13%）、w10为53.29%（51.56%�
 
 从 **0.1.8** 起，模型随 `HearCore.app/Contents/Resources/models/` 交付。X-ASR 的四份推理资产及原 Silero/CampPlus 字节不变，具体来源和哈希以仓库 [`config/models.lock.json`](../../config/models.lock.json) 为准。Core 启动自动校验资源并实际加载 VAD/ASR；设置中的重试只重新检查，不下载。旧数据目录模型不再参与就绪判定，也不会自动删除；历史识别结果标签不改、不强制重转、不退回 SenseVoice。
 
-Core 继续拥有模型状态和 Governor 准入，worker 只计算。IPC、数据库、推理参数和选型结论不变。默认 Universal2 包内权重仅保留一份，详见[打包说明](offline-macos-packaging.md)。本次按用户要求简化交付，只进行必要编译、启动和实际包检查，不新增完整质量或能耗评测结论；原 20 组评测仍是选型依据。Intel 原生与最低系统实机验收未执行，不把 ARM 结果当作 Intel 指标。安装包与当前正在运行的安装版仍需区分。
+Core 继续拥有模型状态和 Governor 准入，worker 只计算。IPC、数据库、推理参数和选型结论不变。当前默认按 ARM64 与 x86_64 分别打包，每包权重各保留一份；显式 Universal2 也仅含一份权重，详见[打包说明](offline-macos-packaging.md)。本次按用户要求简化交付，只进行必要编译、启动和实际包检查，不新增完整质量或能耗评测结论；原 20 组评测仍是选型依据。Intel 原生与最低系统实机验收未执行，不把 ARM 结果当作 Intel 指标。安装包与当前正在运行的安装版仍需区分。
 
 本次验证、审查与采用状态见[执行台账](../prd/devplan_261025_xasr-model-selection.md)。以后升级先核验冻结输入/参考，再建立新模型ID、独立run/report，完整保留失败；新答案/分段/归一化须升版本。当前结论、具体权重与新评测证据一起更新，保留旧报告原文和身份。
+
+
+## 公开复现的边界
+
+上文的 `hear-asr-benchmark` 是本地私有评测工程，原声、转录和参考答案不随此仓库发布；材料名用于描述当时方法，不能作为可下载数据集入口。公开摘要保留模型文件、哈希、数量、参考构建方法及结果局限，不能据此独立重算私人样本的 CER/WER。
+
+可独立运行的模型加载、极短输入和 worker 生命周期检查使用本仓库 `scripts/smoke_recognizer.py`，命令见[诊断与开发验证](diagnostics-and-verification.md)。真实语音端到端检查由 `scripts/verify_ingestion_quality.py` 接收调用者提供的公开授权 WAV；需要模型、ffmpeg 及隔离输出目录。它们不复现私人 20 组评测成绩，也不上传录音。

@@ -47,7 +47,7 @@ updated: 2026-10-22
 - 2026-10-22：整组文字过滤删除，纯补入静默也保留；94 项事件定向回归和 19 项真实 journal/入库回归通过，准备全仓验证与三路审查。
 
 ### Review Contract
-- Mode: repair；base 83bc811；target `/Users/zhihu/Documents/project/hear-asr-publication` 当前工作树完整差异。
+- Mode: repair；base 83bc811；target `<USER_HOME>/Documents/project/hear-asr-publication` 当前工作树完整差异。
 - Requirement source: 本计划完整契约，用户最新“优先保证数据可用，拒绝过度防御”。不再要求纯补入静默文字拒绝。
 - In-scope: `crates/loppi-core/src/diagnostic_tests.rs`, `crates/loppi-core/src/events.rs`, `crates/loppi-core/src/events/asr/tests.rs`, `crates/loppi-core/src/ingestion.rs`, `crates/loppi-core/src/main.rs`, `specs/tech_docs/algorithms.md`, `specs/tech_docs/diagnostics-and-verification.md`, 本计划, `specs/research/2026-10-22-asr-publication-failures.md`, `specs/research/evidence/2026-10-22-asr-publication/summary.json`。
 - Out-of-scope: 安装版、活跃 DB、主工作树调查实验补丁、其余代码与私有音频/供应商正文。禁止 reviewer 修改文件或派生子 agent。

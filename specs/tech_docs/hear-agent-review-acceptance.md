@@ -1,6 +1,9 @@
 # hear Agent 使用评审：修复与验收
 
-评审输入：`/Users/zhihu/Documents/project/mino/workspace/1029-hear-agent-review/hear-agent-review.md`。本次在 hear 仓库完成 P0/P1 及 guide 错误提示修复。业务协议升级为 22；context JSON API 保持 `hear.context.v1`。首轮副本验收没有修改生产录音库、已安装 hear.app 或 MyAgents 配置。后续按 Ethan 授权启动了连接原数据库的 debug Core，随后 Mino 真机验收通过，且已验证原版兼容性并切回安装版；最新记录见 [Mino 验收与回退](hear-agent-review-mino-acceptance.md)，构建路径见 [debug 交接](hear-agent-review-debug-handoff.md)。
+> 历史记录：以下名称、路径示例、命令和验收结果属于当时版本。公开版路径已脱敏，不应直接作为当前操作指引；当前使用与开发入口见[文档索引](../../docs/README.md)。
+
+
+评审输入：`<USER_HOME>/Documents/project/mino/workspace/1029-hear-agent-review/hear-agent-review.md`。本次在 hear 仓库完成 P0/P1 及 guide 错误提示修复。业务协议升级为 22；context JSON API 保持 `hear.context.v1`。首轮副本验收没有修改生产录音库、已安装 hear.app 或 MyAgents 配置。后续按 Ethan 授权启动了连接原数据库的 debug Core，随后 Mino 真机验收通过，且已验证原版兼容性并切回安装版；最新记录见 [Mino 验收与回退](hear-agent-review-mino-acceptance.md)，构建路径见 [debug 交接](hear-agent-review-debug-handoff.md)。
 
 ## 交付顺序与决策
 

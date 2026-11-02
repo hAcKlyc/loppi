@@ -101,6 +101,7 @@ p {
 .brand {
 	display: flex;
 	align-items: center;
+	justify-content: center;
 	gap: var(--space-5);
 	padding: 0 calc(var(--space-5) + var(--stroke-hairline));
 	font-size: var(--type-heading);
@@ -895,6 +896,18 @@ p {
 .switch.on:after {
 	transform: translateX(calc(var(--space-7) + var(--space-1)));
 }
+.switch:not(.on):before {
+	content: "";
+	position: absolute;
+	inset: var(--space-1);
+	border: var(--stroke-hairline) solid var(--color-switch-off-border);
+	border-radius: inherit;
+}
+.switch:not(.on):after {
+	box-shadow:
+		0 0 0 var(--stroke-hairline) var(--color-switch-off-border),
+		var(--shadow-control);
+}
 .queue-counts {
 	display: flex;
 	align-items: flex-start;
@@ -1207,6 +1220,79 @@ p {
 	display: flex;
 	align-items: center;
 	gap: var(--space-4);
+}
+.detail-status {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin-top: var(--space-3);
+	color: var(--color-text-muted);
+	font-size: var(--type-caption);
+}
+.event-completion-trigger,
+.detail-status-link {
+	border: 0;
+	padding: 0;
+	background: transparent;
+	color: var(--color-text);
+	font: inherit;
+	cursor: pointer;
+	text-decoration: underline;
+	text-underline-offset: var(--space-1);
+}
+.detail-menu {
+	position: relative;
+}
+.detail-menu > summary {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	list-style: none;
+	width: var(--control-height-default);
+	height: var(--control-height-default);
+	border-radius: var(--radius-control);
+	cursor: pointer;
+}
+.detail-menu > summary::-webkit-details-marker {
+	display: none;
+}
+.detail-menu > summary:hover {
+	background: var(--color-surface-hover);
+}
+.detail-menu-items {
+	position: absolute;
+	right: 0;
+	top: calc(100% + var(--space-2));
+	z-index: var(--layer-floating-menu);
+	display: flex;
+	flex-direction: column;
+	min-width: max-content;
+	padding: var(--space-2);
+	border: var(--stroke-hairline) solid var(--color-border);
+	border-radius: var(--radius-control);
+	background: var(--color-surface);
+	box-shadow: var(--shadow-popover);
+}
+.detail-menu-items .control-button {
+	justify-content: flex-start;
+	width: 100%;
+	border: 0;
+	border-radius: var(--radius-xs);
+	background: transparent;
+	font-weight: var(--weight-medium);
+}
+.detail-menu-items .control-button:not(:disabled):is(:hover, :focus-visible) {
+	background: var(--color-surface-hover);
+}
+.detail-menu-separator {
+	width: 100%;
+	height: var(--stroke-hairline);
+	margin-block: var(--space-2);
+	border: 0;
+	background: var(--color-border);
+}
+.detail-menu-items .detail-menu-cleanup {
+	color: var(--color-danger);
 }
 .detail-columns {
 	display: grid;
@@ -2055,7 +2141,6 @@ body.floating-body .float-wrap {
 	}
 	.brand {
 		padding: 0 var(--space-4);
-		justify-content: center;
 	}
 	.brand-symbol {
 		display: block;
@@ -2168,6 +2253,10 @@ body.floating-body .float-wrap {
 }
 .page-heading::before {
 	bottom: 0;
+}
+/* A preceding back button owns its own pointer area above the task heading. */
+.recognition-back + .page-heading::before {
+	top: 0;
 }
 
 /* Anchored identity editor. Text inputs and scope controls intentionally have separate sizing. */

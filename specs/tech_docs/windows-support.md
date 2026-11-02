@@ -1,6 +1,6 @@
 # Windows native implementation and verification
 
-Status: in progress, pending the unlocked-desktop acceptance. Final package and publication facts are authoritative in [release-readiness.md](../research/evidence/2026-11-01-windows/release-readiness.md). The source-candidate observations below are historical; the native mechanisms remain applicable.
+Status: experimental source and release candidate; final integrated acceptance and publication remain in progress. Final package and publication facts are authoritative in [release-readiness.md](../research/evidence/2026-11-01-windows/release-readiness.md). The source-candidate observations below are historical; the native mechanisms remain applicable.
 
 ## Contract
 

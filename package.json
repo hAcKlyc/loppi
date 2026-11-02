@@ -1,7 +1,7 @@
 {
   "name": "loppi",
   "private": true,
-  "version": "0.1.19",
+  "version": "0.1.21",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -32,5 +32,21 @@
     "sharp": "0.35.5",
     "typescript": "~6.0.3",
     "vite": "^8.0.16"
+  },
+  "license": "Apache-2.0",
+  "author": {
+    "name": "Ethan L",
+    "email": "myagents.io@gmail.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hAcKlyc/loppi.git"
+  },
+  "bugs": {
+    "url": "https://github.com/hAcKlyc/loppi/issues"
+  },
+  "homepage": "https://github.com/hAcKlyc/loppi#readme",
+  "engines": {
+    "node": ">=24"
   }
 }
