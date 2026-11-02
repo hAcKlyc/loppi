@@ -1,6 +1,6 @@
 # 应用内更新与 GitHub Releases
 
-本次源码接入 macOS Apple Silicon、macOS Intel 与 Windows x64 更新。正式发行及真机验收状态以 [执行台账](../specs/prd/devplan_261102_github-updater.md) 为准；源码接入不代表已发行版本已经具备更新功能。
+v0.1.21已正式发行，提供macOS Apple Silicon、macOS Intel与Windows x64更新。实际附件、签名与来源见[发行记录](../specs/research/2026-11-03-github-release-0.1.21.md)；产品行为与扩展实机验收继续参照[执行台账](../specs/prd/devplan_261102_github-updater.md)，一次发行不代表所有设备和系统场景均已覆盖。
 
 应用主窗口启动 10 秒后检查一次，设置 → 通用 → 软件更新也可以手动检查。检查失败不会弹窗打断录音，设置中显示反馈并允许重试。发现新版后静默下载并验签，不弹更新窗口。准备好后只在左下角侧边栏显示绿色「重启更新」按钮，点击后直接安装重启，不再联网下载。下载及签名验证完成前不停止录音。安装前通过既有 GUI/Core 会话屏障正常封存录音、退出 Core 并等待 owner 锁释放；失败不安装，也不强杀。安装失败恢复 GUI 连接能力，再由既有 AppOpened 激活流程恢复正常运行。更新成功重启后仍遵守原录音意图、暂停、来源、定时与权限边界。
 
@@ -90,6 +90,8 @@ node scripts/publish_update.mjs /absolute/release-notes.txt \
 输出在 `build/releases/<version>/github/`；清单另保留原来的 `build/releases/<version>/latest.json`。发布日期来自源码提交，重复准备不会随当前时间改变清单。每个平台目录需要完整的 `release-info.json`；Mac 还必须有报告中一致的 DMG。
 
 本地辅助模式为 `--upload-draft`、`--verify-draft`、`--publish`、`--verify-published`，后面仍接说明文件和全部平台清单。默认只准备文件；远端写入模式要求干净源码。它们复用相同的完整资源验证，主要用于同一发行源码工作树的重试/只读复核，常规 main 发布由 Actions 统一负责。
+
+GitHub适配器通过完整分页的Release列表读取有权限访问的草稿和公开版本，按精确tag筛选；筛选及所需字段投影在捕获输出前完成，避免长历史耗尽输出缓冲。每次上传和公开后重新读取，不缓存草稿状态。按tag的已发布版本接口不用于草稿校验。
 
 重跑失败 job 时，已存在且大小/摘要完全一致的草稿附件会复用；不同字节或未知附件会阻止发行，不覆盖。如果重新构建导致同版本草稿字节变化，应明确处理未公开草稿或使用新版本，不能覆盖公开版本。若 Release 已公开而最后匿名地址检查因网络/传播失败，用相同 source 和该 run 的原平台资源执行 `--verify-published`；不删除已公开版本来重试。
 

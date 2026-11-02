@@ -4,19 +4,21 @@
 
 ## 当前分发
 
-截至 2026-11-01，`v0.1.18` 已分发 macOS ARM64 与 x86_64 两份 DMG，附构建信息与 `SHA256SUMS`。两包已经签名、公证；ARM 有本机安装验证，Intel 有 Rosetta 检查。Windows 实现及其后续界面改动仍在候选验收中，不把候选 EXE 或本地预览称为已发行版本。
+截至2026-11-03，[v0.1.21](https://github.com/hAcKlyc/loppi/releases/tag/v0.1.21)已正式公开并设为Latest，提供Mac Apple Silicon、Mac Intel及Windows x64安装包。13个附件包含安装包、签名更新资源、三份构建报告、SHA256SUMS和latest.json；[固定更新地址](https://github.com/hAcKlyc/loppi/releases/latest/download/latest.json)已通过匿名读取验证。
 
-两个 Mac 包的标签源码为 `4969899afd8d2e9d4dc632d568ef33a843cc56bc`。之后的提交、内部候选和本机安装可能不同；维护者应根据每个产物内的 source、dirty、epoch 与协议版本判断身份。
+本次安装包的源码及tag解析提交均为`727e0ffe00514a3fd3ce6fefc2dac1cd68db2f4e`。后续main中的发布脚本修复和事实文档不改变这批产物身份；应根据包内source、dirty、epoch与协议版本判断。完整来源、签名、验收及摘要见[本次发行记录](../specs/research/2026-11-03-github-release-0.1.21.md)。
 
-| 平台 | 当前声明 | 尚未覆盖的范围 |
+| 平台 | 当前声明与证据 | 尚未覆盖的范围 |
 | --- | --- | --- |
-| macOS ARM64 | 最低部署版本 13.0，已有本机验证 | 全新 Mac、最低系统实机、更多设备和多日稳定性 |
-| macOS Intel | 独立 x86_64 包，已通过 Rosetta 检查 | Intel 实体机与最低系统实机 |
-| Windows x64 | Windows 11 Build 22000+ 的实验性源码与候选 | 最终组合态及发布包验收；最新台账见下 |
+| macOS ARM64 | 最低部署版本13.0；原生CI、签名、公证、票据及包内模型检查通过 | 最低系统、更多设备与多日稳定性 |
+| macOS Intel | 独立x86_64正式包；原生Intel CI、签名、公证、票据及包内模型检查通过 | 更多Intel实体机的GUI/录音长期使用及最低系统 |
+| Windows x64 | Windows11 Build22000+正式包；用户确认安装、录音和升级验收通过；CI及实际包内运行库检查通过 | 更多设备与多日稳定性 |
 
-Windows 当前候选未做 Authenticode 签名。Windows 10、Windows ARM64 和 Linux 不在当前支持声明中。单机短时测试不代表所有设备的录音、睡眠恢复、识别质量和能耗均已验证。
+两Mac均已完成Developer ID签名和Apple公证，三平台更新签名均已验证。Windows安装包仍无Authenticode系统代码签名。Windows10、Windows ARM64和Linux不在当前支持声明中；CI和单次验收不代表所有设备的录音、睡眠恢复、识别质量与能耗均已验证。
 
-最新候选的真实验收与未完成项见[跨平台执行台账](../specs/prd/devplan_261101_windows-release.md)及[发行准备记录](../specs/research/evidence/2026-11-01-windows/release-readiness.md)。其中的提交号和产物哈希对应各自候选，不替代已发行包的身份。
+缺少应用内更新功能的旧公开版本需手动安装一次0.1.21；此前本地同版本候选也需手动安装本次正式包，同版本不会触发自动升级。
+
+历史公开v0.1.18保留两份已签名、公证的Mac DMG，其源码为`4969899afd8d2e9d4dc632d568ef33a843cc56bc`，没有改写。历史候选台账中的哈希只属于各自候选，不替代当前发行包身份。
 
 ## 从 hear 升级
 

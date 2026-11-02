@@ -1,0 +1,39 @@
+{
+  "source": "727e0ffe00514a3fd3ce6fefc2dac1cd68db2f4e",
+  "version": "0.1.21",
+  "run": 41524386506,
+  "macos": [
+    {
+      "source": "727e0ffe00514a3fd3ce6fefc2dac1cd68db2f4e",
+      "run": 41524386506,
+      "attempt": 2,
+      "job": 125567772789,
+      "platform": "macos-arm64",
+      "notarization_ids": [
+        "f9ba7d3b-b79f-4905-999e-fad6520cf7ed",
+        "491f7201-13a8-4628-9954-ae47ae26617a"
+      ],
+      "accepted_count": 2,
+      "staple_success_count": 2,
+      "explicit_validation_success_count": 2,
+      "gatekeeper_accepted": true,
+      "bundled_model_smoke_passes": 2
+    },
+    {
+      "source": "727e0ffe00514a3fd3ce6fefc2dac1cd68db2f4e",
+      "run": 41524386506,
+      "attempt": 2,
+      "job": 125567773421,
+      "platform": "macos-x86_64",
+      "notarization_ids": [
+        "531fec3f-1e6f-4ed1-b545-564be5dfe822",
+        "898829ad-c731-445c-a15b-15b71c3a2e3d"
+      ],
+      "accepted_count": 2,
+      "staple_success_count": 2,
+      "explicit_validation_success_count": 2,
+      "gatekeeper_accepted": true,
+      "bundled_model_smoke_passes": 2
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: implemented
 updated: 2026-11-03
 ---
 
@@ -38,14 +38,19 @@ updated: 2026-11-03
 - Batch 2 / Final Integration：据实际runner证据锁定兼容的VC运行库
   - [x] 将10个既有运行库文件锁定为实际VS2026目录与字节/哈希，保留全部验证。
   - [x] 对照来源证据、自验证、完整最终集成三路审查。
-  - [ ] 提交并合入main，取得最终原生产物证据。
+  - [x] 提交并合入main，取得最终原生产物证据。
 - Batch 3 / Final Integration：已验证票据的Apple网络读取失败
   - [x] 仅在现有Mac打包owner内，对`stapler validate`实际观察到的exit68且NSURLErrorDomain -1005连接丢失做最多3次尝试；其它错误立即失败，耗尽仍失败；成功校验、签名、公证门禁完整保留。
   - [x] 通过真实zsh打包入口及隔离外部命令验证App/DMG暂态恢复、永久错误拒绝与有限次数；完成最终集成三路审查。
-  - [ ] 提交并合入main，重建最终同源三平台。
-- [ ] 跟踪三平台构建；按实际失败修复本次负责的阻塞。
-- [ ] 公开完整v0.1.21，核对三平台附件、更新签名、main/tag/source及匿名latest.json。
-- [ ] 保存最终事实并更新文档/台账。
+  - [x] 提交并合入main，启动最终同源三平台重建。
+- [x] 跟踪三平台构建；按实际失败修复构建阻塞。
+- Batch 4：修复草稿查询并完成同源产物发布
+  - [x] 将GitHub发布适配器改为支持草稿的完整分页列表查询，保持精确tag匹配和所有源码/签名/字节验证。
+  - [x] 真实适配器边界回归、自验证及fresh三路审查。
+  - [x] 从727e0ff干净main工作树，以修复后的GitHub客户端调用既有finalize发布同源原产物；不移动已创建tag、不重编译、不重标二进制来源。
+  - [x] 将发布适配器修复随最终记录合入main，保障后续新版本自动发行。
+- [x] 公开完整v0.1.21，核对三平台附件、更新签名、main/tag/source及匿名latest.json。
+- [x] 保存最终事实并更新文档/台账。
 
 ### Review基线
 
@@ -76,3 +81,15 @@ updated: 2026-11-03
 - 2026-11-03：Intel首轮已完成编译、模型检查、签名，Apple公证Accepted（submission `38d6b231-3fbb-4a90-b8f2-c96d6b748b0f`），staple成功；随后独立validate遇Apple CloudKit连接丢失，exit68，属于网络失败而非公证拒绝。按既有失败job重跑流程启动attempt2，保留已成功ARM/Windows产物；源码、版本与私钥不变，未关闭任何签名校验。
 - 2026-11-03：attempt2的Intel App公证`5def9cbb-f472-4372-b596-a62f869631a8`与DMG公证`2f0ef664-fba5-4f84-8a48-6b5f7bc4fb84`均Accepted，staple均成功；App独立validate通过，DMG独立validate再次因同一CloudKit -1005连接丢失返回68。两次不是证书/公证拒绝；为避免再次仅重编译整包，按真实失败在现有打包步骤补有限网络重试，校验本身仍须返回0。源码变化后将重建同一新提交的三平台，不混入300b9f4产物，不创建同版本混源发行。
 - 2026-11-03：Batch 3真实zsh入口的6种隔离外部命令回归全部通过；与原发行/真实CLI临时签名回归组合15项通过，zsh语法、actionlint、版本/说明及排版检查通过。全新requirements/adversarial均PASS（后者独立复跑6种情况），fresh最终architecture PASS。未新增产品owner/store/队列/协议，有限只读网络重试留在既有Mac构建owner；原生产物与匿名发布证据仍待新提交的Actions，不将模拟命令当作真实Apple验收。
+
+- 2026-11-03：Batch 3提交`ad0ba8b`并合入main `727e0ffe00514a3fd3ce6fefc2dac1cd68db2f4e`；精确main Verify [41524386296](https://github.com/hAcKlyc/loppi/actions/runs/41524386296)的Mac/Windows均success。同树重复dev Verify 41524348676取消，不冒称dev绿灯；精确main门禁完整保留。
+- 2026-11-03：Release [41524386506](https://github.com/hAcKlyc/loppi/actions/runs/41524386506)的Windows成功，实际新EXE为389,868,815字节，SHA-256 `56a31749f45e21ddfcf54e28659a35614ab75df0d88d9b2513e03cc381652bfd`；四组件身份、更新签名/版本绑定、包内10个CRT字节与清单全部复核通过，证据见`windows-installer-audit-727e0ff.json`。首轮Mac ARM的App公证Accepted，DMG签名后安静模式磁盘镜像阶段exit1；Intel的App/DMG均Accepted，DMG staple遭CloudKit -1005/exit68，发生在独立validate之前。启动attempt2仅重跑失败Mac任务，保留同源Windows成果；未将其误报为发行成功。
+- 2026-11-03：对同一727e0ff Windows实际安装包只读提取源码`licenses/`与`THIRD_PARTY_NOTICES.md`，24份文件逐字节与该SHA一致。证据见`windows-source-license-audit-727e0ff.json`；此数量不包含另行生成的Microsoft/OCR声明，不将其误称为所有包内文件审计。
+
+- 2026-11-03：Release 41524386506 attempt2的Mac ARM、Intel、Windows全部成功；两Mac的App/DMG均Accepted，staple/独立validate/Gatekeeper与最终挂载模型烟测均通过。原始发布job 125585335950在创建空草稿后失败：按tag查询接口返回404。实际草稿ID432025669、tag解析727e0ff、assets为空；按ID及列表可读。GitHub官方文档明确tag接口只查询已发布Release，列表可向有push权限者返回草稿。这是适配器查询错误，不按网络暂态盲目重跑。
+- Batch 4 review契约：repair；base为当前dev `ad0ba8b962e01b1176691665ed76f2f0aa71ab32`，新增生产范围仅`scripts/publish_update.mjs`及对应`scripts/test_release_pipeline.mjs`，附本台账和事实文档/证据。requirements与adversarial先审固定快照，修复后fresh architecture。保证分页完整、精确tag、草稿/公开状态新鲜、权限错误不伪装不存在、原全部发布校验与不可变附件不变；不新增缓存、状态、重试或产品机制。现有三平台二进制727e0ff证据不失效，修复只影响GitHub元数据读取；发布用原干净main根目录及既有finalize，以原source/tag完成，随后仅发布脚本和事实记录合入main。
+
+- 2026-11-03：Batch 4 requirements PASS；adversarial发现整段分页历史经execFileSync默认1MiB缓冲会溢出，属于新增all-pages保证的阻塞。修复为`gh --paginate --jq`在捕获前按精确tag过滤并仅投影原有验证所需字段，不增大缓冲、不缓存、不重试；定向复核PASS。12项发行/真实CLI签名回归、语法/排版、真实草稿读取与实际第二页历史公开Release读取均通过；fresh最终architecture PASS。三平台原产物签名/版本绑定、四组件身份、两DMG实际字节/哈希已重新验证；三个实际包中的24份源码许可/声明逐字节一致。
+
+- 2026-11-03：发布适配器修复提交`98a93d7`，从仍为727e0ff的干净main工作树调用原finalize与修复客户端，复用同一源码的三个原始CI产物继续原草稿。全部13附件上传并校验成功；北京时间06:27:48正式公开v0.1.21并设为Latest，匿名latest.json通过，版本/标签/字节均未替换。随后使用原main源码的`--verify-published`独立只读复核通过。
+- 2026-11-03：仅重跑原Release失败发布job（已成功平台产物保留）；attempt3最终success。它读取已经公开的原版本，重新验证全部附件、源码及匿名更新地址，没有重复发布或覆盖附件。GitHub连接器缺少Actions重跑权限，改用现有已登录维护者账号完成；没有扩大权限或新增凭据。最终记录见`specs/research/2026-11-03-github-release-0.1.21.md`及同目录证据。此后的main提交仅含已审查发布适配器修复与事实收尾，不改变v0.1.21二进制归属。

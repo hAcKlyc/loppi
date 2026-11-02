@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: implemented
 updated: 2026-11-03
 ---
 
@@ -34,7 +34,7 @@ updated: 2026-11-03
 - Batch 1（同一根因与owner）
   - [x] 复用目录发布锁，增强并发回归。
   - [x] 自验证与三路审查。
-  - [ ] 提交、推送dev并通过精确SHA的Verify。
+  - [x] 提交、推送dev并通过精确SHA的Verify。
 
 ### 当前批次Review基线
 
@@ -52,3 +52,5 @@ updated: 2026-11-03
 - 2026-11-03：目录锁覆盖目标校验、幂等比较、完整临时写入、原子替换及失败清理；Windows沿用平台层永久锁文件。并发回归变为4轮、每轮8个同步竞争的不同完整版本。
 - 2026-11-03：修改文件rustfmt、前端typecheck/lint、workspace check/build、protocol全19项测试通过。8个实际CLI进程使用隔离Unicode/空格路径同时执行readme，全部成功、结果一致、无临时文件；未连接Core或读取真实录音。全workspace rustfmt命中基线onboarding.rs的既有排版差异，未扩大范围。
 - 2026-11-03：fresh-context requirements、adversarial均无阻塞发现；最终architecture为PASS。未新增owner/store/重试/协议。Windows精确dev提交的完整Verify仍是合入main前的必需证据，待本次提交后取得。
+
+- 2026-11-03：修复后的精确dev Verify [41502481665](https://github.com/hAcKlyc/loppi/actions/runs/41502481665)与合入main后的Verify [41503568942](https://github.com/hAcKlyc/loppi/actions/runs/41503568942)均在Mac/Windows成功，真实Windows文件系统并发回归通过。本批修复结束；后续签名与正式发行独立记录于[发行台账](devplan_261103_official-release.md)。

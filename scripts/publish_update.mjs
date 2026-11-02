@@ -58,6 +58,13 @@ export function githubClient(root, execute = execFileSync) {
   const api = path => JSON.parse(gh(['api', `repos/${repository}/${path}`]));
   const optional = operation => { try { return operation(); } catch (error) { if (String(error.stderr).includes('(HTTP 404)')) return null; throw error; } };
   const post = (path, body) => JSON.parse(execute('gh', ['api', '--method', 'POST', `repos/${repository}/${path}`, '--input', '-'], { cwd: root, input: JSON.stringify(body), encoding: 'utf8', stdio: ['pipe','pipe','pipe'] }));
+  // Lists include authorized drafts. Filter each page in gh so unrelated release
+  // bodies never fill the captured stdout buffer; read afresh after mutations.
+  const findRelease = tag => {
+    const query = `.[] | select(.tag_name == ${JSON.stringify(tag)}) | {id,tag_name,target_commitish,draft,prerelease,assets:[.assets[] | {name,size,state,digest}]}`;
+    const output = gh(['api', '--paginate', `repos/${repository}/releases?per_page=100`, '--jq', query]).trim();
+    return output ? JSON.parse(output) : null;
+  };
   const tagSource = tag => {
     let object = api(`git/ref/tags/${tag}`).object;
     for (let depth=0; object.type==='tag' && depth<10; depth++) object=api(`git/tags/${object.sha}`).object;
@@ -65,8 +72,8 @@ export function githubClient(root, execute = execFileSync) {
     return object.sha;
   };
   return {
-    release: tag => api(`releases/tags/${tag}`),
-    maybeRelease: tag => optional(() => api(`releases/tags/${tag}`)),
+    release: tag => { const release = findRelease(tag); if (!release) throw new Error(`Release not found: ${tag}`); return release; },
+    maybeRelease: findRelease,
     source: tagSource,
     maybeSource: tag => optional(() => tagSource(tag)),
     isPublic: () => JSON.parse(gh(['api', `repos/${repository}`])).private === false,
