@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: implemented
 created: 2026-11-02
 updated: 2026-11-02
 ---
@@ -43,7 +43,7 @@ updated: 2026-11-02
   - [x] Core/协议/迁移与回归测试。
   - [x] GUI状态、确认弹窗、更多菜单与交互测试。
   - [x] 文档与最终验证/构建/合成UI证据。
-  - [ ] 三视角独立审查、修复复核、提交。
+  - [x] 三视角独立审查、修复复核、提交。
 
 ### 当前批次 Review 基线
 - Batch base：deb4ddf9efeca7062e7717fb26ae4715e280d541
@@ -61,6 +61,7 @@ updated: 2026-11-02
 - 2026-11-02：两位独立reviewer均发现R1：旧修订冲突后显式重试无法接受最新目标。已在既有重试事务修复，并新增恢复/旧结果拒绝/删除目标不可复活回归，8项完成回归PASS；受影响整体验证重跑，详见[审查记录](../research/2026-11-02-manual-event-completion-review.md)。
 - 2026-11-02：原两位reviewer定向复核PASS，最终独立architecture PASS。修复后完整verify 21项检查全通过，真实隔离接口含显式重试恢复通过；最终开发包构建待收尾。
 - 2026-11-02：修复后完整macOS ARM开发构建、四组件身份一致性和包内只读模型运行检查全部PASS；开发产物与签名范围见[证据报告](../tech_docs/evidence/manual-event-completion/report.md)。无剩余实现/验收阻断，准备批次提交。
+- 2026-11-02：Batch 1提交 `74d0c9d`。从头复核整份产品契约和全部验收，单批次最终review已覆盖组合态，无过渡flag/双写/兼容壳；最终HEAD再次运行typecheck、lint、cargo check workspace全部PASS，工作树无外部改动。所有必做范围及整体门禁完成，状态implemented。本收尾仅记录交付状态与证据，不改变已审查生产代码。
 
 ### 自动验证边界
 - 本次不改变桌面/OS桥接、权限、采集或休眠行为，无新增mandatory真机门槛；使用合成数据验证GUI、隔离库验证Core，不调用付费云服务、不读真实录音。模型输入意图与结构/事务发布通过确定性模型输出验证，不承诺每次真实模型的语义质量。
