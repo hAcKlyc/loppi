@@ -34,7 +34,11 @@ updated: 2026-11-03
 - Batch 1：真实发行工具链修复与正式说明
   - [x] 修复CMake生成器、前移运行库验证、补充依赖输入证据；更新说明。
   - [x] 自验证、requirements/adversarial和最终architecture审查。
-  - [ ] 提交并合入main，取得实际Actions证据。
+  - [x] 提交并合入main，取得实际Actions证据。
+- Batch 2 / Final Integration：据实际runner证据锁定兼容的VC运行库
+  - [x] 将10个既有运行库文件锁定为实际VS2026目录与字节/哈希，保留全部验证。
+  - [x] 对照来源证据、自验证、完整最终集成三路审查。
+  - [ ] 提交并合入main，取得最终原生产物证据。
 - [ ] 跟踪三平台构建；按实际失败修复本次负责的阻塞。
 - [ ] 公开完整v0.1.21，核对三平台附件、更新签名、main/tag/source及匿名latest.json。
 - [ ] 保存最终事实并更新文档/台账。
@@ -44,6 +48,7 @@ updated: 2026-11-03
 - Batch base：`f424813a18ee0419790c83a2099cbc31fdb9972f`。
 - 预计范围：scripts/prepare_windows_ocr.mjs、scripts/build_windows.mjs、.github/workflows/release.yml、CHANGELOG.md、docs/updates.md、docs/development.md及本台账；资源锁定仅在实际证据支持时另行修复。
 - mode repair；三路required。只审本范围与本次发行阻塞；现有依赖公告和无关业务问题不扩大。
+- Batch 2 base：`851601c711cef3013f6d554761eceab7eaad9134`；新增范围限`config/windows-assets.json`、实际运行库元数据证据及开发文档的版本值。Final Review从最初base `f424813a18ee0419790c83a2099cbc31fdb9972f`覆盖两批组合态，不回卷既有业务代码。
 
 ### 待用户决策
 
@@ -57,3 +62,7 @@ updated: 2026-11-03
 - 依据：CMake[标准生成器配置](https://cmake.org/cmake/help/latest/envvar/CMAKE_GENERATOR.html)、[VS18生成器](https://cmake.org/cmake/help/latest/generator/Visual%20Studio%2018%202026.html)；实际工具链以Actions日志为准，运行库继续精确哈希验证，不把runner README当作二进制哈希证据。
 - 2026-11-03：Batch 1脚本语法、actionlint、差异排版、0.1.21版本/说明一致性通过，发行流水线与真实CLI更新签名回归9项通过。requirements发现“所有文档双语”的新说明不准确，已限定为中英文README；adversarial无阻塞。Windows锁定输入可用性、三平台产物与远端检查继续等待实际Actions，不以本地结果替代。
 - 2026-11-03：requirements原文案问题定向复核通过；最终fresh architecture PASS，无新增业务owner/状态/重试机制。此次只改构建配置与说明，版本和业务代码保持原样；精确main Verify仍由正式Release等待，不关闭任何门禁。
+- 2026-11-03：Batch 1提交`b948faf`并合入main `851601c`。main Verify 41507988472的Mac/Windows全部success；同树重复dev验证41507952370按用户立即合入main的要求取消，不冒称dev新SHA绿灯。精确main门禁完整保留。
+- 2026-11-03：Release 41507988478实际Windows日志证明旧锁定目录14.50.35710不存在，构建已在编译前安全拒绝；没有跳过检查。该runner为官方image `win25-vs2026/20261030.294`，实际编译器/重分发目录为14.51.36231，10个CRT文件版本均为14.51.36247.0。只选择这组与实际编译器匹配的微软文件，依据已获取的每文件字节数和SHA-256人工更新锁定值；旧14.29/14.44数据仅为枚举结果，不作为fallback。
+- 2026-11-03：原始日志保存在忽略构建目录，公开可审计证据位于`specs/research/evidence/2026-11-03-official-release/windows-runtime-inputs.json`。最终实际打包仍须重新按锁定值验证并运行PE依赖闭包和四组件身份检查；当前元数据不替代包验收。
+- 2026-11-03：最终组合态的脚本语法、actionlint、版本/更新说明、排版及9项发行/实际CLI签名回归通过；逐一核对10项锁定值与原始runner结果一致。全新requirements/adversarial均PASS，fresh最终architecture PASS。最终Windows安装包还须只读解包，对照包内`resources/windows-assets.json`及实际10个CRT文件字节；PE闭包检查本身不证明运行库哈希，未虚称已经完成。
