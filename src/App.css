@@ -2236,6 +2236,10 @@ body.floating-body .float-wrap {
 .page-heading::before {
 	bottom: 0;
 }
+/* A preceding back button owns its own pointer area above the task heading. */
+.recognition-back + .page-heading::before {
+	top: 0;
+}
 
 /* Anchored identity editor. Text inputs and scope controls intentionally have separate sizing. */
 .speaker-picker {

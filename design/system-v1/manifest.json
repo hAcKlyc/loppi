@@ -85,8 +85,8 @@
     },
     {
       "path": "DESIGN.md",
-      "bytes": 25206,
-      "sha256": "d54008a9b20854fcda1fc23f357f771110cacb464a5caae69c2de984a082c37c"
+      "bytes": 25299,
+      "sha256": "fa377b23da51fe29aefd70fb616ab3a2485406b4c4359e607f8c8a812e039a3f"
     },
     {
       "path": "icons/app-1024.png",
@@ -205,8 +205,8 @@
     },
     {
       "path": "preview.html",
-      "bytes": 1880009,
-      "sha256": "147b9f12c6beda9cbaa96bc2449f950026b927ee781c08c5ed3f3a9f2607118f"
+      "bytes": 1880054,
+      "sha256": "7bed10d3c40e22cf32b41f233f03b922fb7349c7ad175582edecc4695599fac7"
     },
     {
       "path": "rabbit/animations/listening.gif",
