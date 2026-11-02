@@ -18,7 +18,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
-pub const PROTOCOL_VERSION: u32 = 25;
+pub const PROTOCOL_VERSION: u32 = 26;
 const MAX_RESPONSE_BYTES: u64 = 48 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -180,6 +180,12 @@ pub enum Request {
         ended_ms: i64,
         title: String,
         sources: Option<EventSources>,
+    },
+    ConfirmEventCompletion {
+        event_id: Uuid,
+        expected_revision: i64,
+        started_ms: i64,
+        ended_ms: i64,
     },
     RetranscribeEvent {
         event_id: Uuid,
@@ -372,6 +378,7 @@ impl Request {
             Self::ReorganizeEvents { .. } => "reorganize_events",
             Self::CreateEvent { .. } => "create_event",
             Self::EditEvent { .. } => "edit_event",
+            Self::ConfirmEventCompletion { .. } => "confirm_event_completion",
             Self::RetranscribeEvent { .. } => "retranscribe_event",
             Self::DeleteEvent { .. } => "delete_event",
             Self::SplitEvent { .. } => "split_event",
@@ -610,6 +617,12 @@ pub struct TimelinePreview {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimelineItem {
+    /// User-confirmed event end, independent of transcription progress.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completed_ms: Option<i64>,
+    /// Latest completion reorganization task, derived from the existing queue.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completion_state: Option<String>,
     pub id: Option<Uuid>,
     pub manual_range_id: Option<Uuid>,
     pub started_ms: i64,

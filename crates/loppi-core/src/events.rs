@@ -14,6 +14,7 @@ use uuid::Uuid;
 #[cfg(test)]
 mod activity_tests;
 pub(crate) mod asr;
+pub mod completion;
 #[cfg(test)]
 mod gui_read_tests;
 pub mod rebuild;
@@ -266,6 +267,7 @@ pub fn init(db: &Connection) -> Result<(), String> {
     )
     .map_err(|e| e.to_string())?;
     asr::init(db)?;
+    completion::init(db)?;
     crate::knowledge::init(db)
 }
 
@@ -1106,7 +1108,7 @@ pub fn retranscribe_event_in(
 }
 
 fn active_event(
-    tx: &Transaction<'_>,
+    tx: &Connection,
     id: Uuid,
     expected: i64,
 ) -> Result<(i64, i64, i64, String), String> {
@@ -1804,6 +1806,8 @@ pub fn timeline(db: &Connection, start: i64, end: i64) -> Result<Vec<TimelineIte
     }
     for (id, a, b, title, revision, mask, summary) in events {
         output.push(TimelineItem {
+            completed_ms: completion::completed_at(db, &id)?,
+            completion_state: completion::task_state(db, &id)?,
             id: Some(Uuid::parse_str(&id).map_err(|e| e.to_string())?),
             manual_range_id: None,
             started_ms: a.max(start),
@@ -2054,6 +2058,8 @@ fn unorganized(db: &Connection, start: i64, end: i64, mask: i64) -> Result<Timel
         .optional()
         .map_err(|e| e.to_string())?;
     Ok(TimelineItem {
+        completed_ms: None,
+        completion_state: None,
         id: None,
         manual_range_id: None,
         started_ms: start,
@@ -2180,6 +2186,8 @@ pub fn event_detail(
     };
     let version = asr_version(mask, start, end);
     let mut item = TimelineItem {
+        completed_ms: completion::completed_at(db, &id.to_string())?,
+        completion_state: completion::task_state(db, &id.to_string())?,
         id: Some(id),
         manual_range_id: None,
         started_ms: start,
@@ -2354,6 +2362,9 @@ fn transcription_progress(
 
 fn event_state(db: &Connection, id: &str, version: &str) -> Result<String, String> {
     let waiting:bool=db.query_row("SELECT EXISTS(SELECT 1 FROM event_asr_state WHERE event_id=?1 AND coalesce(planned_version,'')!=?2)",params![id,version],|r|r.get(0)).map_err(|e|e.to_string())?;
+    if waiting && completion::completed_at(db, id)?.is_some() {
+        return Ok("pending_asr".into());
+    }
     if waiting {
         let (start, end, mask) = db
             .query_row(
@@ -2865,6 +2876,9 @@ pub fn retry_task_in(tx: &Transaction<'_>, id: Uuid, now: i64) -> Result<(), Str
     let Some((provider, error, state, submit_attempts)) = row else {
         return Err("task is not retryable".to_owned());
     };
+    if task.target_kind == "reorganization" {
+        completion::prepare_retry(tx, &task.target_id)?;
+    }
     if error.as_deref() == Some("provider_http_402") {
         tx.execute(
             "UPDATE cloud_queues SET blocked_reason=NULL WHERE provider=?1",
@@ -3098,22 +3112,45 @@ pub fn llm_input(db: &Connection, task: &CloudTask) -> Result<String, String> {
     let items = evidence(db, task.start, task.end)?;
     let mut lines = Vec::new();
     let mut catalog = Vec::new();
+    let completed = completion::ranges(db, task.start, task.end)?;
     for item in items {
+        // A coarse utterance can straddle the computational window. The
+        // model owns only its intersection, not the full physical interval.
+        // Keep original evidence untouched for adjacent windows and playback.
+        let mut spans = vec![(item.start.max(task.start), item.end.min(task.end))];
+        for &(a, b, mask) in &completed {
+            if source_bit(&item.source) & mask == 0 {
+                continue;
+            }
+            spans = spans
+                .into_iter()
+                .flat_map(|(x, y)| {
+                    if a >= y || b <= x {
+                        vec![(x, y)]
+                    } else {
+                        vec![(x, a.min(y)), (b.max(x), y)]
+                    }
+                })
+                .filter(|(x, y)| y > x)
+                .collect();
+        }
+        if spans.is_empty() {
+            continue;
+        }
         let evidence_index = item
             .text
             .as_ref()
             .filter(|s| !s.trim().is_empty())
             .map(|_| understanding::index(&mut catalog, (&item).into()));
-        // A coarse utterance can straddle the computational window. The
-        // model owns only its intersection, not the full physical interval.
-        // Keep original evidence untouched for adjacent windows and playback.
-        lines.push(FitObservation {
-            evidence_index,
-            start_ms: item.start.max(task.start),
-            end_ms: item.end.min(task.end),
-            source: item.source,
-            text: item.text.filter(|s| !s.trim().is_empty()),
-        });
+        for (start_ms, end_ms) in spans {
+            lines.push(FitObservation {
+                evidence_index,
+                start_ms,
+                end_ms,
+                source: item.source.clone(),
+                text: item.text.clone().filter(|s| !s.trim().is_empty()),
+            });
+        }
     }
     let mut context = fit_context(db, task)?;
     understanding::prepare_context(db, &mut context, &mut catalog)?;
@@ -3130,6 +3167,7 @@ pub fn llm_input(db: &Connection, task: &CloudTask) -> Result<String, String> {
         "vocabulary":crate::vocabulary::llm_context(db)?,
         "context":context,
         "observations":lines,
+        "confirmed_ranges": completed.iter().map(|(a,b,m)| serde_json::json!({"start_ms":a,"end_ms":b,"sources":sources_for(*m)})).collect::<Vec<_>>(),
         "evidence":catalog
     }))
     .map_err(|e| e.to_string())
@@ -3151,7 +3189,7 @@ fn fit_context(db: &Connection, task: &CloudTask) -> Result<serde_json::Value, S
     let mut previous_stmt = db.prepare(
         "SELECT id,started_ms,ended_ms,title,summary,revision,source_mask,boundary_locked,understanding_json
          FROM (SELECT *,row_number() OVER (PARTITION BY source_mask ORDER BY ended_ms DESC,id) AS position
-           FROM named_events WHERE deleted_ms IS NULL AND origin='automatic'
+           FROM named_events WHERE deleted_ms IS NULL AND completed_ms IS NULL AND origin='automatic'
              AND started_ms<?1 AND ended_ms>=?2
              AND id NOT IN (SELECT event_id FROM event_candidate_links WHERE candidate_id=?3))
          WHERE position=1 ORDER BY ended_ms DESC,id LIMIT 3"
@@ -3201,7 +3239,7 @@ fn fit_context(db: &Connection, task: &CloudTask) -> Result<serde_json::Value, S
         .prepare(
             "SELECT e.id,e.started_ms,e.ended_ms,e.title,e.summary,e.revision,e.source_mask,e.boundary_locked,e.understanding_json,l.slot
         FROM event_candidate_links l JOIN named_events e ON e.id=l.event_id
-        WHERE l.candidate_id=?1 AND e.deleted_ms IS NULL ORDER BY l.slot",
+        WHERE l.candidate_id=?1 AND e.deleted_ms IS NULL AND e.completed_ms IS NULL ORDER BY l.slot",
         )
         .map_err(|e| e.to_string())?;
     let linked = stmt
@@ -3412,10 +3450,14 @@ pub fn publish_fit_with_input(
             )
             .optional()
             .map_err(|e| e.to_string())?;
+        let linked = match linked {
+            Some(id) if completion::completed_at(&tx, &id)?.is_some() => None,
+            other => other,
+        };
         if let Some(linked_id) = linked {
             let old:Option<(i64,i64,i64,bool,bool,String,i64,Option<String>,Option<String>)>=tx.query_row(
                 "SELECT started_ms,ended_ms,revision,boundary_locked,title_locked,title,source_mask,summary,understanding_json FROM named_events
-                 WHERE id=?1 AND origin='automatic' AND deleted_ms IS NULL",
+                 WHERE id=?1 AND origin='automatic' AND deleted_ms IS NULL AND completed_ms IS NULL",
                  params![linked_id],|row|Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?,row.get(4)?,row.get(5)?,row.get(6)?,row.get(7)?,row.get(8)?)))
                  .optional().map_err(|e|e.to_string())?;
             if let Some((
@@ -3559,7 +3601,7 @@ pub fn publish_fit_with_input(
         if let Some(prior_id) = event["merge_with_event_id"].as_str() {
             let prior:Option<(i64,i64,i64,bool,bool,i64,Option<String>,Option<String>)>=tx.query_row(
                 "SELECT started_ms,ended_ms,revision,boundary_locked,title_locked,source_mask,summary,understanding_json FROM named_events
-                 WHERE id=?1 AND origin='automatic' AND deleted_ms IS NULL",
+                 WHERE id=?1 AND origin='automatic' AND deleted_ms IS NULL AND completed_ms IS NULL",
                 params![prior_id],|row|Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?,row.get(4)?,row.get(5)?,row.get(6)?,row.get(7)?)))
                 .optional().map_err(|e|e.to_string())?;
             if let Some((
@@ -3690,7 +3732,7 @@ pub fn publish_fit_with_input(
                         now,
                     )?;
                     tx.execute(
-                        "INSERT INTO event_candidate_links VALUES (?1,?2,?3)",
+                        "INSERT INTO event_candidate_links VALUES (?1,?2,?3) ON CONFLICT(candidate_id,slot) DO UPDATE SET event_id=excluded.event_id",
                         params![task.target_id, slot as i64, prior_id],
                     )
                     .map_err(|e| e.to_string())?;
@@ -3727,7 +3769,7 @@ pub fn publish_fit_with_input(
             now,
         )?;
         tx.execute(
-            "INSERT INTO event_candidate_links VALUES (?1,?2,?3)",
+            "INSERT INTO event_candidate_links VALUES (?1,?2,?3) ON CONFLICT(candidate_id,slot) DO UPDATE SET event_id=excluded.event_id",
             params![task.target_id, slot as i64, id],
         )
         .map_err(|e| e.to_string())?;

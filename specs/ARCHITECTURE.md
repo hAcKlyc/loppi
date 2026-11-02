@@ -30,7 +30,7 @@ flowchart LR
 | 核心 | [`crates/loppi-core/src/main.rs`](../crates/loppi-core/src/main.rs) | 唯一 SQLite 写入者；持有采集监督、时间映射、媒体、两条云队列、声纹任务和权限/容量状态。登录项与按需服务争同一个 owner 锁。 |
 | 采集来源 | [`source_process.rs`](../crates/loppi-core/src/source_process.rs)、[`record.rs`](../crates/loppi-core/src/record.rs) | 每个来源以同一签名核心可执行文件的私有子命令运行；持有原生设备、有界缓冲及封块写入。只发布不可变媒体和 core 管理的 ingestion 日志，不访问业务库。 |
 | 本地推理 | [`crates/loppi-worker/src/main.rs`](../crates/loppi-worker/src/main.rs) | 轻量 `vad` 与重型 `recognize` 独立进程；`embed` 按需复用 CampPlus。三者共用有界帧协议，父 core 消失退出；只计算，不拥有数据库。 |
-| IPC 协议 | [`crates/loppi-protocol/src/lib.rs`](../crates/loppi-protocol/src/lib.rs) | 请求/响应、稳定 ID、预期修订、重复提交标识和协议版本。当前工作树版本为 25；只读 Agent 接口见 [Agent Context 契约](tech_docs/agent-context.md)。 |
+| IPC 协议 | [`crates/loppi-protocol/src/lib.rs`](../crates/loppi-protocol/src/lib.rs) | 请求/响应、稳定 ID、预期修订、重复提交标识和协议版本。当前工作树版本为 26；只读 Agent 接口见 [Agent Context 契约](tech_docs/agent-context.md)。 |
 | macOS 桥接 | [`src-tauri/native/`](../src-tauri/native/privacy.m)、[`crates/loppi-core/native/`](../crates/loppi-core/native/system_audio.m) | 登录项、权限、截图/OCR、系统声 API 等原生操作；业务数据仍由核心裁决。 |
 | Windows 桥接 | [`protocol::platform`](../crates/loppi-protocol/src/platform.rs)、[`protocol::ipc`](../crates/loppi-protocol/src/ipc.rs)、Core/GUI 的 `native/windows.cpp` | 本机安全/文件/进程、WASAPI、截图/OCR、资源/电源、播放与托盘。业务 owner 与协议保持共用；细节见 [Windows 支持](tech_docs/windows-support.md)。 |
 
@@ -141,6 +141,9 @@ Windows 使用 CPAL 麦克风与 WASAPI 进程树排除采集；QPC 坐标映射
 Windows 资源桥提供内存负载、进程 private bytes、电源与暂停/恢复代次；没有热传感读数，零仅为中性输入。journal 发布锁是受限普通锁文件；文件 flush 后由 MoveFileExW WRITE_THROUGH 发布，目录检查不伪称 POSIX fsync。Windows Credential Manager 复用原 service/reference 抽象。平台源码、依赖闭包与实测边界见 [Windows 支持说明](tech_docs/windows-support.md)。
 
 ## 5. 外发、修订与清理边界
+
+详情「确认事件结束」通过 `ConfirmEventCompletion` 交由 Core 一次事务处理。未改时间保留已有识别结果，写入 `named_events.completed_ms` 并立即规划精转；改时间则在既有 `event_reorganization_requests` 保存目标事件/预期修订，沿同一LLM队列与FIT_SYSTEM重新整理，人工时间仅为明确标注来源的参考。成功发布的全部结果与完成事实原子提交，失败保留旧事件。普通自动输入扣除已确认范围并排除续接/linked修改，迟到自动结果仍服从当前完成事实与冲突检查；普通显式重新整理可按最新用户意图修改。完成时间与处理进度分开，GUI只读投影。晚到封块在原入库事务中使相交已确认事件的既有ASR规划版本失效，原刷新器补未覆盖原声，复用物理请求；不增加队列、worker或重试器。普通新建/重整入口不默认写完成事实。
+
 
 “新建事件”表单通过`ReorganizeEvents`提交一次性用户指示。Core在同一事务保存`event_reorganization_requests`载荷和现有LLM队列的`reorganization`任务；状态只由`cloud_tasks`拥有。名称、大致时间、音源和相关旧事件完整材料进入同一FIT_SYSTEM，模型明确提出event_id修改、新建及retire_event_ids。共用发布事务检查当前输入、对象/音源权限与最终非重叠后执行；旧人工事件可按此次最新意图重组，新结果不新增人工锁，指示不再参与后续自动整理。ASR继承物理请求引用，只规划未覆盖原声；文字纠错、人物确认、绝对时刻笔记保留。模型退役不调用带永久抑制的人工删除/拆合高层命令。GUI等待时保留旧事件，状态与重试复用处理队列。
 

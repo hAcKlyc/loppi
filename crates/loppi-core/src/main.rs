@@ -3280,6 +3280,40 @@ fn handle_request(
                     },
                 }
             }
+            Request::ConfirmEventCompletion {
+                event_id,
+                expected_revision,
+                started_ms,
+                ended_ms,
+            } => {
+                let _outbound = shared.asr_outbound.lock().map_err(|e| e.to_string())?;
+                let result = {
+                    let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                    store.mutate_response(envelope.id, &mutation_fingerprint, |tx| {
+                        let object_id = events::completion::confirm(
+                            tx,
+                            envelope.id,
+                            event_id,
+                            expected_revision,
+                            started_ms,
+                            ended_ms,
+                            now_ms()?,
+                        )?;
+                        Ok(Response::Accepted {
+                            id: envelope.id,
+                            object_id,
+                        })
+                    })
+                };
+                match result {
+                    Ok(response) => response,
+                    Err(error) => Response::Error {
+                        id: envelope.id,
+                        code: "event_invalid".into(),
+                        message: error,
+                    },
+                }
+            }
             Request::RetranscribeEvent {
                 event_id,
                 expected_revision,
@@ -5524,6 +5558,7 @@ impl Store {
             | Request::ReorganizeEvents { .. }
             | Request::CreateEvent { .. }
             | Request::EditEvent { .. }
+            | Request::ConfirmEventCompletion { .. }
             | Request::RetranscribeEvent { .. }
             | Request::DeleteEvent { .. }
             | Request::SplitEvent { .. }

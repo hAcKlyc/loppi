@@ -729,9 +729,12 @@ function App() {
 		}
 	};
 
-	const openTools = (item: TimelineItem) => {
+	const openTools = (
+		item: TimelineItem,
+		mode: "split" | "merge" | "delete" = "split",
+	) => {
 		setDialogError("");
-		setTool({ item, mode: "split" });
+		setTool({ item, mode });
 		setSplitAt(localInput((item.started_ms + item.ended_ms) / 2));
 		setLeftTitle(item.title || "前半段");
 		setRightTitle(item.title || "后半段");
