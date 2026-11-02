@@ -1229,7 +1229,8 @@ p {
 	color: var(--color-text-muted);
 	font-size: var(--type-caption);
 }
-.event-completion-trigger {
+.event-completion-trigger,
+.detail-status-link {
 	border: 0;
 	padding: 0;
 	background: transparent;
@@ -1282,6 +1283,16 @@ p {
 }
 .detail-menu-items .control-button:not(:disabled):is(:hover, :focus-visible) {
 	background: var(--color-surface-hover);
+}
+.detail-menu-separator {
+	width: 100%;
+	height: var(--stroke-hairline);
+	margin-block: var(--space-2);
+	border: 0;
+	background: var(--color-border);
+}
+.detail-menu-items .detail-menu-cleanup {
+	color: var(--color-danger);
 }
 .detail-columns {
 	display: grid;

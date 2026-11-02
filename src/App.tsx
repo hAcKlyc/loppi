@@ -787,7 +787,7 @@ function App() {
 		if (
 			await mutate(
 				request,
-				tool.mode === "delete" ? "事件标注已取消" : "事件已更新",
+				tool.mode === "delete" ? "已取消事件划分" : "事件已更新",
 			)
 		) {
 			setTool(null);
@@ -1211,7 +1211,7 @@ function App() {
 			)}
 			{tool && (
 				<Modal
-					title="管理事件"
+					title="调整分段"
 					busy={busy}
 					feedback={dialogError}
 					onClose={() => setTool(null)}
@@ -1229,7 +1229,7 @@ function App() {
 									? "拆分"
 									: mode === "merge"
 										? "合并"
-										: "取消标注"}
+										: "取消事件划分"}
 							</button>
 						))}
 					</div>
@@ -1289,9 +1289,7 @@ function App() {
 						</>
 					)}
 					{tool.mode === "delete" && (
-						<p>
-							这会取消当前事件的命名和边界。声音、转录、截图与笔记会留在原来的时间位置。
-						</p>
+						<p>取消这条事件的划分，保留原位置的录音、文字、截图和笔记。</p>
 					)}
 					<div className="modal-actions">
 						<Button
@@ -1310,7 +1308,7 @@ function App() {
 							disabled={busy}
 							onClick={() => void saveTool()}
 						>
-							{tool.mode === "delete" ? "取消标注" : "保存"}
+							{tool.mode === "delete" ? "取消事件划分" : "保存"}
 						</button>
 					</div>
 				</Modal>

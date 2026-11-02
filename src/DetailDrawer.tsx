@@ -190,6 +190,9 @@ export function DetailDrawer({
 	const [busy, setBusy] = useState(false);
 	const [infoError, setInfoError] = useState<string | null>(null);
 	const menu = useRef<HTMLDetailsElement>(null);
+	const [retranscription, setRetranscription] = useState<TimelineItem | null>(
+		null,
+	);
 	const [completion, setCompletion] = useState<{
 		item: TimelineItem;
 		from: string;
@@ -897,6 +900,21 @@ export function DetailDrawer({
 			"no_transcript",
 			"partial_transcript",
 		].includes(detail.processing_state);
+	const completionProcessing =
+		detail.completion_state === "pending" ||
+		detail.completion_state === "processing";
+	const completionFailed = detail.completion_state === "failed";
+	const canConfirmCompletion =
+		detail.id &&
+		detail.completed_ms == null &&
+		detail.processing_state === "settling_asr" &&
+		!completionProcessing &&
+		!completionFailed;
+	const statusText = completionProcessing
+		? "重新整理中"
+		: completionFailed
+			? "重新整理失败"
+			: processingLabel(detail.processing_state, detail.transcription);
 	const sourceText =
 		detail.processing_state === "moment_only"
 			? "时刻记录"
@@ -945,16 +963,7 @@ export function DetailDrawer({
 						</h2>
 						<div className="detail-status" role="status">
 							{detail.completed_ms != null && <span>已确认结束 · </span>}
-							{detail.completion_state === "pending" ||
-							detail.completion_state === "processing" ? (
-								<span>重新整理中</span>
-							) : detail.completion_state === "failed" ? (
-								<Button tone="quiet" onClick={onQueue}>
-									重新整理失败 · 查看智能识别
-								</Button>
-							) : detail.id &&
-								detail.completed_ms == null &&
-								detail.processing_state === "settling_asr" ? (
+							{canConfirmCompletion ? (
 								<button
 									type="button"
 									className="event-completion-trigger"
@@ -967,13 +976,18 @@ export function DetailDrawer({
 								>
 									等待事件稳定 <span aria-hidden="true">›</span>
 								</button>
+							) : completionProcessing || completionFailed || queueRelevant ? (
+								<button
+									type="button"
+									className="detail-status-link"
+									disabled={busy}
+									title={busy ? undefined : "查看处理进度"}
+									onClick={onQueue}
+								>
+									{statusText} <span aria-hidden="true">›</span>
+								</button>
 							) : (
-								<span>
-									{processingLabel(
-										detail.processing_state,
-										detail.transcription,
-									)}
-								</span>
+								<span>{statusText}</span>
 							)}
 						</div>
 					</div>
@@ -1007,6 +1021,15 @@ export function DetailDrawer({
 										编辑
 									</Button>
 								)}
+								{detail.id && (
+									<Button
+										tone="quiet"
+										disabled={busy}
+										onClick={() => menuAction(() => onTools(detail, "split"))}
+									>
+										调整分段
+									</Button>
+								)}
 								<Button
 									tone="quiet"
 									disabled={busy}
@@ -1016,8 +1039,10 @@ export function DetailDrawer({
 								>
 									导出
 								</Button>
+								<hr className="detail-menu-separator" />
 								<Button
 									tone="quiet"
+									className="detail-menu-cleanup"
 									disabled={busy}
 									onClick={() =>
 										menuAction(() => {
@@ -1026,62 +1051,8 @@ export function DetailDrawer({
 										})
 									}
 								>
-									清理
+									清理数据
 								</Button>
-								{detail.id && (
-									<>
-										<Button
-											tone="quiet"
-											disabled={busy}
-											onClick={() => menuAction(() => onTools(detail, "split"))}
-										>
-											拆分
-										</Button>
-										<Button
-											tone="quiet"
-											disabled={busy}
-											onClick={() => menuAction(() => onTools(detail, "merge"))}
-										>
-											合并
-										</Button>
-										<Button
-											tone="quiet"
-											disabled={busy}
-											onClick={() =>
-												menuAction(() => onTools(detail, "delete"))
-											}
-										>
-											取消标注
-										</Button>
-										<Button
-											tone="quiet"
-											disabled={busy}
-											onClick={() =>
-												menuAction(() => {
-													void mutate(
-														{
-															type: "retranscribe_event",
-															event_id: detail.id,
-															expected_revision: detail.revision,
-														},
-														"已加入精转队列",
-													);
-												})
-											}
-										>
-											重新精转
-										</Button>
-									</>
-								)}
-								{queueRelevant && (
-									<Button
-										tone="quiet"
-										disabled={busy}
-										onClick={() => menuAction(onQueue)}
-									>
-										查看智能识别
-									</Button>
-								)}
 							</div>
 						</details>
 						<IconButton
@@ -1544,6 +1515,15 @@ export function DetailDrawer({
 								</strong>
 							</div>
 							{infoError && <p className="inline-error">{infoError}</p>}
+							{detail.id && (
+								<Button
+									tone="secondary"
+									disabled={busy || !detailReady}
+									onClick={() => setRetranscription(detail)}
+								>
+									重新识别录音
+								</Button>
+							)}
 							{!detail.id &&
 								!detail.manual_range_id &&
 								detail.processing_state !== "moment_only" && (
@@ -1689,6 +1669,36 @@ export function DetailDrawer({
 					</button>
 					<img src={shownImage} alt="主动截取的屏幕画面" />
 				</Dialog>
+			)}
+			{retranscription && (
+				<Modal
+					title="重新识别录音？"
+					description="将使用保留的录音重新识别，会产生新的识别用量。"
+					busy={busy}
+					onClose={() => setRetranscription(null)}
+				>
+					<div className="modal-actions">
+						<Button tone="quiet" onClick={() => setRetranscription(null)}>
+							取消
+						</Button>
+						<Button
+							tone="primary"
+							onClick={() => {
+								setRetranscription(null);
+								void mutate(
+									{
+										type: "retranscribe_event",
+										event_id: retranscription.id,
+										expected_revision: retranscription.revision,
+									},
+									"已加入精转队列",
+								);
+							}}
+						>
+							确认重新识别
+						</Button>
+					</div>
+				</Modal>
 			)}
 			{completion && (
 				<Modal

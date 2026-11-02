@@ -57,6 +57,7 @@ mockIPC((command,args)=>{
   return {type:'accepted',id:args.requestId,object_id:args.requestId};
  }
  if(r.type==='timeline')return {type:'timeline',gaps:[],items:[{id:'old',manual_range_id:null,title:'Existing meeting',summary:'Keep this while the model works.',started_ms:today+1000,ended_ms:today+5000,sources:'microphone',revision:1,processing_state:'transcribed',recording_sources:[],coarse_segments:[],precise_segments:[]}]};
+ if(r.type==='event_detail')return {type:'event',event:{id:'old',manual_range_id:null,title:'Existing meeting',started_ms:today+1000,ended_ms:today+5000,sources:'microphone',revision:1,processing_state:'transcribed',coarse_segments:[],precise_segments:[]}};
  if(r.type==='calendar_days')return {type:r.type,days:[today]};
  if(r.type==='calendar_adjacent')return {type:r.type,newer_ms:null,older_ms:null};
  if(r.type==='moments')return {type:r.type,moments:[]};
@@ -87,6 +88,19 @@ try {
  assert(document.body.textContent.includes('Existing meeting'),'accepted task retains existing cards');
  assert(document.body.textContent.includes('\u5df2\u63d0\u4ea4'),'receipt says submitted, not event completed');
  console.log('event reorganization: real App form, accepted task, stable retry ID and retained cards PASS');
+ await settle(()=>document.querySelector('.event-card').click());
+ await settle(()=>document.querySelector('.detail-menu summary').click());
+ await settle(()=>button(/^调整分段$/).click());
+ assert.equal(document.querySelector('.modal h2').textContent,'调整分段');
+ assert.deepEqual([...document.querySelectorAll('.tool-tabs button')].map(el=>el.textContent),['拆分','合并','取消事件划分']);
+ assert(document.querySelector('.modal input[type="datetime-local"]'),'split input remains available');
+ await settle(()=>button(/^合并$/).click());assert(document.querySelector('.modal select'),'merge input remains available');
+ await settle(()=>button(/^取消事件划分$/).click());
+ assert.match(document.querySelector('.modal').textContent,/保留原位置的录音、文字、截图和笔记/);
+ assert.equal(document.querySelector('.modal .danger-button').textContent,'取消事件划分');
+ await settle(()=>button(/^返回$/).click());assert(!document.querySelector('.tool-tabs'));
+ assert.equal(calls.length,2,'changing tabs or cancelling never mutates an event');
+ console.log('event segmentation: grouped split/merge/cancel controls and retained-material explanation PASS');
  for (const [sources,label] of [['microphone','麦克风'],['system','电脑声音'],['both','双路声音']]) {
   await settle(()=>root.render(React.createElement(QueueView,{queues:[{provider:'llm',configured:true,paused:false,pending:0,processing:0,failed:1}],reviews:[],busy:false,onRefresh:async()=>{},onMutate:async()=>true,onSettings(){},tasks:[{id:sources,provider:'llm',target_kind:'reorganization',target_id:'request',source:null,sources,started_ms:today+1000,ended_ms:today+5000,state:'failed',error_code:'reorganization_revision_conflict',manual:true}]})));
   if(!document.querySelector('.task-row'))await settle(()=>document.querySelector('[aria-label="事件分析任务明细"]').click());

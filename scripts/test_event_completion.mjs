@@ -43,11 +43,16 @@ const { DetailDrawer } = await import('../src/DetailDrawer.tsx');
 const started = Date.now()-3600000+123;
 const initial = { id:'completion-fixture', title:'结束确认回归', started_ms:started, ended_ms:started+1200000,
   sources:'microphone', revision:7, processing_state:'settling_asr', coarse_segments:[], precise_segments:[] };
-let current={...initial}, key=0, failOnce=false, mutations=[], actions=[];
+let current={...initial}, key=0, failOnce=false, mutations=[], actions=[], retranscriptions=[];
 mockIPC(async(command,args)=>{
  const r=args.request;
  if(r.type==='event_detail')return {type:'event',event:current};
  if(r.type==='moments')return {type:'moments',moments:[]};
+ if(r.type==='retranscribe_event'){
+  retranscriptions.push(r);
+  current={...current,processing_state:'pending_asr'};
+  return {type:'accepted',id:args.requestId,object_id:r.event_id};
+ }
  if(r.type==='confirm_event_completion'){
   mutations.push(args);
   if(failOnce){failOnce=false;throw Error('lost response');}
@@ -102,8 +107,10 @@ try{
  assert.equal(mutations.at(-1).requestId,uncertain.requestId,'uncertain retries reuse receipt identity');
  assert.deepEqual(mutations.at(-1).request,uncertain.request);
  assert.match(q('.detail-status').textContent,/重新整理中/);assert(!q('.event-completion-trigger'));
+ await settle(()=>q('.detail-status-link').click());assert.equal(actions.at(-1),'queue');
  await reset();
- for(const [label,action] of [['编辑','edit'],['导出','export'],['清理','cleanup'],['拆分','split'],['合并','merge'],['取消标注','delete'],['查看智能识别','queue']]){
+ assert.deepEqual([...document.querySelectorAll('.detail-menu-items button')].map(el=>el.textContent),['编辑','调整分段','导出','清理数据']);
+ for(const [label,action] of [['编辑','edit'],['调整分段','split'],['导出','export'],['清理数据','cleanup']]){
   await settle(()=>q('.detail-menu summary').click());assert(q('.detail-menu').open);
   await settle(()=>button(label).click());assert.equal(actions.at(-1),action);assert(!q('.detail-menu').open);
  }
@@ -112,5 +119,22 @@ try{
  assert(!q('.detail-menu').open);assert.equal(document.activeElement,q('.detail-menu summary'));
  current={...initial,completion_state:'failed'};await settle(render);
  assert.match(q('.detail-status').textContent,/重新整理失败/);
- console.log('PASS: header/menu, default precision, cancel/focus, validation, completion, edited range, stable uncertain receipt and pending/failure refresh');
+ await settle(()=>q('.detail-status-link').click());assert.equal(actions.at(-1),'queue');
+ for(const processing_state of ['pending_asr','transcribing','asr_failed','partial_asr_failed']){
+  current={...initial,processing_state,completed_ms:Date.now()};await settle(render);
+  assert(!q('.event-completion-trigger'));
+  await settle(()=>q('.detail-status-link').click());assert.equal(actions.at(-1),'queue');
+ }
+ current={...initial,processing_state:'transcribed',completed_ms:Date.now()};await settle(render);
+ assert(!q('.detail-status-link'),'completed processing is a plain status');
+ await settle(()=>button('音频信息').click());
+ const rerun=button('重新识别录音');assert(rerun.closest('.information-panel'));
+ await settle(()=>rerun.click());
+ assert.match(q('.modal').textContent,/产生新的识别用量/);assert.equal(retranscriptions.length,0);
+ await settle(()=>button('取消').click());assert.equal(retranscriptions.length,0);
+ assert.equal(document.activeElement,rerun,'cancel returns to the audio information action');
+ await settle(()=>rerun.click());await settle(()=>button('确认重新识别').click());
+ assert.deepEqual(retranscriptions,[{type:'retranscribe_event',event_id:initial.id,expected_revision:initial.revision}]);
+ assert(!q('.modal'));assert.match(q('.detail-status-link').textContent,/待精转/);
+ console.log('PASS: four-action menu, completion and queue status navigation, audio-only rerun with usage confirmation, default precision, validation and stable uncertain receipt');
 }finally{await settle(()=>root.unmount());clearMocks();dom.window.close();}
