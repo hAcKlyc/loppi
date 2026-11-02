@@ -106,6 +106,8 @@ try {
   await settle(() => root.render(React.createElement(App)));
   await until(() => selected() === '2026-10-31' && !older().disabled);
   assert(newer().disabled, 'most recent recorded day is the newer boundary even before today');
+  assert.equal(newer().getAttribute('data-tooltip'), null, 'disabled date buttons have no tooltip');
+  assert.equal(older().getAttribute('data-tooltip'), '前一天');
   assert.equal(q('.date-step-controls button'), newer(), 'left arrow moves newer');
   await click(q('.date-today'));
   await until(() => selected() === '2026-11-01' && !older().disabled);
@@ -142,6 +144,8 @@ try {
     await until(() => selected() === expected && (expected === '1900-01-01' ? !newer().disabled : !older().disabled));
   }
   assert(older().disabled, 'earliest recorded day is disabled');
+  assert.equal(older().getAttribute('data-tooltip'), null);
+  assert.equal(newer().getAttribute('data-tooltip'), '后一天');
   await click(newer());
   await until(() => selected() === '2025-12-31' && !newer().disabled);
   assert(requests.filter(r => r.type === 'calendar_days').length < 25, 'navigation does not enumerate historical months');

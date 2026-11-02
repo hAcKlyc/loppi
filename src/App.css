@@ -1275,6 +1275,13 @@ p {
 .detail-menu-items .control-button {
 	justify-content: flex-start;
 	width: 100%;
+	border: 0;
+	border-radius: var(--radius-xs);
+	background: transparent;
+	font-weight: var(--weight-medium);
+}
+.detail-menu-items .control-button:not(:disabled):is(:hover, :focus-visible) {
+	background: var(--color-surface-hover);
 }
 .detail-columns {
 	display: grid;

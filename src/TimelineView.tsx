@@ -221,6 +221,7 @@ export function TimelineView({
 						<div className="date-step-controls">
 							<IconButton
 								label="下一个有记录的日期"
+								tooltip="后一天"
 								size="compact"
 								className="date-step"
 								disabled={adjacentDays?.newer == null}
@@ -230,6 +231,7 @@ export function TimelineView({
 							</IconButton>
 							<IconButton
 								label="上一个有记录的日期"
+								tooltip="前一天"
 								size="compact"
 								className="date-step"
 								disabled={adjacentDays?.older == null}
