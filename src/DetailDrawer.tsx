@@ -7,6 +7,7 @@ import {
 	useState,
 } from "react";
 import {
+	audioCoverageLabel,
 	type CoarseSegment,
 	type CoreResponse,
 	core,
@@ -915,6 +916,7 @@ export function DetailDrawer({
 		: completionFailed
 			? "重新整理失败"
 			: processingLabel(detail.processing_state, detail.transcription);
+	const coverageText = audioCoverageLabel(detail);
 	const sourceText =
 		detail.processing_state === "moment_only"
 			? "时刻记录"
@@ -989,6 +991,7 @@ export function DetailDrawer({
 							) : (
 								<span>{statusText}</span>
 							)}
+							{coverageText && <span title={coverageText}>录音有缺口</span>}
 						</div>
 					</div>
 					<div className="detail-header-actions">
@@ -1441,7 +1444,12 @@ export function DetailDrawer({
 							</div>
 							<div>
 								<span>声音来源</span>
-								<strong>{sourceText}</strong>
+								<strong>
+									{sourceText}
+									{coverageText && (
+										<span title={coverageText}> · {coverageText}</span>
+									)}
+								</strong>
 							</div>
 							{(detail.local_analysis_failures ?? 0) > 0 && (
 								<div>

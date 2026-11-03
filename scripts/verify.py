@@ -72,6 +72,7 @@ def main():
             run('binary-build', ['cargo', 'build', '--workspace', '--locked'])
             run('component-identities', [sys.executable, 'scripts/verify_build_identity.py', '--directory', 'target/debug'])
             run('isolated-core', [sys.executable, 'scripts/smoke_core.py'])
+            run('login-handoff', [sys.executable, 'scripts/test_login_handoff.py'])
             run('isolated-diagnostics', [sys.executable, 'scripts/smoke_diagnostics.py'])
             run('isolated-test-owner', [sys.executable, 'scripts/smoke_test_owner.py'])
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as error:

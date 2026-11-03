@@ -2528,7 +2528,7 @@ checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
 name = "loppi-cli"
-version = "0.1.21"
+version = "0.1.22"
 dependencies = [
  "clap",
  "loppi-protocol",
@@ -2540,7 +2540,7 @@ dependencies = [
 
 [[package]]
 name = "loppi-core"
-version = "0.1.21"
+version = "0.1.22"
 dependencies = [
  "base64 0.22.1",
  "bzip2 0.5.2",
@@ -2571,7 +2571,7 @@ dependencies = [
 
 [[package]]
 name = "loppi-desktop"
-version = "0.1.21"
+version = "0.1.22"
 dependencies = [
  "base64 0.22.1",
  "cc",
@@ -2592,7 +2592,7 @@ dependencies = [
 
 [[package]]
 name = "loppi-protocol"
-version = "0.1.21"
+version = "0.1.22"
 dependencies = [
  "chrono",
  "chrono-tz",
@@ -2608,7 +2608,7 @@ dependencies = [
 
 [[package]]
 name = "loppi-worker"
-version = "0.1.21"
+version = "0.1.22"
 dependencies = [
  "libc",
  "loppi-protocol",

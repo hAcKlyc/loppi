@@ -2556,12 +2556,16 @@ fn probe(source: AudioSource, seconds: u8, direct: bool) -> Result<ProbeStats, S
 }
 
 fn acquire_lock(directory: &Path) -> Result<Option<File>, String> {
+    acquire_named_lock(&directory.join("core.lock"))
+}
+
+fn acquire_named_lock(path: &Path) -> Result<Option<File>, String> {
     let lock = OpenOptions::new()
         .create(true)
         .truncate(false)
         .read(true)
         .write(true)
-        .open(directory.join("core.lock"))
+        .open(path)
         .map_err(|error| error.to_string())?;
     match loppi_protocol::platform::try_lock_exclusive(&lock) {
         Ok(()) => Ok(Some(lock)),
@@ -2571,10 +2575,25 @@ fn acquire_lock(directory: &Path) -> Result<Option<File>, String> {
 }
 
 fn acquire_owner_lock(directory: &Path, mode: LaunchMode) -> Result<Option<File>, String> {
+    // Serialize contenders before asking the current owner to leave. Keep this
+    // separate from lifecycle.lock: the GUI holds that lock while awaiting its
+    // child Core. The running owner never needs this short-lived startup gate.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let _startup = loop {
+        if let Some(gate) = acquire_named_lock(&directory.join("core-start.lock"))? {
+            break gate;
+        }
+        if mode == LaunchMode::OnDemand {
+            return Ok(None);
+        }
+        if Instant::now() >= deadline {
+            return Err("login item could not acquire the startup gate".to_owned());
+        }
+        thread::sleep(Duration::from_millis(10));
+    };
     if mode == LaunchMode::OnDemand {
         return acquire_lock(directory);
     }
-    let deadline = Instant::now() + Duration::from_secs(10);
     loop {
         if let Some(lock) = acquire_lock(directory)? {
             return Ok(Some(lock));
