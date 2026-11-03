@@ -42,6 +42,8 @@ flowchart LR
 
 核心通过受限本机 IPC（macOS Unix socket、Windows 命名管道）接受 GUI/CLI 请求，检查本机对端和版本；Windows 还约束同用户/登录会话并读取实际对端 PID。数据库打开 WAL 模式，只有核心拥有写连接。[启动、锁与 socket](../crates/loppi-core/src/main.rs)位于 `run`、`acquire_owner_lock`、`verify_peer`；请求身份与幂等回执见 `serve_one`、`mutation_receipts`。查询唤起的按需核心不据保存的记录意图偷偷开麦；登录项启动才按本次登录会话的退出标志和持久意图评估采集。
 
+Core 的 `core-start.lock` 仅串行化启动尝试：登录启动在请求旧 owner 让位前持有它，直到取得唯一的 `core.lock`；按需启动发现该门锁被占用就退出，由已有客户端等待实际 owner。门锁与 GUI 的 `lifecycle.lock` 分离，避免 GUI 等待子进程时形成死锁；运行中的 Core 不持有启动门锁。设置轮询保留上一快照和错误，仅对应资源成功响应后清除错误，避免等待与重复失败期间布局跳动。
+
 GUI 首次 IPC 经协议库 `lifecycle` 的会话屏障核对实际 Core 与随包构建身份；`lifecycle.lock` 串行化多个 GUI 的交接。稳定的 `Status` / `Lifecycle` 控制消息不受业务协议版本限制；业务命令仍严格检查。新版先验证随包 helper，再请求旧 owner 优雅交接，等待 `core.lock` 释放（采集线程已 join、本机 IPC 端点已关闭），随后在原目录启动新版并传递原内存采集/正常运行许可。不提供 hear 历史协议 17–19 的适配。更新不降级较新构建，不直接写 SQLite，不强杀或移除活跃 IPC 端点。
 
 显式退出 GUI 先排空本会话 IPC、封闭后续请求，再向现存 Core 发跨版本退出指令并等待 owner 锁释放；没有后台时不为退出而启动一个后台。程序请求退出失败时保留 GUI 并提示实际错误；macOS 原生 terminate（菜单、Cmd-Q、Dock）绕过 ExitRequested，必须在最终 Exit 事件同样执行幂等清理，此阶段系统已决定退出，失败显示实际错误及重新打开后重试的说明，不强杀 Core。关闭主窗口仍只是隐藏窗口。新 Core 的交接不写用户退出标记，正常退出则记录当前登录会话的退出状态。GUI显式打开后，既有AppOpened在Core首次激活时清除该退出标记、提升正常运行与采集许可，恢复保存的记录意图；如启用定时计划则先结算当前窗口。该操作不改enabled_intent、主动暂停或声源选择，不能绕过权限、容量和资源边界；CLI/Agent查询仍不提升许可。首次未选择开始的用户仍须完成原有开始流程。

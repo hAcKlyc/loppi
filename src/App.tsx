@@ -169,7 +169,6 @@ function App() {
 		);
 	}, []);
 	const refreshStatus = useCallback(async () => {
-		setStatusError("");
 		try {
 			if (isTauri()) {
 				acceptSnapshot(await getEntrySnapshot(true));
@@ -180,6 +179,7 @@ function App() {
 					state: ServiceState;
 				}>({ type: "status" });
 			}
+			setStatusError("");
 			setError(null);
 		} catch (cause) {
 			setError(errorText(cause));
@@ -395,13 +395,10 @@ function App() {
 	const refreshContext = useCallback(() => {
 		if (contextInFlight.current) return contextInFlight.current;
 		const request = (async () => {
-			setContextErrors({
-				queues: "",
-				people: "",
-				models: "",
-				privacy: "",
-				login: "",
-			});
+			// Keep the last result visible while refreshing. Only that resource's
+			// successful response clears its error; polling must not flash it off.
+			const succeeded = (key: keyof typeof contextErrors) =>
+				setContextErrors((current) => ({ ...current, [key]: "" }));
 			const failed = (key: keyof typeof contextErrors, cause: unknown) =>
 				setContextErrors((current) => ({
 					...current,
@@ -413,6 +410,7 @@ function App() {
 				})
 					.then((result) => {
 						setQueues(result.queues);
+						succeeded("queues");
 						setContextReady((current) => ({ ...current, queues: true }));
 					})
 					.catch((cause) => failed("queues", cause)),
@@ -421,6 +419,7 @@ function App() {
 				})
 					.then((result) => {
 						setPeople(result.people);
+						succeeded("people");
 						setContextReady((current) => ({ ...current, people: true }));
 					})
 					.catch((cause) => failed("people", cause)),
@@ -429,13 +428,22 @@ function App() {
 					id: string;
 					state: ModelState;
 				}>({ type: "models" })
-					.then((result) => setModels(result.state))
+					.then((result) => {
+						setModels(result.state);
+						succeeded("models");
+					})
 					.catch((cause) => failed("models", cause)),
 				invoke<PrivacyStatus>("privacy_status")
-					.then(setPrivacy)
+					.then((result) => {
+						setPrivacy(result);
+						succeeded("privacy");
+					})
 					.catch((cause) => failed("privacy", cause)),
 				invoke<number>("login_item_status")
-					.then(setLoginStatus)
+					.then((result) => {
+						setLoginStatus(result);
+						succeeded("login");
+					})
 					.catch((cause) => failed("login", cause)),
 			]);
 		})();
