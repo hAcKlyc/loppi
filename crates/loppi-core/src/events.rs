@@ -1823,6 +1823,7 @@ pub fn timeline(db: &Connection, start: i64, end: i64) -> Result<Vec<TimelineIte
                 mask,
             )?,
             fit_state: Some(event_fit_state(db, &id)?),
+            audio_coverage: audio_coverage(db, a, b, mask)?,
             processing_state: event_state(db, &id, &asr_version(mask, a, b))?,
             transcription: transcription_progress(
                 db,
@@ -2071,6 +2072,7 @@ fn unorganized(db: &Connection, start: i64, end: i64, mask: i64) -> Result<Timel
         local_analysis_failures: asr::local_analysis_failures(db, start, end, mask)?,
         fit_state: None,
         transcription: None,
+        audio_coverage: audio_coverage(db, start, end, mask)?,
         processing_state: if !has_sound {
             if has_audio {
                 "raw_audio"
@@ -2198,6 +2200,7 @@ pub fn event_detail(
         revision: Some(revision),
         local_analysis_failures: asr::local_analysis_failures(db, start, end, mask)?,
         fit_state: Some(event_fit_state(db, &id.to_string())?),
+        audio_coverage: audio_coverage(db, start, end, mask)?,
         processing_state: event_state(db, &id.to_string(), &version)?,
         transcription: transcription_progress(db, "event", &id.to_string(), &version, true)?,
         manual_asr_state: None,
@@ -2360,6 +2363,63 @@ fn transcription_progress(
     Ok((progress.total > 0).then_some(progress))
 }
 
+/// Exact per-source union; unlike timeline decoration this never rounds or bridges gaps.
+fn audio_coverage(
+    db: &Connection,
+    start: i64,
+    end: i64,
+    mask: i64,
+) -> Result<Vec<loppi_protocol::AudioCoverage>, String> {
+    let mut output = Vec::new();
+    for (source, bit, name) in [
+        (loppi_protocol::AudioSource::Microphone, 1, "microphone"),
+        (loppi_protocol::AudioSource::System, 2, "system"),
+    ] {
+        if mask & bit == 0 {
+            continue;
+        }
+        let mut stmt = db.prepare("SELECT max(a,?1),min(b,?2),reason FROM (
+            SELECT started_ms a,coalesce(ended_ms,?2) b,reason FROM media_gaps WHERE source=?3
+            UNION ALL SELECT started_ms,ended_ms,'audio_unavailable' FROM audio_blocks WHERE source=?3 AND speech_active=1 AND media_path IS NULL
+            UNION ALL SELECT from_ms,min(to_ms,committed_ms),CASE mode WHEN 'all_data' THEN 'cleared_all_data' ELSE 'cleared_audio' END FROM clear_ranges WHERE source_mask & ?4 != 0
+        ) WHERE a<?2 AND b>?1 ORDER BY a,b").map_err(|e|e.to_string())?;
+        let rows = stmt
+            .query_map(params![start, end, name, bit], |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, i64>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        let mut duration_ms = 0;
+        let mut interval_count = 0;
+        let mut until = i64::MIN;
+        let mut reasons = std::collections::BTreeSet::new();
+        for row in rows {
+            let (a, b, reason) = row.map_err(|e| e.to_string())?;
+            if b <= a {
+                continue;
+            }
+            if a > until {
+                interval_count += 1;
+            }
+            duration_ms += (b - a.max(until)).max(0);
+            until = until.max(b);
+            reasons.insert(reason);
+        }
+        if duration_ms > 0 {
+            output.push(loppi_protocol::AudioCoverage {
+                source,
+                duration_ms,
+                interval_count,
+                reasons: reasons.into_iter().collect(),
+            });
+        }
+    }
+    Ok(output)
+}
+
 fn event_state(db: &Connection, id: &str, version: &str) -> Result<String, String> {
     let waiting:bool=db.query_row("SELECT EXISTS(SELECT 1 FROM event_asr_state WHERE event_id=?1 AND coalesce(planned_version,'')!=?2)",params![id,version],|r|r.get(0)).map_err(|e|e.to_string())?;
     if waiting && completion::completed_at(db, id)?.is_some() {
@@ -2378,25 +2438,6 @@ fn event_state(db: &Connection, id: &str, version: &str) -> Result<String, Strin
             .into());
     }
 
-    let incomplete_audio: bool = db
-        .query_row(
-            "SELECT EXISTS(SELECT 1 FROM named_events e JOIN media_gaps g
-           ON g.started_ms<e.ended_ms AND coalesce(g.ended_ms,e.ended_ms)>e.started_ms
-           AND ((g.source='microphone' AND e.source_mask&1!=0)
-             OR (g.source='system' AND e.source_mask&2!=0)) WHERE e.id=?1)
-         OR EXISTS(SELECT 1 FROM named_events e JOIN audio_blocks b
-           ON b.started_ms<e.ended_ms AND b.ended_ms>e.started_ms
-           AND ((b.source='microphone' AND e.source_mask&1!=0)
-             OR (b.source='system' AND e.source_mask&2!=0))
-           WHERE e.id=?1 AND b.speech_active=1 AND b.media_path IS NULL)
-         OR EXISTS(SELECT 1 FROM named_events e JOIN clear_ranges c
-           ON c.from_ms<e.ended_ms AND c.to_ms>e.started_ms
-           AND c.source_mask&e.source_mask!=0 AND c.mode='all_data'
-           AND c.committed_ms>=e.created_ms WHERE e.id=?1)",
-            params![id],
-            |row| row.get(0),
-        )
-        .map_err(|e| e.to_string())?;
     let mut stmt = db
         .prepare(
             "SELECT state,count(*) FROM transcript_tasks WHERE provider='asr'
@@ -2412,12 +2453,7 @@ fn event_state(db: &Connection, id: &str, version: &str) -> Result<String, Strin
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
     if states.is_empty() {
-        return Ok(if incomplete_audio {
-            "partial_audio"
-        } else {
-            "audio_unavailable"
-        }
-        .to_owned());
+        return Ok("audio_unavailable".to_owned());
     }
     if states.iter().any(|(s, _)| s == "failed") {
         let progress = transcription_progress(db, "event", id, version, false)?.unwrap();
@@ -2432,9 +2468,6 @@ fn event_state(db: &Connection, id: &str, version: &str) -> Result<String, Strin
         let progress = transcription_progress(db, "event", id, version, false)?.unwrap();
         if progress.boundary_clipped {
             return Ok("partial_transcript".into());
-        }
-        if incomplete_audio {
-            return Ok("partial_audio".to_owned());
         }
         if progress.empty > 0 && progress.empty < progress.total {
             return Ok("partial_transcript".to_owned());
@@ -4721,6 +4754,80 @@ mod tests {
     }
 
     #[test]
+    fn coverage_clips_unions_and_keeps_sources_and_cleanup_independent() {
+        let db = db();
+        db.execute_batch(
+            "INSERT INTO media_gaps(id,source,started_ms,ended_ms,reason) VALUES
+            ('a','microphone',0,1393,'machine_sleep'),
+            ('b','microphone',1393,4676,'source_start_gap'),
+            ('duplicate','microphone',0,1393,'machine_sleep'),
+            ('overlap','microphone',1000,2000,'source_failure'),
+            ('other','system',0,10000,'manual_pause'),
+            ('open','microphone',8000,NULL,'source_failure');
+            INSERT INTO clear_ranges VALUES('clear',6000,7000,1,'raw_audio',11000);",
+        )
+        .unwrap();
+        let c = audio_coverage(&db, 1000, 9000, 1).unwrap();
+        assert_eq!(c.len(), 1);
+        assert_eq!(c[0].duration_ms, 5676);
+        assert_eq!(c[0].interval_count, 3);
+        assert!(c[0].reasons.contains(&"cleared_audio".into()));
+        assert!(!c[0].reasons.contains(&"manual_pause".into()));
+        assert_eq!(
+            audio_coverage(&db, 1000, 9000, 2).unwrap()[0].duration_ms,
+            8000
+        );
+        assert!(audio_coverage(&db, 10000, 11000, 2).unwrap().is_empty());
+        // Whole-day cleanup must not claim later, newly recorded audio was deleted.
+        db.execute(
+            "INSERT INTO clear_ranges VALUES('future',0,20000,2,'raw_audio',10000)",
+            [],
+        )
+        .unwrap();
+        assert!(audio_coverage(&db, 10000, 11000, 2).unwrap().is_empty());
+    }
+
+    #[test]
+    fn historical_sleep_gaps_do_not_override_completed_asr() {
+        let mut db = db();
+        media(&db, "saved", 1000, 6000);
+        set_configured(&db, CloudProvider::Asr, "bigmodel").unwrap();
+        let id = create_event(
+            &mut db,
+            1000,
+            6000,
+            "synthetic",
+            EventSources::Microphone,
+            7000,
+        )
+        .unwrap();
+        let task = take_task(&mut db, CloudProvider::Asr, 7001)
+            .unwrap()
+            .unwrap();
+        publish_asr(
+            &mut db,
+            &task,
+            &[crate::cloud::AsrUtterance {
+                words: None,
+                start_ms: 1000,
+                end_ms: 2000,
+                text: "synthetic".into(),
+                speaker: None,
+            }],
+            7002,
+        )
+        .unwrap();
+        db.execute("INSERT INTO media_gaps(id,source,started_ms,ended_ms,reason) VALUES('sleep','microphone',3000,4393,'machine_sleep')",[]).unwrap();
+        let detail = event_detail(&db, id, 0, 100).unwrap();
+        assert_eq!(detail.processing_state, "transcribed");
+        assert_eq!(detail.audio_coverage[0].duration_ms, 1393);
+        let list = timeline(&db, 0, 10000).unwrap();
+        let item = list.iter().find(|i| i.id == Some(id)).unwrap();
+        assert_eq!(item.processing_state, "transcribed");
+        assert_eq!(item.audio_coverage[0].duration_ms, 1393);
+    }
+
+    #[test]
     fn older_failed_cloud_task_remains_reachable_after_many_completions() {
         let db = db();
         let failed = Uuid::new_v4();
@@ -6971,7 +7078,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             event_detail(&db, id, 0, 100).unwrap().processing_state,
-            "partial_audio"
+            "partial_transcript"
         );
     }
 

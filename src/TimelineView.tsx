@@ -6,6 +6,7 @@ import {
 	useState,
 } from "react";
 import {
+	audioCoverageLabel,
 	dateTitle,
 	dayBounds,
 	type Moment,
@@ -515,6 +516,14 @@ export function TimelineView({
 													}
 												>
 													{processingLabel(processingState, item.transcription)}
+												</span>
+											)}
+											{audioCoverageLabel(item) && (
+												<span
+													className="event-card-state is-warning"
+													title={audioCoverageLabel(item)}
+												>
+													录音有缺口
 												</span>
 											)}
 											{live && (

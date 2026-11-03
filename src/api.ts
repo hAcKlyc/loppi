@@ -266,6 +266,12 @@ export interface TimelineItem {
 	revision: number | null;
 	fit_state: string | null;
 	processing_state: string;
+	audio_coverage?: {
+		source: Source;
+		duration_ms: number;
+		interval_count: number;
+		reasons: string[];
+	}[];
 	local_analysis_failures?: number;
 	manual_asr_state: string | null;
 	manual_asr_started_ms: number | null;
@@ -478,4 +484,29 @@ export function time(timestamp: number): string {
 
 export function dateTitle(date: Date): string {
 	return `${date.getMonth() + 1}月${date.getDate()}日`;
+}
+
+export function audioCoverageLabel(item: TimelineItem): string {
+	const reasons: Record<string, string> = {
+		machine_sleep: "电脑休眠",
+		source_start_gap: "恢复启动",
+		source_failure: "录音中断",
+		callback_gap: "音频采集丢失",
+		interrupted_seal: "音频封存中断",
+		interrupted_tail: "录音中断",
+		manual_pause: "手动暂停",
+		schedule_pause: "定时暂停",
+		storage_limit: "空间不足",
+		source_disabled: "声源关闭",
+		cleared_audio: "原声已清理",
+		cleared_all_data: "数据已清理",
+		audio_unavailable: "原声不可用",
+		sleep_or_clock_gap: "休眠或时钟变化",
+	};
+	return (item.audio_coverage ?? [])
+		.map(
+			(c) =>
+				`${c.source === "microphone" ? "麦克风" : "电脑声音"}：${c.interval_count} 段录音缺口，共 ${(c.duration_ms / 1000).toFixed(3)} 秒（${c.reasons.map((r) => reasons[r] ?? "其他录音缺口").join("、")}）`,
+		)
+		.join("；");
 }

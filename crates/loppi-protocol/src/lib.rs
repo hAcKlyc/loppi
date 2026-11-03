@@ -632,6 +632,9 @@ pub struct TimelineItem {
     pub revision: Option<i64>,
     pub fit_state: Option<String>,
     pub processing_state: String,
+    /// Missing audio, independently derived from persisted coverage evidence.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub audio_coverage: Vec<AudioCoverage>,
     /// Failed local jobs in this interval; never replaces the ASR state.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub local_analysis_failures: u32,
@@ -650,6 +653,14 @@ pub struct TimelineItem {
     pub recording_sources: Vec<AudioSource>,
     pub coarse_segments: Vec<CoarseSegment>,
     pub precise_segments: Vec<PreciseSegment>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AudioCoverage {
+    pub source: AudioSource,
+    pub duration_ms: i64,
+    pub interval_count: u32,
+    pub reasons: Vec<String>,
 }
 
 fn is_zero(value: &u32) -> bool {
