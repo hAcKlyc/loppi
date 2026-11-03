@@ -30,7 +30,7 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Verify the same gate as local development
         run: python3 scripts/verify.py --report build/verification.json
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: verification
@@ -72,7 +72,7 @@ jobs:
           $native | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - name: Verify Windows offline gate
         run: python scripts/verify.py --report build/verification-windows.json
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: verification-windows
