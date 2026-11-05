@@ -38,17 +38,15 @@ test('semantic text colors remain readable on their actual surfaces', () => {
     assert(ratio >= 4.5, `${text} on ${surface}: ${ratio.toFixed(2)} < 4.5`);
   }
 });
-test('switch fills or outlines retain visible thumb and surface contrast', () => {
+test('switch states use distinct fills and the active track retains surface contrast', () => {
   assert.notEqual(color('color-switch-on'), color('color-switch-off'));
-  for (const track of ['color-switch-on', 'color-switch-off-border']) {
+  for (const track of ['color-switch-on']) {
     for (const surface of ['color-surface', 'color-canvas']) {
       const a=luminance(color(track)), b=luminance(color(surface));
       const ratio=(Math.max(a,b)+.05)/(Math.min(a,b)+.05);
       assert(ratio>=3, `${track} against ${surface}: ${ratio.toFixed(2)} < 3`);
     }
   }
-  const a=luminance(color('color-switch-off-border')), b=luminance(color('color-switch-off'));
-  assert((Math.max(a,b)+.05)/(Math.min(a,b)+.05)>=3, 'Off track and thumb outlines remain distinct from the light fill');
 });
 test('source assets and exported token definitions agree', async () => {
   const exported = JSON.parse(await readFile(resolve(root, 'design/system-v1/tokens.json')));

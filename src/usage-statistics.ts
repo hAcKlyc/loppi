@@ -38,8 +38,7 @@ export function usageBoundaries(days: 7 | 30 | 90, now = new Date()): number[] {
 }
 export function usageNumber(value: number, metric: UsageMetric): string {
 	if (metric === "cost_nano") {
-		if (value > 0 && value < 10000) return "<¥0.00001";
-		return `¥${(value / 1e9).toLocaleString("zh-CN", { maximumFractionDigits: 5, minimumFractionDigits: 2 })}`;
+		return `¥${(value / 1e9).toLocaleString("zh-CN", { maximumFractionDigits: 2, minimumFractionDigits: 2 })}`;
 	}
 	return value.toLocaleString("zh-CN");
 }

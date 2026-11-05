@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { usageBoundaries, usageNumber } from '../src/usage-statistics.ts';
+import { usageBoundaries, usageNumber, usageAxis } from '../src/usage-statistics.ts';
 test('ranges contain exactly N local calendar days including today', () => {
  for (const days of [7,30,90]) {
   const now = new Date(2026,9,17,17,34);
@@ -20,9 +20,10 @@ test('calendar boundaries preserve 23-hour and 25-hour local days', () => {
  }
  if(prior===undefined) delete process.env.TZ; else process.env.TZ=prior;
 });
-test('small nonzero costs are never formatted as zero',()=>{
- assert.equal(usageNumber(1,'cost_nano'),'<¥0.00001');
- assert.equal(usageNumber(36000,'cost_nano'),'¥0.00004');
- assert.equal(usageNumber(0,'cost_nano'),'¥0.00');
+test('cost labels and axes consistently round to two decimal places',()=>{
+ for (const [value, expected] of [[0,'¥0.00'],[1,'¥0.00'],[36000,'¥0.00'],[4999999,'¥0.00'],[5000000,'¥0.01'],[1234567890,'¥1.23'],[1235000000,'¥1.24'],[1000000000000,'¥1,000.00']]) {
+  assert.equal(usageNumber(value,'cost_nano'),expected);
+  assert.equal(usageAxis(value,true),expected);
+ }
  assert.equal(usageNumber(1000000,'input_tokens'),'1,000,000');
 });

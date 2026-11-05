@@ -116,7 +116,7 @@ VAD 先事务提交 `coarse_jobs` 的来源/session/16 kHz 样本区间与 `spee
 
 麦克风和电脑声音各有来源开关、录制 session、封块与缺口。麦克风桥接在 [`microphone.rs`](../crates/loppi-core/src/microphone.rs)；电脑声音在 [`system_audio.rs`](../crates/loppi-core/src/system_audio.rs) 及原生实现。macOS 14.2 及以上在授权预检通过后使用 Core Audio Tap，实时更新公开进程排除列表；其他情况沿用 ScreenCaptureKit，音频采集和探测都注册 Audio 与 Screen 输出，Screen 回调只消费交付、不保留像素。GUI 统一用原生 AVAudioPlayer 输出，复用 ContinuousPlayback 的双块预读/清理/真实时间控制；音频不经过 WebKit GPU。开始播放前，Core 通过来源 Progress 确认当前 GUI 已排除。旧 SCK 快照遇 GUI 身份变化沿用来源监督重建，准备期间回放保持静音。`src-tauri/tauri.conf.json` 当前声明最低 macOS 13.0，不能据此认为所有路径已在 13–25 实测通过。
 
-`capture_supervisor` 每路独立启动/停止并处理睡眠和异常退出。公开 IOKit 睡眠/完成唤醒事实控制暂停期间的重试；早期 Wake/DarkWake 不等于设备可用，单纯灭屏不暂停采集。睡眠前真实缺口与 machine_sleep 区间分开，均接受既有 journal 尾部校正。录制意图、手动暂停、容量暂停、来源开关、系统许可、模型准备及本次登录的完全退出各有独立含义。来源异常后使用有上限退避，恢复前保持真实缺口；另一来源可继续。容量边界暂停新增采集并提醒，释放空间后由用户手动恢复。[采集监督](../crates/loppi-core/src/main.rs)、[封块写入](../crates/loppi-core/src/record.rs)。
+`capture_supervisor` 每路独立启动/停止并处理睡眠和异常退出。公开 IOKit 睡眠/完成唤醒事实控制暂停期间的重试；早期 Wake/DarkWake 不等于设备可用，单纯灭屏不暂停采集。macOS 原生快照在睡眠标记残留时，用晚于本轮 WillSleep 的内核唤醒时间和 powerd 的 CPU/Video/Audio 完整能力共同补偿遗漏的完成唤醒通知；旧能力、DarkWake、查询失败不解除暂停，代际校验防止旧查询覆盖新睡眠。OS 实现状态键缺失时保留原通知路径，不以等待时长推断唤醒。睡眠前真实缺口与 machine_sleep 区间分开，均接受既有 journal 尾部校正。录制意图、手动暂停、容量暂停、来源开关、系统许可、模型准备及本次登录的完全退出各有独立含义。来源异常后使用有上限退避，恢复前保持真实缺口；另一来源可继续。容量边界暂停新增采集并提醒，释放空间后由用户手动恢复。[采集监督](../crates/loppi-core/src/main.rs)、[封块写入](../crates/loppi-core/src/record.rs)。
 
 每日定时录制由 Core 的 [`schedule.rs`](../crates/loppi-core/src/schedule.rs) 管理：单例 `recording_schedule` 存开关、两个当地分钟、处理游标、时区与暂停原因。原生日历 helper 只换算时间；`capture_supervisor` 在决定来源启停前，于同一个 Store 写事务中补最近一次遗漏动作并持久化游标。目标已满足也消费边界，不重启 session。手动控制先结算到期动作再应用用户意图；保存新配置只重建未来起点，关闭规则不改变录制。日历按系统时区处理 DST，时区变化仅重建未来边界，时间回拨不回放游标之前的动作。
 

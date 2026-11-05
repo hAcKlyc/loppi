@@ -16,7 +16,7 @@ class NativeResourcesTest(unittest.TestCase):
             library = Path(directory) / "resources.dylib"
             subprocess.run([
                 "clang", "-dynamiclib", "-fobjc-arc", "-mmacosx-version-min=13.0",
-                "-framework", "Foundation", "-framework", "IOKit",
+                "-framework", "Foundation", "-framework", "IOKit", "-framework", "SystemConfiguration",
                 str(ROOT / "crates/loppi-core/native/resources.m"), "-o", str(library),
             ], check=True, capture_output=True, timeout=60)
             native = ctypes.CDLL(str(library))

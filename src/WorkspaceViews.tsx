@@ -24,6 +24,7 @@ import { CloudServiceSettings } from "./CloudServiceSettings";
 import {
 	Button,
 	Icon,
+	IconButton,
 	Modal,
 	SegmentedOptions,
 	SettingRow,
@@ -265,15 +266,6 @@ export function QueueView({
 											)}
 									</div>
 									<div className="recognition-actions">
-										<Button
-											type="button"
-											tone="quiet"
-											size="compact"
-											aria-label={`${recognitionServices[provider].title}设置`}
-											onClick={() => onSettings(provider)}
-										>
-											设置
-										</Button>
 										{(queueReady || !queueError) && (
 											<LoadBoundary
 												ready={queueReady}
@@ -307,6 +299,12 @@ export function QueueView({
 												)}
 											</LoadBoundary>
 										)}
+										<IconButton
+											label={`${recognitionServices[provider].title}设置`}
+											onClick={() => onSettings(provider)}
+										>
+											<Icon name="settings" />
+										</IconButton>
 									</div>
 								</div>
 								<div className="queue-counts">
