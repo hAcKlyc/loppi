@@ -145,3 +145,11 @@ CLI 的 `transcribe-range` 返回 `range_id` 和 `tasks`；每条任务有可用
 精转文字优先保留完整内容与供应商时间：时间能映射到原请求且当前归属有效，就保存文字，允许偶发长静默跨度；VAD、当前原声留存和声纹质量不再导致整段文字丢失。声纹和回放各自检查真实原声。最新修复、证据与安装状态见 [精转失败调查](../research/2026-10-22-asr-publication-failures.md)。
 
 已有事件可以在详情的「音频信息」中重新精转；命令行可运行 `loppi event retranscribe <event-id> <revision>`。新任务按当前云端适配器处理整场可用原声，原有人工修正只在可确认的同一时段自动恢复，其余进入待核对。
+
+### macOS 完成唤醒通知遗漏（2026-11-05）
+
+`native/resources.m` 在既有 `loppi_power_snapshot` 内核对两项只读证据：`kern.wake_abs_time` 晚于本轮 WillSleep 的 `mach_absolute_time()`，且 `State:/IOKit/SystemPowerCapabilities` 是包含 CPU=1、Video=2、Audio=4 的非负整数。前者防止尚未睡眠时旧能力误恢复，后者排除 CPU/网络已运行的 DarkWake。状态查询不持有通知锁；回写必须匹配查询前 generation。恢复递增原 generation，仍由既有采集监督执行，不清除手动暂停、计划停止或容量保护。正常完成唤醒与补偿重复到达时不重复递增。
+
+状态键是 OS 实现约定，不是公共稳定 schema；缺失、类型不符或读取失败保持睡眠，仍等待原通知。源依据：[Apple PowerManagement PMConnection.m](https://github.com/apple-oss-distributions/PowerManagement/blob/main/pmconfigd/PMConnection.m) 的 `SYSTEM_WILL_SLEEP` / `SYSTEM_DID_WAKE` 与 `setSystemSleepStateTracking`，[XNU IOPMrootDomain.cpp](https://github.com/apple-oss-distributions/xnu/blob/main/iokit/Kernel/IOPMrootDomain.cpp) 的 `gIOLastWakeAbsTime`。不调用私有链接符号、不创建电源 assertion。
+
+`test_native_power.m` 替换 OS 读取边界，直接执行生产回调/快照，覆盖遗漏通知、极短睡眠、DarkWake、上一轮能力、读取失败、重复通知及查询期间再次睡眠。自动模拟不等于真实合盖验收；发布前需同一构建验证合盖/开盖自动落盘、DarkWake 不新增采集以及手动/计划/容量暂停不误恢复。

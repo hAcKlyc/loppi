@@ -65,7 +65,7 @@ def main():
                 run('native-playback-build', ['clang', '-fobjc-arc', '-fblocks', '-mmacosx-version-min=13.0', 'scripts/test_native_playback.m', '-framework', 'Foundation', '-framework', 'AVFoundation', '-o', binary])
                 run('native-playback', [binary])
                 binary = str(Path(directory)/'power-policy')
-                run('native-power-build', ['clang', '-fobjc-arc', '-fblocks', '-mmacosx-version-min=13.0', 'scripts/test_native_power.m', '-framework', 'Foundation', '-framework', 'IOKit', '-o', binary])
+                run('native-power-build', ['clang', '-fobjc-arc', '-fblocks', '-mmacosx-version-min=13.0', 'scripts/test_native_power.m', '-framework', 'Foundation', '-framework', 'IOKit', '-framework', 'SystemConfiguration', '-o', binary])
                 run('native-power', [binary])
         if args.suite in ['all', 'smoke']:
             run('frontend-build', ['npm', 'run', 'build'])

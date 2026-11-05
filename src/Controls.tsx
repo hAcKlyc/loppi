@@ -24,7 +24,8 @@ export function Icon({
 		| "close"
 		| "plus"
 		| "more"
-		| "pause";
+		| "pause"
+		| "settings";
 }) {
 	const paths = {
 		back: "M15 5l-7 7 7 7",
@@ -37,6 +38,8 @@ export function Icon({
 		plus: "M12 5v14M5 12h14",
 		more: "M5 12h.01M12 12h.01M19 12h.01",
 		pause: "M9 5v14M15 5v14",
+		settings:
+			"M10 3h4l.5 2.5 2 1.2L19 6l2 3.5-1.8 1.7v1.6l1.8 1.7-2 3.5-2.5-.7-2 1.2L14 21h-4l-.5-2.5-2-1.2L5 18l-2-3.5 1.8-1.7v-1.6L3 9.5 5 6l2.5.7 2-1.2L10 3ZM15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z",
 	};
 	return (
 		<svg

@@ -103,7 +103,9 @@ test('recognition settings navigation uses existing pages, focuses the service r
         const settingsButton = select(`${service.title}设置`);
         assert.equal(settingsButton.tagName, 'BUTTON');
         assert.equal(settingsButton.tabIndex, 0, 'native button remains reachable by keyboard');
-        assert.equal(settingsButton.nextElementSibling.getAttribute('role'), 'switch', 'settings precedes the switch');
+        assert.equal(settingsButton.previousElementSibling.getAttribute('role'), 'switch', 'switch precedes settings');
+        assert.equal(settingsButton.textContent, '', 'settings uses an icon without a visible text label');
+        assert.ok(settingsButton.querySelector('svg'), 'settings icon is present');
         const before = scrolled.length;
         await click(settingsButton);
         const row = document.querySelector(`[data-cloud-provider="${provider}"]`);

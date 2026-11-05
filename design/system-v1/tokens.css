@@ -105,7 +105,6 @@
 	--color-focus: var(--palette-neutral-text);
 	--color-focus-ring: var(--palette-focus-wash);
 	--color-switch-off: var(--palette-neutral-line);
-	--color-switch-off-border: var(--palette-neutral-text);
 	--color-switch-on: var(--palette-rust);
 	--color-chart-usage: var(--color-complete-text);
 	--color-chart-output: var(--palette-blue);

@@ -4,19 +4,19 @@
 
 ## 当前分发
 
-截至2026-11-03，[v0.1.21](https://github.com/hAcKlyc/loppi/releases/tag/v0.1.21)已正式公开并设为Latest，提供Mac Apple Silicon、Mac Intel及Windows x64安装包。13个附件包含安装包、签名更新资源、三份构建报告、SHA256SUMS和latest.json；[固定更新地址](https://github.com/hAcKlyc/loppi/releases/latest/download/latest.json)已通过匿名读取验证。
+截至 2026-11-04，[v0.1.22](https://github.com/hAcKlyc/loppi/releases/tag/v0.1.22)已正式公开并设为 Latest，提供 Mac Apple Silicon、Mac Intel 及 Windows x64 安装包。13 个附件包含安装包、签名更新资源、三份构建报告、SHA256SUMS 和 latest.json；[固定更新地址](https://github.com/hAcKlyc/loppi/releases/latest/download/latest.json)已通过匿名读取验证。
 
-本次安装包的源码及tag解析提交均为`727e0ffe00514a3fd3ce6fefc2dac1cd68db2f4e`。后续main中的发布脚本修复和事实文档不改变这批产物身份；应根据包内source、dirty、epoch与协议版本判断。完整来源、签名、验收及摘要见[本次发行记录](../specs/research/2026-11-03-github-release-0.1.21.md)。
+本次安装包的源码及 tag 解析提交均为 `7cc63e9e98f3785802f96fa15ef2c6eba05c1185`，三平台组件身份一致且 dirty=false。完整来源、签名、验收边界及摘要见[本次发行记录](../specs/research/2026-11-04-github-release-0.1.22.md)。历史 [0.1.21 发行证据](../specs/research/2026-11-03-github-release-0.1.21.md)保留其原始源码归属。
 
 | 平台 | 当前声明与证据 | 尚未覆盖的范围 |
 | --- | --- | --- |
 | macOS ARM64 | 最低部署版本13.0；原生CI、签名、公证、票据及包内模型检查通过 | 最低系统、更多设备与多日稳定性 |
 | macOS Intel | 独立x86_64正式包；原生Intel CI、签名、公证、票据及包内模型检查通过 | 更多Intel实体机的GUI/录音长期使用及最低系统 |
-| Windows x64 | Windows11 Build22000+正式包；用户确认安装、录音和升级验收通过；CI及实际包内运行库检查通过 | 更多设备与多日稳定性 |
+| Windows x64 | Windows11 Build22000+正式包；本版 CI、构建及更新签名校验通过；0.1.21 的用户安装验收保留历史归属 | 本版更多设备、安装升级实机矩阵与多日稳定性 |
 
 两Mac均已完成Developer ID签名和Apple公证，三平台更新签名均已验证。Windows安装包仍无Authenticode系统代码签名。Windows10、Windows ARM64和Linux不在当前支持声明中；CI和单次验收不代表所有设备的录音、睡眠恢复、识别质量与能耗均已验证。
 
-缺少应用内更新功能的旧公开版本需手动安装一次0.1.21；此前本地同版本候选也需手动安装本次正式包，同版本不会触发自动升级。
+已有 0.1.21 客户端可通过应用内更新取得 0.1.22；缺少更新功能的旧版需手动安装。真实睡眠/DarkWake、设备恢复及真实云端收尾的未验证项仍保留在本次修复台账中。
 
 历史公开v0.1.18保留两份已签名、公证的Mac DMG，其源码为`4969899afd8d2e9d4dc632d568ef33a843cc56bc`，没有改写。历史候选台账中的哈希只属于各自候选，不替代当前发行包身份。
 
