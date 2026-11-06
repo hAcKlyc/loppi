@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: implemented
 updated: 2026-11-07
 ---
 # 核心慢操作隔离与详情流畅度
@@ -32,7 +32,7 @@ updated: 2026-11-07
   - [x] 首页读取与详情刷新
   - [x] 播放正文隔离
   - [x] 回归、构建与合成浏览器验收
-  - [ ] cross-review、提交、整体闭环
+  - [x] cross-review、提交、整体闭环
 
 ### 当前批次 Review 基线
 - Batch base: 0a5c972851ac0a8dbf8823a9e412c79f6c5e5500
@@ -58,6 +58,8 @@ updated: 2026-11-07
 - 保证/非目标/证据: 按上文；原生设备长时体验为 advisory，不改原生 capture/playback 实现。
 - required lenses: requirements、adversarial；修复与受影响验证后全新 architecture。
 - 缩锁后必须保持原清理与回执语义，不能通过取消一致性约束换性能；仅本次根因与引入问题可阻塞。Phase 1 只读，主 Agent 裁决。
+
+### 最终验证与裁决
 - 2026-11-07：全量 verify 通过：Rust 445 项通过、21 项显式忽略；Node 135 项、兔子资源 3 项、Python 12 项通过；原生 policy/capture/playback/power、隔离 Core/CLI/登录交接/诊断/父进程退出检查通过。真实隔离 IPC 验证不变快照同标识、写入后变更。
 - 2026-11-07：Phase 1 requirements：仅要求补齐过期 moments 满页停止分页证据，已补并独立复核 PASS。adversarial：发现同快照 early return 可取消在途人物列表；已把 snapshotVersion 的保存移到同请求完整加载成功后，原 token/ref 不变。延迟交错回归、人物选择可用及原深分页测试通过，原 reviewer 定向复核 PASS。没有新增防御机制或产品状态。
 - 2026-11-07：隔离 arm64 开发包完整构建通过，离线随包模型/Unicode路径/组件准备验证通过。最后前端修复后的检查、浏览器详情回归和最终开发包正在重跑；Rust生产代码未再变化，不重复无关Core验收。
@@ -66,3 +68,5 @@ updated: 2026-11-07
 - 2026-11-07：确认隔离构建目录为真实独立目录（非 symlink）；最终候选的全部改动生产文件与工作树逐字节一致。没有替换运行中 App。
 
 - 2026-11-07：最终修复后的 arm64 开发包完整构建与随包离线模型验证通过，候选位于 build/dev/0.1.23/macos-arm64-smooth/。开发候选基于本批 base + 已验证工作树，dirty=true，未发布/未替换安装版。全部必做验证完成；Windows 真机、长时录音耗电与任意异常挂载时延未在本次测量，不将其冒充实测结论。
+
+- 2026-11-07：实现提交 `683e69d`。逐条复核本交付四项范围、非目标、各项证据和最终源码：全部完成，最终 HEAD 类型检查与 lint 再次通过。无未决产品问题、无未完成 mandatory 项；已停止临时 UI 测试服务。按单批契约结束，不扩大到其余性能清单。
