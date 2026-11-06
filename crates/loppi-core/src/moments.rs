@@ -227,7 +227,7 @@ pub fn capture(
     received_ms: i64,
     excluded: &[u32],
     peer_pid: i32,
-) -> Result<CaptureResult, String> {
+) -> Result<(CaptureResult, tempfile::TempDir), String> {
     if now <= 0 || now > received_ms + 5_000 || excluded.len() > 8 || excluded.contains(&0) {
         return Err("invalid screenshot anchor or window exclusions".into());
     }
@@ -242,9 +242,10 @@ pub fn capture(
     fs::create_dir_all(&target_dir).map_err(|error| error.to_string())?;
     loppi_protocol::platform::set_mode(&target_dir, 0o700).map_err(|error| error.to_string())?;
     let id = Uuid::new_v4();
-    let pending = target_dir.join(format!("{id}.pending"));
+    // Capture/OCR own private scratch space; only publication joins the media lifecycle.
+    let scratch = tempfile::tempdir().map_err(|e| e.to_string())?;
+    let pending = scratch.path().join("capture.png");
     let relative = PathBuf::from("screenshots").join(format!("{id}.png"));
-    let final_path = directory.join(&relative);
     let c_pending =
         CString::new(pending.to_string_lossy().as_bytes()).map_err(|e| e.to_string())?;
     let status = unsafe {
@@ -282,13 +283,9 @@ pub fn capture(
             return Err("screenshot is not PNG".into());
         }
         loppi_protocol::platform::set_mode(&pending, 0o600).map_err(|error| error.to_string())?;
-        loppi_protocol::platform::sync_file(&pending).map_err(|error| error.to_string())?;
-        loppi_protocol::platform::rename(&pending, &final_path)
-            .map_err(|error| error.to_string())?;
-        loppi_protocol::platform::sync_directory(&target_dir).map_err(|error| error.to_string())?;
         #[cfg(unix)]
         let (recognized, ocr_text) = {
-            let c_path = CString::new(final_path.to_string_lossy().as_bytes())
+            let c_path = CString::new(pending.to_string_lossy().as_bytes())
                 .map_err(|error| error.to_string())?;
             let mut output = std::ptr::null_mut();
             let recognized = unsafe { loppi_ocr_png(c_path.as_ptr(), &mut output) } != 0;
@@ -304,7 +301,7 @@ pub fn capture(
             (recognized, ocr_text)
         };
         #[cfg(windows)]
-        let (recognized, ocr_text) = match crate::ocr::recognize(&final_path) {
+        let (recognized, ocr_text) = match crate::ocr::recognize(&pending) {
             Ok(text) => (true, Some(text)),
             Err(_) => (false, None),
         };
@@ -317,11 +314,38 @@ pub fn capture(
             ocr_state: if recognized { "complete" } else { "failed" },
         })
     })();
-    if result.is_err() {
-        let _ = fs::remove_file(&pending);
-        let _ = fs::remove_file(&final_path);
+    result.map(|captured| (captured, scratch))
+}
+
+/// Called under the existing media gate, after capture and OCR have finished.
+pub fn publish_capture(
+    db: &Connection,
+    directory: &Path,
+    captured: &CaptureResult,
+    scratch: &Path,
+    generation: i64,
+) -> Result<(), String> {
+    let cleared: bool = db
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM ingestion_clears g JOIN clear_ranges c ON c.id=g.clear_id
+         WHERE g.generation>=?1 AND c.mode='all_data' AND c.from_ms<=?2 AND c.to_ms>?2)",
+            params![generation, captured.triggered_ms],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if cleared {
+        return Err("screenshot range was cleared during capture".into());
     }
-    result
+    let pending = directory
+        .join("screenshots")
+        .join(format!("{}.pending", captured.id));
+    fs::copy(scratch.join("capture.png"), &pending).map_err(|e| e.to_string())?;
+    loppi_protocol::platform::set_mode(&pending, 0o600).map_err(|e| e.to_string())?;
+    loppi_protocol::platform::sync_file(&pending).map_err(|e| e.to_string())?;
+    loppi_protocol::platform::rename(&pending, directory.join(&captured.relative))
+        .map_err(|e| e.to_string())?;
+    loppi_protocol::platform::sync_directory(directory.join("screenshots"))
+        .map_err(|e| e.to_string())
 }
 
 pub fn save_capture(
@@ -532,6 +556,59 @@ mod tests {
             loppi_protocol::CloudProvider::Llm,
             "deepseek-flash",
             "deepseek:test-reference",
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn screenshot_scratch_is_private_until_publication_and_obeys_intervening_cleanup() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir(dir.path().join("screenshots")).unwrap();
+        let scratch = tempfile::tempdir().unwrap();
+        fs::write(scratch.path().join("capture.png"), b"synthetic image").unwrap();
+        let store = crate::Store::new(Connection::open_in_memory().unwrap()).unwrap();
+        let generation = crate::playback::generation(&store.db).unwrap();
+        let capture = CaptureResult {
+            id: Uuid::new_v4(),
+            relative: PathBuf::from("screenshots/test.png"),
+            triggered_ms: 1000,
+            captured_ms: 1100,
+            ocr_text: None,
+            ocr_state: "failed",
+        };
+        let clear = Uuid::new_v4().to_string();
+        store
+            .db
+            .execute(
+                "INSERT INTO clear_ranges(id,mode,from_ms,to_ms,source_mask,committed_ms)
+            VALUES(?1,'raw_audio',0,2000,1,1500)",
+                [&clear],
+            )
+            .unwrap();
+        // Audio-only clearing has no ownership over screenshots.
+        publish_capture(&store.db, dir.path(), &capture, scratch.path(), generation).unwrap();
+        assert_eq!(
+            fs::read(dir.path().join(&capture.relative)).unwrap(),
+            b"synthetic image"
+        );
+        fs::remove_file(dir.path().join(&capture.relative)).unwrap();
+        store
+            .db
+            .execute("UPDATE clear_ranges SET mode='all_data'", [])
+            .unwrap();
+        assert!(
+            publish_capture(&store.db, dir.path(), &capture, scratch.path(), generation)
+                .unwrap_err()
+                .contains("cleared")
+        );
+        assert!(!dir.path().join(&capture.relative).exists());
+        // A new capture after that cleanup can still publish.
+        publish_capture(
+            &store.db,
+            dir.path(),
+            &capture,
+            scratch.path(),
+            generation + 1,
         )
         .unwrap();
     }

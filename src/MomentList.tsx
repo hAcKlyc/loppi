@@ -39,6 +39,7 @@ function MomentIcon({ kind }: { kind: Moment["kind"] }) {
 
 function ScreenshotText({ moment }: { moment: Moment }) {
 	const [copyState, setCopyState] = useState("");
+	const [expanded, setExpanded] = useState(false);
 	const ready = moment.image_summary != null && moment.image_transcript != null;
 	const state = moment.image_state;
 	const copy = async () => {
@@ -55,19 +56,24 @@ function ScreenshotText({ moment }: { moment: Moment }) {
 				<>
 					<p className="moment-text image-summary">{moment.image_summary}</p>
 					{moment.image_transcript?.trim() ? (
-						<details className="moment-ocr">
+						<details
+							className="moment-ocr"
+							onToggle={(event) => setExpanded(event.currentTarget.open)}
+						>
 							<summary>完整转录</summary>
 							<div className="moment-markdown">
-								<Markdown
-									remarkPlugins={[remarkGfm]}
-									skipHtml
-									components={{
-										img: ({ alt }) => <span>{alt}</span>,
-										a: ({ children }) => <span>{children}</span>,
-									}}
-								>
-									{moment.image_transcript}
-								</Markdown>
+								{expanded && (
+									<Markdown
+										remarkPlugins={[remarkGfm]}
+										skipHtml
+										components={{
+											img: ({ alt }) => <span>{alt}</span>,
+											a: ({ children }) => <span>{children}</span>,
+										}}
+									>
+										{moment.image_transcript}
+									</Markdown>
+								)}
 							</div>
 							<Button type="button" tone="quiet" onClick={() => void copy()}>
 								复制 Markdown

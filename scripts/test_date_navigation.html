@@ -75,7 +75,7 @@ document.getElementById('run').onclick=async()=>{
   assert(arrows.length===2&&arrows[0]===next()&&arrows[1]===previous(),'倒序必须左更新、右更早');
   assert(next().disabled&&!q('.date-today'),'最新边界或今天快捷入口错误');
   assert(!q('.calendar-button')&&document.querySelectorAll('.date-header [aria-haspopup="dialog"]').length===1,'重复日历入口');
-  assert(getComputedStyle(q('.date-header')).userSelect==='none','日期仍可被双击选中文字');
+  assert((getComputedStyle(q('.date-header')).userSelect||getComputedStyle(q('.date-header')).webkitUserSelect)==='none','日期仍可被双击选中文字');
   geometry();
   for(const target of days.slice(0,-1).reverse()){
     await click(previous());await ready(target);geometry();

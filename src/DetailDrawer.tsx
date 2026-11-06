@@ -3,6 +3,7 @@ import {
 	useEffect,
 	useId,
 	useLayoutEffect,
+	useMemo,
 	useRef,
 	useState,
 } from "react";
@@ -159,10 +160,13 @@ export function DetailDrawer({
 	const headingId = useId();
 	const heading = useRef<HTMLHeadingElement>(null);
 	const [feedback, setFeedback] = useState("");
-	const report = (message: string) => {
-		setFeedback(message);
-		onMessage(message);
-	};
+	const report = useCallback(
+		(message: string) => {
+			setFeedback(message);
+			onMessage(message);
+		},
+		[onMessage],
+	);
 	const [detail, setDetail] = useState<TimelineItem>(item);
 	const [localSpeakers, setLocalSpeakers] = useState<LocalSpeaker[]>([]);
 	const [speakersReady, setSpeakersReady] = useState(false);
@@ -241,6 +245,7 @@ export function DetailDrawer({
 	const sourceRef = useRef<Sources>(item.sources);
 	const momentsRequest = useRef(0);
 	const detailRequest = useRef(0);
+	const snapshotVersion = useRef<string | undefined>(undefined);
 	const asrDefaults = useRef({
 		from: localDateTime(Math.ceil(item.started_ms / 1000) * 1000),
 		to: localDateTime(Math.floor(item.ended_ms / 1000) * 1000),
@@ -248,7 +253,7 @@ export function DetailDrawer({
 	});
 
 	const load = useCallback(
-		async (page: number, paging = false) => {
+		async (page: number, paging = false, refresh = false) => {
 			if (paging && loading.current) return;
 			loading.current = true;
 			setLoadingPage(true);
@@ -262,12 +267,15 @@ export function DetailDrawer({
 					type: "event";
 					id: string;
 					event: TimelineItem;
+					snapshot_version?: string;
 				} | null = null;
 				let loadedPage = 0;
+				let loadedVersion: string | undefined;
 				for (let attempt = 0; attempt < 2; attempt++) {
 					allCoarse.length = 0;
 					allPrecise.length = 0;
 					const appendPage = paging && attempt === 0;
+					loadedVersion = appendPage ? snapshotVersion.current : undefined;
 					if (appendPage) {
 						allCoarse.push(...detailRef.current.coarse_segments);
 						allPrecise.push(...detailRef.current.precise_segments);
@@ -294,6 +302,25 @@ export function DetailDrawer({
 							event: TimelineItem;
 						}>(request);
 						if (token !== detailRequest.current) return;
+						if (
+							refresh &&
+							offset === 0 &&
+							initialScroll.current === undefined &&
+							response.snapshot_version &&
+							response.snapshot_version === snapshotVersion.current &&
+							response.event.id === detailRef.current.id &&
+							response.event.started_ms === detailRef.current.started_ms &&
+							response.event.ended_ms === detailRef.current.ended_ms &&
+							response.event.sources === detailRef.current.sources
+						) {
+							return;
+						}
+						loadedVersion =
+							!appendPage && offset === 0
+								? response.snapshot_version
+								: loadedVersion === response.snapshot_version
+									? loadedVersion
+									: undefined;
 						allCoarse.push(...response.event.coarse_segments);
 						allPrecise.push(...response.event.precise_segments);
 						loadedPage = offset;
@@ -351,6 +378,7 @@ export function DetailDrawer({
 					precise_segments: uniqueSegments(allPrecise),
 				});
 				offset.current = loadedPage;
+				snapshotVersion.current = undefined;
 				setDetailReady(true);
 				setMore({
 					coarse: response.event.coarse_segments.length >= PAGE_SIZE,
@@ -375,11 +403,15 @@ export function DetailDrawer({
 							setSpeakersError(userError(error));
 							setSpeakersReady(false);
 						}
+						return;
 					}
 				} else {
 					setLocalSpeakers([]);
 					setSpeakersReady(true);
 				}
+				// A completed load includes its independent identity list. An in-flight
+				// or failed list must not be cancelled by the next same-snapshot refresh.
+				snapshotVersion.current = loadedVersion;
 			} catch (error) {
 				if (token === detailRequest.current) {
 					if (paging) setPageError(userError(error));
@@ -397,7 +429,7 @@ export function DetailDrawer({
 
 	useEffect(() => {
 		if (refreshToken >= 0 && editing === null && assigning === null)
-			void load(offset.current);
+			void load(offset.current, false, true);
 	}, [load, refreshToken, editing, assigning]);
 	useEffect(() => {
 		if (editing !== null || assigning !== null) return;
@@ -587,31 +619,33 @@ export function DetailDrawer({
 		}
 	};
 
-	const mutate = async (
-		request: { type: string; [key: string]: unknown },
-		success: string | ((response: CoreResponse) => string),
-	) => {
-		setBusy(true);
-		try {
-			const response = await core(request);
-			await load(offset.current);
-			onChanged(
-				request.type === "transcribe_range" &&
-					!detail.id &&
-					typeof response.range_id === "string"
-					? response.range_id
-					: undefined,
-			);
-			report(typeof success === "string" ? success : success(response));
-			setEditing(null);
-			setAssigning(null);
-		} catch (error) {
-			report(userError(error));
-		} finally {
-			setBusy(false);
-		}
-	};
-
+	const mutate = useCallback(
+		async (
+			request: { type: string; [key: string]: unknown },
+			success: string | ((response: CoreResponse) => string),
+		) => {
+			setBusy(true);
+			try {
+				const response = await core(request);
+				await load(offset.current);
+				onChanged(
+					request.type === "transcribe_range" &&
+						!detail.id &&
+						typeof response.range_id === "string"
+						? response.range_id
+						: undefined,
+				);
+				report(typeof success === "string" ? success : success(response));
+				setEditing(null);
+				setAssigning(null);
+			} catch (error) {
+				report(userError(error));
+			} finally {
+				setBusy(false);
+			}
+		},
+		[load, onChanged, detail.id, report],
+	);
 	const transcribe = async () => {
 		const started_ms =
 			asrFrom === localDateTime(Math.ceil(detail.started_ms / 1000) * 1000)
@@ -749,89 +783,91 @@ export function DetailDrawer({
 		action();
 	};
 
-	const updateSpeaker = async (
-		segment: PreciseSegment,
-		action: SpeakerAction,
-	) => {
-		setBusy(true);
-		try {
-			let creationMessage: string | null = null;
-			if (action.kind === "sample") {
-				await core({
-					type: "add_voice_sample",
-					segment_id: segment.id,
-					expected_revision: segment.revision,
-				});
-			} else {
-				const scope = {
-					segment_id: segment.id,
-					entire_local_speaker: action.entire,
-					expected_revision: action.entire
-						? segment.speaker_revision
-						: segment.revision,
-				};
-				if (action.kind === "unbind")
-					await core({ type: "unbind_speaker", ...scope });
-				else if (action.choice.kind === "local") {
-					const groupId = action.choice.groupId;
-					const target = localSpeakers.find(
-						(s) => s.group_id === groupId && s.anonymous,
-					);
-					if (!target) throw new Error("说话人已变化，请重新选择");
+	const updateSpeaker = useCallback(
+		async (segment: PreciseSegment, action: SpeakerAction) => {
+			setBusy(true);
+			try {
+				let creationMessage: string | null = null;
+				if (action.kind === "sample") {
 					await core({
-						type: "assign_local_speaker",
-						target_segment_id: target.segment_id,
-						target_revision: target.revision,
-						...scope,
+						type: "add_voice_sample",
+						segment_id: segment.id,
+						expected_revision: segment.revision,
 					});
-				} else if (action.choice.kind === "create") {
-					const response = await core<{
-						type: "person_changed";
-						id: string;
-						sample_count: number;
-						person_id: string;
-					}>({
-						type: "create_and_bind_speaker",
-						display_name: action.choice.name,
-						...scope,
-					});
-					creationMessage =
-						response.sample_count > 0
-							? "人物与声纹已保存"
-							: "人物已保存 · 待补充声纹";
-				} else
-					await core({
-						type: "bind_speaker",
-						person_id: action.choice.personId,
-						...scope,
-					});
-			}
-			await load(offset.current);
-			onChanged();
-			report(
-				creationMessage ??
-					(action.kind === "sample"
-						? "已提交声纹筛选"
-						: action.kind === "unbind"
-							? "已取消人物归属"
-							: "说话人已更新"),
-			);
-			setAssigning(null);
-		} catch (error) {
-			if (String(error).includes("revision_conflict"))
+				} else {
+					const scope = {
+						segment_id: segment.id,
+						entire_local_speaker: action.entire,
+						expected_revision: action.entire
+							? segment.speaker_revision
+							: segment.revision,
+					};
+					if (action.kind === "unbind")
+						await core({ type: "unbind_speaker", ...scope });
+					else if (action.choice.kind === "local") {
+						const groupId = action.choice.groupId;
+						const target = localSpeakers.find(
+							(s) => s.group_id === groupId && s.anonymous,
+						);
+						if (!target) throw new Error("说话人已变化，请重新选择");
+						await core({
+							type: "assign_local_speaker",
+							target_segment_id: target.segment_id,
+							target_revision: target.revision,
+							...scope,
+						});
+					} else if (action.choice.kind === "create") {
+						const response = await core<{
+							type: "person_changed";
+							id: string;
+							sample_count: number;
+							person_id: string;
+						}>({
+							type: "create_and_bind_speaker",
+							display_name: action.choice.name,
+							...scope,
+						});
+						creationMessage =
+							response.sample_count > 0
+								? "人物与声纹已保存"
+								: "人物已保存 · 待补充声纹";
+					} else
+						await core({
+							type: "bind_speaker",
+							person_id: action.choice.personId,
+							...scope,
+						});
+				}
 				await load(offset.current);
-			const message = userError(error);
-			report(message);
-			throw new Error(message);
-		} finally {
-			setBusy(false);
-		}
-	};
-
-	const segments =
-		transcriptSource === "coarse"
-			? detail.coarse_segments
-			: bestSegments(detail, more);
+				onChanged();
+				report(
+					creationMessage ??
+						(action.kind === "sample"
+							? "已提交声纹筛选"
+							: action.kind === "unbind"
+								? "已取消人物归属"
+								: "说话人已更新"),
+				);
+				setAssigning(null);
+			} catch (error) {
+				if (String(error).includes("revision_conflict"))
+					await load(offset.current);
+				const message = userError(error);
+				report(message);
+				throw new Error(message);
+			} finally {
+				setBusy(false);
+			}
+		},
+		[localSpeakers, load, onChanged, report],
+	);
+	const segments = useMemo(
+		() =>
+			transcriptSource === "coarse"
+				? detail.coarse_segments
+				: bestSegments(detail, more),
+		[transcriptSource, detail, more],
+	);
 	useEffect(() => {
 		const sentinel = moreRef.current;
 		const list = transcriptRef.current;
@@ -888,7 +924,165 @@ export function DetailDrawer({
 				row.getBoundingClientRect().top - list.getBoundingClientRect().top;
 		initialScroll.current = undefined;
 	}, [detailReady, detail, segments, playSource]);
-	const labels = new Map(localSpeakers.map((s) => [s.group_id, s.name]));
+	const labels = useMemo(
+		() => new Map(localSpeakers.map((s) => [s.group_id, s.name])),
+		[localSpeakers],
+	);
+	// Static row content depends on transcript/editing facts, never the playback clock.
+	const rowContents = useMemo(
+		() =>
+			segments.map((segment) => {
+				const precise =
+					"revision" in segment ? (segment as PreciseSegment) : null;
+				return (
+					<div className="transcript-content" key={segment.id}>
+						<div className="transcript-meta">
+							<div className="transcript-identity">
+								{precise ? (
+									<button
+										type="button"
+										className="speaker-chip"
+										aria-haspopup="dialog"
+										aria-expanded={assigning === segment.id}
+										disabled={busy}
+										onClick={(event) => {
+											speakerAnchor.current = event.currentTarget;
+											setAssigning(
+												assigning === segment.id ? null : segment.id,
+											);
+										}}
+									>
+										{speakerName(precise, labels)}⌄
+									</button>
+								) : (
+									<span className="speaker-chip static">
+										粗转 · {segment.source === "system" ? "电脑声音" : "麦克风"}
+									</span>
+								)}
+								{precise && (
+									<span className="transcript-source">
+										{precise.source === "system" ? "电脑声音" : "麦克风"}
+										{precise.person_origin === "automatic"
+											? " · 自动匹配"
+											: precise.person_origin === "manual"
+												? " · 已确认"
+												: ""}
+									</span>
+								)}
+								{precise?.corrected && (
+									<span className="corrected-label">已修正</span>
+								)}
+							</div>
+							{precise && (
+								<button
+									type="button"
+									className="text-action"
+									onClick={() => {
+										setEditing(segment.id);
+										setDraft(segment.text);
+									}}
+								>
+									修正
+								</button>
+							)}
+						</div>
+						{editing === segment.id && precise ? (
+							<div className="inline-editor">
+								<textarea
+									aria-label="修正这句文字"
+									value={draft}
+									onChange={(event) => setDraft(event.target.value)}
+								/>
+								<div>
+									<button type="button" onClick={() => setEditing(null)}>
+										取消
+									</button>
+									<button
+										type="button"
+										disabled={busy || !draft.trim()}
+										onClick={() =>
+											void mutate(
+												{
+													type: "correct_text",
+													segment_id: segment.id,
+													text: draft.trim(),
+													expected_revision: precise.revision,
+												},
+												"文字已修正",
+											)
+										}
+									>
+										保存
+									</button>
+								</div>
+							</div>
+						) : (
+							<p>{segment.text}</p>
+						)}
+						{precise?.corrected && precise.original_text && (
+							<details className="original-text">
+								<summary>查看原识别文字</summary>
+								<p>{precise.original_text}</p>
+								<button
+									type="button"
+									disabled={busy}
+									onClick={() =>
+										void mutate(
+											{
+												type: "revert_text",
+												segment_id: segment.id,
+												expected_revision: precise.revision,
+											},
+											"已恢复原识别文字",
+										)
+									}
+								>
+									撤销修正
+								</button>
+							</details>
+						)}
+						{assigning === segment.id && precise && speakerAnchor.current && (
+							<SpeakerPicker
+								peopleReady={peopleReady && speakersReady}
+								peopleError={speakersError || peopleError}
+								onPeopleRetry={
+									speakersError
+										? () => void load(offset.current)
+										: onPeopleRetry
+								}
+								key={segment.id}
+								anchor={speakerAnchor.current}
+								people={people}
+								localSpeakers={localSpeakers}
+								currentGroup={precise.speaker}
+								personId={precise.person_id}
+								confirmed={precise.person_origin === "manual"}
+								onClose={() => setAssigning(null)}
+								onApply={(action) => updateSpeaker(precise, action)}
+							/>
+						)}
+					</div>
+				);
+			}),
+		[
+			segments,
+			labels,
+			assigning,
+			busy,
+			editing,
+			draft,
+			mutate,
+			updateSpeaker,
+			peopleReady,
+			speakersReady,
+			speakersError,
+			peopleError,
+			load,
+			onPeopleRetry,
+			people,
+			localSpeakers,
+		],
+	);
 	const manualStatus = manualAsrSummary(detail);
 	const queueRelevant =
 		(detail.id || detail.manual_range_id) &&
@@ -1238,8 +1432,6 @@ export function DetailDrawer({
 								</div>
 							)}
 							{(detailReady ? segments : []).map((segment, index) => {
-								const precise =
-									"revision" in segment ? (segment as PreciseSegment) : null;
 								const current =
 									playhead >= segment.started_ms &&
 									playhead < segment.ended_ms &&
@@ -1271,143 +1463,7 @@ export function DetailDrawer({
 										>
 											{wallClock(segment.started_ms, true, crossesDay)}
 										</button>
-										<div className="transcript-content">
-											<div className="transcript-meta">
-												<div className="transcript-identity">
-													{precise ? (
-														<button
-															type="button"
-															className="speaker-chip"
-															aria-haspopup="dialog"
-															aria-expanded={assigning === segment.id}
-															disabled={busy}
-															onClick={(event) => {
-																speakerAnchor.current = event.currentTarget;
-																setAssigning(
-																	assigning === segment.id ? null : segment.id,
-																);
-															}}
-														>
-															{speakerName(precise, labels)}⌄
-														</button>
-													) : (
-														<span className="speaker-chip static">
-															粗转 ·{" "}
-															{segment.source === "system"
-																? "电脑声音"
-																: "麦克风"}
-														</span>
-													)}
-													{precise && (
-														<span className="transcript-source">
-															{precise.source === "system"
-																? "电脑声音"
-																: "麦克风"}
-															{precise.person_origin === "automatic"
-																? " · 自动匹配"
-																: precise.person_origin === "manual"
-																	? " · 已确认"
-																	: ""}
-														</span>
-													)}
-													{precise?.corrected && (
-														<span className="corrected-label">已修正</span>
-													)}
-												</div>
-												{precise && (
-													<button
-														type="button"
-														className="text-action"
-														onClick={() => {
-															setEditing(segment.id);
-															setDraft(segment.text);
-														}}
-													>
-														修正
-													</button>
-												)}
-											</div>
-											{editing === segment.id && precise ? (
-												<div className="inline-editor">
-													<textarea
-														aria-label="修正这句文字"
-														value={draft}
-														onChange={(event) => setDraft(event.target.value)}
-													/>
-													<div>
-														<button
-															type="button"
-															onClick={() => setEditing(null)}
-														>
-															取消
-														</button>
-														<button
-															type="button"
-															disabled={busy || !draft.trim()}
-															onClick={() =>
-																void mutate(
-																	{
-																		type: "correct_text",
-																		segment_id: segment.id,
-																		text: draft.trim(),
-																		expected_revision: precise.revision,
-																	},
-																	"文字已修正",
-																)
-															}
-														>
-															保存
-														</button>
-													</div>
-												</div>
-											) : (
-												<p>{segment.text}</p>
-											)}
-											{precise?.corrected && precise.original_text && (
-												<details className="original-text">
-													<summary>查看原识别文字</summary>
-													<p>{precise.original_text}</p>
-													<button
-														type="button"
-														disabled={busy}
-														onClick={() =>
-															void mutate(
-																{
-																	type: "revert_text",
-																	segment_id: segment.id,
-																	expected_revision: precise.revision,
-																},
-																"已恢复原识别文字",
-															)
-														}
-													>
-														撤销修正
-													</button>
-												</details>
-											)}
-											{assigning === segment.id &&
-												precise &&
-												speakerAnchor.current && (
-													<SpeakerPicker
-														peopleReady={peopleReady && speakersReady}
-														peopleError={speakersError || peopleError}
-														onPeopleRetry={
-															speakersError
-																? () => void load(offset.current)
-																: onPeopleRetry
-														}
-														key={segment.id}
-														anchor={speakerAnchor.current}
-														people={people}
-														localSpeakers={localSpeakers}
-														currentGroup={precise.speaker}
-														personId={precise.person_id}
-														confirmed={precise.person_origin === "manual"}
-														onClose={() => setAssigning(null)}
-														onApply={(action) => updateSpeaker(precise, action)}
-													/>
-												)}
-										</div>
+										{rowContents[index]}
 									</div>
 								);
 							})}

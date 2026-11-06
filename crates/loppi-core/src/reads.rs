@@ -56,6 +56,7 @@ pub struct Pool {
 pub struct Snapshot<'a> {
     reader: MutexGuard<'a, Reader>,
     version: i64,
+    slot: usize,
 }
 impl Pool {
     pub fn open(path: &Path) -> Result<Self, String> {
@@ -87,13 +88,17 @@ impl Pool {
     fn snapshot_for(&self, timeout: Duration) -> Result<Snapshot<'_>, String> {
         let deadline = Instant::now() + timeout;
         loop {
-            for slot in &self.readers {
-                if let Ok(reader) = slot.try_lock() {
+            for (slot, entry) in self.readers.iter().enumerate() {
+                if let Ok(reader) = entry.try_lock() {
                     reader
                         .db
                         .progress_handler(1000, Some(move || Instant::now() >= deadline))
                         .map_err(|e| e.to_string())?;
-                    let mut lease = Snapshot { reader, version: 0 };
+                    let mut lease = Snapshot {
+                        reader,
+                        version: 0,
+                        slot,
+                    };
                     lease
                         .execute_batch(
                             "BEGIN DEFERRED; SELECT revision FROM service_state LIMIT 1;",
@@ -122,6 +127,10 @@ impl Pool {
     }
 }
 impl Snapshot<'_> {
+    pub fn version_key(&self, run: uuid::Uuid) -> String {
+        format!("{run}:{}:{}", self.slot, self.version)
+    }
+
     pub fn cached<T: Serialize + DeserializeOwned>(
         &self,
         key: impl Serialize,
@@ -157,6 +166,28 @@ impl Drop for Snapshot<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn snapshot_identity_tracks_writes_connections_and_core_runs() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("db");
+        let writer = Connection::open(&path).unwrap();
+        writer.execute_batch("PRAGMA journal_mode=WAL; CREATE TABLE service_state(revision); INSERT INTO service_state VALUES(1);").unwrap();
+        let pool = Pool::open(&path).unwrap();
+        let run = uuid::Uuid::new_v4();
+        let first = pool.snapshot().unwrap();
+        let before = first.version_key(run);
+        assert_ne!(before, pool.snapshot().unwrap().version_key(run));
+        assert_ne!(before, first.version_key(uuid::Uuid::new_v4()));
+        writer
+            .execute("UPDATE service_state SET revision=2", [])
+            .unwrap();
+        assert_eq!(before, first.version_key(run));
+        drop(first);
+        let after = pool.snapshot().unwrap().version_key(run);
+        assert_ne!(before, after);
+        assert_eq!(after, pool.snapshot().unwrap().version_key(run));
+    }
+
     #[test]
     fn query_failures_keep_their_layer() {
         for (error, code) in [

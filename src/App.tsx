@@ -95,6 +95,7 @@ function App() {
 	} | null>(null);
 	const [gaps, setGaps] = useState<TimeGap[]>([]);
 	const [dayMoments, setDayMoments] = useState<Moment[]>([]);
+	const [dayMomentsError, setDayMomentsError] = useState("");
 	const [loading, setLoading] = useState(true);
 	const [timelineReady, setTimelineReady] = useState(false);
 	const [timelineError, setTimelineError] = useState("");
@@ -207,6 +208,7 @@ function App() {
 		setItems([]);
 		setGaps([]);
 		setDayMoments([]);
+		setDayMomentsError("");
 		setSelection(null);
 		manualSelection.current = null;
 		setLoading(true);
@@ -222,6 +224,7 @@ function App() {
 			const request = ++timelineRequest.current;
 			setTimelineError("");
 			if (showLoading) setLoading(true);
+			let timelineLoaded = false;
 			try {
 				const [from_ms, to_ms] = dayBounds(date);
 				const calendar = core<{
@@ -243,8 +246,64 @@ function App() {
 					items: TimelineItem[];
 					gaps: TimeGap[];
 				}>({ type: "timeline", from_ms, to_ms });
+				if (request !== timelineRequest.current) return;
+				timelineLoaded = true;
+				setItems(response.items);
+				setTimelineReady(
+					response.items.length > 0 || !initialDatePending.current,
+				);
+				setGaps(response.gaps);
+				setLoading(false);
+				setSelection((currentSelection) => {
+					const current = currentSelection?.item;
+					const preserveEntry = (item: TimelineItem | null) =>
+						item ? { item, initialAt: currentSelection?.initialAt } : null;
+					if (manualSelection.current) {
+						const preferred = response.items.find(
+							(next) => next.manual_range_id === manualSelection.current,
+						);
+						manualSelection.current = null;
+						if (preferred) return { item: preferred };
+					}
+					if (!current) return null;
+					if (current.id) {
+						return preserveEntry(
+							response.items.find((next) => next.id === current.id) ?? null,
+						);
+					}
+					if (current.manual_range_id) {
+						return preserveEntry(
+							response.items.find(
+								(next) =>
+									next.manual_range_id === current.manual_range_id &&
+									next.started_ms <=
+										(current.started_ms + current.ended_ms) / 2 &&
+									next.ended_ms > (current.started_ms + current.ended_ms) / 2,
+							) ?? null,
+						);
+					}
+					const remaining = response.items.find(
+						(next) =>
+							!next.id &&
+							next.sources === current.sources &&
+							next.started_ms <= current.started_ms &&
+							next.ended_ms >= current.ended_ms,
+					);
+					if (remaining) return preserveEntry(remaining);
+					const midpoint = (current.started_ms + current.ended_ms) / 2;
+					return preserveEntry(
+						response.items.find(
+							(next) =>
+								next.started_ms <= midpoint &&
+								next.ended_ms > midpoint &&
+								next.sources === current.sources,
+						) ?? null,
+					);
+				});
 				const available = await calendar;
+				if (request !== timelineRequest.current) return;
 				const neighbors = await adjacent;
+				if (request !== timelineRequest.current) return;
 				const all: Moment[] = [];
 				while (true) {
 					const page = await core<{
@@ -258,6 +317,7 @@ function App() {
 						offset: all.length,
 						limit: 200,
 					});
+					if (request !== timelineRequest.current) return;
 					all.push(...page.moments);
 					if (page.moments.length < 200) break;
 				}
@@ -292,61 +352,18 @@ function App() {
 							return;
 						}
 					}
-					setItems(response.items);
 					setTimelineReady(true);
-					setGaps(response.gaps);
 					setDayMoments(all);
-					setSelection((currentSelection) => {
-						const current = currentSelection?.item;
-						const preserveEntry = (item: TimelineItem | null) =>
-							item ? { item, initialAt: currentSelection?.initialAt } : null;
-						if (manualSelection.current) {
-							const preferred = response.items.find(
-								(next) => next.manual_range_id === manualSelection.current,
-							);
-							manualSelection.current = null;
-							if (preferred) return { item: preferred };
-						}
-						if (!current) return null;
-						if (current.id) {
-							return preserveEntry(
-								response.items.find((next) => next.id === current.id) ?? null,
-							);
-						}
-						if (current.manual_range_id) {
-							return preserveEntry(
-								response.items.find(
-									(next) =>
-										next.manual_range_id === current.manual_range_id &&
-										next.started_ms <=
-											(current.started_ms + current.ended_ms) / 2 &&
-										next.ended_ms > (current.started_ms + current.ended_ms) / 2,
-								) ?? null,
-							);
-						}
-						const remaining = response.items.find(
-							(next) =>
-								!next.id &&
-								next.sources === current.sources &&
-								next.started_ms <= current.started_ms &&
-								next.ended_ms >= current.ended_ms,
-						);
-						if (remaining) return preserveEntry(remaining);
-						const midpoint = (current.started_ms + current.ended_ms) / 2;
-						return preserveEntry(
-							response.items.find(
-								(next) =>
-									next.started_ms <= midpoint &&
-									next.ended_ms > midpoint &&
-									next.sources === current.sources,
-							) ?? null,
-						);
-					});
+					setDayMomentsError("");
+
 					setError(null);
 				}
 			} catch (cause) {
 				if (request === timelineRequest.current) {
-					setTimelineError(errorText(cause));
+					if (timelineLoaded) {
+						setTimelineReady(true);
+						setDayMomentsError(errorText(cause));
+					} else setTimelineError(errorText(cause));
 					setAdjacentDays(null);
 				}
 			} finally {
@@ -991,6 +1008,18 @@ function App() {
 						<button type="button" onClick={() => setPage("settings")}>
 							查看
 						</button>
+					</div>
+				)}
+				{page === "timeline" && dayMomentsError && (
+					<div className="detail-load-error" role="alert">
+						<span>现场记录读取失败：{dayMomentsError}</span>
+						<Button
+							type="button"
+							tone="quiet"
+							onClick={() => void refreshTimeline()}
+						>
+							重试
+						</Button>
 					</div>
 				)}
 				{page === "timeline" && (
