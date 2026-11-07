@@ -72,7 +72,7 @@ class AgentCli(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix='loppi-agent-docs-error-') as temp:
             data = Path(temp)
             (data / 'skills').write_text('not a directory', encoding='utf-8')
-            result = subprocess.run([str(CLI), 'readme'], env=os.environ | {'LOPPI_DATA_DIR': str(data)}, capture_output=True, text=True, timeout=15)
+            result = subprocess.run([str(CLI), 'readme'], env=os.environ | {'LOPPI_DATA_DIR': str(data)}, capture_output=True, text=True, encoding='utf-8', timeout=15)
             self.assertNotEqual(result.returncode, 0)
             self.assertEqual(result.stdout, '')
             self.assertIn('loppi:', result.stderr)

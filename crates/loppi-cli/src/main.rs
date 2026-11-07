@@ -830,6 +830,7 @@ fn main() {
     match &cli.command {
         Command::Readme => {
             let result = std::env::current_exe()
+                .and_then(std::fs::canonicalize)
                 .map_err(|e| e.to_string())
                 .and_then(|cli| loppi_protocol::agent_assets::readme(&cli));
             match result {
