@@ -92,6 +92,9 @@ enum Action {
     )]
     /// Browse event cards and unorganized ranges. Defaults to today.
     List {
+        /// 按事件的稳定标签 UUID 筛选。
+        #[arg(long)]
+        tag: Option<Uuid>,
         #[command(flatten)]
         time: Time,
         #[command(flatten)]
@@ -229,6 +232,7 @@ pub fn run(c: Context) -> i32 {
             "status"
         }
         Action::List {
+            tag,
             time,
             page,
             sources,
@@ -238,6 +242,9 @@ pub fn run(c: Context) -> i32 {
             }
             if let Some(s) = sources {
                 args["sources"] = source(&s);
+            }
+            if let Some(tag) = tag {
+                args["tag_id"] = json!(tag);
             }
             page.add(&mut args);
             "list"

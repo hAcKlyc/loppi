@@ -42,6 +42,13 @@ import { MomentList } from "./MomentList";
 import { type Chunk, ContinuousPlayback } from "./playback";
 import { type SpeakerAction, SpeakerPicker } from "./SpeakerPicker";
 
+import {
+	WorkflowPicker,
+	WorkflowResults,
+	WorkflowTagEditor,
+} from "./WorkflowEvent";
+import { type WorkflowRun, workflow } from "./workflow-api";
+
 const PAGE_SIZE = 30;
 
 type Props = {
@@ -57,6 +64,7 @@ type Props = {
 	onQueue: () => void;
 	onDataAction: (kind: "export" | "cleanup", item: TimelineItem) => void;
 	onChanged: (manualRangeId?: string) => void;
+	onConfirmedEvent: (eventId: string) => Promise<void>;
 	onMessage: (message: string) => void;
 	refreshToken: number;
 };
@@ -153,6 +161,7 @@ export function DetailDrawer({
 	onQueue,
 	onDataAction,
 	onChanged,
+	onConfirmedEvent,
 	onMessage,
 	refreshToken,
 }: Props) {
@@ -175,7 +184,13 @@ export function DetailDrawer({
 	detailRef.current = detail;
 	const [detailReady, setDetailReady] = useState(false);
 	const [detailError, setDetailError] = useState<string | null>(null);
-	const [tab, setTab] = useState<"transcript" | "info">("transcript");
+	const [tab, setTab] = useState<"transcript" | "info" | "generated">(
+		"transcript",
+	);
+	const [strategyOpen, setStrategyOpen] = useState(false);
+	const [tagEditor, setTagEditor] = useState(false);
+	const [strategyId, setStrategyId] = useState<string | null>(null);
+	const [recentRun, setRecentRun] = useState<WorkflowRun | null>(null);
 	const offset = useRef(0);
 	const initialScroll = useRef(initialAt);
 	const transcriptRef = useRef<HTMLDivElement>(null);
@@ -710,7 +725,11 @@ export function DetailDrawer({
 		});
 	};
 	const confirmCompletion = async () => {
-		if (!completion?.item.id || completion.item.revision == null || busy)
+		if (
+			!completion ||
+			(completion.item.id && completion.item.revision == null) ||
+			busy
+		)
 			return;
 		const started_ms =
 			completion.from === localDateTime(completion.item.started_ms)
@@ -739,27 +758,43 @@ export function DetailDrawer({
 		if (!completionRequest.current)
 			completionRequest.current = {
 				id: crypto.randomUUID(),
-				request: {
-					type: "confirm_event_completion",
-					event_id: completion.item.id,
-					expected_revision: completion.item.revision,
-					started_ms,
-					ended_ms,
-				},
+				request: completion.item.id
+					? {
+							type: "confirm_event_completion",
+							event_id: completion.item.id,
+							expected_revision: completion.item.revision,
+							started_ms,
+							ended_ms,
+						}
+					: {
+							type: "workflow",
+							action: {
+								op: "confirm_range",
+								started_ms,
+								ended_ms,
+								sources: completion.item.sources,
+							},
+						},
 			};
 		setBusy(true);
 		setCompletionError("");
 		try {
 			const submission = completionRequest.current;
-			await core(submission.request, submission.id);
+			if (!completion.item.id) {
+				const result = await workflow<{ event_id: string }>(
+					submission.request.action as { op: string },
+					submission.id,
+				);
+				await onConfirmedEvent(result.event_id);
+			} else await core(submission.request, submission.id);
 			completionRequest.current = null;
 			setCompletion(null);
 			await load(offset.current);
 			onChanged();
 			report(
 				changed
-					? "已提交重新整理，完成后将确认事件结束并进入精转"
-					: "已确认事件结束，正在处理精转",
+					? "已提交重新整理，完成后将判断自动流程"
+					: "已确认事件结束，正在判断自动流程",
 			);
 		} catch (error) {
 			const uncertain =
@@ -1099,17 +1134,23 @@ export function DetailDrawer({
 		detail.completion_state === "pending" ||
 		detail.completion_state === "processing";
 	const completionFailed = detail.completion_state === "failed";
+	const eventId = detail.id ?? detail.manual_range_id ?? null;
+	const canRunStrategy =
+		detail.workflow?.phase === "decided" && eventId !== null;
 	const canConfirmCompletion =
-		detail.id &&
-		detail.completed_ms == null &&
-		detail.processing_state === "settling_asr" &&
+		((detail.id &&
+			detail.workflow?.phase === "undetermined" &&
+			detail.completed_ms == null) ||
+			(!eventId && detail.processing_state !== "moment_only")) &&
 		!completionProcessing &&
 		!completionFailed;
 	const statusText = completionProcessing
 		? "重新整理中"
 		: completionFailed
 			? "重新整理失败"
-			: processingLabel(detail.processing_state, detail.transcription);
+			: detail.workflow?.phase === "judging"
+				? "正在判断自动流程"
+				: processingLabel(detail.processing_state, detail.transcription);
 	const coverageText = audioCoverageLabel(detail);
 	const sourceText =
 		detail.processing_state === "moment_only"
@@ -1157,6 +1198,24 @@ export function DetailDrawer({
 							{detail.title ||
 								(detail.manual_range_id ? "未命名事件" : "未整理")}
 						</h2>
+						{detail.id && detail.workflow && (
+							<div className="workflow-event-tags">
+								{detail.workflow.labels.map((tag) => (
+									<span key={tag.id}>{tag.name}</span>
+								))}
+								<Button
+									tone="quiet"
+									disabled={busy || !detailReady}
+									onClick={() => setTagEditor(true)}
+								>
+									{detail.workflow.tag_state === "failed"
+										? "打标失败 · 编辑"
+										: detail.workflow.tag_state === "pending"
+											? "正在打标"
+											: "编辑标签"}
+								</Button>
+							</div>
+						)}
 						<div className="detail-status" role="status">
 							{detail.completed_ms != null && <span>已确认结束 · </span>}
 							{canConfirmCompletion ? (
@@ -1170,7 +1229,8 @@ export function DetailDrawer({
 										openCompletion();
 									}}
 								>
-									等待事件稳定 <span aria-hidden="true">›</span>
+									{detail.id ? "确认事件结束" : "确定成事件"}{" "}
+									<span aria-hidden="true">›</span>
 								</button>
 							) : completionProcessing || completionFailed || queueRelevant ? (
 								<button
@@ -1209,6 +1269,25 @@ export function DetailDrawer({
 								<Icon name="more" />
 							</summary>
 							<div className="detail-menu-items">
+								{detail.manual_range_id && !detail.id && (
+									<Button
+										tone="quiet"
+										disabled={busy || !detailReady}
+										onClick={() => menuAction(openCompletion)}
+									>
+										确定成事件
+									</Button>
+								)}
+
+								{canRunStrategy && (
+									<Button
+										tone="quiet"
+										disabled={busy}
+										onClick={() => menuAction(() => setStrategyOpen(true))}
+									>
+										执行策略
+									</Button>
+								)}
 								{detail.id && (
 									<Button
 										tone="quiet"
@@ -1325,20 +1404,35 @@ export function DetailDrawer({
 							</select>
 						</div>
 						<div className="detail-toolbar">
-							<Tabs
-								id={tabsId}
-								label="详情内容"
-								value={tab}
-								disabled={busy}
-								items={[
-									{ value: "transcript", label: "文本转录" },
-									{ value: "info", label: "音频信息" },
-								]}
-								onChange={(value) => {
-									setAssigning(null);
-									setTab(value);
-								}}
-							/>
+							<div className="workflow-detail-tabs">
+								<Tabs
+									id={tabsId}
+									label="详情内容"
+									value={tab}
+									disabled={busy}
+									items={[
+										{ value: "transcript", label: "文本转录" },
+										{ value: "info", label: "音频信息" },
+										...(canRunStrategy
+											? [{ value: "generated" as const, label: "生成内容" }]
+											: []),
+									]}
+									onChange={(value) => {
+										setAssigning(null);
+										setTab(value);
+									}}
+								/>
+								{canRunStrategy && (
+									<IconButton
+										tone="quiet"
+										label="执行策略"
+										disabled={busy}
+										onClick={() => setStrategyOpen(true)}
+									>
+										<Icon name="plus" />
+									</IconButton>
+								)}
+							</div>
 							{tab === "transcript" && (
 								<div className="transcript-toolbar">
 									{detail.coarse_segments.length > 0 &&
@@ -1642,6 +1736,22 @@ export function DetailDrawer({
 									</Button>
 								)}
 						</TabPanel>
+						{canRunStrategy && eventId && tab === "generated" && (
+							<TabPanel
+								tabsId={tabsId}
+								value="generated"
+								selected={tab}
+								className="detail-scroll"
+							>
+								<WorkflowResults
+									eventId={eventId}
+									refreshToken={refreshToken}
+									strategyId={strategyId}
+									onStrategy={setStrategyId}
+									recent={recentRun}
+								/>
+							</TabPanel>
+						)}
 					</div>
 					<aside className="notes-panel">
 						<div className="notes-heading">
@@ -1764,9 +1874,35 @@ export function DetailDrawer({
 					</div>
 				</Modal>
 			)}
+			{strategyOpen && eventId && detail.revision != null && (
+				<WorkflowPicker
+					eventId={eventId}
+					revision={detail.revision}
+					onClose={() => setStrategyOpen(false)}
+					onRun={(run) => {
+						setRecentRun(run);
+						setStrategyId(run.strategy_id);
+						setTab("generated");
+						setStrategyOpen(false);
+					}}
+				/>
+			)}
+			{tagEditor && (
+				<WorkflowTagEditor
+					item={detail}
+					onClose={() => setTagEditor(false)}
+					onSaved={() => {
+						setTagEditor(false);
+						void load(offset.current);
+						onChanged();
+					}}
+				/>
+			)}
 			{completion && (
 				<Modal
-					title="确认事件已结束？"
+					title={
+						completion.item.id ? "确认事件已结束？" : "确定这段素材为事件？"
+					}
 					busy={busy}
 					feedback={completionError}
 					onClose={() => setCompletion(null)}
@@ -1797,6 +1933,28 @@ export function DetailDrawer({
 							/>
 						</label>
 					</div>
+					{!completion.item.id && detail.sources === "both" && (
+						<label>
+							声音来源{" "}
+							<select
+								value={completion.item.sources}
+								disabled={busy || completionUncertain}
+								onChange={(event) =>
+									setCompletion({
+										...completion,
+										item: {
+											...completion.item,
+											sources: event.target.value as Sources,
+										},
+									})
+								}
+							>
+								<option value="both">双路声音</option>
+								<option value="microphone">麦克风</option>
+								<option value="system">电脑声音</option>
+							</select>
+						</label>
+					)}
 					<div className="modal-actions">
 						<Button
 							tone="quiet"

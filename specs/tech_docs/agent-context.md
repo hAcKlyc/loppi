@@ -19,7 +19,7 @@ flowchart LR
   Capture[既有采集与整理] --> Data
 ```
 
-Core 是数据、有效性和查询的唯一 owner。只读 context/MCP 入口只用 `send_existing`，不启动 Core、采集、精转或云任务；没有网络监听、独立 daemon 或客户端内容缓存。内部 IPC 版本为 26；对外结果版本为 `loppi.context.v1`。同 UID 的 socket 检查沿用现有实现。读取能力不意味着云端 Agent 的模型推理离线。
+Core 是数据、有效性和查询的唯一 owner。只读 context/MCP 入口只用 `send_existing`，不启动 Core、采集、精转或云任务；没有网络监听、独立 daemon 或客户端内容缓存。内部 IPC 版本为 27；对外结果版本为 `loppi.context.v1`。同 UID 的 socket 检查沿用现有实现。读取能力不意味着云端 Agent 的模型推理离线。
 
 GUI 日期导航使用只读 `CalendarAdjacent {from_ms,to_ms}`：输入为客户端本地日界（23–25 小时），输出 `newer_ms`/`older_ms` 为两侧最近可用材料的时间点或 `null`。GUI 以本地日界归日，不把时间点当 UTC 日期。投影与 `CalendarDays` 共用音频、粗转、未删除事件、现场记录及可见人工范围的可用性规则，排除 gap 与未来材料；一次查询覆盖全历史，无日期枚举或历史截断。协议 26 与 GUI/CLI/Core/worker 同步发布；旧组件按既有版本不匹配路径拒绝请求，无存储迁移或新增业务状态。
 
@@ -30,7 +30,7 @@ CLI/MCP 的默认参数、校验、描述、schema 和执行入口共用 `crates
 | CLI | MCP | 用途 |
 | --- | --- | --- |
 | `context status` | `loppi_status` | 当前在线状态、时区、采集和处理状态 |
-| `context list` | `loppi_list_context` | 日期/范围内事件卡片、未整理区间、独立现场记录 |
+| `context list [--tag UUID]` | `loppi_list_context` | 日期/范围内事件卡片、未整理区间、独立现场记录，可按有效标签 UUID 筛选 |
 | `context search` | `loppi_search_context` | 词法短语，搜索转录、笔记、截图文字、事件标题/摘要/话题/要点/对象 |
 | `context event ID --section …` | `loppi_get_event` | overview、summary、topics、key_points、mentioned_objects、moments |
 | `context read` | `loppi_read_context` | 按 event_id、time、refs 三选一展开证据 |
@@ -38,6 +38,8 @@ CLI/MCP 的默认参数、校验、描述、schema 和执行入口共用 `crates
 | `context people` | `loppi_list_people` | 已知发言人姓名到 person_id；不推断提及者身份 |
 
 完整输入 schema 可离线读取 `context schema OPERATION`，短说明见 `context guide cli|mcp|evidence|workflows|troubleshooting`。所有查询默认 JSON；参数错误也只输出一份机器可读 JSON。CLI 退出码：0 成功（含空结果及离线 status），2 参数，3 后台不可用/不兼容，4 读取忙/超时，5 引用或其他查询失败。安装/配置辅助返回独立 JSON。
+
+事件概览提供标签与事件流程阶段的可选元数据。经用户授权后，CLI 使用 `workflow` 和 `event` 管理入口修改规则、确定事件、补标、运行策略和读取结果版本。管理命令与桌面端共用 Core 事务和回执。MCP 保持只读。命令示例见 [Agent CLI 指南](../../resources/agent/loppi-context/references/cli.md)。
 
 ## 证据与分页契约
 

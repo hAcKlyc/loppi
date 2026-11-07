@@ -5,6 +5,7 @@ pub mod ipc;
 mod lifecycle;
 pub mod platform;
 pub mod vocabulary;
+pub mod workflow;
 pub use diagnostic::*;
 use ipc::Stream as UnixStream;
 pub use lifecycle::{quit_gui_core, resume_gui_core};
@@ -18,7 +19,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
-pub const PROTOCOL_VERSION: u32 = 26;
+pub const PROTOCOL_VERSION: u32 = 27;
 const MAX_RESPONSE_BYTES: u64 = 48 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -53,6 +54,9 @@ pub enum LifecycleAction {
 pub enum Request {
     Context {
         query: context::Query,
+    },
+    Workflow {
+        action: workflow::Action,
     },
     Lifecycle {
         action: LifecycleAction,
@@ -344,6 +348,7 @@ impl Request {
     pub fn name(&self) -> &'static str {
         match self {
             Self::Context { .. } => "context",
+            Self::Workflow { .. } => "workflow",
             Self::Lifecycle { .. } => "lifecycle",
             Self::Status => "status",
             Self::Diagnose { .. } => "diagnose",
@@ -617,6 +622,8 @@ pub struct TimelinePreview {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimelineItem {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workflow: Option<workflow::EventStatus>,
     /// User-confirmed event end, independent of transcription progress.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub completed_ms: Option<i64>,
@@ -780,6 +787,10 @@ pub struct SearchHit {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Response {
+    Workflow {
+        id: Uuid,
+        result: serde_json::Value,
+    },
     Context {
         id: Uuid,
         result: serde_json::Value,
@@ -1186,6 +1197,7 @@ fn send_with_policy(
     let decoded: Response = serde_json::from_slice(&response).map_err(|error| error.to_string())?;
     match &decoded {
         Response::Context { id, .. }
+        | Response::Workflow { id, .. }
         | Response::Lifecycle { id, .. }
         | Response::CloudConfigurationReceipt { id, .. }
         | Response::Status { id, .. }

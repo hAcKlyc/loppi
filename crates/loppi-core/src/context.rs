@@ -311,6 +311,13 @@ fn list(db: &Connection, q: &Query, a: &api::ListArgs, id: Uuid) -> Result<Value
     while start < range.to_ms {
         let end = (start + 86_400_000).min(range.to_ms);
         for t in crate::events::timeline(db, start, end)? {
+            if a.tag_id.is_some_and(|tag| {
+                t.workflow
+                    .as_ref()
+                    .is_none_or(|state| !state.labels.iter().any(|label| label.id == tag))
+            }) {
+                continue;
+            }
             if mask(Some(t.sources)) & m == 0 {
                 continue;
             }
@@ -340,9 +347,12 @@ fn list(db: &Connection, q: &Query, a: &api::ListArgs, id: Uuid) -> Result<Value
             if !page.accepts(time, &key) {
                 continue;
             }
-            items.push(Item{time,key,value:json!({"kind":if t.id.is_some(){"event"}else{"unorganized_range"},"event_id":t.id,"from":api::timestamp(from),"to":api::timestamp(to),"matched_from":api::timestamp(from.max(range.from_ms)),"matched_to":api::timestamp(to.min(range.to_ms)),"sources":t.sources,"title":t.title,"summary_excerpt":t.summary.as_deref().map(|s|excerpt(s,240)),"summary_truncated":t.summary.as_ref().is_some_and(|s|s.chars().count()>240),"processing_state":t.processing_state,"selector":{"time":{"from":api::timestamp(from.max(range.from_ms)),"to":api::timestamp(to.min(range.to_ms))},"sources":t.sources}})});
+            items.push(Item{time,key,value:json!({"kind":if t.id.is_some(){"event"}else{"unorganized_range"},"event_id":t.id,"from":api::timestamp(from),"to":api::timestamp(to),"matched_from":api::timestamp(from.max(range.from_ms)),"matched_to":api::timestamp(to.min(range.to_ms)),"sources":t.sources,"title":t.title,"summary_excerpt":t.summary.as_deref().map(|s|excerpt(s,240)),"summary_truncated":t.summary.as_ref().is_some_and(|s|s.chars().count()>240),"processing_state":t.processing_state,"workflow":t.workflow,"revision":t.revision,"manual_range_id":t.manual_range_id,"selector":{"time":{"from":api::timestamp(from.max(range.from_ms)),"to":api::timestamp(to.min(range.to_ms))},"sources":t.sources}})});
         }
         start = end;
+    }
+    if a.tag_id.is_some() {
+        return page.finish(id, json!({}), items, coverage(db, &range, m)?);
     }
     // Moments without an event remain discoverable, including marks with no text.
     let mut stmt=sql(db.prepare("SELECT kind,item_id,started_ms FROM context_visible c WHERE kind IN ('note','ocr','mark') AND started_ms>=?1 AND started_ms<?2 AND NOT EXISTS(SELECT 1 FROM named_events e WHERE e.deleted_ms IS NULL AND e.started_ms<=c.started_ms AND e.ended_ms>c.started_ms) AND (started_ms>?3 OR started_ms=?3 AND kind||':'||item_id>?4) ORDER BY started_ms,kind||':'||item_id LIMIT ?5"))?;
@@ -520,6 +530,8 @@ fn event(db: &Connection, q: &Query, a: &api::EventArgs, id: Uuid) -> Result<Val
     let mut data = json!({"event_id":eid,"title":e.title,"from":api::timestamp(e.start),"to":api::timestamp(e.end),"content_version":version,"section":section,"understanding_available":understanding.is_some(),"understanding_state":understanding_state(db,&eid,&e,understanding.is_some())?,"understanding_source":"coarse_transcript"});
     match section {
         "overview" => {
+            data["revision"] = json!(e.revision);
+            data["workflow"] = json!(crate::events::workflow::status(db, &eid, crate::now_ms()?)?);
             data["summary_excerpt"] = json!(e.summary.as_deref().map(|s| excerpt(s, 1000)));
             data["summary_truncated"] =
                 json!(e.summary.as_ref().is_some_and(|s| s.chars().count() > 1000));

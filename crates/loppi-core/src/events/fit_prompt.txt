@@ -155,6 +155,7 @@ user_instruction.times_adjusted_by_user=true 表示用户在确认事件结束�
       "additionalProperties": false,
       "properties": {
         "event_id": {"type":["string","null"]},
+        "tag_ids": {"type":"array","items":{"type":"string"},"uniqueItems":true},
         "start_ms": {
           "type": "integer"
         },

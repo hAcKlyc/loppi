@@ -45,6 +45,7 @@ import { SoftwareUpdate } from "./SoftwareUpdate";
 import type { ModelState, PrivacyStatus } from "./setup";
 import { UsageStatisticsView } from "./UsageStatistics";
 import type { AppUpdate } from "./useAppUpdate";
+import { WorkflowSettings } from "./WorkflowSettings";
 
 type Mutation = (
 	request: { type: string; [key: string]: unknown },
@@ -379,9 +380,11 @@ export function QueueView({
 													? "用户发起的事件整理"
 													: task.target_kind === "screenshot"
 														? "图片理解"
-														: task.provider === "llm"
-															? "事件分析"
-															: "语音识别"}{" "}
+														: task.target_kind === "workflow"
+															? "生成内容"
+															: task.provider === "llm"
+																? "事件分析"
+																: "语音识别"}{" "}
 												· {taskRange(task)}
 											</strong>
 											<p
@@ -864,6 +867,7 @@ export function SettingsView({
 					))}
 				</LoadBoundary>
 			</div>
+			<WorkflowSettings />
 			<h2>存储与数据</h2>
 			<div className="panel-card setting-panel">
 				<AudioStorageSettings

@@ -730,6 +730,7 @@ pub fn apply(
     .map_err(|e| e.to_string())?;
     if scope.mode == CleanupMode::AllData {
         crate::moments::clear_all_data(tx, scope.start, scope.end, now)?;
+        crate::events::workflow::clear(tx, scope.start, scope.end, scope.mask, now)?;
         let gaps = {
             let mut statement = tx
                 .prepare(
@@ -953,7 +954,7 @@ pub fn apply(
             &format!(
                 "UPDATE cloud_tasks SET state='superseded',updated_ms=?4,
           error_code='data_cleared'
-          WHERE started_ms<?2 AND ended_ms>?1 AND {source_filter}
+          WHERE target_kind!='workflow' AND started_ms<?2 AND ended_ms>?1 AND {source_filter}
           AND state IN ('pending','processing','submitted','failed')"
             ),
             params![scope.start, scope.end, scope.mask, now],

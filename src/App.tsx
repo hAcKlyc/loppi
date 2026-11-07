@@ -1131,6 +1131,19 @@ function App() {
 						setSelection(null);
 						setPage("settings");
 					}}
+					onConfirmedEvent={async (eventId) => {
+						const response = await core<{
+							type: string;
+							id: string;
+							event: TimelineItem;
+						}>({
+							type: "event_detail",
+							event_id: eventId,
+							offset: 0,
+							limit: 30,
+						});
+						setSelection({ item: response.event });
+					}}
 					onChanged={(rangeId) => {
 						if (rangeId) manualSelection.current = rangeId;
 						void refreshTimeline(false, true);

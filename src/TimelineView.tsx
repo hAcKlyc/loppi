@@ -486,6 +486,12 @@ export function TimelineView({
 													: ` — ${live ? "至今" : time(item.ended_ms)}`}
 											</span>
 											<span className="event-card-source">{sourceLabel}</span>
+											{item.workflow?.labels.map((tag) => (
+												<span key={tag.id}>{tag.name}</span>
+											))}
+											{item.workflow?.tag_state === "failed" && (
+												<span>打标失败</span>
+											)}
 											{count > 0 && <span>{count} 条现场记录</span>}
 											{manualStatus && (
 												<span className="event-card-task" title={manualStatus}>

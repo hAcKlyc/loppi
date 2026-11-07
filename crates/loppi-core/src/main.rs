@@ -1624,6 +1624,27 @@ fn process_cloud_task(
                 moments::publish_image(&mut store.db, task, output, now_ms()?)?;
                 return Ok(());
             }
+            if task.target_kind == "workflow" {
+                let key = active_cloud_credential(shared, task.provider)?;
+                let meter = usage::Recorder::task(shared, task.provider, task.id)?;
+                let (system, input) = {
+                    let store = shared.store.lock().map_err(|e| e.to_string())?;
+                    if !events::task_current(&store.db, task)? {
+                        events::supersede_task(&store.db, task, now)?;
+                        return Ok(());
+                    }
+                    let prompt = events::workflow::task_input(&store.db, task)?;
+                    store.db.execute("UPDATE cloud_tasks SET submit_attempts=submit_attempts+1 WHERE id=?1 AND state='processing'",
+                        [task.id.to_string()]).map_err(|error| error.to_string())?;
+                    prompt
+                };
+                let output = cloud::chat(&key, &task.model_id, &system, &input, deadline, &meter)
+                    .map_err(|error| record_account_failure(shared, task, error))?;
+                drop(outbound);
+                let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                events::workflow::publish(&mut store.db, task, output, now_ms()?)?;
+                return Ok(());
+            }
             // Capture prior-event summaries under the same gate as cleanup,
             // including context outside this candidate's own time range.
             let input = {
@@ -1632,15 +1653,24 @@ fn process_cloud_task(
             };
             let key = active_cloud_credential(shared, task.provider)?;
             let meter = usage::Recorder::task(shared, task.provider, task.id)?;
+            let base_system = if task.target_kind == "event" {
+                events::rebuild::SYSTEM
+            } else {
+                events::FIT_SYSTEM
+            };
+            let mut request: serde_json::Value =
+                serde_json::from_str(&input).map_err(|_| "invalid_fit_input".to_owned())?;
+            let system = events::workflow::classification_system(base_system, &request);
+            if let Some(object) = request.as_object_mut() {
+                object.remove("classification");
+            }
+            let provider_input =
+                serde_json::to_string(&request).map_err(|error| error.to_string())?;
             let output = cloud::chat(
                 &key,
                 &task.model_id,
-                if task.target_kind == "event" {
-                    events::rebuild::SYSTEM
-                } else {
-                    events::FIT_SYSTEM
-                },
-                &input,
+                &system,
+                &provider_input,
                 deadline,
                 &meter,
             )
@@ -3050,6 +3080,24 @@ fn handle_request(
                         message: "task is not failed or no longer matches the current event"
                             .to_owned(),
                     },
+                }
+            }
+            Request::Workflow { action } => {
+                if action.read_only() {
+                    let now = now_ms()?;
+                    let result = shared
+                        .readers
+                        .snapshot()
+                        .and_then(|db| events::workflow::read(&db, &action, now));
+                    workflow_reply(envelope.id, result)
+                } else {
+                    let _asr = shared.asr_outbound.lock().map_err(|e| e.to_string())?;
+                    let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                    let result = store.mutate_response(envelope.id, &mutation_fingerprint, |tx| {
+                        events::workflow::write(tx, action, envelope.id, now_ms()?)
+                            .map(|data| workflow_reply(envelope.id, Ok(data)))
+                    });
+                    result.unwrap_or_else(|e| workflow_reply(envelope.id, Err(e)))
                 }
             }
             Request::Vocabulary { action } => {
@@ -4524,16 +4572,20 @@ fn handle_request(
         Response::Error { code, message, .. } => {
             Some((code.clone(), reads::failure_cause(message).to_owned()))
         }
-        Response::Context { result, .. } if result["ok"] == false => Some((
-            result["error"]["code"]
-                .as_str()
-                .unwrap_or("query_failed")
-                .to_owned(),
-            result["error"]["cause"]
-                .as_str()
-                .unwrap_or("query_failed")
-                .to_owned(),
-        )),
+        Response::Context { result, .. } | Response::Workflow { result, .. }
+            if result["ok"] == false =>
+        {
+            Some((
+                result["error"]["code"]
+                    .as_str()
+                    .unwrap_or("query_failed")
+                    .to_owned(),
+                result["error"]["cause"]
+                    .as_str()
+                    .unwrap_or("query_failed")
+                    .to_owned(),
+            ))
+        }
         _ => None,
     };
     if failure.is_some()
@@ -4597,6 +4649,20 @@ fn read_request(stream: &mut UnixStream) -> Result<Vec<u8>, String> {
             return Err("ipc_request_too_large".to_owned());
         }
     }
+}
+
+fn workflow_reply(id: uuid::Uuid, result: Result<serde_json::Value, String>) -> Response {
+    let mut result = result.unwrap_or_else(|error| {
+        let code = match reads::error_code(&error) {
+            known if known != "query_failed" => known,
+            _ if error.bytes().all(|b| b.is_ascii_lowercase() || b == b'_') => error.as_str(),
+            _ if error.contains("overlap") => "event_range_conflict",
+            _ => "workflow_failed",
+        };
+        serde_json::json!({"ok":false,"error":{"code":code,"message":code}})
+    });
+    result["request_id"] = serde_json::json!(id);
+    Response::Workflow { id, result }
 }
 
 fn now_ms() -> Result<i64, String> {
@@ -5559,6 +5625,7 @@ impl Store {
                 })
             }
             Request::Context { .. }
+            | Request::Workflow { .. }
             | Request::Lifecycle { .. }
             | Request::Models
             | Request::PrepareModels
@@ -5649,7 +5716,9 @@ impl Store {
             return Ok(response);
         }
         let response = change(&tx)?;
-        if matches!(response, Response::Error { .. }) {
+        if matches!(response, Response::Error { .. })
+            || matches!(&response, Response::Workflow { result, .. } if result["ok"] == false)
+        {
             return Ok(response);
         }
         let response_json = serde_json::to_string(&response).map_err(|error| error.to_string())?;

@@ -62,6 +62,7 @@ pub struct TimeInput {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ListArgs {
+    pub tag_id: Option<uuid::Uuid>,
     pub time: Option<TimeInput>,
     pub sources: Option<crate::EventSources>,
     pub limit: Option<u16>,
@@ -444,6 +445,9 @@ pub fn input_schema(op: &str) -> Option<Value> {
         "list" | "search" | "digest" => {
             props.insert("time".into(), time());
             props.insert("sources".into(), sources());
+            if op == "list" {
+                props.insert("tag_id".into(), uuid());
+            }
             if op == "digest" {
                 props.insert("mode".into(), json!({"type":"string","enum":["compact","full"],"default":"compact","description":"Compact returns one bounded row per event; full includes existing summary and understanding bodies."}));
             }

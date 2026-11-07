@@ -2563,3 +2563,48 @@ body.floating-body .float-wrap {
 	color: var(--color-text-secondary);
 	font-size: var(--type-meta);
 }
+
+.workflow-settings,
+.workflow-setting-item,
+.workflow-choices,
+.workflow-results {
+	display: grid;
+	gap: var(--space-5);
+	min-width: 0;
+}
+.workflow-setting-item {
+	border-top: var(--stroke-hairline) solid var(--color-border);
+	padding: var(--space-6) 0;
+}
+.workflow-setting-item > label {
+	display: grid;
+	gap: var(--space-2);
+}
+.workflow-tag-options,
+.workflow-event-tags,
+.workflow-detail-tabs,
+.workflow-result-heading {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: var(--space-4);
+}
+.workflow-tag-options label {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+.workflow-choices .control-button {
+	width: 100%;
+	justify-content: space-between;
+	text-align: left;
+}
+.workflow-result-source,
+.workflow-result-heading span,
+.workflow-choices small {
+	color: var(--color-text-secondary);
+	font-size: var(--type-caption);
+}
+.workflow-results {
+	padding-top: var(--space-6);
+}

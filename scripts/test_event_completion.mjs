@@ -42,7 +42,8 @@ const { DetailDrawer } = await import('../src/DetailDrawer.tsx');
 
 const started = Date.now()-3600000+123;
 const initial = { id:'completion-fixture', title:'结束确认回归', started_ms:started, ended_ms:started+1200000,
-  sources:'microphone', revision:7, processing_state:'settling_asr', coarse_segments:[], precise_segments:[] };
+  sources:'microphone', revision:7, processing_state:'settling_asr', coarse_segments:[], precise_segments:[],
+  workflow:{phase:'undetermined',tag_state:'tagged',labels:[],manual:false} };
 let current={...initial}, key=0, failOnce=false, mutations=[], actions=[], retranscriptions=[];
 mockIPC(async(command,args)=>{
  const r=args.request;
@@ -57,7 +58,7 @@ mockIPC(async(command,args)=>{
   mutations.push(args);
   if(failOnce){failOnce=false;throw Error('lost response');}
   const changed=r.started_ms!==initial.started_ms || r.ended_ms!==initial.ended_ms;
-  current={...current,completed_ms:changed?null:Date.now(),completion_state:changed?'pending':undefined,processing_state:changed?'settling_asr':'pending_asr',revision:changed?7:8};
+  current={...current,completed_ms:changed?null:Date.now(),completion_state:changed?'pending':undefined,processing_state:changed?'settling_asr':'pending_asr',revision:changed?7:8,workflow:{...initial.workflow,phase:changed?'judging':'decided'}};
   return {type:'accepted',id:args.requestId,object_id:r.event_id};
  }
  throw Error('unexpected '+r.type);
@@ -68,7 +69,7 @@ const q=s=>document.querySelector(s);
 const button=text=>[...document.querySelectorAll('button')].find(el=>el.textContent===text);
 const render=()=>root.render(React.createElement(DetailDrawer,{key,item:current,people:[],refreshToken:0,
  onClose(){},onEdit(){actions.push('edit')},onTools(_item,mode){actions.push(mode)},onQueue(){actions.push('queue')},
- onDataAction(kind){actions.push(kind)},onChanged(){},onMessage(){}}));
+ onDataAction(kind){actions.push(kind)},onChanged(){},onConfirmedEvent(){},onMessage(){}}));
 const reset=async()=>{current={...initial};key++;await settle(render);};
 const open=async()=>settle(()=>q('.event-completion-trigger').click());
 const setValue=async(input,value)=>settle(()=>{
@@ -79,6 +80,7 @@ globalThis.HTMLInputElement=window.HTMLInputElement;
 try{
  await settle(render);
  assert(q('.detail-header .event-completion-trigger'));
+ assert(!q('[aria-label="执行策略"]'),'strategy entry waits for event determination and rule evaluation');
  assert(!q('.detail-header-actions > .control-button:not([aria-label])'),'management actions are inside more');
  await open();
  let inputs=[...document.querySelectorAll('.modal input')];
@@ -90,6 +92,8 @@ try{
  assert.equal(mutations[0].request.ended_ms,initial.ended_ms,'unchanged defaults preserve millisecond identity');
  assert.match(q('.detail-status').textContent,/已确认结束.*待精转/);
  assert(!q('.event-completion-trigger'));assert(!q('.modal'));
+ assert(q('[aria-label="执行策略"]'),'strategy entry is available while queued ASR is still pending');
+ assert(button('生成内容'));
  await reset();await open();
  inputs=[...document.querySelectorAll('.modal input')];
  await setValue(inputs[1],inputs[0].value);

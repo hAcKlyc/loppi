@@ -125,6 +125,8 @@ export function processingLabel(
 			return "本地语音分析失败";
 		case "settling_asr":
 			return "等待事件稳定";
+		case "asr_skipped":
+			return "按规则跳过精转";
 		case "pending_asr":
 			return "待精转";
 		case "transcribing":
@@ -247,6 +249,7 @@ export interface PreciseSegment extends CoarseSegment {
 }
 
 export interface TimelineItem {
+	workflow?: import("./workflow-api").EventWorkflow;
 	completed_ms?: number | null;
 	completion_state?: string | null;
 	transcription?: {
