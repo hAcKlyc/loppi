@@ -1,6 +1,6 @@
 # 应用内更新与 GitHub Releases
 
-v0.1.23 已正式发行，提供 macOS Apple Silicon、macOS Intel 与 Windows x64 更新。实际附件、签名与来源见[发行记录](../specs/research/2026-11-06-github-release-0.1.23.md)；产品行为与扩展实机验收继续参照[更新执行台账](../specs/prd/devplan_261102_github-updater.md)及[本次修复台账](../specs/prd/devplan_261105_wake-recovery.md)，一次发行不代表所有设备和系统场景均已覆盖。
+v0.1.24 已正式发行，提供 macOS Apple Silicon、macOS Intel 与 Windows x64 更新。实际附件、签名与来源见[发行记录](../specs/research/2026-11-07-github-release-0.1.24.md)；产品行为与扩展实机验收继续参照[更新执行台账](../specs/prd/devplan_261102_github-updater.md)及[本次性能优化台账](../specs/prd/devplan_261107_smooth-core-and-detail.md)，一次发行不代表所有设备和系统场景均已覆盖。
 
 应用主窗口启动 10 秒后检查一次，设置 → 通用 → 软件更新也可以手动检查。检查失败不会弹窗打断录音，设置中显示反馈并允许重试。发现新版后静默下载并验签，不弹更新窗口。准备好后只在左下角侧边栏显示绿色「重启更新」按钮，点击后直接安装重启，不再联网下载。下载及签名验证完成前不停止录音。安装前通过既有 GUI/Core 会话屏障正常封存录音、退出 Core 并等待 owner 锁释放；失败不安装，也不强杀。安装失败恢复 GUI 连接能力，再由既有 AppOpened 激活流程恢复正常运行。更新成功重启后仍遵守原录音意图、暂停、来源、定时与权限边界。
 
