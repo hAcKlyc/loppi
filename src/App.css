@@ -2643,21 +2643,149 @@ body.floating-body .float-wrap {
 	font-size: var(--type-meta);
 }
 
-.workflow-settings,
-.workflow-setting-item,
+.recognition-tabs {
+	gap: var(--space-9);
+	border-bottom: var(--stroke-hairline) solid var(--color-border);
+	margin-bottom: var(--space-9);
+}
 .workflow-choices,
 .workflow-results {
 	display: grid;
 	gap: var(--space-5);
 	min-width: 0;
 }
-.workflow-setting-item {
-	border-top: var(--stroke-hairline) solid var(--color-border);
-	padding: var(--space-6) 0;
-}
-.workflow-setting-item > label {
+.workflow-settings {
 	display: grid;
-	gap: var(--space-2);
+	gap: var(--space-7);
+	min-width: 0;
+	max-width: 54rem;
+}
+.workflow-config-card {
+	min-width: 0;
+}
+.workflow-config-heading,
+.workflow-config-row,
+.workflow-config-actions {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-5) var(--space-8);
+	min-width: 0;
+}
+.workflow-config-heading {
+	flex-wrap: wrap;
+}
+.workflow-config-heading > div,
+.workflow-config-row > div {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+.workflow-config-heading h2 {
+	margin: 0 0 var(--space-2);
+	font-size: var(--type-lead);
+}
+.workflow-config-heading p,
+.workflow-config-row p,
+.workflow-config-empty,
+.workflow-config-hint,
+.workflow-config-actions p,
+.workflow-strategy-meta {
+	margin: 0;
+	color: var(--color-text-secondary);
+	font-size: var(--type-meta);
+	line-height: var(--leading-body);
+	overflow-wrap: anywhere;
+}
+.workflow-config-row,
+.workflow-config-empty {
+	margin-top: var(--space-6);
+	border-top: var(--stroke-hairline) solid var(--color-border-subtle);
+	padding-top: var(--space-6);
+}
+.workflow-config-row .control-button {
+	flex: none;
+}
+.workflow-config-row p,
+.workflow-strategy-meta {
+	margin-top: var(--space-2);
+}
+.workflow-config-row p {
+	display: -webkit-box;
+	overflow: hidden;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+}
+.workflow-fallback-row > small,
+.workflow-config-condition small {
+	color: var(--color-text-muted);
+	font-size: var(--type-caption);
+}
+.workflow-chip {
+	display: inline-block;
+	max-width: 100%;
+	padding: var(--space-1) var(--space-4);
+	border-radius: var(--radius-pill);
+	background: var(--color-surface-subtle);
+	color: var(--color-text-secondary);
+	font-size: var(--type-caption);
+	overflow-wrap: anywhere;
+}
+.workflow-strategy-meta {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: var(--space-2) var(--space-4);
+}
+.workflow-config-card > .workflow-config-hint {
+	margin-top: var(--space-6);
+}
+.workflow-config-condition {
+	display: grid;
+	gap: var(--space-4);
+	margin-top: var(--space-6);
+	border-radius: var(--radius-sm);
+	background: var(--color-surface-subtle);
+	padding: var(--space-6);
+	font-size: var(--type-meta);
+}
+.workflow-config-actions {
+	position: sticky;
+	bottom: 0;
+	z-index: 1;
+	flex-wrap: wrap;
+	border: var(--stroke-hairline) solid var(--color-border);
+	border-radius: var(--radius-md);
+	background: var(--color-surface);
+	padding: var(--space-4) var(--space-6);
+}
+.workflow-config-actions > div {
+	display: flex;
+	gap: var(--space-3);
+	margin-inline-start: auto;
+}
+.workflow-config-editor {
+	display: grid;
+	gap: var(--space-7);
+}
+.workflow-config-editor
+	:is(.form-field, .workflow-config-condition, .modal-actions) {
+	margin-top: 0;
+}
+.workflow-config-editor .form-field {
+	margin-bottom: 0;
+}
+.workflow-config-editor :where(textarea, select, input:not([type="checkbox"])) {
+	width: 100%;
+}
+.workflow-config-editor textarea {
+	resize: vertical;
+	padding: var(--space-5) var(--space-6);
+	border: var(--stroke-hairline) solid var(--color-border);
+	border-radius: var(--radius-sm);
+	background: var(--color-surface-subtle);
+	color: var(--color-text-strong);
+	font-size: var(--type-body);
+	line-height: var(--leading-body);
 }
 .workflow-tag-options,
 .workflow-detail-tabs {
@@ -2670,6 +2798,14 @@ body.floating-body .float-wrap {
 	display: inline-flex;
 	align-items: center;
 	gap: var(--space-2);
+}
+:is(.workflow-settings, .workflow-config-editor) .workflow-tag-options label {
+	align-items: baseline;
+	max-width: 100%;
+	overflow-wrap: anywhere;
+}
+:is(.workflow-settings, .workflow-config-editor) .workflow-tag-options input {
+	flex: none;
 }
 .workflow-choices .control-button {
 	width: 100%;

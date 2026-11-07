@@ -144,7 +144,7 @@ export function WorkflowPicker({
 						</Button>
 					))}
 					{catalog?.strategies.length === 0 && (
-						<p>请先在「设置 → 识别与整理」添加策略。</p>
+						<p>请先在「智能识别 → 自动流程」添加策略。</p>
 					)}
 					{!catalog && !message && <p>正在读取策略…</p>}
 				</div>

@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { AudioStorageSettings } from "./AudioStorageSettings";
 import {
 	type CleanupPreview,
@@ -29,6 +29,8 @@ import {
 	SegmentedOptions,
 	SettingRow,
 	Switch,
+	TabPanel,
+	Tabs,
 } from "./Controls";
 import { taskNeedsRecognition, taskStatus } from "./cloud-task-status";
 import {
@@ -45,7 +47,7 @@ import { SoftwareUpdate } from "./SoftwareUpdate";
 import type { ModelState, PrivacyStatus } from "./setup";
 import { UsageStatisticsView } from "./UsageStatistics";
 import type { AppUpdate } from "./useAppUpdate";
-import { WorkflowSettings } from "./WorkflowSettings";
+import { type WorkflowSection, WorkflowSettings } from "./WorkflowSettings";
 
 type Mutation = (
 	request: { type: string; [key: string]: unknown },
@@ -107,6 +109,8 @@ export function QueueView({
 	onSettings: (provider: CloudProvider) => void;
 }) {
 	const [taskProvider, setTaskProvider] = useState<CloudProvider | null>(null);
+	const [section, setSection] = useState<"queue" | WorkflowSection>("queue");
+	const tabsId = useId();
 	const pageTop = useRef<HTMLElement>(null);
 	const heading = useRef<HTMLHeadingElement>(null);
 	useEffect(() => {
@@ -229,18 +233,39 @@ export function QueueView({
 						? `${recognitionServices[taskProvider].title}任务明细`
 						: "智能识别"}
 				</h1>
-				<Button
-					type="button"
-					tone="quiet"
-					onClick={() => {
-						setStatisticsRefresh((value) => value + 1);
-						void onRefresh();
-					}}
-				>
-					刷新
-				</Button>
+				{(section === "queue" || taskProvider) && (
+					<Button
+						type="button"
+						tone="quiet"
+						onClick={() => {
+							setStatisticsRefresh((value) => value + 1);
+							void onRefresh();
+						}}
+					>
+						刷新
+					</Button>
+				)}
 			</div>
-			<div hidden={taskProvider !== null} inert={taskProvider !== null}>
+			{!taskProvider && (
+				<Tabs
+					id={tabsId}
+					label="智能识别页面"
+					value={section}
+					items={[
+						{ value: "queue", label: "处理队列" },
+						{ value: "labels", label: "智能标签" },
+						{ value: "automation", label: "自动流程" },
+					]}
+					onChange={setSection}
+					className="recognition-tabs"
+				/>
+			)}
+			<TabPanel
+				tabsId={tabsId}
+				value="queue"
+				selected={taskProvider ? "details" : section}
+				inert={taskProvider !== null || section !== "queue"}
+			>
 				<div className="queue-grid">
 					{(["llm", "asr"] as const).map((provider) => {
 						const queue = queues.find((item) => item.provider === provider);
@@ -356,7 +381,22 @@ export function QueueView({
 				<div className="recognition-statistics">
 					<UsageStatisticsView refresh={statisticsRefresh} />
 				</div>
-			</div>
+			</TabPanel>
+			{(["labels", "automation"] as const)
+				.filter((value) => value !== section)
+				.map((value) => (
+					<TabPanel
+						key={value}
+						tabsId={tabsId}
+						value={value}
+						selected={section}
+					/>
+				))}
+			<WorkflowSettings
+				section={taskProvider || section === "queue" ? null : section}
+				tabsId={tabsId}
+				onSection={setSection}
+			/>
 			{taskProvider && (
 				<>
 					<div className="section-heading">
@@ -867,7 +907,6 @@ export function SettingsView({
 					))}
 				</LoadBoundary>
 			</div>
-			<WorkflowSettings />
 			<h2>存储与数据</h2>
 			<div className="panel-card setting-panel">
 				<AudioStorageSettings
