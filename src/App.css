@@ -2785,7 +2785,7 @@ body.floating-body .float-wrap {
 	border-radius: var(--radius-sm);
 	background: var(--color-surface-subtle);
 	padding: var(--space-1) var(--space-2);
-	font-size: 0.875em;
+	font-size: var(--type-body);
 }
 .workflow-markdown pre {
 	overflow-x: auto;
