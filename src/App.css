@@ -1190,7 +1190,41 @@ p {
 	border-bottom: var(--stroke-hairline) solid var(--color-border);
 }
 .detail-heading {
+	flex: 1;
 	min-width: 0;
+}
+.detail-meta {
+	display: flex;
+	align-items: center;
+	gap: var(--space-5);
+	min-width: 0;
+	font-size: var(--type-caption);
+	white-space: nowrap;
+}
+.detail-tags {
+	display: flex;
+	gap: var(--space-2);
+	min-width: 0;
+	max-width: 45%;
+	overflow-x: auto;
+	scrollbar-width: none;
+	padding: var(--space-1);
+}
+.detail-tag {
+	flex: none;
+	max-width: 18ch;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	border: 0;
+	border-radius: var(--radius-pill);
+	padding: 0 var(--space-4);
+	background: var(--color-surface-subtle);
+	color: var(--color-text-secondary);
+	line-height: 1.7;
+}
+.detail-tag:not(:disabled):hover {
+	background: var(--color-surface-hover);
 }
 .detail-header h2 {
 	font-size: var(--type-heading);
@@ -1198,10 +1232,49 @@ p {
 	letter-spacing: normal;
 	font-weight: var(--weight-semibold);
 	margin: var(--space-2) 0 0;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	overflow: hidden;
+}
+.detail-title-trigger,
+.detail-title-input {
+	display: block;
+	max-width: 100%;
+	border: 0;
+	border-radius: var(--radius-sm);
+	padding: 0;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	text-align: start;
+}
+.detail-title-trigger {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.detail-title-trigger:focus-visible {
+	outline-offset: calc(-1 * var(--space-1));
+}
+.detail-title-trigger:not(:disabled):hover {
+	text-decoration: underline;
+	text-decoration-color: var(--color-border);
+	text-underline-offset: var(--space-2);
+}
+.detail-title-input {
+	width: 100%;
+	box-shadow: inset 0 -1px var(--color-border);
+}
+.detail-title-input:focus {
+	box-shadow: inset 0 -2px var(--color-focus);
+	outline: none;
 }
 .eyebrow {
 	color: var(--color-text-muted);
 	font-size: var(--type-caption);
+}
+.detail-meta .eyebrow {
+	flex: none;
 }
 .detail-header-actions {
 	flex-shrink: 0;
@@ -1213,9 +1286,15 @@ p {
 	display: flex;
 	align-items: center;
 	gap: var(--space-2);
-	margin-top: var(--space-3);
+	min-width: 0;
+	overflow: hidden;
 	color: var(--color-text-muted);
 	font-size: var(--type-caption);
+}
+.detail-status > * {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 .event-completion-trigger,
 .detail-status-link {
@@ -2581,9 +2660,7 @@ body.floating-body .float-wrap {
 	gap: var(--space-2);
 }
 .workflow-tag-options,
-.workflow-event-tags,
-.workflow-detail-tabs,
-.workflow-result-heading {
+.workflow-detail-tabs {
 	display: flex;
 	align-items: center;
 	flex-wrap: wrap;
@@ -2599,12 +2676,149 @@ body.floating-body .float-wrap {
 	justify-content: space-between;
 	text-align: left;
 }
-.workflow-result-source,
-.workflow-result-heading span,
 .workflow-choices small {
 	color: var(--color-text-secondary);
 	font-size: var(--type-caption);
 }
+.workflow-detail-tabs,
+.workflow-detail-tabs .detail-tabs {
+	min-width: 0;
+	max-width: 100%;
+}
+.workflow-detail-tabs .detail-tabs {
+	flex: 0 1 auto;
+	gap: var(--space-7);
+	overflow-x: auto;
+	scrollbar-width: thin;
+	padding-inline: var(--space-1);
+}
+.workflow-detail-tabs {
+	flex: 1 1 auto;
+	flex-wrap: nowrap;
+}
+.workflow-detail-tabs [role="tab"] {
+	flex-shrink: 0;
+	max-width: 22ch;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	text-align: start;
+}
+.workflow-tab-error {
+	color: var(--color-text-secondary);
+	font-size: var(--type-meta);
+}
 .workflow-results {
-	padding-top: var(--space-6);
+	padding-block-start: var(--space-8);
+	justify-items: start;
+}
+.workflow-markdown {
+	width: 100%;
+	max-width: 46rem;
+	min-width: 0;
+	padding-inline-end: clamp(0px, 1.5vw, var(--space-7));
+	color: var(--color-text);
+	font-size: var(--type-lead);
+	line-height: var(--leading-relaxed);
+	overflow-wrap: anywhere;
+	user-select: text;
+}
+.workflow-markdown :where(h1, h2, h3, h4, h5, h6) {
+	margin: var(--space-9) 0 var(--space-4);
+	font-weight: var(--weight-semibold);
+	line-height: 1.4;
+}
+.workflow-markdown h1 {
+	font-size: var(--type-title);
+}
+.workflow-markdown h2 {
+	font-size: var(--type-heading);
+}
+.workflow-markdown h3 {
+	font-size: var(--type-heading-sm);
+}
+.workflow-markdown h4 {
+	font-size: var(--type-lead);
+}
+.workflow-markdown h5 {
+	font-size: var(--type-reading);
+}
+.workflow-markdown h6 {
+	color: var(--color-text-secondary);
+	font-size: var(--type-body);
+}
+.workflow-markdown
+	:where(p, ul, ol, pre, blockquote, hr, .workflow-table-scroll) {
+	margin: 0 0 var(--space-7);
+}
+.workflow-markdown > :first-child {
+	margin-block-start: 0;
+}
+.workflow-markdown > :last-child {
+	margin-block-end: 0;
+}
+.workflow-markdown :where(ol, ul) {
+	padding-inline-start: var(--space-9);
+}
+.workflow-markdown li + li {
+	margin-block-start: var(--space-2);
+}
+.workflow-markdown li > :where(p, ul, ol) {
+	margin-block: var(--space-2);
+}
+.workflow-markdown ul:has(> .task-list-item) {
+	list-style: none;
+	padding-inline-start: var(--space-2);
+}
+.workflow-markdown .task-list-item input {
+	margin-inline: 0 var(--space-3);
+}
+.workflow-markdown blockquote {
+	border-inline-start: var(--space-1) solid var(--color-border);
+	padding: var(--space-2) var(--space-7);
+	color: var(--color-text-secondary);
+}
+.workflow-markdown blockquote > :last-child {
+	margin-block-end: 0;
+}
+.workflow-markdown code {
+	border-radius: var(--radius-sm);
+	background: var(--color-surface-subtle);
+	padding: var(--space-1) var(--space-2);
+	font-size: 0.875em;
+}
+.workflow-markdown pre {
+	overflow-x: auto;
+	padding: var(--space-6) var(--space-7);
+	border-radius: var(--radius-sm);
+	background: var(--color-surface-subtle);
+	line-height: var(--leading-body);
+}
+.workflow-markdown pre code {
+	padding: 0;
+	overflow-wrap: normal;
+}
+.workflow-markdown hr {
+	border: 0;
+	border-block-start: var(--stroke-hairline) solid var(--color-border);
+}
+.workflow-table-scroll {
+	max-width: 100%;
+	overflow-x: auto;
+}
+.workflow-markdown table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: var(--type-reading);
+}
+.workflow-markdown :where(th, td) {
+	border: var(--stroke-hairline) solid var(--color-border);
+	padding: var(--space-4) var(--space-6);
+	text-align: start;
+	vertical-align: top;
+}
+.workflow-markdown th {
+	background: var(--color-surface-subtle);
+	font-weight: var(--weight-semibold);
+	white-space: nowrap;
 }

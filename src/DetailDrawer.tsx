@@ -12,6 +12,7 @@ import {
 	type CoarseSegment,
 	type CoreResponse,
 	core,
+	isEventStale,
 	type LocalSpeaker,
 	type Moment,
 	manualAsrSummary,
@@ -43,11 +44,14 @@ import { type Chunk, ContinuousPlayback } from "./playback";
 import { type SpeakerAction, SpeakerPicker } from "./SpeakerPicker";
 
 import {
+	useWorkflowTabs,
 	WorkflowPicker,
-	WorkflowResults,
+	WorkflowResultPanel,
 	WorkflowTagEditor,
+	workflowRetryTask,
+	workflowRunStatus,
 } from "./WorkflowEvent";
-import { type WorkflowRun, workflow } from "./workflow-api";
+import { useWorkflowRequestId, workflow } from "./workflow-api";
 
 const PAGE_SIZE = 30;
 
@@ -168,6 +172,25 @@ export function DetailDrawer({
 	const tabsId = useId();
 	const headingId = useId();
 	const heading = useRef<HTMLHeadingElement>(null);
+	const titleButton = useRef<HTMLButtonElement>(null);
+	const titleInput = useRef<HTMLInputElement>(null);
+	const titleSaving = useRef(false);
+	const titleReturnFocus = useRef(false);
+	const titleRequestId = useWorkflowRequestId();
+	const [titleDraft, setTitleDraft] = useState<{
+		value: string;
+		event: TimelineItem;
+	} | null>(null);
+	const titleEditing = titleDraft !== null;
+	useLayoutEffect(() => {
+		if (titleEditing) {
+			titleInput.current?.focus();
+			titleInput.current?.select();
+		} else if (titleReturnFocus.current) {
+			titleReturnFocus.current = false;
+			titleButton.current?.focus({ preventScroll: true });
+		}
+	}, [titleEditing]);
 	const [feedback, setFeedback] = useState("");
 	const report = useCallback(
 		(message: string) => {
@@ -184,13 +207,31 @@ export function DetailDrawer({
 	detailRef.current = detail;
 	const [detailReady, setDetailReady] = useState(false);
 	const [detailError, setDetailError] = useState<string | null>(null);
-	const [tab, setTab] = useState<"transcript" | "info" | "generated">(
-		"transcript",
-	);
+	const [selectedTab, setTab] = useState("transcript");
 	const [strategyOpen, setStrategyOpen] = useState(false);
 	const [tagEditor, setTagEditor] = useState(false);
-	const [strategyId, setStrategyId] = useState<string | null>(null);
-	const [recentRun, setRecentRun] = useState<WorkflowRun | null>(null);
+	const eventId = detail.id ?? detail.manual_range_id ?? null;
+	const canRunStrategy =
+		detail.workflow?.phase === "decided" && eventId !== null;
+	const workflowTabs = useWorkflowTabs(
+		canRunStrategy ? eventId : null,
+		refreshToken,
+	);
+	const strategyTab = canRunStrategy
+		? workflowTabs.tabs.find(
+				({ run }) => selectedTab === `strategy-${run.strategy_id}`,
+			)
+		: undefined;
+	const tab =
+		selectedTab === "info" || strategyTab ? selectedTab : "transcript";
+	const strategyRetry = strategyTab?.versions.length
+		? workflowRetryTask(strategyTab.run)
+		: undefined;
+	useLayoutEffect(() => {
+		document
+			.getElementById(`${tabsId}-tab-${tab}`)
+			?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+	}, [tab, tabsId]);
 	const offset = useRef(0);
 	const initialScroll = useRef(initialAt);
 	const transcriptRef = useRef<HTMLDivElement>(null);
@@ -1134,9 +1175,6 @@ export function DetailDrawer({
 		detail.completion_state === "pending" ||
 		detail.completion_state === "processing";
 	const completionFailed = detail.completion_state === "failed";
-	const eventId = detail.id ?? detail.manual_range_id ?? null;
-	const canRunStrategy =
-		detail.workflow?.phase === "decided" && eventId !== null;
 	const canConfirmCompletion =
 		((detail.id &&
 			detail.workflow?.phase === "undetermined" &&
@@ -1175,6 +1213,70 @@ export function DetailDrawer({
 				)
 			: 0;
 
+	const titleText =
+		detail.title || (detail.manual_range_id ? "未命名事件" : "未整理");
+	const tags = detail.workflow?.labels.length
+		? detail.workflow.labels
+		: [
+				{
+					id: "unclassified",
+					name:
+						detail.workflow?.tag_state === "failed"
+							? "打标失败"
+							: detail.workflow?.tag_state === "pending"
+								? "正在打标"
+								: "添加标签",
+				},
+			];
+
+	function finishTitleEdit(restoreFocus: boolean) {
+		titleReturnFocus.current = restoreFocus;
+		setTitleDraft(null);
+	}
+
+	async function saveTitle(restoreFocus: boolean) {
+		if (!titleDraft || busy || titleSaving.current) return;
+		const { event } = titleDraft;
+		const title = titleDraft.value.trim();
+		if (!event.id || event.revision == null) return;
+		if (title === event.title) {
+			finishTitleEdit(restoreFocus);
+			return;
+		}
+		if (!title || new TextEncoder().encode(title).length > 240) {
+			report(!title ? "请输入事件标题" : "事件标题过长");
+			return;
+		}
+		const request = {
+			type: "edit_event",
+			event_id: event.id,
+			expected_revision: event.revision,
+			started_ms: event.started_ms,
+			ended_ms: event.ended_ms,
+			sources: event.sources,
+			title,
+		};
+		titleSaving.current = true;
+		setBusy(true);
+		try {
+			await core(request, titleRequestId(request));
+			setDetail((current) => ({ ...current, title }));
+			finishTitleEdit(restoreFocus);
+			void load(offset.current);
+			onChanged();
+		} catch (error) {
+			if (isEventStale(error)) {
+				await load(offset.current);
+				finishTitleEdit(restoreFocus);
+				onChanged();
+			}
+			report(userError(error));
+		} finally {
+			titleSaving.current = false;
+			setBusy(false);
+		}
+	}
+
 	return (
 		<Dialog
 			className="drawer-layer"
@@ -1190,63 +1292,112 @@ export function DetailDrawer({
 			<section className="detail-drawer" aria-label="事件详情">
 				<header className="detail-header">
 					<div className="detail-heading">
-						<span className="eyebrow">
-							{wallClock(detail.started_ms, shortEvent, crossesDay)} —{" "}
-							{wallClock(detail.ended_ms, shortEvent, crossesDay)}
-						</span>
-						<h2 id={headingId} ref={heading} tabIndex={-1} data-dialog-title>
-							{detail.title ||
-								(detail.manual_range_id ? "未命名事件" : "未整理")}
-						</h2>
-						{detail.id && detail.workflow && (
-							<div className="workflow-event-tags">
-								{detail.workflow.labels.map((tag) => (
-									<span key={tag.id}>{tag.name}</span>
-								))}
-								<Button
-									tone="quiet"
-									disabled={busy || !detailReady}
-									onClick={() => setTagEditor(true)}
-								>
-									{detail.workflow.tag_state === "failed"
-										? "打标失败 · 编辑"
-										: detail.workflow.tag_state === "pending"
-											? "正在打标"
-											: "编辑标签"}
-								</Button>
+						<div className="detail-meta">
+							<span className="eyebrow">
+								{wallClock(detail.started_ms, shortEvent, crossesDay)} —{" "}
+								{wallClock(detail.ended_ms, shortEvent, crossesDay)}
+							</span>
+							{detail.id && detail.workflow && (
+								<div className="detail-tags">
+									{tags.map((tag) => (
+										<button
+											key={tag.id}
+											type="button"
+											className="detail-tag"
+											aria-label={`编辑标签 · ${tag.name}`}
+											title={tag.name}
+											disabled={busy || !detailReady}
+											onClick={() => setTagEditor(true)}
+										>
+											{tag.name}
+										</button>
+									))}
+								</div>
+							)}
+							<div className="detail-status" role="status">
+								{detail.completed_ms != null && <span>已确认结束 · </span>}
+								{canConfirmCompletion ? (
+									<button
+										type="button"
+										className="event-completion-trigger"
+										disabled={busy || !detailReady}
+										title="点击确认事件已结束"
+										onClick={(event) => {
+											event.currentTarget.focus();
+											openCompletion();
+										}}
+									>
+										{detail.id ? "确认事件结束" : "确定成事件"}{" "}
+										<span aria-hidden="true">›</span>
+									</button>
+								) : completionProcessing ||
+									completionFailed ||
+									queueRelevant ? (
+									<button
+										type="button"
+										className="detail-status-link"
+										disabled={busy}
+										title={busy ? undefined : "查看处理进度"}
+										onClick={onQueue}
+									>
+										{statusText} <span aria-hidden="true">›</span>
+									</button>
+								) : (
+									<span>{statusText}</span>
+								)}
+								{coverageText && <span title={coverageText}>录音有缺口</span>}
 							</div>
-						)}
-						<div className="detail-status" role="status">
-							{detail.completed_ms != null && <span>已确认结束 · </span>}
-							{canConfirmCompletion ? (
-								<button
-									type="button"
-									className="event-completion-trigger"
-									disabled={busy || !detailReady}
-									title="点击确认事件已结束"
-									onClick={(event) => {
-										event.currentTarget.focus();
-										openCompletion();
+						</div>
+						<h2
+							id={headingId}
+							ref={heading}
+							tabIndex={-1}
+							data-dialog-title
+							aria-label={titleText}
+						>
+							{titleDraft ? (
+								<input
+									ref={titleInput}
+									className="detail-title-input"
+									aria-label="事件标题"
+									title="回车保存，Esc 取消"
+									value={titleDraft.value}
+									readOnly={busy}
+									onChange={(event) =>
+										setTitleDraft({ ...titleDraft, value: event.target.value })
+									}
+									onBlur={() => void saveTitle(false)}
+									onKeyDown={(event) => {
+										if (event.nativeEvent.isComposing) {
+											if (event.key === "Escape") event.stopPropagation();
+											return;
+										}
+										if (event.key !== "Enter" && event.key !== "Escape") return;
+										event.preventDefault();
+										event.stopPropagation();
+										if (busy) return;
+										if (event.key === "Escape") finishTitleEdit(true);
+										else void saveTitle(true);
 									}}
-								>
-									{detail.id ? "确认事件结束" : "确定成事件"}{" "}
-									<span aria-hidden="true">›</span>
-								</button>
-							) : completionProcessing || completionFailed || queueRelevant ? (
+								/>
+							) : detail.id && detail.revision != null ? (
 								<button
+									ref={titleButton}
 									type="button"
-									className="detail-status-link"
-									disabled={busy}
-									title={busy ? undefined : "查看处理进度"}
-									onClick={onQueue}
+									className="detail-title-trigger"
+									aria-label={`修改标题 · ${titleText}`}
+									title="点击修改标题"
+									disabled={busy || !detailReady}
+									onClick={() =>
+										setTitleDraft({ value: titleText, event: detail })
+									}
 								>
-									{statusText} <span aria-hidden="true">›</span>
+									{titleText}
 								</button>
 							) : (
-								<span>{statusText}</span>
+								titleText
 							)}
-							{coverageText && <span title={coverageText}>录音有缺口</span>}
-						</div>
+						</h2>
 					</div>
 					<div className="detail-header-actions">
 						<details
@@ -1414,7 +1565,11 @@ export function DetailDrawer({
 										{ value: "transcript", label: "文本转录" },
 										{ value: "info", label: "音频信息" },
 										...(canRunStrategy
-											? [{ value: "generated" as const, label: "生成内容" }]
+											? workflowTabs.tabs.map(({ run }) => ({
+													value: `strategy-${run.strategy_id}`,
+													label: run.name,
+													description: workflowRunStatus(run),
+												}))
 											: []),
 									]}
 									onChange={(value) => {
@@ -1432,7 +1587,23 @@ export function DetailDrawer({
 										<Icon name="plus" />
 									</IconButton>
 								)}
+								{strategyRetry && (
+									<Button
+										tone="quiet"
+										onClick={() => void workflowTabs.retry(strategyRetry)}
+									>
+										{strategyTab?.run.task_id ? "重试生成" : "重试精转"}
+									</Button>
+								)}
 							</div>
+							{canRunStrategy && !strategyTab && workflowTabs.message && (
+								<div className="workflow-tab-error" role="status">
+									{workflowTabs.message}
+									<Button tone="quiet" onClick={workflowTabs.refresh}>
+										重试读取策略
+									</Button>
+								</div>
+							)}
 							{tab === "transcript" && (
 								<div className="transcript-toolbar">
 									{detail.coarse_segments.length > 0 &&
@@ -1736,19 +1907,19 @@ export function DetailDrawer({
 									</Button>
 								)}
 						</TabPanel>
-						{canRunStrategy && eventId && tab === "generated" && (
+						{eventId && strategyTab && (
 							<TabPanel
+								key={tab}
 								tabsId={tabsId}
-								value="generated"
+								value={tab}
 								selected={tab}
 								className="detail-scroll"
 							>
-								<WorkflowResults
+								<WorkflowResultPanel
 									eventId={eventId}
-									refreshToken={refreshToken}
-									strategyId={strategyId}
-									onStrategy={setStrategyId}
-									recent={recentRun}
+									tab={strategyTab}
+									message={workflowTabs.message}
+									onRetry={workflowTabs.retry}
 								/>
 							</TabPanel>
 						)}
@@ -1880,9 +2051,8 @@ export function DetailDrawer({
 					revision={detail.revision}
 					onClose={() => setStrategyOpen(false)}
 					onRun={(run) => {
-						setRecentRun(run);
-						setStrategyId(run.strategy_id);
-						setTab("generated");
+						workflowTabs.accept(run);
+						setTab(`strategy-${run.strategy_id}`);
 						setStrategyOpen(false);
 					}}
 				/>

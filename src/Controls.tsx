@@ -264,7 +264,7 @@ export function Tabs<T extends string>({
 	id: string;
 	label: string;
 	value: T;
-	items: readonly { value: T; label: string }[];
+	items: readonly { value: T; label: string; description?: string }[];
 	onChange: (value: T) => void;
 	disabled?: boolean;
 	className?: string;
@@ -290,6 +290,10 @@ export function Tabs<T extends string>({
 					id={`${id}-tab-${item.value}`}
 					role="tab"
 					aria-selected={value === item.value}
+					aria-description={item.description}
+					title={
+						item.description ? `${item.label} · ${item.description}` : undefined
+					}
 					aria-controls={`${id}-panel-${item.value}`}
 					tabIndex={focused === item.value ? 0 : -1}
 					onFocus={() => setFocused(item.value)}

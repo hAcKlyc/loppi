@@ -394,85 +394,145 @@ const reasons: Record<string, string> = {
 	provider_unconfigured: "云端服务尚未配置",
 };
 
-export function WorkflowResults({
+export function workflowRunStatus(run: WorkflowRun) {
+	const state = labels[run.state] ?? run.state;
+	const reason = run.reason && reasons[run.reason];
+	return reason ? `${state} · ${reason}` : state;
+}
+
+export function workflowRetryTask(run: WorkflowRun) {
+	return run.state === "failed" && run.task_id
+		? run.task_id
+		: run.retry_asr_task_id;
+}
+
+type WorkflowTab = {
+	run: WorkflowRun;
+	versions: string[];
+};
+
+export function useWorkflowTabs(eventId: string | null, refreshToken: number) {
+	const [runs, setRuns] = useState<WorkflowRun[]>([]);
+	const [message, setMessage] = useState("");
+	const [reload, setReload] = useState(0);
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: Core and local refresh tokens invalidate the metadata projection.
+	useEffect(() => {
+		if (!eventId) return;
+		let live = true;
+		async function load() {
+			const runs: WorkflowRun[] = [];
+			let cursor: string | null | undefined;
+			do {
+				const page: { runs: WorkflowRun[]; next_cursor?: string | null } =
+					await workflow({
+						op: "runs",
+						event_id: eventId,
+						latest_only: true,
+						cursor: cursor ?? undefined,
+					});
+				runs.push(...page.runs);
+				cursor = page.next_cursor;
+			} while (live && cursor);
+			if (live) {
+				setRuns(runs);
+				setMessage("");
+			}
+		}
+		void load().catch((error) => {
+			if (live) setMessage(messageOf(error));
+		});
+		return () => {
+			live = false;
+		};
+	}, [eventId, refreshToken, reload]);
+
+	const tabs = new Map<string, WorkflowTab>();
+	for (const run of runs) {
+		const tab = tabs.get(run.strategy_id) ?? { run, versions: [] };
+		if (run.result_version_id) tab.versions.push(run.result_version_id);
+		tabs.set(run.strategy_id, tab);
+	}
+	function refresh() {
+		setReload((prior) => prior + 1);
+	}
+
+	function accept(run: WorkflowRun) {
+		setRuns((prior) => [
+			run,
+			...prior.filter((item) => item.run_id !== run.run_id),
+		]);
+		refresh();
+	}
+
+	async function retry(taskId: string) {
+		try {
+			await core({ type: "retry_cloud_task", task_id: taskId });
+			refresh();
+		} catch (error) {
+			setMessage(messageOf(error));
+		}
+	}
+
+	return {
+		tabs: [...tabs.values()].sort((a, b) =>
+			a.run.name.localeCompare(b.run.name, "zh-CN"),
+		),
+		message,
+		accept,
+		refresh,
+		retry,
+	};
+}
+
+export function WorkflowResultPanel({
 	eventId,
-	refreshToken,
-	strategyId,
-	onStrategy,
-	recent,
+	tab,
+	message,
+	onRetry,
 }: {
 	eventId: string;
-	refreshToken: number;
-	strategyId: string | null;
-	onStrategy: (id: string) => void;
-	recent: WorkflowRun | null;
+	tab: WorkflowTab;
+	message: string;
+	onRetry: (id: string) => void;
 }) {
-	const [runs, setRuns] = useState<WorkflowRun[]>([]);
+	const { run, versions } = tab;
+	const version = versions.join(",");
 	const [result, setResult] = useState<WorkflowResult | null>(null);
-	const [message, setMessage] = useState("");
+	const [error, setError] = useState("");
 	const [loading, setLoading] = useState(false);
-	const choices = new Map<string, WorkflowRun>();
-	for (const run of runs)
-		if (!choices.has(run.strategy_id)) choices.set(run.strategy_id, run);
-	if (recent && !runs.some((run) => run.run_id === recent.run_id))
-		choices.set(recent.strategy_id, recent);
-	const current =
-		strategyId && choices.has(strategyId)
-			? strategyId
-			: choices.keys().next().value;
-	const active = current ? choices.get(current) : undefined;
-	const available = runs
-		.filter((run) => run.strategy_id === current && run.result_version_id)
-		.sort(
-			(a, b) => (b.completed_ms ?? 0) - (a.completed_ms ?? 0),
-		)[0]?.result_version_id;
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: Follow the detail refresh token and accepted runs.
 	useEffect(() => {
+		if (!version) {
+			setResult(null);
+			return;
+		}
 		let live = true;
-		void workflow<{ runs: WorkflowRun[] }>({
-			op: "runs",
+		setError("");
+		void workflow<WorkflowResult>({
+			op: "result",
 			event_id: eventId,
-			latest_only: true,
+			strategy_id: run.strategy_id,
 		}).then(
 			(value) => {
-				if (live) {
-					setRuns(value.runs);
-					setMessage("");
-				}
+				if (live)
+					setResult((prior) =>
+						prior?.result_version_id === value.result_version_id
+							? prior
+							: value,
+					);
 			},
 			(error) => {
-				if (live) setMessage(messageOf(error));
+				if (live) {
+					setResult(null);
+					setError(messageOf(error));
+				}
 			},
 		);
 		return () => {
 			live = false;
 		};
-	}, [eventId, refreshToken, recent]);
-
-	useEffect(() => {
-		let live = true;
-		if (current && available) {
-			void workflow<WorkflowResult>({
-				op: "result",
-				event_id: eventId,
-				strategy_id: current,
-			}).then(
-				(value) => {
-					if (live) setResult(value);
-				},
-				(error) => {
-					if (live) {
-						setResult(null);
-						setMessage(messageOf(error));
-					}
-				},
-			);
-		} else setResult(null);
-		return () => {
-			live = false;
-		};
-	}, [eventId, current, available]);
+	}, [eventId, run.strategy_id, version]);
 
 	async function readMore() {
 		if (!result?.next_cursor || loading) return;
@@ -492,91 +552,35 @@ export function WorkflowResults({
 					: prior,
 			);
 		} catch (error) {
-			setMessage(messageOf(error));
+			setError(messageOf(error));
 		} finally {
 			setLoading(false);
 		}
 	}
 
-	async function retry(taskId: string) {
-		try {
-			await core({ type: "retry_cloud_task", task_id: taskId });
-			const value = await workflow<{ runs: WorkflowRun[] }>({
-				op: "runs",
-				event_id: eventId,
-				latest_only: true,
-			});
-			setRuns(value.runs);
-			setMessage("");
-		} catch (error) {
-			setMessage(messageOf(error));
-		}
-	}
-
+	const retryTask = workflowRetryTask(run);
 	return (
 		<div className="workflow-results">
-			{!active && !message && (
-				<div className="detail-empty">
-					<strong>还没有生成内容</strong>
-					<p>点击 ＋ 执行一个策略。</p>
-				</div>
-			)}
-			{active && (
-				<div className="workflow-result-heading">
-					{choices.size > 1 ? (
-						<label>
-							策略{" "}
-							<select
-								value={current}
-								onChange={(event) => onStrategy(event.target.value)}
-							>
-								{Array.from(choices.values()).map((run) => (
-									<option key={run.strategy_id} value={run.strategy_id}>
-										{run.name}
-									</option>
-								))}
-							</select>
-						</label>
-					) : (
-						<strong>{active.name}</strong>
-					)}
-					<span role="status">
-						{labels[active.state] ?? active.state} · {inputLabel(active.input)}
-						{active.reason && reasons[active.reason]
-							? ` · ${reasons[active.reason]}`
-							: ""}
-					</span>
-					{(active.retry_asr_task_id ||
-						(active.state === "failed" && active.task_id)) && (
-						<Button
-							tone="quiet"
-							onClick={() => {
-								const id = active.task_id ?? active.retry_asr_task_id;
-								if (id) void retry(id);
+			{error || message ? <p role="status">{error || message}</p> : null}
+			{version && result ? (
+				<>
+					<article className="workflow-markdown">
+						<Markdown
+							remarkPlugins={[remarkGfm]}
+							skipHtml
+							components={{
+								img: ({ alt }) => <span>{alt}</span>,
+								a: ({ children }) => <span>{children}</span>,
+								table: ({ node: _node, ...props }) => (
+									<div className="workflow-table-scroll">
+										<table {...props} />
+									</div>
+								),
 							}}
 						>
-							{active.task_id ? "重试生成" : "重试精转"}
-						</Button>
-					)}
-				</div>
-			)}
-			{message && <p role="status">{message}</p>}
-			{result && result.strategy_id === current && (
-				<div className="moment-markdown">
-					<p className="workflow-result-source">
-						生成内容 · 基于{inputLabel(result.input)}
-						{result.audio_coverage?.length ? " · 录音有缺口" : ""}
-					</p>
-					<Markdown
-						remarkPlugins={[remarkGfm]}
-						skipHtml
-						components={{
-							img: ({ alt }) => <span>{alt}</span>,
-							a: ({ children }) => <span>{children}</span>,
-						}}
-					>
-						{result.body_markdown}
-					</Markdown>
+							{result.body_markdown}
+						</Markdown>
+					</article>
 					{result.next_cursor && (
 						<Button
 							tone="quiet"
@@ -584,6 +588,19 @@ export function WorkflowResults({
 							onClick={() => void readMore()}
 						>
 							继续阅读
+						</Button>
+					)}
+				</>
+			) : (
+				<div className="detail-empty">
+					{!error && (
+						<p role="status">
+							{version ? "正在读取…" : workflowRunStatus(run)}
+						</p>
+					)}
+					{!version && retryTask && (
+						<Button tone="quiet" onClick={() => onRetry(retryTask)}>
+							{run.task_id ? "重试生成" : "重试精转"}
 						</Button>
 					)}
 				</div>
