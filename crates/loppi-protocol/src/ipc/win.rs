@@ -102,20 +102,47 @@ impl Stream {
     }
     pub fn connect(path: impl AsRef<Path>) -> io::Result<Self> {
         let name = pipe_name(path.as_ref())?;
-        let handle = unsafe {
-            CreateFileW(
-                name.as_ptr(),
-                GENERIC_READ | GENERIC_WRITE,
-                0,
-                ptr::null(),
-                OPEN_EXISTING,
-                FILE_FLAG_OVERLAPPED | SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION,
-                ptr::null_mut(),
-            )
+        // A connected instance can be occupied until accept pre-arms its
+        // replacement. Only wait before opening a connection; never replay I/O.
+        let deadline = std::time::Instant::now() + Duration::from_millis(250);
+        let handle = loop {
+            let handle = unsafe {
+                CreateFileW(
+                    name.as_ptr(),
+                    GENERIC_READ | GENERIC_WRITE,
+                    0,
+                    ptr::null(),
+                    OPEN_EXISTING,
+                    FILE_FLAG_OVERLAPPED | SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION,
+                    ptr::null_mut(),
+                )
+            };
+            if handle != INVALID_HANDLE_VALUE {
+                break handle;
+            }
+            let error = io::Error::last_os_error();
+            if error.raw_os_error() != Some(ERROR_PIPE_BUSY as i32) {
+                return Err(error);
+            }
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            if remaining.is_zero() {
+                return Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "IPC connection timed out",
+                ));
+            }
+            let milliseconds = remaining.as_millis().clamp(1, u32::MAX as u128) as u32;
+            if unsafe { WaitNamedPipeW(name.as_ptr(), milliseconds) } == 0 {
+                let error = io::Error::last_os_error();
+                if error.raw_os_error() == Some(ERROR_SEM_TIMEOUT as i32) {
+                    return Err(io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        "IPC connection timed out",
+                    ));
+                }
+                return Err(error);
+            }
         };
-        if handle == INVALID_HANDLE_VALUE {
-            return Err(io::Error::last_os_error());
-        }
         let stream = Self::new(handle);
         let mut pid = 0;
         if unsafe { GetNamedPipeServerProcessId(handle, &mut pid) } == 0 {
@@ -456,6 +483,49 @@ mod tests {
         payload.clear();
         client.read_to_end(&mut payload).unwrap();
         assert_eq!(payload, b"synthetic response");
+    }
+
+    #[test]
+    fn occupied_instance_waits_for_accept_to_prearm_replacement() {
+        let root = Root::new();
+        let path = root.0.join("core.sock");
+        let listener = Listener::bind(&path).unwrap();
+        let first = Stream::connect(&path).unwrap();
+        let (send, receive) = std::sync::mpsc::channel();
+        let waiter = std::thread::spawn(move || send.send(Stream::connect(path)).unwrap());
+        assert!(matches!(
+            receive.recv_timeout(Duration::from_millis(50)),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+        ));
+        let _first_server = accept(&listener);
+        let mut second = receive
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap()
+            .unwrap();
+        waiter.join().unwrap();
+        let mut second_server = accept(&listener);
+        second.write_all(b"one request after connecting").unwrap();
+        let mut payload = Vec::new();
+        second_server.read_to_end(&mut payload).unwrap();
+        assert_eq!(payload, b"one request after connecting");
+        drop(first);
+    }
+
+    #[test]
+    fn occupied_instance_has_bounded_wait_and_offline_errors_stay_immediate() {
+        let root = Root::new();
+        let path = root.0.join("core.sock");
+        let start = std::time::Instant::now();
+        let error = Stream::connect(&path).err().unwrap();
+        assert_eq!(error.raw_os_error(), Some(ERROR_FILE_NOT_FOUND as i32));
+        assert!(start.elapsed() < Duration::from_millis(250));
+        let _listener = Listener::bind(&path).unwrap();
+        let _occupied = Stream::connect(&path).unwrap();
+        let start = std::time::Instant::now();
+        let error = Stream::connect(&path).err().unwrap();
+        assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+        assert!(start.elapsed() >= Duration::from_millis(200));
+        assert!(start.elapsed() < Duration::from_millis(750));
     }
 
     #[test]
