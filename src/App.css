@@ -2662,7 +2662,7 @@ body.floating-body .float-wrap {
 }
 .workflow-config-rule {
 	display: grid;
-	grid-template-columns: max-content minmax(0, 1fr) auto;
+	grid-template-columns: max-content minmax(0, 1fr);
 	align-items: start;
 	gap: var(--space-6);
 	padding-block: var(--space-2) var(--space-6);
@@ -2680,14 +2680,11 @@ body.floating-body .float-wrap {
 	min-width: 0;
 }
 .workflow-config-disclosure {
-	max-width: 14rem;
-	padding-block: var(--space-4);
 	color: var(--color-text-secondary);
 	font-size: var(--type-caption);
 }
 .workflow-config-disclosure summary {
 	width: max-content;
-	margin-inline-start: auto;
 	cursor: pointer;
 }
 .workflow-config-disclosure p {
@@ -2738,9 +2735,16 @@ body.floating-body .float-wrap {
 .workflow-config-table tbody tr:hover {
 	background: var(--color-surface-card-hover);
 }
-.workflow-config-table .workflow-config-empty {
-	padding-block: var(--space-9);
-	text-align: center;
+.workflow-builtin-label {
+	display: inline-block;
+	margin-inline-start: var(--space-2);
+	color: var(--color-text-secondary);
+	font-size: var(--type-caption);
+	font-weight: var(--weight-regular);
+}
+.workflow-flow-edit {
+	background: transparent;
+	color: var(--color-text-secondary);
 }
 .workflow-config-criteria {
 	display: -webkit-box;

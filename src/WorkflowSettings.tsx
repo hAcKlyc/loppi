@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
 	Button,
 	Field,
@@ -27,6 +27,7 @@ export type WorkflowSection = "labels" | "automation";
 type LabelOption = WorkflowLabel & { removed?: boolean };
 type Editor =
 	| { kind: "tag"; index: number | null; value: WorkflowTag }
+	| { kind: "auto_asr"; value: WorkflowConfig["auto_asr"] }
 	| { kind: "strategy"; index: number | null; value: WorkflowStrategy };
 type Dependency = {
 	kind?: "auto_asr";
@@ -39,12 +40,10 @@ function TagChoices({
 	tags,
 	ids,
 	onChange,
-	disabled,
 }: {
 	tags: LabelOption[];
 	ids: string[];
 	onChange: (ids: string[]) => void;
-	disabled?: boolean;
 }) {
 	return (
 		<div className="workflow-tag-options">
@@ -54,7 +53,6 @@ function TagChoices({
 					<label key={tag.id}>
 						<input
 							type="checkbox"
-							disabled={disabled}
 							checked={ids.includes(tag.id)}
 							onChange={(event) =>
 								onChange(selectedIds(ids, tag.id, event.target.checked))
@@ -89,6 +87,7 @@ export function WorkflowSettings({
 	const [busy, setBusy] = useState(false);
 	const [message, setMessage] = useState("");
 	const [editor, setEditor] = useState<Editor | null>(null);
+	const selectedAsrMode = useRef<HTMLInputElement>(null);
 	const [conflict, setConflict] = useState(false);
 	const [dependency, setDependency] = useState<{
 		canAdd: boolean;
@@ -170,9 +169,7 @@ export function WorkflowSettings({
 		requestAnimationFrame(() => {
 			const control =
 				target === "auto_asr"
-					? document
-							.getElementById(`${tabsId}-auto-asr`)
-							?.querySelector<HTMLInputElement>("input:checked")
+					? document.getElementById(`${tabsId}-auto-asr`)
 					: document.getElementById(`${tabsId}-strategy-${target}`);
 			(control ?? document.getElementById(`${tabsId}-tab-automation`))?.focus();
 		});
@@ -204,9 +201,12 @@ export function WorkflowSettings({
 	];
 	const labelName = (id: string) =>
 		labels.find((tag) => tag.id === id)?.name ?? id;
-	const editorText =
-		editor?.kind === "tag" ? editor.value.criteria : editor?.value.prompt;
-	const editorValid = Boolean(editor?.value.name && editorText);
+	const editorValid =
+		editor?.kind === "auto_asr" ||
+		Boolean(
+			editor?.value.name &&
+				(editor.kind === "tag" ? editor.value.criteria : editor.value.prompt),
+		);
 	const editedTagId =
 		editor?.kind === "tag" && editor.value.id !== NEW_ID
 			? editor.value.id
@@ -251,7 +251,10 @@ export function WorkflowSettings({
 
 	function applyEditor() {
 		if (!draft || !editor || !editorValid) return;
-		if (editor.kind === "tag") {
+		if (editor.kind === "auto_asr") {
+			if (editor.value !== draft.auto_asr)
+				update({ ...draft, auto_asr: editor.value });
+		} else if (editor.kind === "tag") {
 			update({
 				...draft,
 				tags: editList(draft.tags, editor.index, editor.value),
@@ -266,7 +269,13 @@ export function WorkflowSettings({
 	}
 
 	function removeEditor() {
-		if (!draft || !editor || editor.index === null) return;
+		if (
+			!draft ||
+			!editor ||
+			editor.kind === "auto_asr" ||
+			editor.index === null
+		)
+			return;
 		update(
 			editor.kind === "tag"
 				? {
@@ -281,6 +290,20 @@ export function WorkflowSettings({
 					},
 		);
 		setEditor(null);
+	}
+
+	function triggerSummary(ids: string[], empty: string) {
+		return ids.length ? (
+			<div className="workflow-strategy-tags">
+				{ids.map((id) => (
+					<span className="workflow-chip" key={id}>
+						{labelName(id)}
+					</span>
+				))}
+			</div>
+		) : (
+			empty
+		);
 	}
 
 	return (
@@ -363,129 +386,96 @@ export function WorkflowSettings({
 						</table>
 					</>
 				) : (
-					<>
-						<div className="workflow-config-rule" id={`${tabsId}-auto-asr`}>
-							<span>自动精转</span>
-							<div className="workflow-config-rule-options">
-								<SegmentedOptions
-									label="自动精转条件"
-									value={draft.auto_asr.mode}
-									options={[
-										{ value: "all", label: "全部有效事件" },
-										{ value: "tags", label: "包含任一标签" },
-									]}
-									disabled={busy}
-									onChange={(mode) =>
-										update({
-											...draft,
-											auto_asr:
-												mode === "all"
-													? { mode: "all" }
-													: { mode: "tags", tag_ids: [] },
-										})
-									}
-								/>
-								{draft.auto_asr.mode === "tags" && (
-									<TagChoices
-										tags={labels}
-										ids={draft.auto_asr.tag_ids}
+					<table
+						className="workflow-config-table workflow-config-strategies"
+						aria-label="自动流程"
+					>
+						<thead>
+							<tr>
+								<th scope="col">流程</th>
+								<th scope="col">输入</th>
+								<th scope="col">触发条件</th>
+								<th scope="col" aria-label="操作">
+									<Button
+										tone="primary"
+										size="compact"
 										disabled={busy}
-										onChange={(tag_ids) =>
-											update({ ...draft, auto_asr: { mode: "tags", tag_ids } })
+										onClick={() =>
+											setEditor({
+												kind: "strategy",
+												index: null,
+												value: {
+													id: NEW_ID,
+													name: "",
+													prompt: "",
+													input: "coarse",
+													tag_ids: [],
+												},
+											})
 										}
-									/>
-								)}
-							</div>
-							<details className="workflow-config-disclosure">
-								<summary>音频发送</summary>
-								<p>
-									补转时会把符合条件的音频发送给精转服务。已有稿件会优先复用。
-								</p>
-							</details>
-						</div>
-						<table
-							className="workflow-config-table workflow-config-strategies"
-							aria-label="生成策略"
-						>
-							<thead>
-								<tr>
-									<th scope="col">策略</th>
-									<th scope="col">输入</th>
-									<th scope="col">触发条件</th>
-									<th scope="col" aria-label="操作">
+									>
+										<Icon name="plus" />
+										添加策略
+									</Button>
+								</th>
+							</tr>
+						</thead>
+						<tbody>
+							<tr>
+								<th scope="row">
+									自动精转{" "}
+									<small className="workflow-builtin-label">官方</small>
+								</th>
+								<td>事件音频</td>
+								<td>
+									{draft.auto_asr.mode === "all"
+										? "全部有效事件"
+										: triggerSummary(draft.auto_asr.tag_ids, "未选择标签")}
+								</td>
+								<td>
+									<Button
+										id={`${tabsId}-auto-asr`}
+										tone="quiet"
+										size="compact"
+										className="workflow-flow-edit"
+										aria-label="编辑自动精转"
+										disabled={busy}
+										onClick={() =>
+											setEditor({ kind: "auto_asr", value: draft.auto_asr })
+										}
+									>
+										编辑
+									</Button>
+								</td>
+							</tr>
+							{draft.strategies.map((strategy, index) => (
+								<tr key={strategy.id === NEW_ID ? `new-${index}` : strategy.id}>
+									<th scope="row">{strategy.name}</th>
+									<td>{inputLabel(strategy.input)}</td>
+									<td>{triggerSummary(strategy.tag_ids, "仅手动")}</td>
+									<td>
 										<Button
-											tone="primary"
+											id={`${tabsId}-strategy-${index}`}
+											aria-label={`编辑策略 · ${strategy.name}`}
+											tone="quiet"
 											size="compact"
+											className="workflow-flow-edit"
 											disabled={busy}
 											onClick={() =>
 												setEditor({
 													kind: "strategy",
-													index: null,
-													value: {
-														id: NEW_ID,
-														name: "",
-														prompt: "",
-														input: "coarse",
-														tag_ids: [],
-													},
+													index,
+													value: strategy,
 												})
 											}
 										>
-											<Icon name="plus" />
-											添加策略
+											编辑
 										</Button>
-									</th>
+									</td>
 								</tr>
-							</thead>
-							<tbody>
-								{draft.strategies.length === 0 && (
-									<tr>
-										<td className="workflow-config-empty" colSpan={4}>
-											还没有生成策略
-										</td>
-									</tr>
-								)}
-								{draft.strategies.map((strategy, index) => (
-									<tr
-										key={strategy.id === NEW_ID ? `new-${index}` : strategy.id}
-									>
-										<th scope="row">{strategy.name}</th>
-										<td>{inputLabel(strategy.input)}</td>
-										<td>
-											{strategy.tag_ids.length ? (
-												<div className="workflow-strategy-tags">
-													{strategy.tag_ids.map((id) => (
-														<span className="workflow-chip" key={id}>
-															{labelName(id)}
-														</span>
-													))}
-												</div>
-											) : (
-												"仅手动"
-											)}
-										</td>
-										<td>
-											<IconButton
-												id={`${tabsId}-strategy-${index}`}
-												label={`编辑策略 · ${strategy.name}`}
-												tooltip="编辑策略"
-												disabled={busy}
-												onClick={() =>
-													setEditor({
-														kind: "strategy",
-														index,
-														value: strategy,
-													})
-												}
-											>
-												<Icon name="edit" />
-											</IconButton>
-										</td>
-									</tr>
-								))}
-							</tbody>
-						</table>
-					</>
+							))}
+						</tbody>
+					</table>
 				)}
 				{(dirty || message) && (
 					<div className="workflow-config-actions">
@@ -525,8 +515,15 @@ export function WorkflowSettings({
 			</div>
 			{editor && (
 				<Modal
-					title={`${editor.index === null ? "添加" : "编辑"}${editor.kind === "tag" ? "标签" : "策略"}`}
+					title={
+						editor.kind === "auto_asr"
+							? "编辑自动精转"
+							: `${editor.index === null ? "添加" : "编辑"}${editor.kind === "tag" ? "标签" : "策略"}`
+					}
 					onClose={() => setEditor(null)}
+					initialFocusRef={
+						editor.kind === "auto_asr" ? selectedAsrMode : undefined
+					}
 				>
 					<form
 						className="workflow-config-editor"
@@ -535,108 +532,156 @@ export function WorkflowSettings({
 							applyEditor();
 						}}
 					>
-						<Field label={editor.kind === "tag" ? "标签名称" : "策略名称"}>
-							{(attributes) => (
-								<input
-									{...attributes}
-									value={editor.value.name}
-									placeholder={
-										editor.kind === "tag" ? "例如：工作会议" : "例如：会议纪要"
-									}
-									onChange={(event) =>
-										setEditor({
-											...editor,
-											value: { ...editor.value, name: event.target.value },
-										} as Editor)
-									}
-								/>
-							)}
-						</Field>
-						{editor.kind === "tag" ? (
-							<Field label="判断标准">
-								{(attributes) => (
-									<textarea
-										{...attributes}
-										rows={4}
-										value={editor.value.criteria}
-										placeholder="例如：讨论项目进展、决策或工作安排。排除一般寒暄。"
-										onChange={(event) =>
+						{editor.kind === "auto_asr" ? (
+							<>
+								<div className="workflow-config-rule-options">
+									<span>触发条件</span>
+									<SegmentedOptions
+										label="自动精转条件"
+										value={editor.value.mode}
+										selectedRef={selectedAsrMode}
+										options={[
+											{ value: "all", label: "全部有效事件" },
+											{ value: "tags", label: "包含任一标签" },
+										]}
+										onChange={(mode) =>
 											setEditor({
-												...editor,
-												value: {
-													...editor.value,
-													criteria: event.target.value,
-												},
+												kind: "auto_asr",
+												value:
+													mode === "all"
+														? { mode: "all" }
+														: { mode: "tags", tag_ids: [] },
 											})
 										}
 									/>
-								)}
-							</Field>
-						) : (
-							<>
-								<Field
-									label="输入来源"
-									description="所选转录稿会发送给已配置的生成服务。"
-								>
-									{(attributes) => (
-										<select
-											{...attributes}
-											value={editor.value.input}
-											onChange={(event) =>
+									{editor.value.mode === "tags" && (
+										<TagChoices
+											tags={labels}
+											ids={editor.value.tag_ids}
+											onChange={(tag_ids) =>
 												setEditor({
-													...editor,
-													value: {
-														...editor.value,
-														input:
-															event.target.value === "precise"
-																? "precise"
-																: "coarse",
-													},
-												})
-											}
-										>
-											<option value="coarse">粗转录</option>
-											<option value="precise">精转录</option>
-										</select>
-									)}
-								</Field>
-								<Field label="生成指令">
-									{(attributes) => (
-										<textarea
-											{...attributes}
-											rows={6}
-											value={editor.value.prompt}
-											placeholder="例如：用 Markdown 列出决策与待办，保留明确的负责人和截止日期。"
-											onChange={(event) =>
-												setEditor({
-													...editor,
-													value: {
-														...editor.value,
-														prompt: event.target.value,
-													},
+													kind: "auto_asr",
+													value: { mode: "tags", tag_ids },
 												})
 											}
 										/>
 									)}
-								</Field>
-								<div className="workflow-config-condition">
-									<span>
-										触发标签 <small>留空时仅手动执行</small>
-									</span>
-									<TagChoices
-										tags={labels}
-										ids={editor.value.tag_ids}
-										onChange={(tag_ids) =>
-											setEditor({
-												...editor,
-												value: { ...editor.value, tag_ids },
-											})
-										}
-									/>
-									{draft.tags.some((tag) => tag.id === NEW_ID) && (
-										<small>新建标签保存配置后才可选择。</small>
-									)}
 								</div>
+								<details className="workflow-config-disclosure">
+									<summary>音频发送</summary>
+									<p>
+										补转时会把符合条件的音频发送给精转服务。已有稿件会优先复用。
+									</p>
+								</details>
+							</>
+						) : (
+							<>
+								<Field label={editor.kind === "tag" ? "标签名称" : "策略名称"}>
+									{(attributes) => (
+										<input
+											{...attributes}
+											value={editor.value.name}
+											placeholder={
+												editor.kind === "tag"
+													? "例如：工作会议"
+													: "例如：会议纪要"
+											}
+											onChange={(event) =>
+												setEditor({
+													...editor,
+													value: { ...editor.value, name: event.target.value },
+												} as Editor)
+											}
+										/>
+									)}
+								</Field>
+								{editor.kind === "tag" ? (
+									<Field label="判断标准">
+										{(attributes) => (
+											<textarea
+												{...attributes}
+												rows={4}
+												value={editor.value.criteria}
+												placeholder="例如：讨论项目进展、决策或工作安排。排除一般寒暄。"
+												onChange={(event) =>
+													setEditor({
+														...editor,
+														value: {
+															...editor.value,
+															criteria: event.target.value,
+														},
+													})
+												}
+											/>
+										)}
+									</Field>
+								) : (
+									<>
+										<Field
+											label="输入来源"
+											description="所选转录稿会发送给已配置的生成服务。"
+										>
+											{(attributes) => (
+												<select
+													{...attributes}
+													value={editor.value.input}
+													onChange={(event) =>
+														setEditor({
+															...editor,
+															value: {
+																...editor.value,
+																input:
+																	event.target.value === "precise"
+																		? "precise"
+																		: "coarse",
+															},
+														})
+													}
+												>
+													<option value="coarse">粗转录</option>
+													<option value="precise">精转录</option>
+												</select>
+											)}
+										</Field>
+										<Field label="生成指令">
+											{(attributes) => (
+												<textarea
+													{...attributes}
+													rows={6}
+													value={editor.value.prompt}
+													placeholder="例如：用 Markdown 列出决策与待办，保留明确的负责人和截止日期。"
+													onChange={(event) =>
+														setEditor({
+															...editor,
+															value: {
+																...editor.value,
+																prompt: event.target.value,
+															},
+														})
+													}
+												/>
+											)}
+										</Field>
+										<div className="workflow-config-condition">
+											<span>
+												触发标签 <small>留空时仅手动执行</small>
+											</span>
+											<TagChoices
+												tags={labels}
+												ids={editor.value.tag_ids}
+												onChange={(tag_ids) =>
+													setEditor({
+														...editor,
+														value: { ...editor.value, tag_ids },
+													})
+												}
+											/>
+											{draft.tags.some((tag) => tag.id === NEW_ID) && (
+												<small>新建标签保存配置后才可选择。</small>
+											)}
+										</div>
+									</>
+								)}
 							</>
 						)}
 						{referencedBy.length > 0 && (
@@ -656,7 +701,7 @@ export function WorkflowSettings({
 							</div>
 						)}
 						<div className="modal-actions">
-							{editor.index !== null && (
+							{editor.kind !== "auto_asr" && editor.index !== null && (
 								<Button tone="quiet" onClick={removeEditor}>
 									{editor.kind === "tag" ? "移除标签" : "移除策略"}
 								</Button>

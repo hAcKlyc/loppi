@@ -309,7 +309,7 @@ test('recognition settings navigation uses existing pages, focuses the service r
       assert.equal(labelEditor.querySelector('textarea').value, '讨论项目进展');
       await click(button('去自动流程调整', labelEditor));
       await settle(() => new Promise(resolve => requestAnimationFrame(resolve)));
-      assert.equal(document.activeElement, document.querySelector('input[value="tags"]'));
+      assert.equal(document.activeElement, select('编辑自动精转'));
       await click(tab('智能标签'));
       await click(select('编辑标签 · \uFEFF工作会议'));
       await click(button('应用到草稿', document.querySelector('dialog')));
@@ -317,11 +317,30 @@ test('recognition settings navigation uses existing pages, focuses the service r
       await click(tab('自动流程'));
       assert.equal(reads(), readCount + 1);
       assert.match(document.querySelector('[role=status]').textContent, /未保存的改动/);
-      const autoAsr = document.querySelector('.workflow-config-rule');
+      const flows = document.querySelector('table[aria-label="自动流程"]');
+      const asrRow = flows.querySelector('tbody tr:first-child');
+      assert.match(asrRow.textContent, /自动精转\s*官方.*事件音频.*工作会议/s);
+      assert(!flows.querySelector('input'), 'workflow list only shows summaries');
+      await click(select('编辑自动精转'));
+      const autoAsr = document.querySelector('dialog');
+      assert.equal(autoAsr.querySelector('input[value="tags"]').checked, true);
+      assert.equal(document.activeElement, autoAsr.querySelector('input[value="tags"]'));
+      assert.doesNotMatch(autoAsr.textContent, /移除/);
       await click(autoAsr.querySelector('input[value="all"]'));
-      await click(autoAsr.querySelector('input[value="tags"]'));
-      assert.equal(autoAsr.querySelectorAll('input[type=checkbox]:checked').length, 0);
-      await click([...autoAsr.querySelectorAll('label')].find(item => item.textContent === '工作会议').querySelector('input'));
+      await click(button('取消', autoAsr));
+      assert.match(asrRow.textContent, /工作会议/);
+      await click(select('编辑自动精转'));
+      const asrEditor = document.querySelector('dialog');
+      await click(asrEditor.querySelector('input[value="all"]'));
+      await click(button('应用到草稿', asrEditor));
+      assert.match(asrRow.textContent, /全部有效事件/);
+      assert.doesNotMatch(asrRow.textContent, /工作会议/);
+      await click(select('编辑自动精转'));
+      const tagsEditor = document.querySelector('dialog');
+      await click(tagsEditor.querySelector('input[value="tags"]'));
+      assert.equal(tagsEditor.querySelectorAll('input[type=checkbox]:checked').length, 0);
+      await click([...tagsEditor.querySelectorAll('label')].find(item => item.textContent === '工作会议').querySelector('input'));
+      await click(button('应用到草稿', tagsEditor));
       await click(select('编辑策略 · 会议纪要'));
       const strategyEditor = document.querySelector('dialog');
       assert.equal(strategyEditor.querySelector('select').value, 'precise');
@@ -339,7 +358,10 @@ test('recognition settings navigation uses existing pages, focuses the service r
       assert.deepEqual(writes.map(w => [w.expected_revision, w.config.mode, w.add_required_asr_tags]), [[3, 'multiple', false], [3, 'multiple', false], [3, 'multiple', true]]);
       assert.deepEqual(writes.at(-1).config.strategies[0].tag_ids, ['work', 'client']);
       assert.deepEqual(writes.at(-1).config.tags, workflowConfig.tags);
-      assert.deepEqual([...autoAsr.querySelectorAll('input[type=checkbox]:checked')].map(input => input.parentElement.textContent), ['工作会议', '客户回访']);
+      assert.deepEqual([...asrRow.querySelectorAll('.workflow-chip')].map(tag => tag.textContent), ['工作会议', '客户回访']);
+      await click(select('编辑自动精转'));
+      assert.deepEqual([...document.querySelectorAll('dialog input[type=checkbox]:checked')].map(input => input.parentElement.textContent), ['工作会议', '客户回访']);
+      await click(button('取消', document.querySelector('dialog')));
     });
 
     await t.test('QueueView task and review actions remain reachable before queue status succeeds or when it returns no providers', async () => {

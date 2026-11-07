@@ -87,12 +87,14 @@ export function SegmentedOptions<T extends string>({
 	options,
 	disabled,
 	onChange,
+	selectedRef,
 }: {
 	label: string;
 	value: T;
 	options: { value: T; label: string }[];
 	disabled?: boolean;
 	onChange: (value: T) => void;
+	selectedRef?: Ref<HTMLInputElement>;
 }) {
 	const id = useId();
 	return (
@@ -105,6 +107,7 @@ export function SegmentedOptions<T extends string>({
 				<label key={option.value}>
 					<input
 						type="radio"
+						ref={value === option.value ? selectedRef : undefined}
 						name={id}
 						value={option.value}
 						checked={value === option.value}
