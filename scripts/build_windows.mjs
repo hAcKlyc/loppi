@@ -28,8 +28,9 @@ export async function main(argv=process.argv.slice(2)){
   const vswhere='C:/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe';
   const visualStudio=output(vswhere,['-latest','-products','*','-requires','Microsoft.VisualStudio.Component.VC.Tools.x86.x64','-property','installationPath']);
   const redist=join(visualStudio,'VC/Redist/MSVC',spec.vc_runtime.version_directory);
-  const crt=files(join(redist,'x64')).filter(path=>/Microsoft\.VC[0-9]+\.CRT[\\/]/i.test(path));
-  const runtime=spec.vc_runtime.files.map(item=>{const source=crt.find(path=>path.endsWith(item.name));if(!source||statSync(source).size!==item.bytes||hash(source)!==item.sha256)throw new Error(`missing or changed pinned Microsoft redistributable ${item.name}`);return {source,name:item.name};});
+  const localCrt=!release&&process.env.LOPPI_WINDOWS_CRT_DIR?resolve(process.env.LOPPI_WINDOWS_CRT_DIR):null;
+  const crt=localCrt?spec.vc_runtime.files.map(item=>join(localCrt,item.name)):files(join(redist,'x64')).filter(path=>/Microsoft\.VC[0-9]+\.CRT[\\/]/i.test(path));
+  const runtime=spec.vc_runtime.files.map(item=>{const source=crt.find(path=>path.endsWith(item.name));if(!source||!existsSync(source)||!statSync(source).isFile())throw new Error(`missing pinned Microsoft redistributable ${item.name}`);if(statSync(source).size!==item.bytes||hash(source)!==item.sha256)throw new Error(`changed pinned Microsoft redistributable ${item.name}: byte count or SHA256 mismatch`);return {source,name:item.name};});
   const cache=resolve('build/cache/windows');mkdirSync(cache,{recursive:true});
   const archive=join(cache,'sherpa-onnx-2.0.0.tar.bz2');asset(archive,spec.native);run('tar',['-xjf',archive,'-C',cache]);
   const native=join(cache,spec.native.directory,'lib');
@@ -73,6 +74,7 @@ export async function main(argv=process.argv.slice(2)){
   if(!existsSync(installer)||!statSync(installer).isFile())throw new Error('Current-version NSIS installer missing');
   const artifacts=[installer];
   const report={schema:1,version,source,epoch,dirty:expected.dirty,platform:'windows-x64',minimum_build:spec.minimum_build,authenticode:'unsigned',stage,components:identities,artifacts:artifacts.map(path=>({path,bytes:statSync(path).size,sha256:hash(path)}))};
+  if(localCrt)report.development_crt_source={directory:localCrt,files:spec.vc_runtime.files};
   if(release){
     const destination=resolve('build/releases',version,'windows-x64');mkdirSync(destination,{recursive:true});
     const finalInstaller=join(destination,`${tauri.productName}_${version}_x64-setup.exe`);cpSync(installer,finalInstaller);
