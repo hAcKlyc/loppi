@@ -851,6 +851,9 @@ pub enum Response {
     Event {
         id: Uuid,
         event: TimelineItem,
+        /// Identity of the Core read snapshot, not an editable event revision.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        snapshot_version: Option<String>,
     },
     Accepted {
         id: Uuid,

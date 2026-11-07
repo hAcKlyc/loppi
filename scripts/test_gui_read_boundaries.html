@@ -3,6 +3,7 @@
 <script type="module">
 import React from 'react';import {createRoot} from 'react-dom/client';import {flushSync} from 'react-dom';
 import {DetailDrawer} from '/src/DetailDrawer.tsx';import {core,userError} from '/src/api.ts';import '/src/App.css';
+const observers=new Set();window.IntersectionObserver=class {constructor(callback){this.callback=callback}observe(){observers.add(this)}disconnect(){observers.delete(this)}};
 const base={id:'fixture',manual_range_id:null,title:'读取回归',summary:null,started_ms:1000,ended_ms:100000,sources:'microphone',processing_state:'transcribed',coarse_segments:[],precise_segments:[]};
 const rows=Array.from({length:75},(_,i)=>({id:`row-${i}`,source:'microphone',started_ms:1000+i*1000,ended_ms:1900+i*1000,text:`文字 ${i+1}`,speaker:'speaker',revision:1,speaker_revision:1,person_name:null,person_id:null,corrected:false}));
 let failDetail=false,failSpeakers=false,release,hold=new Promise(r=>release=r),requests=[];
@@ -25,7 +26,7 @@ q('#run').onclick=async()=>{try{
  await until(()=>q('.notes-empty'));assert(!q('.detail-main .detail-skeleton'),'文字仍等待说话人列表');
  failSpeakers=true;release();await until(()=>text().includes('说话人读取失败'));assert(q('.transcript-row')&&!text().includes('转录读取失败')&&!text().includes('事件已变化'),'说话人失败覆盖文字');
  failSpeakers=false;q('.detail-main .detail-load-error button').click();await until(()=>!q('.detail-load-error'));
- requests=[];q('.load-more').click();await until(()=>document.querySelectorAll('.transcript-row').length===60);
+ requests=[];for(const observer of [...observers])observer.callback([{isIntersecting:true}]);await until(()=>document.querySelectorAll('.transcript-row').length===60);
  assert(requests.filter(r=>r.type==='event_detail').length===1&&requests.find(r=>r.type==='event_detail').offset===30,'下一页重复读取旧页');
  failDetail=true;reopen();await until(()=>text().includes('转录读取失败'));assert(text().includes('记录查询超时')&&!text().includes('事件已变化'),'详情错误归因错误');
  failDetail=false;q('.detail-main .detail-load-error button').click();await until(()=>q('.transcript-row'));assert(!text().includes('转录读取失败'),'重试未恢复');

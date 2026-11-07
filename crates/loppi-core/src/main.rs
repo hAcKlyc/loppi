@@ -3169,6 +3169,7 @@ fn handle_request(
                         .map(|event| Response::Event {
                             id: envelope.id,
                             event,
+                            snapshot_version: Some(reader.version_key(shared.run_id)),
                         })
                 });
                 read_response(envelope.id, result)
@@ -3193,6 +3194,7 @@ fn handle_request(
                         .map(|event| Response::Event {
                             id: envelope.id,
                             event,
+                            snapshot_version: Some(reader.version_key(shared.run_id)),
                         })
                 });
                 read_response(envelope.id, result)
@@ -3723,10 +3725,12 @@ fn handle_request(
             } => {
                 let received_ms = now_ms()?;
                 let trigger_ms = anchor_ms.unwrap_or(received_ms);
-                let _gate = shared.cleanup_gate.lock().map_err(|e| e.to_string())?;
-                let prior = {
+                let (prior, generation) = {
                     let store = shared.store.lock().map_err(|e| e.to_string())?;
-                    store.prior_mutation_response(envelope.id, &mutation_fingerprint)?
+                    (
+                        store.prior_mutation_response(envelope.id, &mutation_fingerprint)?,
+                        playback::generation(&store.db)?,
+                    )
                 };
                 if let Some(prior) = prior {
                     prior
@@ -3738,10 +3742,18 @@ fn handle_request(
                         &excluded_window_ids,
                         peer_pid(stream)?,
                     ) {
-                        Ok(captured) => {
+                        Ok((captured, scratch)) => {
+                            let _gate = shared.cleanup_gate.lock().map_err(|e| e.to_string())?;
                             let mut store = shared.store.lock().map_err(|e| e.to_string())?;
                             let saved =
                                 store.mutate_response(envelope.id, &mutation_fingerprint, |tx| {
+                                    moments::publish_capture(
+                                        tx,
+                                        &shared.directory,
+                                        &captured,
+                                        scratch.path(),
+                                        generation,
+                                    )?;
                                     let moment = moments::save_capture(tx, &captured, now_ms()?)?;
                                     Ok(Response::MomentSaved {
                                         id: envelope.id,
@@ -3868,10 +3880,10 @@ fn handle_request(
                 preview_token,
                 confirmed_all_data,
             } => {
-                let _cleanup_gate = shared.cleanup_gate.lock().map_err(|e| e.to_string())?;
                 let _llm = shared.llm_outbound.lock().map_err(|e| e.to_string())?;
                 let _asr = shared.asr_outbound.lock().map_err(|e| e.to_string())?;
                 let _voice = shared.voice_outbound.lock().map_err(|e| e.to_string())?;
+                let _cleanup_gate = shared.cleanup_gate.lock().map_err(|e| e.to_string())?;
                 // Core publication is fenced by cleanup_gate. Source helpers
                 // keep sealing; generation/range tombstones filter late journals.
                 let snapshot = (|| {

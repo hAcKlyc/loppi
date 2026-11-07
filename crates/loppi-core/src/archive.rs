@@ -219,7 +219,18 @@ pub fn cleanup_spool_entry(entry: &fs::DirEntry) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(test)]
+thread_local! {
+    static BEFORE_WRITE: std::cell::RefCell<Option<Box<dyn FnMut(&str)>>> = std::cell::RefCell::new(None);
+}
+
 fn archive_bytes(builder: &mut Builder<File>, name: &str, content: &[u8]) -> Result<(), String> {
+    #[cfg(test)]
+    BEFORE_WRITE.with(|hook| {
+        if let Some(hook) = hook.borrow_mut().as_mut() {
+            hook(name);
+        }
+    });
     let mut header = Header::new_gnu();
     header.set_size(content.len() as u64);
     header.set_mode(0o600);
@@ -649,6 +660,7 @@ pub fn export(
                     if to <= from {
                         continue;
                     }
+                    drop(_media_guard);
                     let wav = wav_mono_48k(&pcm[from..to])?;
                     archive_bytes(&mut builder, &format!("audio/{source}/{a}-{id}.wav"), &wav)?;
                     audio_files += 1;
@@ -709,6 +721,7 @@ pub fn export(
                         return Err("screenshot export source invalid".into());
                     }
                     let content = fs::read(&path).map_err(|error| error.to_string())?;
+                    drop(_media_guard);
                     archive_bytes(&mut builder, &format!("screenshots/{id}.png"), &content)?;
                     screenshot_files += 1;
                 }
@@ -732,6 +745,9 @@ pub fn export(
             .map_err(|error| error.to_string())?
             .sync_all()
             .map_err(|error| error.to_string())?;
+        // Finish the destination's file IO before excluding media publication.
+        loppi_protocol::platform::set_mode(&staging, 0o600).map_err(|error| error.to_string())?;
+        loppi_protocol::platform::sync_file(&staging).map_err(|error| error.to_string())?;
         let _publish_gate = cleanup_gate.lock().map_err(|error| error.to_string())?;
         let cleared_during: i64 = db
             .query_row(
@@ -744,11 +760,8 @@ pub fn export(
         if cleared_during != 0 {
             return Err("cleanup changed this range during export; retry".into());
         }
-        // Make final permissions durable while the file is still hidden. A
-        // crash immediately after rename must never expose a 000 final TAR.
-        loppi_protocol::platform::set_mode(&staging, 0o600).map_err(|error| error.to_string())?;
-        loppi_protocol::platform::sync_file(&staging).map_err(|error| error.to_string())?;
         rename_exclusive(&staging, destination)?;
+        drop(_publish_gate);
         // Persist the directory rename before forgetting the recovery job.
         let parent = destination.parent().ok_or("export parent missing")?;
         if let Err(error) = loppi_protocol::platform::sync_directory(parent) {
@@ -857,6 +870,22 @@ mod tests {
         .unwrap();
         tx.commit().unwrap();
         let destination = directory.path().join("history.tar");
+        let gate = std::sync::Arc::new(Mutex::new(()));
+        let observed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let write_gate = gate.clone();
+        let wrote = observed.clone();
+        BEFORE_WRITE.with(|hook| {
+            *hook.borrow_mut() = Some(Box::new(move |name| {
+                if name.starts_with("screenshots/") {
+                    // The target writer can block while ingestion acquires its media gate.
+                    let gate = write_gate.clone();
+                    std::thread::spawn(move || assert!(gate.try_lock().is_ok()))
+                        .join()
+                        .unwrap();
+                    wrote.store(true, std::sync::atomic::Ordering::Relaxed);
+                }
+            }))
+        });
         export(
             &store.db,
             directory.path(),
@@ -866,9 +895,11 @@ mod tests {
             false,
             true,
             &destination,
-            &Mutex::new(()),
+            &gate,
         )
         .unwrap();
+        BEFORE_WRITE.with(|hook| *hook.borrow_mut() = None);
+        assert!(observed.load(std::sync::atomic::Ordering::Relaxed));
         let mut tar = tar::Archive::new(File::open(destination).unwrap());
         let names = tar
             .entries()
