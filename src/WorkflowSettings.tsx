@@ -1,5 +1,13 @@
 import { useEffect, useState } from "react";
-import { Button, Field, Modal, SegmentedOptions, TabPanel } from "./Controls";
+import {
+	Button,
+	Field,
+	Icon,
+	IconButton,
+	Modal,
+	SegmentedOptions,
+	TabPanel,
+} from "./Controls";
 import {
 	inputLabel,
 	type WorkflowSettings as Settings,
@@ -131,7 +139,7 @@ export function WorkflowSettings({
 			setSaved(value);
 			setDraft(value.config);
 			setDependency(null);
-			setMessage("已保存。新配置适用于之后进入流程的事件。");
+			setMessage("已保存 · 对后续事件生效");
 		} catch (error) {
 			if (error instanceof WorkflowError) {
 				const affected =
@@ -280,101 +288,91 @@ export function WorkflowSettings({
 			<div className="workflow-settings">
 				{section === "labels" ? (
 					<>
-						<section className="panel-card workflow-config-card">
-							<div className="workflow-config-heading">
-								<div>
-									<h2>标注方式</h2>
-									<p>
-										整理粗转录时，按你的判断标准给事件打标。修改只影响之后的自动标注。
-									</p>
-								</div>
-								<SegmentedOptions
-									label="标注方式"
-									value={draft.mode}
-									options={[
-										{ value: "single", label: "单选" },
-										{ value: "multiple", label: "多选" },
-									]}
-									disabled={busy}
-									onChange={(mode) => update({ ...draft, mode })}
-								/>
-							</div>
-							<p className="workflow-config-hint">
-								{draft.mode === "single"
-									? "每个事件取最符合的一项。"
-									: "每个事件可以命中多个具体标签。"}
-							</p>
-						</section>
-						<section className="panel-card workflow-config-card">
-							<div className="workflow-config-heading">
-								<div>
-									<h2>标签库</h2>
-									<p>定义容易区分的场景。新标签保存后可用于自动流程。</p>
-								</div>
-								<Button
-									tone="secondary"
-									disabled={busy}
-									onClick={() =>
-										setEditor({
-											kind: "tag",
-											index: null,
-											value: { id: NEW_ID, name: "", criteria: "" },
-										})
-									}
-								>
-									添加标签
-								</Button>
-							</div>
-							{draft.tags.length === 0 && (
-								<p className="workflow-config-empty">还没有自定义标签。</p>
-							)}
-							{draft.tags.map((tag, index) => (
-								<div
-									className="workflow-config-row"
-									key={tag.id === NEW_ID ? `new-${index}` : tag.id}
-								>
-									<div>
-										<strong className="workflow-chip">{tag.name}</strong>
-										<p>{tag.criteria}</p>
-									</div>
-									<Button
-										tone="quiet"
-										aria-label={`编辑标签 · ${tag.name}`}
-										disabled={busy}
-										onClick={() =>
-											setEditor({ kind: "tag", index, value: tag })
-										}
-									>
-										编辑
-									</Button>
-								</div>
-							))}
-							<div className="workflow-config-row workflow-fallback-row">
-								<div>
-									<strong className="workflow-chip">其他</strong>
-									<p>判断有效、但没有命中具体标签时使用。</p>
-								</div>
-								<small>系统兜底</small>
-							</div>
-						</section>
+						<div className="workflow-config-rule">
+							<span>每个事件</span>
+							<SegmentedOptions
+								label="标注方式"
+								value={draft.mode}
+								options={[
+									{ value: "single", label: "单选" },
+									{ value: "multiple", label: "多选" },
+								]}
+								disabled={busy}
+								onChange={(mode) => update({ ...draft, mode })}
+							/>
+						</div>
+						<table className="workflow-config-table" aria-label="标签库">
+							<thead>
+								<tr>
+									<th scope="col">标签</th>
+									<th scope="col">判断标准</th>
+									<th scope="col" aria-label="操作">
+										<Button
+											tone="primary"
+											size="compact"
+											disabled={busy}
+											onClick={() =>
+												setEditor({
+													kind: "tag",
+													index: null,
+													value: { id: NEW_ID, name: "", criteria: "" },
+												})
+											}
+										>
+											<Icon name="plus" />
+											添加标签
+										</Button>
+									</th>
+								</tr>
+							</thead>
+							<tbody>
+								{draft.tags.map((tag, index) => (
+									<tr key={tag.id === NEW_ID ? `new-${index}` : tag.id}>
+										<th scope="row">
+											<span className="workflow-chip">{tag.name}</span>
+										</th>
+										<td>
+											<span className="workflow-config-criteria">
+												{tag.criteria}
+											</span>
+										</td>
+										<td>
+											<IconButton
+												label={`编辑标签 · ${tag.name}`}
+												tooltip="编辑标签"
+												disabled={busy}
+												onClick={() =>
+													setEditor({ kind: "tag", index, value: tag })
+												}
+											>
+												<Icon name="edit" />
+											</IconButton>
+										</td>
+									</tr>
+								))}
+								<tr className="workflow-fallback-row">
+									<th scope="row">
+										<span className="workflow-chip">其他</span>
+									</th>
+									<td>标注成功，无匹配标签</td>
+									<td>
+										<small>系统兜底</small>
+									</td>
+								</tr>
+							</tbody>
+						</table>
 					</>
 				) : (
 					<>
-						<section
-							id={`${tabsId}-auto-asr`}
-							className="panel-card workflow-config-card"
-						>
-							<div className="workflow-config-heading">
-								<div>
-									<h2>自动精转</h2>
-									<p>事件确定后判断是否安排精转录。已有稿件会优先复用。</p>
-								</div>
+						<div className="workflow-config-rule" id={`${tabsId}-auto-asr`}>
+							<span>自动精转</span>
+							<div className="workflow-config-rule-options">
 								<SegmentedOptions
 									label="自动精转条件"
 									value={draft.auto_asr.mode}
 									options={[
 										{ value: "all", label: "全部有效事件" },
-										{ value: "tags", label: "包含指定标签" },
+										{ value: "tags", label: "包含任一标签" },
 									]}
 									disabled={busy}
 									onChange={(mode) =>
@@ -387,10 +385,7 @@ export function WorkflowSettings({
 										})
 									}
 								/>
-							</div>
-							{draft.auto_asr.mode === "tags" && (
-								<div className="workflow-config-condition">
-									<span>命中任意一项时安排精转</span>
+								{draft.auto_asr.mode === "tags" && (
 									<TagChoices
 										tags={labels}
 										ids={draft.auto_asr.tag_ids}
@@ -399,86 +394,106 @@ export function WorkflowSettings({
 											update({ ...draft, auto_asr: { mode: "tags", tag_ids } })
 										}
 									/>
-								</div>
-							)}
-							<p className="workflow-config-hint">
-								需要补转时，选中的事件音频会发送给已配置的精转服务。
-							</p>
-						</section>
-						<section className="panel-card workflow-config-card">
-							<div className="workflow-config-heading">
-								<div>
-									<h2>生成策略</h2>
-									<p>
-										设定转录来源和生成指令。粗转策略可直接执行，精转策略等待稿件就绪。
-									</p>
-								</div>
-								<Button
-									tone="secondary"
-									disabled={busy}
-									onClick={() =>
-										setEditor({
-											kind: "strategy",
-											index: null,
-											value: {
-												id: NEW_ID,
-												name: "",
-												prompt: "",
-												input: "coarse",
-												tag_ids: [],
-											},
-										})
-									}
-								>
-									添加策略
-								</Button>
+								)}
 							</div>
-							{draft.strategies.length === 0 && (
-								<p className="workflow-config-empty">
-									还没有生成策略。可从会议纪要或待办清单开始。
+							<details className="workflow-config-disclosure">
+								<summary>音频发送</summary>
+								<p>
+									补转时会把符合条件的音频发送给精转服务。已有稿件会优先复用。
 								</p>
-							)}
-							{draft.strategies.map((strategy, index) => (
-								<div
-									className="workflow-config-row"
-									key={strategy.id === NEW_ID ? `new-${index}` : strategy.id}
-								>
-									<div>
-										<strong>{strategy.name}</strong>
-										<div className="workflow-strategy-meta">
-											<span className="workflow-chip">
-												{inputLabel(strategy.input)}
-											</span>
-											<span>
-												{strategy.tag_ids.length ? "自动触发" : "仅手动"}
-											</span>
-											{strategy.tag_ids.map((id) => (
-												<span className="workflow-chip" key={id}>
-													{labelName(id)}
-												</span>
-											))}
-										</div>
-									</div>
-									<Button
-										tone="quiet"
-										id={`${tabsId}-strategy-${index}`}
-										aria-label={`编辑策略 · ${strategy.name}`}
-										disabled={busy}
-										onClick={() =>
-											setEditor({ kind: "strategy", index, value: strategy })
-										}
+							</details>
+						</div>
+						<table
+							className="workflow-config-table workflow-config-strategies"
+							aria-label="生成策略"
+						>
+							<thead>
+								<tr>
+									<th scope="col">策略</th>
+									<th scope="col">输入</th>
+									<th scope="col">触发条件</th>
+									<th scope="col" aria-label="操作">
+										<Button
+											tone="primary"
+											size="compact"
+											disabled={busy}
+											onClick={() =>
+												setEditor({
+													kind: "strategy",
+													index: null,
+													value: {
+														id: NEW_ID,
+														name: "",
+														prompt: "",
+														input: "coarse",
+														tag_ids: [],
+													},
+												})
+											}
+										>
+											<Icon name="plus" />
+											添加策略
+										</Button>
+									</th>
+								</tr>
+							</thead>
+							<tbody>
+								{draft.strategies.length === 0 && (
+									<tr>
+										<td className="workflow-config-empty" colSpan={4}>
+											还没有生成策略
+										</td>
+									</tr>
+								)}
+								{draft.strategies.map((strategy, index) => (
+									<tr
+										key={strategy.id === NEW_ID ? `new-${index}` : strategy.id}
 									>
-										编辑
-									</Button>
-								</div>
-							))}
-						</section>
+										<th scope="row">{strategy.name}</th>
+										<td>{inputLabel(strategy.input)}</td>
+										<td>
+											{strategy.tag_ids.length ? (
+												<div className="workflow-strategy-tags">
+													{strategy.tag_ids.map((id) => (
+														<span className="workflow-chip" key={id}>
+															{labelName(id)}
+														</span>
+													))}
+												</div>
+											) : (
+												"仅手动"
+											)}
+										</td>
+										<td>
+											<IconButton
+												id={`${tabsId}-strategy-${index}`}
+												label={`编辑策略 · ${strategy.name}`}
+												tooltip="编辑策略"
+												disabled={busy}
+												onClick={() =>
+													setEditor({
+														kind: "strategy",
+														index,
+														value: strategy,
+													})
+												}
+											>
+												<Icon name="edit" />
+											</IconButton>
+										</td>
+									</tr>
+								))}
+							</tbody>
+						</table>
 					</>
 				)}
 				{(dirty || message) && (
 					<div className="workflow-config-actions">
 						<p role="status">
-							{message || "有未保存的改动，保存后两页配置一起生效。"}
+							{message ||
+								(draft.mode !== saved.config.mode
+									? "有未保存的改动 · 新标注方式适用于后续事件"
+									: "有未保存的改动")}
 						</p>
 						{conflict ? (
 							<Button tone="secondary" onClick={reload}>
@@ -538,10 +553,7 @@ export function WorkflowSettings({
 							)}
 						</Field>
 						{editor.kind === "tag" ? (
-							<Field
-								label="判断标准"
-								description="描述哪些内容应命中这个标签，必要时写清排除条件。"
-							>
+							<Field label="判断标准">
 								{(attributes) => (
 									<textarea
 										{...attributes}
@@ -562,7 +574,10 @@ export function WorkflowSettings({
 							</Field>
 						) : (
 							<>
-								<Field label="输入来源">
+								<Field
+									label="输入来源"
+									description="所选转录稿会发送给已配置的生成服务。"
+								>
 									{(attributes) => (
 										<select
 											{...attributes}
@@ -585,10 +600,7 @@ export function WorkflowSettings({
 										</select>
 									)}
 								</Field>
-								<Field
-									label="生成指令"
-									description="说明要提取的信息和输出格式。所选转录稿会发送给已配置的生成服务。"
-								>
+								<Field label="生成指令">
 									{(attributes) => (
 										<textarea
 											{...attributes}

@@ -2660,64 +2660,97 @@ body.floating-body .float-wrap {
 	min-width: 0;
 	max-width: 54rem;
 }
-.workflow-config-card {
+.workflow-config-rule {
+	display: grid;
+	grid-template-columns: max-content minmax(0, 1fr) auto;
+	align-items: start;
+	gap: var(--space-6);
+	padding-block: var(--space-2) var(--space-6);
+	font-size: var(--type-body);
+}
+.workflow-config-rule > span {
+	align-self: start;
+	padding-block: var(--space-4);
+	font-weight: var(--weight-semibold);
+}
+.workflow-config-rule-options {
+	display: grid;
+	justify-items: start;
+	gap: var(--space-4);
 	min-width: 0;
 }
-.workflow-config-heading,
-.workflow-config-row,
-.workflow-config-actions {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: var(--space-5) var(--space-8);
-	min-width: 0;
-}
-.workflow-config-heading {
-	flex-wrap: wrap;
-}
-.workflow-config-heading > div,
-.workflow-config-row > div {
-	min-width: 0;
-	overflow-wrap: anywhere;
-}
-.workflow-config-heading h2 {
-	margin: 0 0 var(--space-2);
-	font-size: var(--type-lead);
-}
-.workflow-config-heading p,
-.workflow-config-row p,
-.workflow-config-empty,
-.workflow-config-hint,
-.workflow-config-actions p,
-.workflow-strategy-meta {
-	margin: 0;
+.workflow-config-disclosure {
+	max-width: 14rem;
+	padding-block: var(--space-4);
 	color: var(--color-text-secondary);
-	font-size: var(--type-meta);
+	font-size: var(--type-caption);
+}
+.workflow-config-disclosure summary {
+	width: max-content;
+	margin-inline-start: auto;
+	cursor: pointer;
+}
+.workflow-config-disclosure p {
+	margin-block: var(--space-3) 0;
 	line-height: var(--leading-body);
+}
+.workflow-config-table {
+	width: 100%;
+	table-layout: fixed;
+	border-collapse: collapse;
+	color: var(--color-text);
+	font-size: var(--type-body);
+}
+.workflow-config-table :is(th, td) {
+	padding: var(--space-4) var(--space-6);
+	border-bottom: var(--stroke-hairline) solid var(--color-border);
 	overflow-wrap: anywhere;
+	text-align: start;
 }
-.workflow-config-row,
-.workflow-config-empty {
-	margin-top: var(--space-6);
-	border-top: var(--stroke-hairline) solid var(--color-border-subtle);
-	padding-top: var(--space-6);
+.workflow-config-table :is(th, td):first-child {
+	width: 28%;
+	padding-inline-start: 0;
 }
-.workflow-config-row .control-button {
-	flex: none;
+.workflow-config-strategies :is(th, td):nth-child(2) {
+	width: 18%;
 }
-.workflow-config-row p,
-.workflow-strategy-meta {
-	margin-top: var(--space-2);
+.workflow-config-table :is(th, td):last-child:not([colspan]) {
+	width: 7.5rem;
+	padding-inline-end: 0;
+	text-align: end;
 }
-.workflow-config-row p {
+.workflow-config-table thead {
+	color: var(--color-text-secondary);
+	font-size: var(--type-caption);
+}
+.workflow-config-table :where(thead) th {
+	font-weight: var(--weight-medium);
+}
+.workflow-config-table :where(thead) .control-button {
+	white-space: nowrap;
+}
+.workflow-config-table :where(tbody) th {
+	font-weight: var(--weight-semibold);
+}
+.workflow-config-table td {
+	color: var(--color-text-secondary);
+}
+.workflow-config-table tbody tr:hover {
+	background: var(--color-surface-card-hover);
+}
+.workflow-config-table .workflow-config-empty {
+	padding-block: var(--space-9);
+	text-align: center;
+}
+.workflow-config-criteria {
 	display: -webkit-box;
 	overflow: hidden;
 	-webkit-box-orient: vertical;
 	-webkit-line-clamp: 2;
+	line-height: var(--leading-body);
 }
-.workflow-fallback-row > small,
+.workflow-fallback-row small,
 .workflow-config-condition small {
-	color: var(--color-text-muted);
 	font-size: var(--type-caption);
 }
 .workflow-chip {
@@ -2730,14 +2763,18 @@ body.floating-body .float-wrap {
 	font-size: var(--type-caption);
 	overflow-wrap: anywhere;
 }
-.workflow-strategy-meta {
+.workflow-strategy-tags {
 	display: flex;
-	align-items: center;
 	flex-wrap: wrap;
-	gap: var(--space-2) var(--space-4);
+	gap: var(--space-2);
 }
-.workflow-config-card > .workflow-config-hint {
-	margin-top: var(--space-6);
+.workflow-config-hint,
+.workflow-config-actions p {
+	margin: 0;
+	color: var(--color-text-secondary);
+	font-size: var(--type-meta);
+	line-height: var(--leading-body);
+	overflow-wrap: anywhere;
 }
 .workflow-config-condition {
 	display: grid;
@@ -2749,6 +2786,10 @@ body.floating-body .float-wrap {
 	font-size: var(--type-meta);
 }
 .workflow-config-actions {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-5);
 	position: sticky;
 	bottom: 0;
 	z-index: 1;
@@ -2793,6 +2834,12 @@ body.floating-body .float-wrap {
 	align-items: center;
 	flex-wrap: wrap;
 	gap: var(--space-4);
+}
+.workflow-config-rule-options .workflow-tag-options {
+	margin-inline-start: var(--space-3);
+	border-inline-start: var(--stroke-hairline) solid var(--color-border);
+	padding-inline-start: var(--space-4);
+	font-size: var(--type-meta);
 }
 .workflow-tag-options label {
 	display: inline-flex;

@@ -301,8 +301,9 @@ test('recognition settings navigation uses existing pages, focuses the service r
       for (const item of document.querySelectorAll('[role=tab]')) assert(document.getElementById(item.getAttribute('aria-controls')));
       await click(tab('智能标签'));
       assert.equal(reads(), readCount + 1);
-      assert.match(document.querySelector('[role=tabpanel]:not([hidden])').textContent, /标签库.*系统兜底/s);
+      assert.match(document.querySelector('table[aria-label="标签库"]').textContent, /判断标准.*系统兜底/s);
       await click(document.querySelector('input[value="multiple"]'));
+      assert.match(document.querySelector('[role=status]').textContent, /新标注方式适用于后续事件/);
       await click(select('编辑标签 · 工作会议'));
       const labelEditor = document.querySelector('dialog');
       assert.equal(labelEditor.querySelector('textarea').value, '讨论项目进展');
@@ -316,7 +317,7 @@ test('recognition settings navigation uses existing pages, focuses the service r
       await click(tab('自动流程'));
       assert.equal(reads(), readCount + 1);
       assert.match(document.querySelector('[role=status]').textContent, /未保存的改动/);
-      const autoAsr = document.querySelector('.workflow-config-card');
+      const autoAsr = document.querySelector('.workflow-config-rule');
       await click(autoAsr.querySelector('input[value="all"]'));
       await click(autoAsr.querySelector('input[value="tags"]'));
       assert.equal(autoAsr.querySelectorAll('input[type=checkbox]:checked').length, 0);
