@@ -2,6 +2,12 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
 import { useEffect, useId, useRef, useState } from "react";
+import {
+	AnalysisIcon,
+	AnalysisOverview,
+	type AnalysisSection,
+	analysisModules,
+} from "./AnalysisOverview";
 import { AudioStorageSettings } from "./AudioStorageSettings";
 import {
 	type CleanupPreview,
@@ -47,7 +53,7 @@ import { SoftwareUpdate } from "./SoftwareUpdate";
 import type { ModelState, PrivacyStatus } from "./setup";
 import { UsageStatisticsView } from "./UsageStatistics";
 import type { AppUpdate } from "./useAppUpdate";
-import { type WorkflowSection, WorkflowSettings } from "./WorkflowSettings";
+import { WorkflowSettings } from "./WorkflowSettings";
 
 type Mutation = (
 	request: { type: string; [key: string]: unknown },
@@ -80,6 +86,7 @@ function taskRange(task: CloudTask): string {
 }
 
 export function QueueView({
+	initialProvider = "llm",
 	queuesReady = true,
 	queuesError,
 	tasksReady = true,
@@ -90,10 +97,13 @@ export function QueueView({
 	tasks,
 	reviews,
 	busy,
+	models = null,
+	modelsError,
 	onRefresh,
 	onMutate,
 	onSettings,
 }: {
+	initialProvider?: CloudProvider;
 	queues: CloudQueue[];
 	queuesReady?: boolean;
 	queuesError?: string;
@@ -104,12 +114,16 @@ export function QueueView({
 	tasks: CloudTask[];
 	reviews: ReviewItem[];
 	busy: boolean;
+	models?: ModelState | null;
+	modelsError?: string;
 	onRefresh: () => Promise<void>;
 	onMutate: Mutation;
 	onSettings: (provider: CloudProvider) => void;
 }) {
 	const [taskProvider, setTaskProvider] = useState<CloudProvider | null>(null);
-	const [section, setSection] = useState<"queue" | WorkflowSection>("queue");
+	const [section, setSection] = useState<AnalysisSection>(
+		initialProvider === "llm" ? "labels" : "precise",
+	);
 	const tabsId = useId();
 	const pageTop = useRef<HTMLElement>(null);
 	const heading = useRef<HTMLHeadingElement>(null);
@@ -216,6 +230,33 @@ export function QueueView({
 		}
 	};
 	const providerTasks = tasks.filter((task) => task.provider === taskProvider);
+	const provider =
+		section === "labels" ? "llm" : section === "precise" ? "asr" : null;
+	const queue = queues.find((item) => item.provider === provider);
+	const queueReady = queuesReady && queue !== undefined;
+	const queueError =
+		queuesError ||
+		(queuesReady && !queue ? "未返回该服务的队列状态" : undefined);
+	const tabs = (Object.keys(analysisModules) as AnalysisSection[]).map(
+		(value) => ({
+			value,
+			label: analysisModules[value].title,
+			icon: <AnalysisIcon module={value} />,
+		}),
+	);
+	const refreshButton = (
+		<Button
+			type="button"
+			tone="quiet"
+			size="compact"
+			onClick={() => {
+				setStatisticsRefresh((value) => value + 1);
+				void onRefresh();
+			}}
+		>
+			刷新
+		</Button>
+	);
 	return (
 		<section className="page-container recognition-page" ref={pageTop}>
 			{taskProvider && (
@@ -224,167 +265,36 @@ export function QueueView({
 					onClick={() => setTaskProvider(null)}
 				>
 					<Icon name="back" />
-					返回智能识别
+					返回智能分析
 				</Button>
 			)}
-			<div className="page-heading" data-tauri-drag-region>
+			<div
+				className={taskProvider ? "page-heading" : "page-heading analysis-top"}
+				data-tauri-drag-region
+			>
 				<h1 ref={heading} tabIndex={-1}>
 					{taskProvider
 						? `${recognitionServices[taskProvider].title}任务明细`
-						: "智能识别"}
+						: "智能分析"}
 				</h1>
-				{(section === "queue" || taskProvider) && (
-					<Button
-						type="button"
-						tone="quiet"
-						onClick={() => {
-							setStatisticsRefresh((value) => value + 1);
-							void onRefresh();
-						}}
-					>
-						刷新
-					</Button>
-				)}
+				{taskProvider ? refreshButton : <AnalysisOverview />}
 			</div>
 			{!taskProvider && (
-				<Tabs
-					id={tabsId}
-					label="智能识别页面"
-					value={section}
-					items={[
-						{ value: "queue", label: "处理队列" },
-						{ value: "labels", label: "智能标签" },
-						{ value: "automation", label: "自动流程" },
-					]}
-					onChange={setSection}
-					className="recognition-tabs"
-				/>
+				<div className="analysis-tab-bar">
+					<Tabs
+						id={tabsId}
+						label="智能分析模块"
+						value={section}
+						items={tabs}
+						onChange={setSection}
+						className="analysis-tabs"
+					/>
+					{provider && refreshButton}
+				</div>
 			)}
-			<TabPanel
-				tabsId={tabsId}
-				value="queue"
-				selected={taskProvider ? "details" : section}
-				inert={taskProvider !== null || section !== "queue"}
-			>
-				<div className="queue-grid">
-					{(["llm", "asr"] as const).map((provider) => {
-						const queue = queues.find((item) => item.provider === provider);
-						const queueReady = queuesReady && queue !== undefined;
-						const queueError =
-							queuesError ||
-							(queuesReady && !queue ? "未返回该服务的队列状态" : undefined);
-						return (
-							<div className="panel-card recognition-card" key={provider}>
-								<div className="panel-header">
-									<div>
-										<h2>{recognitionServices[provider].title}</h2>
-										<p>{recognitionServices[provider].description}</p>
-										{queueReady &&
-											queue &&
-											(!queue.configured || queue.blocked_reason) && (
-												<p className="queue-blocked" role="status">
-													{!queue.configured
-														? "尚未配置"
-														: queue.blocked_reason === "provider_http_402"
-															? "余额不足，充值后继续；失败项需手动重试"
-															: "处理受阻，请检查服务配置后继续"}
-												</p>
-											)}
-									</div>
-									<div className="recognition-actions">
-										{(queueReady || !queueError) && (
-											<LoadBoundary
-												ready={queueReady}
-												label={`${recognitionServices[provider].title}开关`}
-												rows={1}
-												compact
-											>
-												{queue && (
-													<Switch
-														label={recognitionServices[provider].title}
-														checked={
-															!queue.paused &&
-															!queue.blocked_reason &&
-															queue.configured
-														}
-														disabled={busy || !queue.configured}
-														onChange={() =>
-															void onMutate(
-																{
-																	type: "set_cloud_paused",
-																	provider: queue.provider,
-																	paused:
-																		!queue.paused && !queue.blocked_reason,
-																},
-																queue.paused || queue.blocked_reason
-																	? "队列已继续"
-																	: "队列已暂停",
-															)
-														}
-													/>
-												)}
-											</LoadBoundary>
-										)}
-										<IconButton
-											label={`${recognitionServices[provider].title}设置`}
-											onClick={() => onSettings(provider)}
-										>
-											<Icon name="settings" />
-										</IconButton>
-									</div>
-								</div>
-								<div className="queue-counts">
-									<LoadBoundary
-										ready={queueReady}
-										error={queueError}
-										retry={() => void onRefresh()}
-										label="队列状态"
-										rows={1}
-										compact
-									>
-										{queue && (
-											<>
-												<span>
-													{queue.pending}
-													<small>待处理</small>
-												</span>
-												<span>
-													{queue.processing}
-													<small>处理中</small>
-												</span>
-												<span>
-													{queue.failed}
-													<small>失败</small>
-												</span>
-											</>
-										)}
-									</LoadBoundary>
-									<div className="recognition-task-link">
-										<Button
-											size="compact"
-											aria-label={`${recognitionServices[provider].title}任务明细`}
-											onClick={() => setTaskProvider(provider)}
-										>
-											任务明细
-										</Button>
-										{provider === "asr" &&
-											reviewsReady &&
-											reviews.length > 0 && (
-												<small>{reviews.length} 条待核对</small>
-											)}
-									</div>
-								</div>
-							</div>
-						);
-					})}
-				</div>
-				<div className="recognition-statistics">
-					<UsageStatisticsView refresh={statisticsRefresh} />
-				</div>
-			</TabPanel>
-			{(["labels", "automation"] as const)
-				.filter((value) => value !== section)
-				.map((value) => (
+			{tabs
+				.filter(({ value }) => value !== section)
+				.map(({ value }) => (
 					<TabPanel
 						key={value}
 						tabsId={tabsId}
@@ -392,11 +302,142 @@ export function QueueView({
 						selected={section}
 					/>
 				))}
-			<WorkflowSettings
-				section={taskProvider || section === "queue" ? null : section}
+			<TabPanel
 				tabsId={tabsId}
-				onSection={setSection}
-			/>
+				value={section}
+				selected={taskProvider ? "details" : section}
+				inert={taskProvider !== null}
+			>
+				{section === "coarse" && (
+					<div className="panel-card analysis-local-card">
+						<h2 className="analysis-card-title">
+							<AnalysisIcon module="coarse" />
+							{analysisModules.coarse.title}
+						</h2>
+						<ModelPreparation
+							models={models}
+							error={modelsError}
+							onRefresh={onRefresh}
+						/>
+					</div>
+				)}
+				{provider && (
+					<div className="panel-card recognition-card">
+						<div className="panel-header">
+							<div>
+								<h2 className="analysis-card-title">
+									<AnalysisIcon
+										module={provider === "llm" ? "labels" : "precise"}
+									/>
+									{recognitionServices[provider].title}
+								</h2>
+								<p>{recognitionServices[provider].description}</p>
+								{queueReady &&
+									queue &&
+									(!queue.configured || queue.blocked_reason) && (
+										<p className="queue-blocked" role="status">
+											{!queue.configured
+												? "尚未配置"
+												: queue.blocked_reason === "provider_http_402"
+													? "余额不足，充值后继续；失败项需手动重试"
+													: "处理受阻，请检查服务配置后继续"}
+										</p>
+									)}
+							</div>
+							<div className="recognition-actions">
+								{(queueReady || !queueError) && (
+									<LoadBoundary
+										ready={queueReady}
+										label={`${recognitionServices[provider].title}开关`}
+										rows={1}
+										compact
+									>
+										{queue && (
+											<Switch
+												label={recognitionServices[provider].title}
+												checked={
+													!queue.paused &&
+													!queue.blocked_reason &&
+													queue.configured
+												}
+												disabled={busy || !queue.configured}
+												onChange={() =>
+													void onMutate(
+														{
+															type: "set_cloud_paused",
+															provider: queue.provider,
+															paused: !queue.paused && !queue.blocked_reason,
+														},
+														queue.paused || queue.blocked_reason
+															? "队列已继续"
+															: "队列已暂停",
+													)
+												}
+											/>
+										)}
+									</LoadBoundary>
+								)}
+								<IconButton
+									label={`${recognitionServices[provider].title}设置`}
+									onClick={() => onSettings(provider)}
+								>
+									<Icon name="settings" />
+								</IconButton>
+							</div>
+						</div>
+						<div className="queue-counts">
+							<LoadBoundary
+								ready={queueReady}
+								error={queueError}
+								retry={() => void onRefresh()}
+								label="队列状态"
+								rows={1}
+								compact
+							>
+								{queue && (
+									<>
+										<span>
+											{queue.pending}
+											<small>待处理</small>
+										</span>
+										<span>
+											{queue.processing}
+											<small>处理中</small>
+										</span>
+										<span>
+											{queue.failed}
+											<small>失败</small>
+										</span>
+									</>
+								)}
+							</LoadBoundary>
+							<div className="recognition-task-link">
+								<Button
+									size="compact"
+									aria-label={`${recognitionServices[provider].title}任务明细`}
+									onClick={() => setTaskProvider(provider)}
+								>
+									任务明细
+								</Button>
+								{provider === "asr" && reviewsReady && reviews.length > 0 && (
+									<small>{reviews.length} 条待核对</small>
+								)}
+							</div>
+						</div>
+					</div>
+				)}
+				<WorkflowSettings
+					section={taskProvider || section === "coarse" ? null : section}
+					tabsId={tabsId}
+					onSection={setSection}
+				/>
+				<div className="recognition-statistics" hidden={!provider}>
+					<UsageStatisticsView
+						refresh={statisticsRefresh}
+						provider={provider}
+					/>
+				</div>
+			</TabPanel>
 			{taskProvider && (
 				<>
 					<div className="section-heading">
@@ -424,7 +465,7 @@ export function QueueView({
 															? "生成内容"
 															: task.provider === "llm"
 																? "事件分析"
-																: "语音识别"}{" "}
+																: recognitionServices.asr.title}{" "}
 												· {taskRange(task)}
 											</strong>
 											<p

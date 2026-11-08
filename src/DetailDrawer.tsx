@@ -9,6 +9,7 @@ import {
 } from "react";
 import {
 	audioCoverageLabel,
+	type CloudProvider,
 	type CoarseSegment,
 	type CoreResponse,
 	core,
@@ -65,7 +66,7 @@ type Props = {
 	onClose: () => void;
 	onEdit: (item: TimelineItem) => void;
 	onTools: (item: TimelineItem, mode?: "split" | "merge" | "delete") => void;
-	onQueue: () => void;
+	onQueue: (provider: CloudProvider) => void;
 	onDataAction: (kind: "export" | "cleanup", item: TimelineItem) => void;
 	onChanged: (manualRangeId?: string) => void;
 	onConfirmedEvent: (eventId: string) => Promise<void>;
@@ -734,7 +735,7 @@ export function DetailDrawer({
 			(response) => {
 				const tasks = response.tasks as { state: string }[] | undefined;
 				if (response.type !== "transcription_queued" || !tasks?.length) {
-					return "精转请求未返回任务，请检查智能识别";
+					return "精转请求未返回任务，请检查智能分析";
 				}
 				if (tasks.every((task) => task.state === "no_transcript")) {
 					return "这段声音未识别出文字";
@@ -844,7 +845,7 @@ export function DetailDrawer({
 			if (!uncertain) completionRequest.current = null;
 			setCompletionError(
 				uncertain
-					? "提交结果待确认，请确认上次提交，或在智能识别查看"
+					? "提交结果待确认，请确认上次提交，或在智能分析查看"
 					: userError(error),
 			);
 		} finally {
@@ -1338,7 +1339,13 @@ export function DetailDrawer({
 										className="detail-status-link"
 										disabled={busy}
 										title={busy ? undefined : "查看处理进度"}
-										onClick={onQueue}
+										onClick={() =>
+											onQueue(
+												completionProcessing || completionFailed
+													? "llm"
+													: "asr",
+											)
+										}
 									>
 										{statusText} <span aria-hidden="true">›</span>
 									</button>

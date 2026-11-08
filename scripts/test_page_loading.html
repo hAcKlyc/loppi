@@ -24,6 +24,7 @@ mockIPC(async(command,args)=>{
  if(k==='moments')return {type:k,moments:[]};
  if(k==='people')return {type:k,people:persons};
  if(k==='models')return {type:k,state:{phase:'ready',speaker_phase:'ready',progress_percent:100}};
+ if(k==='workflow'&&r.action.op==='config_show')return {result:{ok:true,data:{revision:1,config:{mode:'single',tags:[],auto_asr:{mode:'all',tag_ids:[]},strategies:[]},other_tag:'other'}}};
  if(k==='cloud_status')return {type:k,queues:['llm','asr'].map(provider=>({provider,configured:false,paused:false,pending:0,processing:0,failed:0}))};
  if(k==='cloud_tasks')return {type:k,tasks:[]};
  if(k==='review_items')return {type:k,items:[]};
@@ -39,18 +40,18 @@ async function until(check){for(let i=0;i<250;i++){if(check())return;await new P
 async function page(label){await until(()=>[...document.querySelectorAll('.sidebar nav button')].some(b=>b.textContent.trim()===label));[...document.querySelectorAll('.sidebar nav button')].find(b=>b.textContent.trim()===label).click();await frames();}
 async function clickText(label){const b=[...document.querySelectorAll('main button')].find(b=>b.textContent.trim()===label);assert(b,'缺少按钮 '+label);b.click();await frames();}
 const skeleton=label=>[...document.querySelectorAll(`[aria-label="正在加载${label}"]`)].find(el=>el.getClientRects().length);
-async function openAsrTasks(){await until(()=>q('[aria-label="语音识别任务明细"]'));q('[aria-label="语音识别任务明细"]').click();await frames();}
+async function openAsrTasks(){await clickText('语音识别·精转录');await until(()=>q('[aria-label="语音识别·精转录任务明细"]'));q('[aria-label="语音识别·精转录任务明细"]').click();await frames();}
 document.getElementById('run').onclick=async()=>{const out=q('#result');out.textContent='检查中…';try{
  await frames();assert(skeleton('当天记录')&&skeleton('记录分布')&&!q('.record-count')&&!text().includes('暂无有效事件'),'首页初始加载不诚实');
  await page('人物库');assert(skeleton('人物库')&&!text().includes('还没有人物'),'人物加载闪空');release('people');await until(()=>text().includes('还没有人物'));assert(gates.has('models'),'测试未覆盖局部独立完成');
- await page('智能识别');assert(skeleton('队列状态')&&(skeleton('统计范围')||skeleton('统计数据'))&&!q('.task-row'),'主页状态与统计加载不诚实');await openAsrTasks();assert(skeleton('任务')&&skeleton('待核对记录')&&!text().includes('暂无任务'),'任务二级页初始加载不诚实');
+ await page('智能分析');assert(skeleton('队列状态')&&(skeleton('统计范围')||skeleton('统计数据'))&&!q('.task-row'),'主页状态与统计加载不诚实');await openAsrTasks();assert(skeleton('任务')&&skeleton('待核对记录')&&!text().includes('暂无任务'),'任务二级页初始加载不诚实');
  release('review_items');await until(()=>text().includes('没有待核对'));assert(skeleton('任务'),'待核对完成不应结束任务骨架');failures.add('cloud_tasks');release('cloud_tasks');await until(()=>text().includes('任务读取失败'));assert(!text().includes('暂无任务'),'失败误显示空任务');
  await page('设置');assert(!text().includes('未开启')&&!text().includes('需要系统授权')&&!text().includes('尚未就绪')&&!q('input[type=password]'),'设置猜测未加载状态');
  release('login_item_status');await until(()=>text().includes('已开启'));assert(skeleton('本地组件'),'登录完成不应结束模型骨架');
  release('entry_snapshot');release('privacy_status');release('models');release('cloud_status');await until(()=>text().includes('本地语音组件')&&text().includes('未配置'));assert(text().includes('已就绪')&&text().includes('已授权'),'配置成功未展示事实');assert([...document.querySelectorAll('input[type=radio]')].find(b=>b.value==='floating')?.checked,'入口加载前后选项错误');
- await page('智能识别');await openAsrTasks();failures.delete('cloud_tasks');hold('cloud_tasks');await clickText('重试');assert(skeleton('任务'),'任务重试缺少骨架');release('cloud_tasks');await until(()=>text().includes('暂无任务'));
+ await page('智能分析');await openAsrTasks();failures.delete('cloud_tasks');hold('cloud_tasks');await clickText('重试');assert(skeleton('任务'),'任务重试缺少骨架');release('cloud_tasks');await until(()=>text().includes('暂无任务'));
  hold('cloud_tasks');await clickText('刷新');assert(!skeleton('任务')&&text().includes('暂无任务'),'后台刷新替换已有结果');release('cloud_tasks');
- await clickText('返回智能识别');assert((skeleton('统计范围')||skeleton('统计数据'))&&!text().includes('尚未开始统计'),'统计初始状态错误');release('usage_statistics');await until(()=>q('.usage-charts'));hold('usage_statistics');await clickText('近 7 天');assert(skeleton('统计范围')&&q('.usage-charts').hidden,'新统计范围展示旧数据');release('usage_statistics');await until(()=>!skeleton('统计范围'));
+ await clickText('返回智能分析');assert((skeleton('统计范围')||skeleton('统计数据'))&&!text().includes('尚未开始统计'),'统计初始状态错误');release('usage_statistics');await until(()=>q('.usage-charts'));hold('usage_statistics');await clickText('近 7 天');assert(skeleton('统计范围')&&q('.usage-charts').hidden,'新统计范围展示旧数据');release('usage_statistics');await until(()=>!skeleton('统计范围'));
  await page('时间线');failures.add('timeline');release('calendar_days');release('moments');release('timeline');await until(()=>text().includes('当天记录读取失败'));assert(!text().includes('暂无有效事件'),'首页失败误显示空日');failures.delete('timeline');hold('timeline');await clickText('重试');assert(skeleton('当天记录'),'首页重试缺少骨架');release('timeline');await until(()=>text().includes('暂无有效事件'));assert(q('.record-count').textContent==='0','真实空日没有计数');
  const now=Date.now();items=[{id:'record',manual_range_id:null,title:'刷新保留的记录',summary:'模拟内容',started_ms:now-600000,ended_ms:now-1000,sources:'microphone',processing_state:'transcribed',recording_sources:[],coarse_segments:[],precise_segments:[]}];
  window.dispatchEvent(new Event('focus'));await until(()=>q('.event-card'));hold('timeline');await new Promise(r=>setTimeout(r,260));window.dispatchEvent(new Event('focus'));await frames();assert(q('.event-card')&&!skeleton('当天记录'),'首页后台刷新闪骨架');failures.add('timeline');release('timeline');await until(()=>text().includes('当天记录读取失败'));assert(q('.event-card'),'首页后台失败清空内容');failures.delete('timeline');

@@ -21,14 +21,14 @@ test('cloud settings show queue facts without changing cloud configuration or pr
       const unconfigured = render({ ...queue, configured: false, paused: true, processing: 1 });
       assert.equal(status(unconfigured), '未配置');
       assert.match(unconfigured, />配置<\/button>/);
-      assert.doesNotMatch(unconfigured, /已配置|处理中|在智能识别中继续/);
+      assert.doesNotMatch(unconfigured, /已配置|处理中|在智能分析中继续/);
     });
 
     await t.test('configured but paused queues name the pause and where to continue', () => {
       for (const provider of ['llm', 'asr']) {
         const html = render({ ...queue, provider, paused: true, pending: 72, processing: 1 }, provider);
         assert.equal(status(html), '已配置 · 已暂停');
-        assert.match(html, /录音与云端处理分别控制，请在智能识别中继续。/);
+        assert.match(html, /录音与云端处理分别控制，请在智能分析中继续。/);
         assert.match(html, />修改密钥<\/button>/);
         assert.doesNotMatch(html, /运行中|>继续<\/button>/);
       }
@@ -37,11 +37,11 @@ test('cloud settings show queue facts without changing cloud configuration or pr
     await t.test('account blocks take precedence over ordinary progress and pause', () => {
       const blocked = render({ ...queue, blocked_reason: 'provider_http_402', paused: true, pending: 8, processing: 1 });
       assert.equal(status(blocked), '已配置 · 余额不足');
-      assert.match(blocked, /充值后，在智能识别中继续；失败项需手动重试。/);
+      assert.match(blocked, /充值后，在智能分析中继续；失败项需手动重试。/);
       assert.doesNotMatch(status(blocked), /已暂停|处理中/);
       const other = render({ ...queue, blocked_reason: 'future_block', processing: 1 });
       assert.equal(status(other), '已配置 · 处理受阻');
-      assert.match(other, /请在智能识别中查看详情。/);
+      assert.match(other, /请在智能分析中查看详情。/);
     });
 
     await t.test('live work shows actual counts while an empty queue waits for work', () => {
@@ -49,7 +49,7 @@ test('cloud settings show queue facts without changing cloud configuration or pr
       assert.equal(status(render({ ...queue, pending: 68 })), '已配置 · 68 项待处理');
       assert.equal(status(render(queue)), '已配置 · 等待任务');
       const failed = render({ ...queue, failed: 3 });
-      assert.match(failed, /3 项处理失败，请在智能识别中查看。/);
+      assert.match(failed, /3 项处理失败，请在智能分析中查看。/);
       assert.doesNotMatch(failed, /已完成|运行中/);
     });
 
@@ -88,7 +88,7 @@ test('cloud settings show queue facts without changing cloud configuration or pr
         const html = render({ ...queue, paused: true, blocked_reason: 'provider_http_402' });
         assert.equal(status(html), '配置结果待确认');
         assert.match(html, />确认配置<\/button>/);
-        assert.doesNotMatch(html, /已配置|充值后|在智能识别中继续/);
+        assert.doesNotMatch(html, /已配置|充值后|在智能分析中继续/);
         assert.deepEqual(calls, ['configure_cloud']);
       } finally {
         mockIPC(() => ({ type: 'cloud_configuration_receipt', id: 'synthetic', pending: false, response: null }));

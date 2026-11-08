@@ -56,7 +56,7 @@
     const shortRecording = new URLSearchParams(location.search).has('short');
     // Secondary-page audit data is opt-in; the original timeline fixture stays unchanged.
     const workspace = new URLSearchParams(location.search).get('workspace');
-    const workspaceRequests = new Set(['people','cloud_status','cloud_tasks','review_items','voice_samples','usage_statistics','models']);
+    const workspaceRequests = new Set(['people','cloud_status','cloud_tasks','review_items','voice_samples','usage_statistics','models','workflow']);
     const NativeDate = Date;
     const clock = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(new URLSearchParams(location.search).get('clock') ?? '');
     const fixedNow = new NativeDate(2026, 9, 22, clock ? Number(clock[1]) : 18, clock ? Number(clock[2]) : 30).getTime();
@@ -228,6 +228,7 @@
         if (workspace === 'error') throw Error('模拟辅助页面读取失败');
         if (workspace === 'loading') return new Promise(() => {});
       }
+      if (request.type === 'workflow' && request.action.op === 'config_show') return response({ result: { ok: true, data: { revision: 1, config: { mode: 'single', tags: [], auto_asr: { mode: 'all', tag_ids: [] }, strategies: [] }, other_tag: 'other' } } });
       if (request.type === 'status') return response({ state });
       if (request.type === 'calendar_days') return response({ days: scene === 'empty' ? [] : [day(19), day(20), day(21), day(22)] });
       if (request.type === 'calendar_adjacent') {

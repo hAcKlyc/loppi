@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import { core, userError } from "./api";
+import { type CloudProvider, core, userError } from "./api";
 import { LoadingSkeleton } from "./LoadingState";
 import {
 	type UsageStatistics as Statistics,
@@ -312,7 +312,13 @@ export function UsageChart({
 	);
 }
 
-export function UsageStatisticsView({ refresh }: { refresh: number }) {
+export function UsageStatisticsView({
+	refresh,
+	provider,
+}: {
+	refresh: number;
+	provider: CloudProvider | null;
+}) {
 	const [range, setRange] = useState<7 | 30 | 90>(30);
 	const [statistics, setStatistics] = useState<Statistics | null>(null);
 	const [error, setError] = useState("");
@@ -378,8 +384,12 @@ export function UsageStatisticsView({ refresh }: { refresh: number }) {
 			)}
 			{statistics ? (
 				<div className="usage-charts" hidden={loadedRange !== range}>
-					<UsageChart kind="asr" days={statistics.days} />
-					<UsageChart kind="llm" days={statistics.days} />
+					<div hidden={provider !== "asr"}>
+						<UsageChart kind="asr" days={statistics.days} />
+					</div>
+					<div hidden={provider !== "llm"}>
+						<UsageChart kind="llm" days={statistics.days} />
+					</div>
 					<p className="usage-footnote">
 						从 {new Date(statistics.started_ms).toLocaleString("zh-CN")}{" "}
 						开始统计，之前的用量不补算。成本按调用时记录的人民币单价估算，未抵扣套餐或赠送额度。

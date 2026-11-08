@@ -10,7 +10,7 @@ iframe{display:block;border:0;transform-origin:top left}#frame{overflow:hidden}p
 <header><button id="run" disabled>运行辅助页面复核</button>
 <label>窗口<select id="size"><option>1120</option><option>760</option><option>1440</option></select></label>
 <label>平台<select id="platform"><option value="macos">macOS</option><option value="windows">Windows 呈现样板</option></select></label>
-<label>页面<select id="page"><option value="queue">智能识别</option><option value="statistics">用量统计</option><option value="people">人物库</option><option value="person">人物详情</option><option value="agent">Agent 接入</option><option value="settings">设置</option><option value="detail">事件详情</option><option value="onboarding">首次准备</option></select></label>
+<label>页面<select id="page"><option value="queue">智能分析</option><option value="statistics">用量统计</option><option value="people">人物库</option><option value="person">人物详情</option><option value="agent">Agent 接入</option><option value="settings">设置</option><option value="detail">事件详情</option><option value="onboarding">首次准备</option></select></label>
 <label>资料<select id="state"><option value="populated">有内容</option><option value="empty">空</option><option value="loading">加载中</option><option value="error">读取失败</option></select></label>
 </header>
 <div id="frame"><iframe id="preview" title="当前真实组件 · 隔离资料"></iframe></div>
@@ -31,13 +31,13 @@ async function load(){
  const doc=frame.contentDocument;
  if(kind==='onboarding'){await until(()=>doc.querySelector('.onboarding-content'),'首次准备');return;}
  if(kind==='detail'){await until(()=>doc.querySelectorAll('.transcript-row').length>=10,'长详情');return;}
- const names={queue:'智能识别',statistics:'智能识别',people:'人物库',person:'人物库',agent:'Agent 接入',settings:'设置'};
+ const names={queue:'智能分析',statistics:'智能分析',people:'人物库',person:'人物库',agent:'Agent 接入',settings:'设置'};
  await until(()=>button(doc,names[kind],doc.querySelector('.sidebar')??doc),'导航');
  button(doc,names[kind],doc.querySelector('.sidebar')).click();
  await until(()=>doc.querySelector(kind==='agent'?'.agent-access':'.page-container'),'页面');
  if(kind==='statistics'&&mode==='populated')await until(()=>doc.querySelector('.usage-chart'),'主页统计图');
  if(kind==='person'){await until(()=>doc.querySelectorAll('.people-list-row').length===2,'长姓名人物');doc.querySelectorAll('.people-list-row')[1].click();await until(()=>doc.querySelectorAll('.voice-sample-row').length===2,'人物详情');}
- const loaded={queue:'.queue-grid',statistics:'.usage-chart',people:'.people-list-row',agent:'.agent-code',settings:'.settings-page'};
+ const loaded={queue:'.analysis-flow',statistics:'.usage-chart',people:'.people-list-row',agent:'.agent-code',settings:'.settings-page'};
  if(mode==='populated'&&loaded[kind])await until(()=>doc.querySelector(loaded[kind]),'内容');
  if(mode==='empty'&&kind==='people')await until(()=>doc.querySelector('.list-empty'),'人物空态');
  if(mode==='error')await until(()=>doc.querySelector('[role=alert]'),'读取失败');
@@ -55,7 +55,7 @@ function inspect(){
  for(const toggle of [...doc.querySelectorAll('.switch')].filter(el=>el.getClientRects().length>0)){
   check(toggle.getAttribute('role')==='switch','私有开关没有状态语义');
   const on=toggle.getAttribute('aria-checked')==='true';
-  check(win.getComputedStyle(toggle).backgroundColor===(on?'rgb(182, 91, 66)':'rgb(98, 101, 95)'),'开关未统一为开暖红/关中性灰');
+  check(win.getComputedStyle(toggle).backgroundColor===(on?'rgb(182, 91, 66)':'rgb(222, 223, 215)'),'开关未统一为开暖红/关中性灰');
   check(win.getComputedStyle(toggle,'::after').transform===(on?'matrix(1, 0, 0, 1, 18, 0)':'none'),'开关颜色与圆钮位置不一致');
  }
  if(kind!=='detail'&&kind!=='onboarding'&&kind!=='person'){
@@ -66,10 +66,10 @@ function inspect(){
   if(kind==='agent')check(doc.querySelector('.agent-page-heading p').getBoundingClientRect().top>=heading.getBoundingClientRect().bottom,'Agent说明未排列在标题下方');
  }
  if(kind==='queue'&&mode==='populated'){
-  const toggles=[...doc.querySelectorAll('.queue-grid [role=switch]')];
+  const toggles=[...doc.querySelectorAll('.recognition-card [role=switch]')];
   check(![...doc.querySelectorAll('.task-row')].some(el=>el.getClientRects().length),'主页面仍展示任务列表');
-  check(doc.querySelectorAll('.queue-counts [aria-label$="任务明细"]').length===2,'缺少两类任务明细入口');
-  check(toggles.length===2&&toggles[0].getAttribute('aria-checked')==='false'&&toggles[1].getAttribute('aria-checked')==='true','队列开关状态/语义');
+  check(doc.querySelectorAll('.analysis-tabs [role=tab]').length===4&&doc.querySelectorAll('.queue-counts [aria-label$="任务明细"]').length===1,'模块或任务明细入口不完整');
+  check(toggles.length===1&&toggles[0].getAttribute('aria-checked')==='false','事件分析开关状态/语义');
   check(doc.querySelector('.queue-blocked')?.textContent.includes('余额不足'),'缺少阻断说明');
   check(win.getComputedStyle(doc.querySelector('.queue-blocked')).color==='rgb(118, 84, 29)','阻断未用注意色');
   check(!!doc.querySelector('.usage-chart'),'统计图没有默认展示');
@@ -79,7 +79,7 @@ function inspect(){
   check(doc.querySelector('.detail-scroll').scrollHeight>doc.querySelector('.detail-scroll').clientHeight,'缺少长阅读');
  }
  if(kind==='statistics'&&mode==='populated'){
-  for(const text of doc.querySelectorAll('.usage-grid text,.usage-date')){
+  for(const text of [...doc.querySelectorAll('.usage-grid text,.usage-date')].filter(text=>text.getClientRects().length)){
    const scale=text.getScreenCTM();
    check(parseFloat(win.getComputedStyle(text).fontSize)*Math.hypot(scale.a,scale.b)>=11.9,'统计图文字被随viewBox缩小');
    const label=text.getBoundingClientRect(),plot=text.closest('svg').getBoundingClientRect();

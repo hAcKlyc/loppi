@@ -822,11 +822,6 @@ p {
 	background: var(--color-surface);
 	padding: calc(var(--space-8) + var(--stroke-hairline)) var(--space-9);
 }
-.queue-grid {
-	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
-	gap: calc(var(--space-7) - var(--stroke-hairline));
-}
 .panel-header,
 .setting-row,
 .task-row {
@@ -2676,11 +2671,6 @@ body.floating-body .float-wrap {
 	font-size: var(--type-meta);
 }
 
-.recognition-tabs {
-	gap: var(--space-9);
-	border-bottom: var(--stroke-hairline) solid var(--color-border);
-	margin-bottom: var(--space-9);
-}
 .workflow-choices,
 .workflow-results {
 	display: grid;

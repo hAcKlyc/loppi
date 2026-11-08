@@ -267,7 +267,12 @@ export function Tabs<T extends string>({
 	id: string;
 	label: string;
 	value: T;
-	items: readonly { value: T; label: string; description?: string }[];
+	items: readonly {
+		value: T;
+		label: string;
+		description?: string;
+		icon?: ReactNode;
+	}[];
 	onChange: (value: T) => void;
 	disabled?: boolean;
 	className?: string;
@@ -317,6 +322,7 @@ export function Tabs<T extends string>({
 							[next]?.focus();
 					}}
 				>
+					{item.icon}
 					{item.label}
 				</button>
 			))}

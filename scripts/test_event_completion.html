@@ -6,7 +6,7 @@ const start=new Date(2026,10,2,10,0).getTime()+123;
 const initial={id:'00000000-0000-0000-0000-000000000001',title:'产品设计评审',started_ms:start,ended_ms:start+1800000,sources:'both',revision:1,processing_state:'settling_asr',coarse_segments:[{id:'coarse',source:'microphone',started_ms:start+60000,ended_ms:start+90000,text:'我们确认了事件结束后的处理方式，接下来补充交互和验证。'}],precise_segments:[]};
 let current={...initial},version=0,requestCount=0,receipt=null;
 const params=new URLSearchParams(location.search);const root=createRoot(document.getElementById('root'));
-function render(){root.render(React.createElement(DetailDrawer,{item:current,people:[],refreshToken:version,onClose:()=>root.render(null),onEdit:()=>alert('合成预览：编辑事件'),onTools:(_item,mode)=>alert('合成预览：'+mode),onDataAction:kind=>alert('合成预览：'+kind),onQueue:()=>alert('合成预览：查看智能识别'),onChanged:()=>{version++;render()},onMessage:()=>{}}))}
+function render(){root.render(React.createElement(DetailDrawer,{item:current,people:[],refreshToken:version,onClose:()=>root.render(null),onEdit:()=>alert('合成预览：编辑事件'),onTools:(_item,mode)=>alert('合成预览：'+mode),onDataAction:kind=>alert('合成预览：'+kind),onQueue:()=>alert('合成预览：查看智能分析'),onChanged:()=>{version++;render()},onMessage:()=>{}}))}
 mockIPC(async(command,args)=>{
  const r=args.request;
  if(r.type==='event_detail')return {type:'event',event:current};
