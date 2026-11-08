@@ -10,7 +10,11 @@ concurrency:
   group: verify-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  build_inputs:
+    uses: ./.github/workflows/build-inputs.yml
+
   offline:
+    needs: build_inputs
     runs-on: macos-15
     timeout-minutes: 40
     env:
@@ -28,6 +32,19 @@ jobs:
           xcrun --sdk macosx --show-sdk-version
       - name: Install frontend test dependencies
         run: npm ci --no-audit --no-fund
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: build-input-native-macOS
+          path: build/cache/native
+      - name: Prepare the same checksum-locked inference libraries as the macOS release
+        run: |
+          node --input-type=module <<'JS'
+          import { appendFileSync, mkdtempSync } from 'node:fs';
+          import { join } from 'node:path';
+          import { prepareNativeLibraries } from './scripts/build.mjs';
+          const lib = prepareNativeLibraries(mkdtempSync(join(process.env.RUNNER_TEMP, 'loppi-native-')));
+          appendFileSync(process.env.GITHUB_ENV, `SHERPA_ONNX_LIB_DIR=${lib}\n`);
+          JS
       - name: Verify the same gate as local development
         run: python3 scripts/verify.py --report build/verification.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -37,6 +54,7 @@ jobs:
           path: build/verification.json
 
   offline-windows:
+    needs: build_inputs
     runs-on: windows-2025
     timeout-minutes: 60
     steps:
@@ -53,15 +71,17 @@ jobs:
           arch: x64
       - name: Install frontend test dependencies
         run: npm ci --no-audit --no-fund
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: build-input-native-Windows
+          path: build/cache/windows
       - name: Prepare checksum-locked inference libraries
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $spec = Get-Content config/windows-assets.json -Raw | ConvertFrom-Json
           $cache = Join-Path $PWD 'build/cache/windows'
-          New-Item -ItemType Directory -Force -Path $cache | Out-Null
-          $archive = Join-Path $cache 'sherpa-onnx-2.0.0.tar.bz2'
-          Invoke-WebRequest -Uri $spec.native.url -OutFile $archive
+          $archive = Join-Path $cache $spec.native.archive
           if ((Get-Item $archive).Length -ne $spec.native.bytes) { throw 'Native archive size mismatch' }
           if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $spec.native.sha256) { throw 'Native archive checksum mismatch' }
           tar -xjf $archive -C $cache

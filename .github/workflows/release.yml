@@ -32,8 +32,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/release_ci.mjs preflight
 
-  build:
+  build_inputs:
     needs: preflight
+    if: needs.preflight.outputs.should_release == 'true'
+    uses: ./.github/workflows/build-inputs.yml
+    with:
+      include_models: true
+
+  build:
+    needs: [preflight, build_inputs]
     if: needs.preflight.outputs.should_release == 'true'
     strategy:
       fail-fast: false
@@ -57,6 +64,14 @@ jobs:
         with:
           ref: ${{ needs.preflight.outputs.source }}
           persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: build-input-native-${{ runner.os }}
+          path: build/cache/${{ runner.os == 'macOS' && 'native' || 'windows' }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: build-input-models
+          path: ${{ runner.os == 'macOS' && needs.build_inputs.outputs.model_cache || 'build/cache/windows/models' }}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'

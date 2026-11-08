@@ -38,7 +38,8 @@
   },
   "native": {
     "version": "2.0.0",
-    "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/v2.0.0/sherpa-onnx-v2.0.0-osx-universal2-static-lib.tar.bz2",
+    "url": "https://api.github.com/repos/k2-fsa/sherpa-onnx/releases/assets/669430089?download=1",
+    "accept": "application/octet-stream",
     "archive": "sherpa-onnx-v2.0.0-osx-universal2-static-lib.tar.bz2",
     "directory": "sherpa-onnx-v2.0.0-osx-universal2-static-lib",
     "bytes": 41041332,
