@@ -46,7 +46,6 @@ const { QueueView, SettingsView } = await import('../src/WorkspaceViews.tsx');
 const { recognitionServices } = await import('../src/recognition-services.ts');
 const h = React.createElement;
 const settle = async (fn = () => {}) => act(async () => { await fn(); await new Promise(resolve => setTimeout(resolve, 0)); });
-const tab = name => [...document.querySelectorAll('[role=tab]')].find(button => button.textContent === name);
 const select = label => document.querySelector(`button[aria-label="${label}"]`);
 const click = async element => { assert(element && !element.disabled, 'enabled button exists'); await settle(() => element.click()); };
 const baseQueue = { provider: 'llm', configured: true, paused: false, blocked_reason: null, pending: 72, processing: 2, failed: 3 };
@@ -58,7 +57,6 @@ const requests = [];
 let cloudReadMode = 'ready';
 let cloudReleases = [];
 let partialTasks = [], partialReviews = [];
-let timelineItems = [];
 const workflowConfig = {
   mode: 'single',
   tags: [
@@ -99,8 +97,7 @@ mockIPC((command, args) => {
   if (r.type === 'moments') return { type: r.type, moments: [] };
   if (r.type === 'people') return { type: r.type, people: [] };
   if (r.type === 'models') return { type: r.type, state: { phase: 'ready', speaker_phase: 'ready', progress_percent: 100 } };
-  if (r.type === 'timeline') return { type: r.type, items: timelineItems, gaps: [] };
-  if (r.type === 'event_detail') return { type: 'event', event: timelineItems.find(item => item.id === r.event_id) };
+  if (r.type === 'timeline') return { type: r.type, items: [], gaps: [] };
   if (r.type === 'range_detail') return { type: 'event', event: { precise_segments: [precise], coarse_segments: [] } };
   if (r.type === 'usage_statistics') return { type: r.type, statistics: { started_ms: r.boundaries[0], currency: 'CNY', days: r.boundaries.slice(0, -1).map(started_ms => ({ started_ms, covered: true, partial: false, asr: series, llm: series })) } };
   return { type: r.type, tasks: [], items: [] };
@@ -113,37 +110,12 @@ const settingsProps = {
 
 test('recognition settings navigation uses existing pages, focuses the service row and preserves queue controls', async t => {
   try {
-    await t.test('event progress opens the matching module and normal navigation defaults to event analysis', async () => {
-      const start = new Date().setHours(0, 0, 0, 0);
-      const event = {
-        title: '合成进度事件', started_ms: start, ended_ms: start + 1,
-        sources: 'microphone', revision: 1, fit_state: 'complete',
-        processing_state: 'asr_failed', coarse_segments: [], precise_segments: [], recording_sources: [],
-      };
-      try {
-        for (const [provider, completion_state] of [['asr', null], ['llm', 'processing']]) {
-          timelineItems = [{ ...event, id: provider, completion_state }];
-          await settle(() => root.render(h(App, { key: provider })));
-          await click(document.querySelector('.event-card'));
-          await click(document.querySelector('.detail-status-link'));
-          assert.equal(document.querySelector('.analysis-tabs [aria-selected=true]').textContent, recognitionServices[provider].title);
-          assert(select(`${recognitionServices[provider].title}任务明细`));
-          await click(select('时间线'));
-          await click(select('智能分析'));
-          assert.equal(document.querySelector('.analysis-tabs [aria-selected=true]').textContent, '事件分析');
-        }
-      } finally {
-        timelineItems = [];
-      }
-    });
-
     await t.test('real App card buttons reach both named rows repeatedly without opening or verifying keys', async () => {
       await settle(() => root.render(h(App)));
       assert.equal(select('智能分析').getAttribute('title'), '智能分析');
       for (const provider of ['llm', 'asr', 'llm']) {
         await click(select('智能分析'));
         const service = recognitionServices[provider];
-        await click(tab(service.title));
         assert.equal(document.querySelector('h1').textContent, '智能分析');
         const card = [...document.querySelectorAll('.recognition-card')].find(element => element.querySelector('h2').textContent === service.title);
         assert.equal(card.querySelector('p').textContent, service.description);
@@ -178,7 +150,7 @@ test('recognition settings navigation uses existing pages, focuses the service r
       await click(select('智能分析'));
       const queueMain = document.querySelector('main');
       queueMain.scrollTop = 420;
-      const refresh = queueMain.querySelector('.analysis-tab-bar > button');
+      const refresh = queueMain.querySelector('.page-heading button');
       const before = scrolled.length;
       await click(refresh);
       assert.equal(document.querySelector('main'), queueMain);
@@ -223,7 +195,6 @@ test('recognition settings navigation uses existing pages, focuses the service r
             queues: [queue], tasks: [], reviews: [], busy: false, onRefresh: async () => {},
             onSettings: value => locations.push(value), onMutate: async value => { mutations.push(value); return true; },
           })));
-          await click(tab(recognitionServices[provider].title));
           const card = [...document.querySelectorAll('.recognition-card')].find(element => element.querySelector('h2').textContent === recognitionServices[provider].title);
           assert.doesNotMatch(card.textContent, /运行中|已暂停/);
           assert.equal(card.querySelector('.queue-blocked')?.textContent.includes(warning) ?? null, warning ? true : null);
@@ -252,16 +223,16 @@ test('recognition settings navigation uses existing pages, focuses the service r
         reviews: [review, { ...review, id: 'speaker-review', kind: 'speaker', text: null, person_id: 'synthetic-person', person_name: '合成人物' }],
         busy: false, onSettings() {}, onRefresh: async () => { refreshes++; }, onMutate: async r => { mutations.push(r); return true; },
       };
-      await settle(() => root.render(h(QueueView, { ...props, key: "tasks" })));
-      assert.equal(document.querySelector('[role=tab][aria-selected=true]').textContent, '事件分析');
+      await settle(() => root.render(h(QueueView, props)));
+      assert.equal(document.querySelector('[role=tab][aria-selected=true]').textContent, '处理队列');
       assert(!document.querySelector('.task-row'));
       assert.equal(document.querySelectorAll('.usage-chart').length, 2);
-      assert.equal(document.querySelectorAll('.usage-charts > div:not([hidden])').length, 1);
+      assert.match(select('语音识别任务明细').parentElement.textContent, /2 条待核对/);
       const statistics = document.querySelector('.usage-statistics');
       const overview = document.querySelector('.recognition-statistics').parentElement;
       const range = [...statistics.querySelectorAll('.usage-range button')].find(button => button.textContent === '近 7 天');
       await click(range);
-      const legend = statistics.querySelector('.usage-charts > div:not([hidden]) .usage-legend button');
+      const legend = statistics.querySelector('.usage-legend button');
       await click(legend);
       assert.equal(legend.getAttribute('aria-pressed'), 'false');
       const reads = requests.filter(r => r.type === 'usage_statistics').length;
@@ -288,9 +259,7 @@ test('recognition settings navigation uses existing pages, focuses the service r
       assert.equal(range.getAttribute('aria-pressed'), 'true');
       assert.equal(legend.getAttribute('aria-pressed'), 'false');
       assert.equal(requests.filter(r => r.type === 'usage_statistics').length, reads, 'task navigation retains the statistics instance and request owner');
-      await click(tab('语音识别·精转录'));
-      assert.match(select('语音识别·精转录任务明细').parentElement.textContent, /2 条待核对/);
-      await click(select('语音识别·精转录任务明细'));
+      await click(select('语音识别任务明细'));
       assert.equal(document.querySelectorAll('.task-row').length, 1);
       assert.match(document.querySelector('.task-row').textContent, /语音识别/);
       assert.match(document.querySelector('.task-row').textContent, /产生新的识别用量/);
@@ -306,14 +275,14 @@ test('recognition settings navigation uses existing pages, focuses the service r
       await click(document.querySelector('.review-dismiss'));
       assert.deepEqual(mutations.pop(), { type: 'resolve_review', item_id: 'speaker-review', target_segment_id: null, expected_revision: 4 });
       assert.equal(refreshes, 2, 'successful review actions retain their existing refresh');
-      await settle(() => root.render(h(QueueView, { ...props, key: 'tasks', busy: true })));
+      await settle(() => root.render(h(QueueView, { ...props, busy: true })));
       assert.equal(document.querySelector('.task-row button').disabled, true);
       assert.equal(document.querySelector('.recognition-back').disabled, false);
-      await settle(() => root.render(h(QueueView, { ...props, key: 'tasks', tasksReady: false, reviewsReady: false })));
+      await settle(() => root.render(h(QueueView, { ...props, tasksReady: false, reviewsReady: false })));
       assert(document.querySelector('[aria-label="正在加载任务"]'));
       assert(document.querySelector('[aria-label="正在加载待核对记录"]'));
       assert(!document.querySelector('.task-row, .review-row, .list-empty'));
-      await settle(() => root.render(h(QueueView, { ...props, key: 'tasks', tasksReady: false, tasksError: '合成任务错误', reviewsReady: false, reviewsError: '合成核对错误' })));
+      await settle(() => root.render(h(QueueView, { ...props, tasksReady: false, tasksError: '合成任务错误', reviewsReady: false, reviewsError: '合成核对错误' })));
       assert.equal(document.querySelectorAll('.detail-load-error').length, 2);
       assert(!document.querySelector('.task-row, .review-row, .list-empty'));
     });
@@ -326,10 +295,11 @@ test('recognition settings navigation uses existing pages, focuses the service r
       await settle(() => root.render(h(QueueView, {
         queues, tasks: [], reviews: [], busy: false, onRefresh: async () => {}, onSettings() {}, onMutate: async () => true,
       })));
+      const tab = name => [...document.querySelectorAll('[role=tab]')].find(button => button.textContent === name);
       const button = (name, scope = document) => [...scope.querySelectorAll('button')].find(item => (item.querySelector('.button-labels > span:not([aria-hidden=true])')?.textContent ?? item.textContent) === name);
-      assert.equal(reads(), readCount + 1);
+      assert.equal(reads(), readCount);
       for (const item of document.querySelectorAll('[role=tab]')) assert(document.getElementById(item.getAttribute('aria-controls')));
-      await click(tab('事件分析'));
+      await click(tab('智能标签'));
       assert.equal(reads(), readCount + 1);
       assert.match(document.querySelector('table[aria-label="标签库"]').textContent, /判断标准.*系统兜底/s);
       await click(document.querySelector('input[value="multiple"]'));
@@ -337,30 +307,19 @@ test('recognition settings navigation uses existing pages, focuses the service r
       await click(select('编辑标签 · 工作会议'));
       const labelEditor = document.querySelector('dialog');
       assert.equal(labelEditor.querySelector('textarea').value, '讨论项目进展');
-      await click(button('去自定义策略调整', labelEditor));
+      await click(button('去自动流程调整', labelEditor));
       await settle(() => new Promise(resolve => requestAnimationFrame(resolve)));
       assert.equal(document.activeElement, select('编辑自动精转'));
-      await click(tab('事件分析'));
+      await click(tab('智能标签'));
       await click(select('编辑标签 · \uFEFF工作会议'));
       await click(button('应用到草稿', document.querySelector('dialog')));
-      await click(tab('语音识别·粗转录'));
-      assert(document.querySelector('.analysis-local-card'));
-      await click(tab('语音识别·精转录'));
-      await click(select('编辑自动精转'));
-      const preciseEditor = document.querySelector('dialog');
-      await click(preciseEditor.querySelector('input[value="all"]'));
-      await click(button('应用到草稿', preciseEditor));
-      await click(tab('自定义策略'));
+      await click(tab('处理队列'));
+      await click(tab('自动流程'));
       assert.equal(reads(), readCount + 1);
       assert.match(document.querySelector('[role=status]').textContent, /未保存的改动/);
       const flows = document.querySelector('table[aria-label="自动流程"]');
       const asrRow = flows.querySelector('tbody tr:first-child');
-      assert.match(asrRow.textContent, /自动精转\s*官方.*事件音频.*全部有效事件/s);
-      await click(select('编辑自动精转'));
-      const restore = document.querySelector('dialog');
-      await click(restore.querySelector('input[value="tags"]'));
-      await click([...restore.querySelectorAll('label')].find(item => item.textContent === '工作会议').querySelector('input'));
-      await click(button('应用到草稿', restore));
+      assert.match(asrRow.textContent, /自动精转\s*官方.*事件音频.*工作会议/s);
       assert(!flows.querySelector('input'), 'workflow list only shows summaries');
       await click(select('编辑自动精转'));
       const autoAsr = document.querySelector('dialog');
@@ -389,7 +348,7 @@ test('recognition settings navigation uses existing pages, focuses the service r
       await click(button('应用到草稿', strategyEditor));
       await click(button('保存配置'));
       assert.match(document.querySelector('dialog').textContent, /会议纪要 · 客户回访/);
-      await click(button('去自定义策略调整', document.querySelector('dialog')));
+      await click(button('去自动流程调整', document.querySelector('dialog')));
       await settle(() => new Promise(resolve => requestAnimationFrame(resolve)));
       assert.equal(document.activeElement, select('编辑策略 · 会议纪要'));
       await click(button('保存配置'));
@@ -416,11 +375,11 @@ test('recognition settings navigation uses existing pages, focuses the service r
           reviews: [review], reviewsReady: true, busy: false, onRefresh: async () => {},
           onSettings: provider => locations.push(provider), onMutate: async r => { mutations.push(r); return true; },
         })));
-        assert.equal(document.querySelectorAll('.recognition-card').length, 1);
-        assert.equal(document.querySelectorAll('.recognition-task-link button').length, 1);
+        assert.equal(document.querySelectorAll('.recognition-card').length, 2);
+        assert.equal(document.querySelectorAll('.recognition-task-link button').length, 2);
         assert(!document.querySelector('[role=switch], .queue-counts > span, .queue-blocked'), 'unknown status cannot claim OFF, zero counts or unconfigured');
         if (mode === 'loading') assert(document.querySelector('[aria-label="正在加载队列状态"]'));
-        else assert.equal(document.querySelectorAll('.recognition-card [role=alert]').length, 1);
+        else assert.equal(document.querySelectorAll('.recognition-card [role=alert]').length, 2);
         await click(select('事件分析设置'));
         assert.deepEqual(locations, ['llm']);
         await click(select('事件分析任务明细'));
@@ -429,8 +388,7 @@ test('recognition settings navigation uses existing pages, focuses the service r
         await click(document.querySelector('.task-row button'));
         assert.deepEqual(mutations.pop(), { type: 'retry_cloud_task', task_id: 'independent-llm' });
         await click(document.querySelector('.recognition-back'));
-        await click(tab('语音识别·精转录'));
-        await click(select('语音识别·精转录任务明细'));
+        await click(select('语音识别任务明细'));
         assert.equal(document.querySelectorAll('.task-row').length, 1);
         assert.match(document.querySelector('.task-row').textContent, /语音识别/);
         await click(document.querySelector('.review-row button'));
@@ -449,19 +407,18 @@ test('recognition settings navigation uses existing pages, focuses the service r
           const before = requests.length;
           await settle(() => root.render(h(App, { key: `partial-${mode}` })));
           await click(select('智能分析'));
-          assert.equal(document.querySelectorAll('.recognition-task-link button').length, 1);
+          assert.equal(document.querySelectorAll('.recognition-task-link button').length, 2);
           assert(!document.querySelector('[role=switch], .queue-counts > span, .queue-blocked'));
-          if (mode === 'failure') assert.equal(document.querySelectorAll('.recognition-card [role=alert]').length, 1);
+          if (mode === 'failure') assert.equal(document.querySelectorAll('.recognition-card [role=alert]').length, 2);
           else assert(document.querySelector('[aria-label="正在加载队列状态"]'));
+          assert.match(select('语音识别任务明细').parentElement.textContent, /1 条待核对/);
           await click(select('事件分析任务明细'));
           assert.equal(document.querySelectorAll('.task-row').length, 1);
           assert.match(document.querySelector('.task-row').textContent, /事件分析/);
           await click(document.querySelector('.task-row button'));
           assert(requests.slice(before).some(r => r.type === 'retry_cloud_task' && r.task_id === 'app-partial-llm'));
           await click(document.querySelector('.recognition-back'));
-          await click(tab('语音识别·精转录'));
-          assert.match(select('语音识别·精转录任务明细').parentElement.textContent, /1 条待核对/);
-          await click(select('语音识别·精转录任务明细'));
+          await click(select('语音识别任务明细'));
           assert.equal(document.querySelectorAll('.task-row').length, 1);
           assert.match(document.querySelector('.task-row').textContent, /语音识别/);
           await click(document.querySelector('.review-row button'));

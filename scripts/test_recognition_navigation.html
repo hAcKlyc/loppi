@@ -11,7 +11,6 @@ const scenario=new URLSearchParams(location.search).get('scenario')??'mixed';
 const queue=(provider)=>({provider,configured:scenario!=='unconfigured',paused:scenario==='paused'||(scenario==='mixed'&&provider==='asr'),blocked_reason:scenario==='balance'?'provider_http_402':scenario==='blocked'?'future_block':null,pending:provider==='llm'?72:8,processing:provider==='llm'?2:0,failed:provider==='llm'?3:1});
 let queues=['llm','asr'].map(queue);
 const requests=[];
-const config={mode:'single',tags:[{id:'work',name:'工作会议',criteria:'讨论项目进展'}],auto_asr:{mode:'tags',tag_ids:['work']},strategies:[{id:'minutes',name:'会议纪要',input:'precise',prompt:'列出决策与待办',tag_ids:['work']}]};
 const base=new Date(2026,10,1,10).getTime();
 const review={id:'synthetic-review',kind:'text',original_segment_id:'old-synthetic-segment',source:'microphone',started_ms:base,ended_ms:base+12000,text:'合成记录的文字修正',person_id:null,person_name:null,revision:1};
 const usageSeries=(count)=>({requests:count,count,input_tokens:count*1200,output_tokens:count*160,cached_tokens:count*800,cost_nano:count*120000,incomplete:0});
@@ -24,7 +23,6 @@ mockIPC((command,args)=>{
  if(command==='login_item_status')return 1;
  if(command!=='core_request')return null;
  const r=args.request;requests.push(structuredClone(r));
- if(r.type==='workflow')return{result:{ok:true,data:{revision:3,config,other_tag:'other'}}};
  if(r.type==='cloud_status')return{type:r.type,queues};
  if(r.type==='calendar_days')return{type:r.type,days:[]};
  if(r.type==='calendar_adjacent')return{type:r.type,newer_ms:null,older_ms:null};
@@ -41,7 +39,6 @@ mockIPC((command,args)=>{
  throw Error('Unexpected fixture request: '+r.type);
 },{shouldMockEvents:true});
 createRoot(document.getElementById('root')).render(h(App));
-const tab=title=>[...document.querySelectorAll('[role=tab]')].find(element=>element.textContent===title);
 const button=label=>document.querySelector(`button[aria-label="${label}"]`);
 const click=async element=>{if(!element||element.disabled)throw Error('按钮不可用');element.click();await wait(100)};
 await wait(140);await click(button('智能分析'));
@@ -52,9 +49,8 @@ window.runRegression=async()=>{
  const result=document.getElementById('result');
  try{
   const before=requests.length;
-  for(const [provider,title]of[['llm','事件分析'],['asr','语音识别·精转录'],['llm','事件分析']]){
+  for(const [provider,title]of[['llm','事件分析'],['asr','语音识别'],['llm','事件分析']]){
    await click(button('智能分析'));
-   await click(tab(title));
    const card=[...document.querySelectorAll('.recognition-card')].find(e=>e.querySelector('h2').textContent===title);
    check(card&&!/运行中|已暂停/.test(card.textContent),'卡片常态由开关呈现');
    const description=card.querySelector('p').textContent;
@@ -83,26 +79,22 @@ window.runTaskRegression=async()=>{
  const result=document.getElementById('result');
  try{
   await click(button('智能分析'));
-  const steps=[...document.querySelectorAll('.analysis-step')];
-  const tabs=[...document.querySelectorAll('.analysis-tabs [role=tab]')];
-  check(steps.length===4&&tabs.length===4,'流程和页签均有四个模块');
-  check(steps.every((step,index)=>step.querySelector('strong').textContent===tabs[index].textContent&&step.querySelector('img').src===tabs[index].querySelector('img').src),'流程与页签共用标题及图标');
-  check(new Set(steps.map(step=>step.querySelector('img').src)).size===3&&steps[0].querySelector('img').src===steps[2].querySelector('img').src,'粗转和精转共用图标');
-  check(steps.every(step=>step.querySelector('img').naturalWidth>0),'图标成功加载');
-  const mainWidth=document.querySelector('main').clientWidth;
-  check(document.querySelector('main').scrollWidth===mainWidth&&steps.every(step=>step.scrollWidth<=step.clientWidth),'标准及窄窗无横向溢出');
-  tabs[1].focus();tabs[1].dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
-  check(document.activeElement===tabs[2],'键盘箭头可以聚焦对应模块');
-  await click(tabs[0]);check(document.querySelector('.analysis-local-card')?.textContent.includes('已就绪'),'粗转录页展示本地模型');
-  await click(tabs[1]);check(document.querySelector('.usage-charts > div:not([hidden]) .usage-chart'),'本页统计图直接展示');
+  const tabs=[...document.querySelectorAll('.recognition-tabs [role=tab]')];
+  check(tabs.map(tab=>tab.textContent).join('|')==='处理队列|智能标签|自动流程','恢复原来的三个页签');
+  check(tabs[0].getAttribute('aria-selected')==='true','默认展示处理队列');
+  const flow=document.querySelector('.analysis-flow');
+  check(flow.querySelectorAll('.analysis-step').length===4&&!flow.textContent.includes('事件确定后'),'顶部保留四节点流程，去掉分叉文案');
+  check(flow.querySelector('.analysis-flow-connector').getBoundingClientRect().width<=24,'分叉前的连线收窄');
+  check([...flow.querySelectorAll('.analysis-step')].every(step=>step.scrollWidth<=step.clientWidth&&step.querySelector('img').naturalWidth>0),'流程内容完整可读');
+  check(document.querySelectorAll('.queue-grid .recognition-card').length===2,'处理队列保留两张卡片');
+  check(document.querySelectorAll('.usage-chart').length===2,'统计图直接展示');
   const main=document.querySelector('main'),statistics=document.querySelector('.usage-statistics');
   const overview=document.querySelector('.recognition-statistics').parentElement;
   const range=[...statistics.querySelectorAll('.usage-range button')].find(b=>b.textContent==='近 7 天');
   await click(range);
-  const legend=statistics.querySelector('.usage-charts > div:not([hidden]) .usage-legend button');await click(legend);
+  const legend=statistics.querySelector('.usage-legend button');await click(legend);
   const reads=requests.filter(r=>r.type==='usage_statistics').length;
-  for(const[provider,title]of[['llm','事件分析'],['asr','语音识别·精转录'],['llm','事件分析']]){
-   await click(tab(title));
+  for(const[provider,title]of[['llm','事件分析'],['asr','语音识别'],['llm','事件分析']]){
    main.scrollTop=main.scrollHeight;check(main.scrollTop>0,'主页面具有实际滚动内容');
    await click(button(title+'任务明细'));
    check(document.querySelector('h1').textContent===title+'任务明细'&&document.activeElement===document.querySelector('h1'),'任务标题及键盘焦点');

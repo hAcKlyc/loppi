@@ -60,8 +60,6 @@ function errorText(error: unknown): string {
 function App() {
 	const update = useAppUpdate();
 	const [page, setPage] = useState<Page>("timeline");
-	const [analysisEntryProvider, setAnalysisEntryProvider] =
-		useState<CloudProvider>("llm");
 	const [settingsProvider, setSettingsProvider] =
 		useState<CloudProvider | null>(null);
 	useEffect(() => {
@@ -959,8 +957,6 @@ function App() {
 							aria-current={page === id ? "page" : undefined}
 							title={label}
 							onClick={() => {
-								if (id === "queue" && page !== "queue")
-									setAnalysisEntryProvider("llm");
 								setPage(id);
 								setSettingsProvider(null);
 								setDataAction(null);
@@ -1056,7 +1052,6 @@ function App() {
 				)}
 				{page === "queue" && (
 					<QueueView
-						initialProvider={analysisEntryProvider}
 						queuesReady={contextReady.queues}
 						queuesError={contextErrors.queues}
 						tasksReady={tasksReady}
@@ -1064,8 +1059,6 @@ function App() {
 						reviewsReady={reviewsReady}
 						reviewsError={reviewsError}
 						queues={queues}
-						models={models}
-						modelsError={contextErrors.models}
 						tasks={tasks}
 						reviews={reviews}
 						busy={busy}
@@ -1130,8 +1123,7 @@ function App() {
 					onClose={() => setSelection(null)}
 					onEdit={(item) => openForm({ mode: "edit", item })}
 					onTools={openTools}
-					onQueue={(provider) => {
-						setAnalysisEntryProvider(provider);
+					onQueue={() => {
 						setSelection(null);
 						setPage("queue");
 					}}

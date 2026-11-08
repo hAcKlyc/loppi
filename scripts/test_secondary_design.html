@@ -37,7 +37,7 @@ async function load(){
  await until(()=>doc.querySelector(kind==='agent'?'.agent-access':'.page-container'),'页面');
  if(kind==='statistics'&&mode==='populated')await until(()=>doc.querySelector('.usage-chart'),'主页统计图');
  if(kind==='person'){await until(()=>doc.querySelectorAll('.people-list-row').length===2,'长姓名人物');doc.querySelectorAll('.people-list-row')[1].click();await until(()=>doc.querySelectorAll('.voice-sample-row').length===2,'人物详情');}
- const loaded={queue:'.analysis-flow',statistics:'.usage-chart',people:'.people-list-row',agent:'.agent-code',settings:'.settings-page'};
+ const loaded={queue:'.queue-grid',statistics:'.usage-chart',people:'.people-list-row',agent:'.agent-code',settings:'.settings-page'};
  if(mode==='populated'&&loaded[kind])await until(()=>doc.querySelector(loaded[kind]),'内容');
  if(mode==='empty'&&kind==='people')await until(()=>doc.querySelector('.list-empty'),'人物空态');
  if(mode==='error')await until(()=>doc.querySelector('[role=alert]'),'读取失败');
@@ -66,10 +66,10 @@ function inspect(){
   if(kind==='agent')check(doc.querySelector('.agent-page-heading p').getBoundingClientRect().top>=heading.getBoundingClientRect().bottom,'Agent说明未排列在标题下方');
  }
  if(kind==='queue'&&mode==='populated'){
-  const toggles=[...doc.querySelectorAll('.recognition-card [role=switch]')];
+  const toggles=[...doc.querySelectorAll('.queue-grid [role=switch]')];
   check(![...doc.querySelectorAll('.task-row')].some(el=>el.getClientRects().length),'主页面仍展示任务列表');
-  check(doc.querySelectorAll('.analysis-tabs [role=tab]').length===4&&doc.querySelectorAll('.queue-counts [aria-label$="任务明细"]').length===1,'模块或任务明细入口不完整');
-  check(toggles.length===1&&toggles[0].getAttribute('aria-checked')==='false','事件分析开关状态/语义');
+  check(doc.querySelectorAll('.queue-counts [aria-label$="任务明细"]').length===2,'缺少两类任务明细入口');
+  check(toggles.length===2&&toggles[0].getAttribute('aria-checked')==='false'&&toggles[1].getAttribute('aria-checked')==='true','队列开关状态/语义');
   check(doc.querySelector('.queue-blocked')?.textContent.includes('余额不足'),'缺少阻断说明');
   check(win.getComputedStyle(doc.querySelector('.queue-blocked')).color==='rgb(118, 84, 29)','阻断未用注意色');
   check(!!doc.querySelector('.usage-chart'),'统计图没有默认展示');
@@ -79,7 +79,7 @@ function inspect(){
   check(doc.querySelector('.detail-scroll').scrollHeight>doc.querySelector('.detail-scroll').clientHeight,'缺少长阅读');
  }
  if(kind==='statistics'&&mode==='populated'){
-  for(const text of [...doc.querySelectorAll('.usage-grid text,.usage-date')].filter(text=>text.getClientRects().length)){
+  for(const text of doc.querySelectorAll('.usage-grid text,.usage-date')){
    const scale=text.getScreenCTM();
    check(parseFloat(win.getComputedStyle(text).fontSize)*Math.hypot(scale.a,scale.b)>=11.9,'统计图文字被随viewBox缩小');
    const label=text.getBoundingClientRect(),plot=text.closest('svg').getBoundingClientRect();

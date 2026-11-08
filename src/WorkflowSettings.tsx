@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import type { AnalysisSection } from "./AnalysisOverview";
 import {
 	Button,
 	Field,
@@ -7,6 +6,7 @@ import {
 	IconButton,
 	Modal,
 	SegmentedOptions,
+	TabPanel,
 } from "./Controls";
 import {
 	inputLabel,
@@ -23,7 +23,7 @@ import {
 
 const NEW_ID = "00000000-0000-0000-0000-000000000000";
 
-type WorkflowSection = Exclude<AnalysisSection, "coarse">;
+export type WorkflowSection = "labels" | "automation";
 type LabelOption = WorkflowLabel & { removed?: boolean };
 type Editor =
 	| { kind: "tag"; index: number | null; value: WorkflowTag }
@@ -178,14 +178,16 @@ export function WorkflowSettings({
 	if (!section) return null;
 	if (!draft || !saved) {
 		return (
-			<div className="panel-card" role="status">
-				{message || "正在读取智能分析配置…"}
-				{message && (
-					<Button tone="quiet" onClick={reload}>
-						重试
-					</Button>
-				)}
-			</div>
+			<TabPanel tabsId={tabsId} value={section} selected={section}>
+				<div className="panel-card" role="status">
+					{message || "正在读取智能标签与自动流程…"}
+					{message && (
+						<Button tone="quiet" onClick={reload}>
+							重试
+						</Button>
+					)}
+				</div>
+			</TabPanel>
 		);
 	}
 
@@ -304,26 +306,8 @@ export function WorkflowSettings({
 		);
 	}
 
-	const asrTriggers =
-		draft.auto_asr.mode === "all"
-			? "全部有效事件"
-			: triggerSummary(draft.auto_asr.tag_ids, "未选择标签");
-	const editAutoAsr = (
-		<Button
-			id={`${tabsId}-auto-asr`}
-			tone="quiet"
-			size="compact"
-			className="workflow-flow-edit"
-			aria-label="编辑自动精转"
-			disabled={busy}
-			onClick={() => setEditor({ kind: "auto_asr", value: draft.auto_asr })}
-		>
-			编辑
-		</Button>
-	);
-
 	return (
-		<>
+		<TabPanel tabsId={tabsId} value={section} selected={section}>
 			<div className="workflow-settings">
 				{section === "labels" ? (
 					<>
@@ -401,14 +385,6 @@ export function WorkflowSettings({
 							</tbody>
 						</table>
 					</>
-				) : section === "precise" ? (
-					<div className="panel-card setting-row">
-						<div>
-							<strong>自动精转</strong>
-							<div>{asrTriggers}</div>
-						</div>
-						{editAutoAsr}
-					</div>
 				) : (
 					<table
 						className="workflow-config-table workflow-config-strategies"
@@ -451,8 +427,26 @@ export function WorkflowSettings({
 									<small className="workflow-builtin-label">官方</small>
 								</th>
 								<td>事件音频</td>
-								<td>{asrTriggers}</td>
-								<td>{editAutoAsr}</td>
+								<td>
+									{draft.auto_asr.mode === "all"
+										? "全部有效事件"
+										: triggerSummary(draft.auto_asr.tag_ids, "未选择标签")}
+								</td>
+								<td>
+									<Button
+										id={`${tabsId}-auto-asr`}
+										tone="quiet"
+										size="compact"
+										className="workflow-flow-edit"
+										aria-label="编辑自动精转"
+										disabled={busy}
+										onClick={() =>
+											setEditor({ kind: "auto_asr", value: draft.auto_asr })
+										}
+									>
+										编辑
+									</Button>
+								</td>
 							</tr>
 							{draft.strategies.map((strategy, index) => (
 								<tr key={strategy.id === NEW_ID ? `new-${index}` : strategy.id}>
@@ -702,7 +696,7 @@ export function WorkflowSettings({
 										);
 									}}
 								>
-									去自定义策略调整
+									去自动流程调整
 								</Button>
 							</div>
 						)}
@@ -748,7 +742,7 @@ export function WorkflowSettings({
 								openAffectedRule(dependency.affected[0]);
 							}}
 						>
-							去自定义策略调整
+							去自动流程调整
 						</Button>
 						{dependency.canAdd && (
 							<Button
@@ -762,6 +756,6 @@ export function WorkflowSettings({
 					</div>
 				</Modal>
 			)}
-		</>
+		</TabPanel>
 	);
 }

@@ -9,7 +9,6 @@ import {
 } from "react";
 import {
 	audioCoverageLabel,
-	type CloudProvider,
 	type CoarseSegment,
 	type CoreResponse,
 	core,
@@ -66,7 +65,7 @@ type Props = {
 	onClose: () => void;
 	onEdit: (item: TimelineItem) => void;
 	onTools: (item: TimelineItem, mode?: "split" | "merge" | "delete") => void;
-	onQueue: (provider: CloudProvider) => void;
+	onQueue: () => void;
 	onDataAction: (kind: "export" | "cleanup", item: TimelineItem) => void;
 	onChanged: (manualRangeId?: string) => void;
 	onConfirmedEvent: (eventId: string) => Promise<void>;
@@ -1339,13 +1338,7 @@ export function DetailDrawer({
 										className="detail-status-link"
 										disabled={busy}
 										title={busy ? undefined : "查看处理进度"}
-										onClick={() =>
-											onQueue(
-												completionProcessing || completionFailed
-													? "llm"
-													: "asr",
-											)
-										}
+										onClick={onQueue}
 									>
 										{statusText} <span aria-hidden="true">›</span>
 									</button>
