@@ -30,7 +30,8 @@ function fetchAsset(path, spec) {
   mkdirSync(dirname(path), { recursive: true });
   // Download to a temporary sibling. Never accept a partial or stale cache hit.
   const temporary = `${path}.download-${process.pid}`;
-  run('curl', ['--fail', '--location', '--retry', '3', '--silent', '--show-error', spec.url, '--output', temporary]);
+  const headers = spec.accept ? ['--header', `Accept: ${spec.accept}`] : [];
+  run('curl', ['--fail', '--location', '--retry', '3', '--silent', '--show-error', ...headers, spec.url, '--output', temporary]);
   if (!checked(temporary, spec)) throw new Error(`Asset checksum mismatch: ${spec.url}`);
   run('/bin/mv', ['-f', temporary, path]);
 }
