@@ -4,9 +4,9 @@
 
 ## 当前分发
 
-截至 2026-11-06，[v0.1.23](https://github.com/hAcKlyc/loppi/releases/tag/v0.1.23)已正式公开并设为 Latest，提供 Mac Apple Silicon、Mac Intel 及 Windows x64 安装包。13 个附件包含安装包、签名更新资源、三份构建报告、SHA256SUMS 和 latest.json；[固定更新地址](https://github.com/hAcKlyc/loppi/releases/latest/download/latest.json)已通过匿名读取验证。
+截至 2026-11-07，[v0.1.24](https://github.com/hAcKlyc/loppi/releases/tag/v0.1.24)已正式公开并设为 Latest，提供 Mac Apple Silicon、Mac Intel 及 Windows x64 安装包。13 个附件包含安装包、签名更新资源、三份构建报告、SHA256SUMS 和 latest.json；[固定更新地址](https://github.com/hAcKlyc/loppi/releases/latest/download/latest.json)已通过匿名读取验证。
 
-本次安装包的源码及 tag 解析提交均为 `5a04a9de12c1e343373af073afaf5a035ba2f7a4`，三平台组件身份一致且 dirty=false。完整来源、签名、验收边界及摘要见[本次发行记录](../specs/research/2026-11-06-github-release-0.1.23.md)。历史 [0.1.21 发行证据](../specs/research/2026-11-03-github-release-0.1.21.md)保留其原始源码归属。
+本次安装包的源码及 tag 解析提交均为 `c6c7fd28744c89a04974c2ccad114ed93aa2bd11`，三平台组件身份一致且 dirty=false。完整来源、签名、验收边界及摘要见[本次发行记录](../specs/research/2026-11-07-github-release-0.1.24.md)。历史 [0.1.21 发行证据](../specs/research/2026-11-03-github-release-0.1.21.md)保留其原始源码归属。
 
 | 平台 | 当前声明与证据 | 尚未覆盖的范围 |
 | --- | --- | --- |
@@ -16,7 +16,7 @@
 
 两Mac均已完成Developer ID签名和Apple公证，三平台更新签名均已验证。Windows安装包仍无Authenticode系统代码签名。Windows10、Windows ARM64和Linux不在当前支持声明中；CI和单次验收不代表所有设备的录音、睡眠恢复、识别质量与能耗均已验证。
 
-已有支持更新的客户端可通过应用内更新取得 0.1.23；缺少更新功能的旧版需手动安装。本次用户试用验收已通过；逐项真实 DarkWake、睡眠音频落盘及跨平台升级的证据边界仍保留在[交付台账](../specs/prd/devplan_261105_wake-recovery.md)中。
+已有支持更新的客户端可通过应用内更新取得 0.1.24；缺少更新功能的旧版需手动安装。本批功能自测、浏览器交互与独立审查已通过，用户已要求合并发布；真实长时录音、慢盘与跨平台安装升级的证据边界保留在[交付台账](../specs/prd/devplan_261107_smooth-core-and-detail.md)中。
 
 历史公开v0.1.18保留两份已签名、公证的Mac DMG，其源码为`4969899afd8d2e9d4dc632d568ef33a843cc56bc`，没有改写。历史候选台账中的哈希只属于各自候选，不替代当前发行包身份。
 

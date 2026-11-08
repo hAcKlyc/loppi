@@ -39,17 +39,17 @@ export function CloudServiceSettings({
 					: "已配置 · 处理受阻";
 			queueNote =
 				queue.blocked_reason === "provider_http_402"
-					? "充值后，在智能识别中继续；失败项需手动重试。"
-					: "请在智能识别中查看详情。";
+					? "充值后，在智能分析中继续；失败项需手动重试。"
+					: "请在智能分析中查看详情。";
 		} else if (queue.paused) {
 			status = "已配置 · 已暂停";
-			queueNote = "录音与云端处理分别控制，请在智能识别中继续。";
+			queueNote = "录音与云端处理分别控制，请在智能分析中继续。";
 		} else if (queue.processing > 0)
 			status = `已配置 · ${queue.processing} 项处理中`;
 		else if (queue.pending > 0) status = `已配置 · ${queue.pending} 项待处理`;
 		else status = "已配置 · 等待任务";
 		if (queue.configured && !queueNote && queue.failed > 0)
-			queueNote = `${queue.failed} 项处理失败，请在智能识别中查看。`;
+			queueNote = `${queue.failed} 项处理失败，请在智能分析中查看。`;
 	}
 	const { title, description } = recognitionServices[provider];
 	const close = () => setEditing(false);

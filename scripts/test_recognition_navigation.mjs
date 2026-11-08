@@ -57,6 +57,20 @@ const requests = [];
 let cloudReadMode = 'ready';
 let cloudReleases = [];
 let partialTasks = [], partialReviews = [];
+let timelineItems = [];
+const workflowConfig = {
+  mode: 'single',
+  tags: [
+    { id: 'work', name: '工作会议', criteria: '讨论项目进展' },
+    { id: 'client', name: '客户回访', criteria: '客户反馈' },
+    { id: 'distinct', name: '\uFEFF工作会议', criteria: '\uFEFF' },
+  ],
+  auto_asr: { mode: 'tags', tag_ids: ['work'] },
+  strategies: [
+    { id: 'minutes', name: '会议纪要', input: 'precise', prompt: '列出会议决策', tag_ids: ['work'] },
+    { id: 'asr-name', name: '自动精转', input: 'coarse', prompt: '列出待办', tag_ids: ['work'] },
+  ],
+};
 mockIPC((command, args) => {
   if (command === 'onboarding_status') return { completed: true };
   if (command === 'entry_snapshot') return { sequence: 1, state, error: null, mode: 'top', appearance: 'sleeping', control: 'resume', detail: null, notice: null };
@@ -65,6 +79,15 @@ mockIPC((command, args) => {
   if (command !== 'core_request') return null;
   const r = args.request;
   requests.push(r);
+  if (r.type === 'workflow') {
+    const { op, config, add_required_asr_tags } = r.action;
+    if (op === 'config_show') return { result: { ok: true, data: { revision: 3, config: workflowConfig, other_tag: 'other' } } };
+    if (op === 'strategies') return { result: { ok: true, data: { revision: 3, strategies: [] } } };
+    if (op === 'runs') return { result: { ok: true, data: { runs: [] } } };
+    assert.equal(op, 'config_set');
+    if (!add_required_asr_tags) return { result: { ok: false, error: { code: 'asr_rule_conflict', details: { affected: [{ strategy_id: 'minutes', name: '会议纪要', tag_ids: ['client'] }] } } } };
+    return { result: { ok: true, data: { revision: 4, config: { ...config, auto_asr: { mode: 'tags', tag_ids: ['work', 'client'] } }, other_tag: 'other' } } };
+  }
   if (r.type === 'cloud_status') {
     if (cloudReadMode === 'failure') throw Error('合成队列读取失败');
     if (cloudReadMode === 'loading') return new Promise(resolve => cloudReleases.push(() => resolve({ type: r.type, queues })));
@@ -77,7 +100,8 @@ mockIPC((command, args) => {
   if (r.type === 'moments') return { type: r.type, moments: [] };
   if (r.type === 'people') return { type: r.type, people: [] };
   if (r.type === 'models') return { type: r.type, state: { phase: 'ready', speaker_phase: 'ready', progress_percent: 100 } };
-  if (r.type === 'timeline') return { type: r.type, items: [], gaps: [] };
+  if (r.type === 'timeline') return { type: r.type, items: timelineItems, gaps: [] };
+  if (r.type === 'event_detail') return { type: 'event', event: timelineItems.find(item => item.id === r.event_id) };
   if (r.type === 'range_detail') return { type: 'event', event: { precise_segments: [precise], coarse_segments: [] } };
   if (r.type === 'usage_statistics') return { type: r.type, statistics: { started_ms: r.boundaries[0], currency: 'CNY', days: r.boundaries.slice(0, -1).map(started_ms => ({ started_ms, covered: true, partial: false, asr: series, llm: series })) } };
   return { type: r.type, tasks: [], items: [] };
@@ -90,13 +114,49 @@ const settingsProps = {
 
 test('recognition settings navigation uses existing pages, focuses the service row and preserves queue controls', async t => {
   try {
+    await t.test('event dialogs manage strategies and scene labels directly without saving', async () => {
+      const start = new Date().setHours(0, 0, 0, 0);
+      timelineItems = [{
+        id: 'management-fixture', title: '合成管理入口', started_ms: start, ended_ms: start + 1000,
+        sources: 'microphone', revision: 1, fit_state: 'complete', completed_ms: start + 1000,
+        processing_state: 'transcribed', recording_sources: [], coarse_segments: [], precise_segments: [],
+        workflow: { phase: 'decided', tag_state: 'unclassified', labels: [], manual: false },
+      }];
+      try {
+        await settle(() => root.render(h(App, { key: 'workflow-management' })));
+        for (const [opener, title, destination] of [
+          ['执行策略', '执行策略', '流程与策略'],
+          ['编辑标签 · 添加标签', '编辑事件标签', '事件分析·场景标签'],
+        ]) {
+          const before = requests.length;
+          await click(document.querySelector('.event-card'));
+          await click(select(opener));
+          const dialog = document.querySelector('dialog.modal[open]');
+          assert.equal(dialog.querySelector('.modal-title h2').textContent, title);
+          const manage = dialog.querySelector('.modal-header-action button');
+          assert.equal(manage.textContent, '管理');
+          if (title === '执行策略') assert.match(dialog.textContent, /添加策略/);
+          await click(manage);
+          assert.equal(document.querySelector('.recognition-tabs [aria-selected=true]').textContent, destination);
+          assert(!document.querySelector('dialog[open]'));
+          assert(document.activeElement === document.querySelector('h1'), 'destination heading receives focus, got ' + document.activeElement?.tagName);
+          assert(requests.slice(before).filter(r => r.type === 'workflow').every(r => ['runs', 'strategies', 'config_show'].includes(r.action.op)));
+          await click(select('时间线'));
+        }
+        await click(select('智能分析'));
+        assert.equal(document.querySelector('.recognition-tabs [aria-selected=true]').textContent, '处理队列');
+      } finally {
+        timelineItems = [];
+      }
+    });
+
     await t.test('real App card buttons reach both named rows repeatedly without opening or verifying keys', async () => {
       await settle(() => root.render(h(App)));
-      assert.equal(select('智能识别').getAttribute('title'), '智能识别');
+      assert.equal(select('智能分析').getAttribute('title'), '智能分析');
       for (const provider of ['llm', 'asr', 'llm']) {
-        await click(select('智能识别'));
+        await click(select('智能分析'));
         const service = recognitionServices[provider];
-        assert.equal(document.querySelector('h1').textContent, '智能识别');
+        assert.equal(document.querySelector('h1').textContent, '智能分析');
         const card = [...document.querySelectorAll('.recognition-card')].find(element => element.querySelector('h2').textContent === service.title);
         assert.equal(card.querySelector('p').textContent, service.description);
         assert.doesNotMatch(card.textContent, /运行中|已暂停/);
@@ -126,24 +186,41 @@ test('recognition settings navigation uses existing pages, focuses the service r
       assert(!document.activeElement?.dataset.cloudProvider);
     });
 
-    await t.test('App pages own independent scroll containers while same-page refresh preserves the container and focus', async () => {
-      await click(select('智能识别'));
+    await t.test('returning to the queue reloads live data without replacing the page or stealing focus', async () => {
+      const beforeEntry = requests.length;
+      await click(select('智能分析'));
       const queueMain = document.querySelector('main');
+      assert(requests.slice(beforeEntry).some(r => r.type === 'cloud_status'));
+      assert(!queueMain.querySelector('.page-heading button'));
+      const [queueTab, labelsTab, automationTab] = queueMain.querySelectorAll('[role=tab]');
+      assert.deepEqual([queueTab, labelsTab, automationTab].map(item => item.textContent), ['处理队列', '事件分析·场景标签', '流程与策略']);
+      const statistics = queueMain.querySelector('.usage-statistics');
+      const range = [...statistics.querySelectorAll('.usage-range button')].find(button => button.textContent === '近 7 天');
+      await click(range);
+      await click(labelsTab);
       queueMain.scrollTop = 420;
-      const refresh = queueMain.querySelector('.page-heading button');
+      const beforeRefresh = requests.length;
       const before = scrolled.length;
-      await click(refresh);
+      await settle(() => queueTab.focus());
+      await click(queueTab);
+      const loaded = requests.slice(beforeRefresh).map(r => r.type);
+      for (const type of ['cloud_status', 'cloud_tasks', 'review_items', 'usage_statistics']) assert(loaded.includes(type));
+      assert.equal(queueMain.querySelector('.usage-statistics'), statistics);
+      assert.equal(range.getAttribute('aria-pressed'), 'true');
       assert.equal(document.querySelector('main'), queueMain);
       assert.equal(queueMain.scrollTop, 420);
-      assert.equal(document.activeElement, refresh);
+      assert.equal(document.activeElement, queueTab);
       assert.equal(scrolled.length, before, 'queue refresh must not refocus or scroll the page');
+      const refreshed = requests.length;
+      await click(queueTab);
+      assert.equal(requests.length, refreshed, 'reselecting the active tab does not issue duplicate reads');
       await click(select('事件分析设置'));
       const settingsMain = document.querySelector('main');
       assert.notEqual(settingsMain, queueMain);
       assert.equal(queueMain.isConnected, false);
       assert.equal(document.activeElement.dataset.cloudProvider, 'llm');
       settingsMain.scrollTop = 800;
-      await click(select('智能识别'));
+      await click(select('智能分析'));
       const returnedMain = document.querySelector('main');
       assert.notEqual(returnedMain, settingsMain);
       assert.equal(returnedMain.scrollTop, 0);
@@ -204,10 +281,10 @@ test('recognition settings navigation uses existing pages, focuses the service r
         busy: false, onSettings() {}, onRefresh: async () => { refreshes++; }, onMutate: async r => { mutations.push(r); return true; },
       };
       await settle(() => root.render(h(QueueView, props)));
-      assert(!document.querySelector('[role=tablist]'));
+      assert.equal(document.querySelector('[role=tab][aria-selected=true]').textContent, '处理队列');
       assert(!document.querySelector('.task-row'));
       assert.equal(document.querySelectorAll('.usage-chart').length, 2);
-      assert.match(select('语音识别任务明细').parentElement.textContent, /2 条待核对/);
+      assert.match(select('语音识别·精转录任务明细').parentElement.textContent, /2 条待核对/);
       const statistics = document.querySelector('.usage-statistics');
       const overview = document.querySelector('.recognition-statistics').parentElement;
       const range = [...statistics.querySelectorAll('.usage-range button')].find(button => button.textContent === '近 7 天');
@@ -217,6 +294,7 @@ test('recognition settings navigation uses existing pages, focuses the service r
       assert.equal(legend.getAttribute('aria-pressed'), 'false');
       const reads = requests.filter(r => r.type === 'usage_statistics').length;
       await click(select('事件分析任务明细'));
+      assert(!document.querySelector('[role=tablist]'));
       assert.equal(document.querySelector('h1').textContent, '事件分析任务明细');
       assert.equal(document.activeElement, document.querySelector('h1'));
       assert.equal(scrolled.at(-1).element, document.querySelector('.recognition-page'));
@@ -230,7 +308,7 @@ test('recognition settings navigation uses existing pages, focuses the service r
       await click(document.querySelector('.task-row button'));
       assert.deepEqual(mutations.pop(), { type: 'retry_cloud_task', task_id: 'llm-task' });
       await click(document.querySelector('.recognition-back'));
-      assert.equal(document.querySelector('h1').textContent, '智能识别');
+      assert.equal(document.querySelector('h1').textContent, '智能分析');
       assert.equal(document.activeElement, document.querySelector('h1'));
       assert.equal(overview.hidden, false);
       assert.equal(overview.hasAttribute('inert'), false);
@@ -238,7 +316,7 @@ test('recognition settings navigation uses existing pages, focuses the service r
       assert.equal(range.getAttribute('aria-pressed'), 'true');
       assert.equal(legend.getAttribute('aria-pressed'), 'false');
       assert.equal(requests.filter(r => r.type === 'usage_statistics').length, reads, 'task navigation retains the statistics instance and request owner');
-      await click(select('语音识别任务明细'));
+      await click(select('语音识别·精转录任务明细'));
       assert.equal(document.querySelectorAll('.task-row').length, 1);
       assert.match(document.querySelector('.task-row').textContent, /语音识别/);
       assert.match(document.querySelector('.task-row').textContent, /产生新的识别用量/);
@@ -253,7 +331,7 @@ test('recognition settings navigation uses existing pages, focuses the service r
       await click(document.querySelectorAll('.review-row')[1].querySelector('button'));
       await click(document.querySelector('.review-dismiss'));
       assert.deepEqual(mutations.pop(), { type: 'resolve_review', item_id: 'speaker-review', target_segment_id: null, expected_revision: 4 });
-      assert.equal(refreshes, 2, 'successful review actions retain their existing refresh');
+      assert.equal(refreshes, 4, 'opening two task views and resolving two reviews refreshes each time');
       await settle(() => root.render(h(QueueView, { ...props, busy: true })));
       assert.equal(document.querySelector('.task-row button').disabled, true);
       assert.equal(document.querySelector('.recognition-back').disabled, false);
@@ -264,6 +342,86 @@ test('recognition settings navigation uses existing pages, focuses the service r
       await settle(() => root.render(h(QueueView, { ...props, tasksReady: false, tasksError: '合成任务错误', reviewsReady: false, reviewsError: '合成核对错误' })));
       assert.equal(document.querySelectorAll('.detail-load-error').length, 2);
       assert(!document.querySelector('.task-row, .review-row, .list-empty'));
+    });
+
+    await t.test('workflow subpages share one draft and resolve precise input dependencies through Core', async () => {
+      await settle(() => root.render(h(SettingsView, settingsProps)));
+      assert.doesNotMatch(document.querySelector('.page-container').textContent, /场景标签管理|生成策略/);
+      const reads = () => requests.filter(r => r.action?.op === 'config_show').length;
+      const readCount = reads();
+      await settle(() => root.render(h(QueueView, {
+        queues, tasks: [], reviews: [], busy: false, onRefresh: async () => {}, onSettings() {}, onMutate: async () => true,
+      })));
+      const tab = name => [...document.querySelectorAll('[role=tab]')].find(button => button.textContent === name);
+      const button = (name, scope = document) => [...scope.querySelectorAll('button')].find(item => (item.querySelector('.button-labels > span:not([aria-hidden=true])')?.textContent ?? item.textContent) === name);
+      assert.equal(reads(), readCount);
+      for (const item of document.querySelectorAll('[role=tab]')) assert(document.getElementById(item.getAttribute('aria-controls')));
+      await click(tab('事件分析·场景标签'));
+      assert.equal(reads(), readCount + 1);
+      assert.match(document.querySelector('.workflow-config-rule').textContent, /每个事件支持智能打标签模式.*单选.*多选/s);
+      const labelTable = document.querySelector('table.workflow-config-table');
+      assert.equal(labelTable.caption.textContent, '场景标签管理');
+      assert.match(labelTable.textContent, /判断标准.*系统兜底/s);
+      await click(document.querySelector('input[value="multiple"]'));
+      assert.match(document.querySelector('[role=status]').textContent, /新标注方式适用于后续事件/);
+      await click(select('编辑标签 · 工作会议'));
+      const labelEditor = document.querySelector('dialog');
+      assert.equal(labelEditor.querySelector('textarea').value, '讨论项目进展');
+      await click(button('去流程与策略调整', labelEditor));
+      await settle(() => new Promise(resolve => requestAnimationFrame(resolve)));
+      assert.equal(document.activeElement, select('编辑自动精转'));
+      await click(tab('事件分析·场景标签'));
+      await click(select('编辑标签 · \uFEFF工作会议'));
+      await click(button('应用到草稿', document.querySelector('dialog')));
+      await click(tab('处理队列'));
+      await click(tab('流程与策略'));
+      assert.equal(reads(), readCount + 1);
+      assert.match(document.querySelector('[role=status]').textContent, /未保存的改动/);
+      const flows = document.querySelector('table[aria-label="流程与策略"]');
+      const asrRow = flows.querySelector('tbody tr:first-child');
+      assert.match(asrRow.textContent, /自动精转\s*官方.*事件音频.*工作会议/s);
+      assert(!flows.querySelector('input'), 'workflow list only shows summaries');
+      await click(select('编辑自动精转'));
+      const autoAsr = document.querySelector('dialog');
+      assert.equal(autoAsr.querySelector('input[value="tags"]').checked, true);
+      assert.equal(document.activeElement, autoAsr.querySelector('input[value="tags"]'));
+      assert.doesNotMatch(autoAsr.textContent, /移除/);
+      await click(autoAsr.querySelector('input[value="all"]'));
+      await click(button('取消', autoAsr));
+      assert.match(asrRow.textContent, /工作会议/);
+      await click(select('编辑自动精转'));
+      const asrEditor = document.querySelector('dialog');
+      await click(asrEditor.querySelector('input[value="all"]'));
+      await click(button('应用到草稿', asrEditor));
+      assert.match(asrRow.textContent, /全部有效事件/);
+      assert.doesNotMatch(asrRow.textContent, /工作会议/);
+      await click(select('编辑自动精转'));
+      const tagsEditor = document.querySelector('dialog');
+      await click(tagsEditor.querySelector('input[value="tags"]'));
+      assert.equal(tagsEditor.querySelectorAll('input[type=checkbox]:checked').length, 0);
+      await click([...tagsEditor.querySelectorAll('label')].find(item => item.textContent === '工作会议').querySelector('input'));
+      await click(button('应用到草稿', tagsEditor));
+      await click(select('编辑策略 · 会议纪要'));
+      const strategyEditor = document.querySelector('dialog');
+      assert.equal(strategyEditor.querySelector('select').value, 'precise');
+      await click([...strategyEditor.querySelectorAll('label')].find(item => item.textContent === '客户回访').querySelector('input'));
+      await click(button('应用到草稿', strategyEditor));
+      await click(button('保存配置'));
+      assert.match(document.querySelector('dialog').textContent, /会议纪要 · 客户回访/);
+      await click(button('去流程与策略调整', document.querySelector('dialog')));
+      await settle(() => new Promise(resolve => requestAnimationFrame(resolve)));
+      assert.equal(document.activeElement, select('编辑策略 · 会议纪要'));
+      await click(button('保存配置'));
+      await click(button('加入并保存', document.querySelector('dialog')));
+      assert.match(document.querySelector('[role=status]').textContent, /已保存/);
+      const writes = requests.filter(r => r.action?.op === 'config_set').map(r => r.action);
+      assert.deepEqual(writes.map(w => [w.expected_revision, w.config.mode, w.add_required_asr_tags]), [[3, 'multiple', false], [3, 'multiple', false], [3, 'multiple', true]]);
+      assert.deepEqual(writes.at(-1).config.strategies[0].tag_ids, ['work', 'client']);
+      assert.deepEqual(writes.at(-1).config.tags, workflowConfig.tags);
+      assert.deepEqual([...asrRow.querySelectorAll('.workflow-chip')].map(tag => tag.textContent), ['工作会议', '客户回访']);
+      await click(select('编辑自动精转'));
+      assert.deepEqual([...document.querySelectorAll('dialog input[type=checkbox]:checked')].map(input => input.parentElement.textContent), ['工作会议', '客户回访']);
+      await click(button('取消', document.querySelector('dialog')));
     });
 
     await t.test('QueueView task and review actions remain reachable before queue status succeeds or when it returns no providers', async () => {
@@ -290,7 +448,7 @@ test('recognition settings navigation uses existing pages, focuses the service r
         await click(document.querySelector('.task-row button'));
         assert.deepEqual(mutations.pop(), { type: 'retry_cloud_task', task_id: 'independent-llm' });
         await click(document.querySelector('.recognition-back'));
-        await click(select('语音识别任务明细'));
+        await click(select('语音识别·精转录任务明细'));
         assert.equal(document.querySelectorAll('.task-row').length, 1);
         assert.match(document.querySelector('.task-row').textContent, /语音识别/);
         await click(document.querySelector('.review-row button'));
@@ -308,19 +466,19 @@ test('recognition settings navigation uses existing pages, focuses the service r
           cloudReadMode = mode;
           const before = requests.length;
           await settle(() => root.render(h(App, { key: `partial-${mode}` })));
-          await click(select('智能识别'));
+          await click(select('智能分析'));
           assert.equal(document.querySelectorAll('.recognition-task-link button').length, 2);
           assert(!document.querySelector('[role=switch], .queue-counts > span, .queue-blocked'));
           if (mode === 'failure') assert.equal(document.querySelectorAll('.recognition-card [role=alert]').length, 2);
           else assert(document.querySelector('[aria-label="正在加载队列状态"]'));
-          assert.match(select('语音识别任务明细').parentElement.textContent, /1 条待核对/);
+          assert.match(select('语音识别·精转录任务明细').parentElement.textContent, /1 条待核对/);
           await click(select('事件分析任务明细'));
           assert.equal(document.querySelectorAll('.task-row').length, 1);
           assert.match(document.querySelector('.task-row').textContent, /事件分析/);
           await click(document.querySelector('.task-row button'));
           assert(requests.slice(before).some(r => r.type === 'retry_cloud_task' && r.task_id === 'app-partial-llm'));
           await click(document.querySelector('.recognition-back'));
-          await click(select('语音识别任务明细'));
+          await click(select('语音识别·精转录任务明细'));
           assert.equal(document.querySelectorAll('.task-row').length, 1);
           assert.match(document.querySelector('.task-row').textContent, /语音识别/);
           await click(document.querySelector('.review-row button'));

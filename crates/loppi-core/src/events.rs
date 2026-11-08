@@ -25,6 +25,7 @@ mod understanding;
 mod understanding_replay_tests;
 #[cfg(test)]
 mod understanding_tests;
+pub mod workflow;
 
 struct CandidatePolicy {
     quiet_cut_ms: i64,
@@ -62,7 +63,7 @@ fn init_cloud_tasks(db: &Connection) -> Result<(), String> {
     const SCHEMA: &str = r#"CREATE TABLE IF NOT EXISTS cloud_tasks (
             id TEXT PRIMARY KEY,
             provider TEXT NOT NULL CHECK(provider IN ('llm','asr')),
-            target_kind TEXT NOT NULL CHECK(target_kind IN ('candidate','event','range','screenshot','reorganization')),
+            target_kind TEXT NOT NULL CHECK(target_kind IN ('candidate','event','range','screenshot','reorganization','workflow')),
             target_id TEXT NOT NULL,
             target_version TEXT NOT NULL,
             model_id TEXT NOT NULL,
@@ -85,7 +86,7 @@ fn init_cloud_tasks(db: &Connection) -> Result<(), String> {
     let old: bool = db
         .query_row(
             "SELECT instr(sql, ?1)=0 FROM sqlite_master WHERE type='table' AND name='cloud_tasks'",
-            ["'reorganization'"],
+            ["'workflow'"],
             |r| r.get(0),
         )
         .map_err(|e| e.to_string())?;
@@ -112,7 +113,7 @@ fn init_cloud_tasks(db: &Connection) -> Result<(), String> {
         };
         let result = crate::storage::migrate(
             db,
-            "reorganization_cloud_tasks_v1",
+            "workflow_cloud_tasks_v1",
             &format!(
                 "{} {retry_column} INSERT INTO cloud_tasks_new SELECT * FROM cloud_tasks; DROP TABLE cloud_tasks; ALTER TABLE cloud_tasks_new RENAME TO cloud_tasks;",
                 SCHEMA.replace("IF NOT EXISTS cloud_tasks", "cloud_tasks_new")
@@ -268,6 +269,7 @@ pub fn init(db: &Connection) -> Result<(), String> {
     .map_err(|e| e.to_string())?;
     asr::init(db)?;
     completion::init(db)?;
+    workflow::init(db)?;
     crate::knowledge::init(db)
 }
 
@@ -404,6 +406,11 @@ pub fn task_views(
           THEN 'no_transcript' ELSE state END,error_code,manual,
         (SELECT source_mask FROM event_reorganization_requests r WHERE target_kind='reorganization' AND r.id=cloud_tasks.target_id)
         FROM cloud_tasks WHERE provider=?1 AND coalesce(error_code,'')!='data_cleared'
+        AND (target_kind!='workflow' OR EXISTS(SELECT 1 FROM workflow_runs r
+            WHERE r.id=cloud_tasks.target_id AND r.input_hash=cloud_tasks.target_version
+              AND (r.kind='range' AND EXISTS(SELECT 1 FROM manual_ranges m WHERE m.id=r.event_id)
+                   OR r.kind='event' AND EXISTS(SELECT 1 FROM named_events e
+                        WHERE e.id=r.event_id AND e.deleted_ms IS NULL))))
         ORDER BY CASE
           WHEN state='failed' THEN 0
           WHEN state IN ('pending','processing','submitted') THEN 1
@@ -977,17 +984,7 @@ pub fn create_event_in(
         params![id.to_string(), start, end, title.trim(), mask, now],
     )
     .map_err(|error| error.to_string())?;
-    queue_asr(
-        tx,
-        "event",
-        &id.to_string(),
-        &asr_version(mask, start, end),
-        start,
-        end,
-        mask,
-        true,
-        now,
-    )?;
+    workflow::finish(tx, &id.to_string(), now)?;
     Ok(id)
 }
 
@@ -1054,17 +1051,7 @@ pub fn edit_event_in(
         params![id.to_string(),start,end,title.trim(),mask,audio_changed,title_changed])
         .map_err(|error| error.to_string())?;
     if audio_changed {
-        queue_asr(
-            tx,
-            "event",
-            &id.to_string(),
-            &asr_version(mask, start, end),
-            start,
-            end,
-            mask,
-            true,
-            now,
-        )?;
+        workflow::finish(tx, &id.to_string(), now)?;
     }
     Ok(())
 }
@@ -1247,18 +1234,8 @@ pub fn split_event_in(
     for next in [left, right] {
         asr::inherit(tx, &id.to_string(), &next.to_string())?;
     }
-    for (next, a, b) in [(left, start, at), (right, at, end)] {
-        queue_asr(
-            tx,
-            "event",
-            &next.to_string(),
-            &asr_version(mask, a, b),
-            a,
-            b,
-            mask,
-            true,
-            now,
-        )?;
+    for next in [left, right] {
+        workflow::finish(tx, &next.to_string(), now)?;
     }
     Ok((left, right))
 }
@@ -1311,17 +1288,7 @@ pub fn merge_events_in(
     for prior in [left, right] {
         asr::inherit(tx, &prior.to_string(), &merged.to_string())?;
     }
-    queue_asr(
-        tx,
-        "event",
-        &merged.to_string(),
-        &asr_version(mask, start, end),
-        start,
-        end,
-        mask,
-        true,
-        now,
-    )?;
+    workflow::finish(tx, &merged.to_string(), now)?;
     Ok(merged)
 }
 
@@ -1786,13 +1753,16 @@ pub fn timeline(db: &Connection, start: i64, end: i64) -> Result<Vec<TimelineIte
     for (a, b, mask, manual_id) in coalesced {
         let mut item = unorganized(db, a, b, mask)?;
         if let Some(id) = manual_id {
-            let revision = manual_ranges
+            let (_, start, end, sources, revision) = manual_ranges
                 .iter()
                 .find(|range| range.0 == id)
-                .map(|range| range.4)
                 .ok_or("manual range missing")?;
             item.manual_range_id = Some(Uuid::parse_str(&id).map_err(|e| e.to_string())?);
-            item.processing_state = manual_range_state(db, &id, revision)?;
+            if (*start, *end, *sources) == (a, b, mask) {
+                item.workflow = workflow::status(db, &id, crate::now_ms()?)?;
+            }
+            item.revision = Some(*revision);
+            item.processing_state = manual_range_state(db, &id, *revision)?;
             item.transcription =
                 transcription_progress(db, "range", &id, &revision.to_string(), false)?;
             item.manual_asr_state = None;
@@ -1806,6 +1776,7 @@ pub fn timeline(db: &Connection, start: i64, end: i64) -> Result<Vec<TimelineIte
     }
     for (id, a, b, title, revision, mask, summary) in events {
         output.push(TimelineItem {
+            workflow: workflow::status(db, &id, crate::now_ms()?)?,
             completed_ms: completion::completed_at(db, &id)?,
             completion_state: completion::task_state(db, &id)?,
             id: Some(Uuid::parse_str(&id).map_err(|e| e.to_string())?),
@@ -2059,6 +2030,7 @@ fn unorganized(db: &Connection, start: i64, end: i64, mask: i64) -> Result<Timel
         .optional()
         .map_err(|e| e.to_string())?;
     Ok(TimelineItem {
+        workflow: None,
         completed_ms: None,
         completion_state: None,
         id: None,
@@ -2188,6 +2160,7 @@ pub fn event_detail(
     };
     let version = asr_version(mask, start, end);
     let mut item = TimelineItem {
+        workflow: workflow::status(db, &id.to_string(), crate::now_ms()?)?,
         completed_ms: completion::completed_at(db, &id.to_string())?,
         completion_state: completion::task_state(db, &id.to_string())?,
         id: Some(id),
@@ -2240,12 +2213,15 @@ pub fn range_detail(
     let manual_range = visible_manual_ranges(db, start, end)?
         .into_iter()
         .rev()
-        .find(|(_, from, to, sources, _)| *from <= start && *to >= end && sources & mask == mask)
-        .map(|(id, _, _, _, revision)| (id, revision));
-    if let Some((id, revision)) = &manual_range {
+        .find(|(_, from, to, sources, _)| *from <= start && *to >= end && sources & mask == mask);
+    if let Some((id, from, to, sources, revision)) = &manual_range {
         item.manual_range_id = Some(Uuid::parse_str(id).map_err(|e| e.to_string())?);
         item.processing_state = manual_range_state(db, id, *revision)?;
         item.transcription = transcription_progress(db, "range", id, &revision.to_string(), true)?;
+        if (*from, *to, *sources) == (start, end, mask) {
+            item.workflow = workflow::status(db, id, crate::now_ms()?)?;
+        }
+        item.revision = Some(*revision);
         item.manual_asr_state = None;
         item.manual_asr_started_ms = None;
         item.manual_asr_ended_ms = None;
@@ -2422,10 +2398,11 @@ fn audio_coverage(
 
 fn event_state(db: &Connection, id: &str, version: &str) -> Result<String, String> {
     let waiting:bool=db.query_row("SELECT EXISTS(SELECT 1 FROM event_asr_state WHERE event_id=?1 AND coalesce(planned_version,'')!=?2)",params![id,version],|r|r.get(0)).map_err(|e|e.to_string())?;
-    if waiting && completion::completed_at(db, id)?.is_some() {
+    let skipped = workflow::skipped_asr(db, id, version)?;
+    if waiting && !skipped && completion::completed_at(db, id)?.is_some() {
         return Ok("pending_asr".into());
     }
-    if waiting {
+    if waiting && !skipped {
         let (start, end, mask) = db
             .query_row(
                 "SELECT started_ms,ended_ms,source_mask FROM named_events WHERE id=?1",
@@ -2453,7 +2430,12 @@ fn event_state(db: &Connection, id: &str, version: &str) -> Result<String, Strin
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
     if states.is_empty() {
-        return Ok("audio_unavailable".to_owned());
+        return Ok(if skipped {
+            "asr_skipped"
+        } else {
+            "audio_unavailable"
+        }
+        .to_owned());
     }
     if states.iter().any(|(s, _)| s == "failed") {
         let progress = transcription_progress(db, "event", id, version, false)?.unwrap();
@@ -2705,6 +2687,8 @@ pub fn take_task_fair(
 ) -> Result<Option<CloudTask>, String> {
     if provider == CloudProvider::Asr {
         asr::refresh(db, now)?;
+    } else {
+        workflow::refresh(db, now)?;
     }
     let tx = db.transaction().map_err(|e| e.to_string())?;
     let enabled: bool = tx
@@ -2819,6 +2803,9 @@ pub fn task_current(db: &Connection, task: &CloudTask) -> Result<bool, String> {
             )
             .map_err(|e| e.to_string());
     }
+    if task.target_kind == "workflow" {
+        return workflow::current(db, task);
+    }
     let erased: bool = db
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM clear_ranges c WHERE (c.mode='all_data' OR (c.mode='raw_audio' AND (SELECT provider='asr' AND submit_attempts=0 FROM cloud_tasks WHERE id=?1)))
@@ -2879,6 +2866,9 @@ pub fn supersede_task(db: &Connection, task: &CloudTask, now: i64) -> Result<(),
         params![task.id.to_string(), now],
     )
     .map_err(|e| e.to_string())?;
+    if task.target_kind == "workflow" {
+        workflow::wait_again_for_precise(db, task)?;
+    }
     Ok(())
 }
 
@@ -2944,6 +2934,10 @@ pub fn retry_task_in(tx: &Transaction<'_>, id: Uuid, now: i64) -> Result<(), Str
         params![id.to_string(),now,new_remote]).map_err(|e|e.to_string())?;
     if count != 1 {
         return Err("task is not retryable".to_owned());
+    }
+    if provider == "llm" && task.target_kind == "event" {
+        tx.execute("UPDATE event_workflow SET tag_state='pending' WHERE event_id=?1 AND tag_state='failed' AND manual=0",
+            [&task.target_id]).map_err(|error| error.to_string())?;
     }
     if provider == "llm" {
         tx.execute(
@@ -3013,6 +3007,10 @@ pub fn task_failed_with_retry(
 ) -> Result<(), String> {
     let tx = db.unchecked_transaction().map_err(|e| e.to_string())?;
     let db = &tx;
+    if task.target_kind == "workflow" && !task_current(db, task)? {
+        supersede_task(db, task, now)?;
+        return tx.commit().map_err(|error| error.to_string());
+    }
     let attempts = task.attempts + 1;
     let credential_wait = credential_error(error) || error == "provider_not_configured";
     // Waiting for a local credential is not a failed provider attempt. Keep
@@ -3092,6 +3090,12 @@ pub fn task_failed_with_retry(
             [provider_name(task.provider)],
         )
         .map_err(|e| e.to_string())?;
+    }
+    if updated > 0 && !retry && task.provider == CloudProvider::Llm && task.target_kind == "event" {
+        db.execute("UPDATE event_workflow SET tag_state='failed' WHERE event_id=?1 AND tag_state='pending' AND manual=0
+          AND EXISTS(SELECT 1 FROM named_events e WHERE e.id=?1 AND e.deleted_ms IS NULL
+            AND printf('%d:%d:%d',e.source_mask,e.started_ms,e.ended_ms)=?2)",
+            params![task.target_id,task.target_version]).map_err(|e| e.to_string())?;
     }
     if updated > 0 && task.provider == CloudProvider::Llm {
         db.execute(
@@ -3200,6 +3204,7 @@ pub fn llm_input(db: &Connection, task: &CloudTask) -> Result<String, String> {
         "vocabulary":crate::vocabulary::llm_context(db)?,
         "context":context,
         "observations":lines,
+        "classification":workflow::classification_context(db)?,
         "confirmed_ranges": completed.iter().map(|(a,b,m)| serde_json::json!({"start_ms":a,"end_ms":b,"sources":sources_for(*m)})).collect::<Vec<_>>(),
         "evidence":catalog
     }))
@@ -3327,6 +3332,17 @@ pub fn invalidate_event_understanding(
     Ok(())
 }
 
+fn same_fit_content(sent: &serde_json::Value, current: &serde_json::Value) -> bool {
+    let (Some(sent), Some(current)) = (sent.as_object(), current.as_object()) else {
+        return false;
+    };
+    sent.iter()
+        .filter(|(key, _)| key.as_str() != "classification")
+        .eq(current
+            .iter()
+            .filter(|(key, _)| key.as_str() != "classification"))
+}
+
 pub const FIT_SYSTEM: &str = include_str!("events/fit_prompt.txt");
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -3424,7 +3440,7 @@ pub fn publish_fit_with_input(
     let sent: serde_json::Value = serde_json::from_str(input).map_err(|_| "invalid_fit_input")?;
     let current: serde_json::Value =
         serde_json::from_str(&llm_input(&tx, task)?).map_err(|_| "invalid_fit_input")?;
-    let context_current = sent == current;
+    let context_current = same_fit_content(&sent, &current);
     if task.target_kind == "reorganization" {
         if !context_current {
             return Err("reorganization_revision_conflict".into());
@@ -3604,6 +3620,9 @@ pub fn publish_fit_with_input(
                     && old_summary == summary
                     && old_understanding == understanding
                 {
+                    if observations_current {
+                        workflow::observe(&tx, &linked_id, &sent, event)?;
+                    }
                     continue;
                 }
                 if fit_nonoverlap(&tx, new_start, new_end, new_mask, Some(&linked_id))? {
@@ -3613,6 +3632,16 @@ pub fn publish_fit_with_input(
                         params![linked_id, new_start, new_end, new_title, new_mask, summary, understanding],
                     )
                     .map_err(|e| e.to_string())?;
+                    workflow::observe(
+                        &tx,
+                        &linked_id,
+                        &sent,
+                        if observations_current {
+                            event
+                        } else {
+                            &serde_json::Value::Null
+                        },
+                    )?;
                     if old_start != new_start || old_end != new_end || old_mask != new_mask {
                         queue_asr(
                             &tx,
@@ -3753,6 +3782,16 @@ pub fn publish_fit_with_input(
                         ],
                     )
                     .map_err(|e| e.to_string())?;
+                    workflow::observe(
+                        &tx,
+                        prior_id,
+                        &sent,
+                        if observations_current {
+                            event
+                        } else {
+                            &serde_json::Value::Null
+                        },
+                    )?;
                     queue_asr(
                         &tx,
                         "event",
@@ -3806,6 +3845,16 @@ pub fn publish_fit_with_input(
             params![task.target_id, slot as i64, id],
         )
         .map_err(|e| e.to_string())?;
+        workflow::observe(
+            &tx,
+            &id,
+            &sent,
+            if observations_current {
+                event
+            } else {
+                &serde_json::Value::Null
+            },
+        )?;
         queue_asr(
             &tx,
             "event",

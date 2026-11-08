@@ -1190,7 +1190,41 @@ p {
 	border-bottom: var(--stroke-hairline) solid var(--color-border);
 }
 .detail-heading {
+	flex: 1;
 	min-width: 0;
+}
+.detail-meta {
+	display: flex;
+	align-items: center;
+	gap: var(--space-5);
+	min-width: 0;
+	font-size: var(--type-caption);
+	white-space: nowrap;
+}
+.detail-tags {
+	display: flex;
+	gap: var(--space-2);
+	min-width: 0;
+	max-width: 45%;
+	overflow-x: auto;
+	scrollbar-width: none;
+	padding: var(--space-1);
+}
+.detail-tag {
+	flex: none;
+	max-width: 18ch;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	border: 0;
+	border-radius: var(--radius-pill);
+	padding: 0 var(--space-4);
+	background: var(--color-surface-subtle);
+	color: var(--color-text-secondary);
+	line-height: 1.7;
+}
+.detail-tag:not(:disabled):hover {
+	background: var(--color-surface-hover);
 }
 .detail-header h2 {
 	font-size: var(--type-heading);
@@ -1198,10 +1232,49 @@ p {
 	letter-spacing: normal;
 	font-weight: var(--weight-semibold);
 	margin: var(--space-2) 0 0;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	overflow: hidden;
+}
+.detail-title-trigger,
+.detail-title-input {
+	display: block;
+	max-width: 100%;
+	border: 0;
+	border-radius: var(--radius-sm);
+	padding: 0;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	text-align: start;
+}
+.detail-title-trigger {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.detail-title-trigger:focus-visible {
+	outline-offset: calc(-1 * var(--space-1));
+}
+.detail-title-trigger:not(:disabled):hover {
+	text-decoration: underline;
+	text-decoration-color: var(--color-border);
+	text-underline-offset: var(--space-2);
+}
+.detail-title-input {
+	width: 100%;
+	box-shadow: inset 0 -1px var(--color-border);
+}
+.detail-title-input:focus {
+	box-shadow: inset 0 -2px var(--color-focus);
+	outline: none;
 }
 .eyebrow {
 	color: var(--color-text-muted);
 	font-size: var(--type-caption);
+}
+.detail-meta .eyebrow {
+	flex: none;
 }
 .detail-header-actions {
 	flex-shrink: 0;
@@ -1213,9 +1286,15 @@ p {
 	display: flex;
 	align-items: center;
 	gap: var(--space-2);
-	margin-top: var(--space-3);
+	min-width: 0;
+	overflow: hidden;
 	color: var(--color-text-muted);
 	font-size: var(--type-caption);
+}
+.detail-status > * {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 .event-completion-trigger,
 .detail-status-link {
@@ -2533,6 +2612,39 @@ body.floating-body .float-wrap {
 	gap: var(--space-8);
 	padding: var(--space-6) 0;
 }
+.schedule-weekdays {
+	display: flex;
+	align-items: center;
+	gap: var(--space-6);
+	min-width: 0;
+	margin: var(--space-8) 0 0;
+	padding: 0;
+	border: 0;
+	font-size: var(--type-meta);
+}
+.schedule-weekdays > span {
+	flex: none;
+}
+.schedule-day-list {
+	display: grid;
+	grid-template-columns: repeat(7, minmax(0, 1fr));
+	gap: var(--space-3);
+	width: min(100%, 19rem);
+}
+.schedule-day {
+	min-height: var(--control-height-default);
+	padding-inline: 0;
+	border: var(--stroke-hairline) solid var(--color-border);
+	border-radius: var(--radius-sm);
+	background: var(--color-surface);
+	color: var(--color-text);
+	font-size: var(--type-meta);
+}
+.schedule-day[aria-pressed="true"] {
+	border-color: var(--color-brand);
+	background: var(--color-brand);
+	color: var(--color-on-brand);
+}
 .schedule-times label {
 	display: flex;
 	align-items: center;
@@ -2562,4 +2674,377 @@ body.floating-body .float-wrap {
 	text-align: center;
 	color: var(--color-text-secondary);
 	font-size: var(--type-meta);
+}
+
+.recognition-tabs {
+	gap: var(--space-9);
+	border-bottom: var(--stroke-hairline) solid var(--color-border);
+	margin-bottom: var(--space-9);
+}
+.workflow-choices,
+.workflow-results {
+	display: grid;
+	gap: var(--space-5);
+	min-width: 0;
+}
+.workflow-settings {
+	display: grid;
+	gap: var(--space-7);
+	min-width: 0;
+	max-width: 54rem;
+}
+.workflow-config-rule {
+	display: grid;
+	grid-template-columns: max-content minmax(0, 1fr);
+	align-items: start;
+	gap: var(--space-6);
+	padding-block: var(--space-2) var(--space-6);
+	font-size: var(--type-body);
+}
+.workflow-config-rule > span {
+	align-self: start;
+	padding-block: var(--space-4);
+	font-weight: var(--weight-semibold);
+}
+.workflow-config-rule-options {
+	display: grid;
+	justify-items: start;
+	gap: var(--space-4);
+	min-width: 0;
+}
+.workflow-config-disclosure {
+	color: var(--color-text-secondary);
+	font-size: var(--type-caption);
+}
+.workflow-config-disclosure summary {
+	width: max-content;
+	cursor: pointer;
+}
+.workflow-config-disclosure p {
+	margin-block: var(--space-3) 0;
+	line-height: var(--leading-body);
+}
+.workflow-config-table {
+	width: 100%;
+	table-layout: fixed;
+	border-collapse: collapse;
+	color: var(--color-text);
+	font-size: var(--type-body);
+}
+.workflow-label-heading {
+	padding-bottom: var(--space-3);
+	text-align: start;
+	font-size: var(--type-icon);
+	font-weight: var(--weight-semibold);
+}
+.workflow-config-table :is(th, td) {
+	padding: var(--space-4) var(--space-6);
+	border-bottom: var(--stroke-hairline) solid var(--color-border);
+	overflow-wrap: anywhere;
+	text-align: start;
+}
+.workflow-config-table :is(th, td):first-child {
+	width: 28%;
+	padding-inline-start: 0;
+}
+.workflow-config-strategies :is(th, td):nth-child(2) {
+	width: 18%;
+}
+.workflow-config-table :is(th, td):last-child:not([colspan]) {
+	width: 7.5rem;
+	padding-inline-end: 0;
+	text-align: end;
+}
+.workflow-config-table thead {
+	color: var(--color-text-secondary);
+	font-size: var(--type-caption);
+}
+.workflow-config-table :where(thead) th {
+	font-weight: var(--weight-medium);
+}
+.workflow-config-table :where(thead) .control-button {
+	white-space: nowrap;
+}
+.workflow-config-table :where(tbody) th {
+	font-weight: var(--weight-semibold);
+}
+.workflow-config-table td {
+	color: var(--color-text-secondary);
+}
+.workflow-config-table tbody tr:hover {
+	background: var(--color-surface-card-hover);
+}
+.workflow-builtin-label {
+	display: inline-block;
+	margin-inline-start: var(--space-2);
+	color: var(--color-text-secondary);
+	font-size: var(--type-caption);
+	font-weight: var(--weight-regular);
+}
+.workflow-flow-edit {
+	background: transparent;
+	color: var(--color-text-secondary);
+}
+.workflow-config-criteria {
+	display: -webkit-box;
+	overflow: hidden;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+	line-height: var(--leading-body);
+}
+.workflow-fallback-row small,
+.workflow-config-condition small {
+	font-size: var(--type-caption);
+}
+.workflow-chip {
+	display: inline-block;
+	max-width: 100%;
+	padding: var(--space-1) var(--space-4);
+	border-radius: var(--radius-pill);
+	background: var(--color-surface-subtle);
+	color: var(--color-text-secondary);
+	font-size: var(--type-caption);
+	overflow-wrap: anywhere;
+}
+.workflow-strategy-tags {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+}
+.workflow-config-hint,
+.workflow-config-actions p {
+	margin: 0;
+	color: var(--color-text-secondary);
+	font-size: var(--type-meta);
+	line-height: var(--leading-body);
+	overflow-wrap: anywhere;
+}
+.workflow-config-condition {
+	display: grid;
+	gap: var(--space-4);
+	margin-top: var(--space-6);
+	border-radius: var(--radius-sm);
+	background: var(--color-surface-subtle);
+	padding: var(--space-6);
+	font-size: var(--type-meta);
+}
+.workflow-config-actions {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-5);
+	position: sticky;
+	bottom: 0;
+	z-index: 1;
+	flex-wrap: wrap;
+	border: var(--stroke-hairline) solid var(--color-border);
+	border-radius: var(--radius-md);
+	background: var(--color-surface);
+	padding: var(--space-4) var(--space-6);
+}
+.workflow-config-actions > div {
+	display: flex;
+	gap: var(--space-3);
+	margin-inline-start: auto;
+}
+.workflow-config-editor {
+	display: grid;
+	gap: var(--space-7);
+}
+.workflow-config-editor
+	:is(.form-field, .workflow-config-condition, .modal-actions) {
+	margin-top: 0;
+}
+.workflow-config-editor .form-field {
+	margin-bottom: 0;
+}
+.workflow-config-editor :where(textarea, select, input:not([type="checkbox"])) {
+	width: 100%;
+}
+.workflow-config-editor textarea {
+	resize: vertical;
+	padding: var(--space-5) var(--space-6);
+	border: var(--stroke-hairline) solid var(--color-border);
+	border-radius: var(--radius-sm);
+	background: var(--color-surface-subtle);
+	color: var(--color-text-strong);
+	font-size: var(--type-body);
+	line-height: var(--leading-body);
+}
+.workflow-tag-options,
+.workflow-detail-tabs {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: var(--space-4);
+}
+.workflow-config-rule-options .workflow-tag-options {
+	margin-inline-start: var(--space-3);
+	border-inline-start: var(--stroke-hairline) solid var(--color-border);
+	padding-inline-start: var(--space-4);
+	font-size: var(--type-meta);
+}
+.workflow-tag-options label {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+:is(.workflow-settings, .workflow-config-editor) .workflow-tag-options label {
+	align-items: baseline;
+	max-width: 100%;
+	overflow-wrap: anywhere;
+}
+:is(.workflow-settings, .workflow-config-editor) .workflow-tag-options input {
+	flex: none;
+}
+.workflow-choices .control-button {
+	width: 100%;
+	justify-content: space-between;
+	text-align: left;
+}
+.workflow-choices small {
+	color: var(--color-text-secondary);
+	font-size: var(--type-caption);
+}
+.workflow-detail-tabs,
+.workflow-detail-tabs .detail-tabs {
+	min-width: 0;
+	max-width: 100%;
+}
+.workflow-detail-tabs .detail-tabs {
+	flex: 0 1 auto;
+	gap: var(--space-7);
+	overflow-x: auto;
+	scrollbar-width: thin;
+	padding-inline: var(--space-1);
+}
+.workflow-detail-tabs {
+	flex: 1 1 auto;
+	flex-wrap: nowrap;
+}
+.workflow-detail-tabs [role="tab"] {
+	flex-shrink: 0;
+	max-width: 22ch;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	text-align: start;
+}
+.workflow-tab-error {
+	color: var(--color-text-secondary);
+	font-size: var(--type-meta);
+}
+.workflow-results {
+	padding-block-start: var(--space-8);
+	justify-items: start;
+}
+.workflow-markdown {
+	width: 100%;
+	max-width: 46rem;
+	min-width: 0;
+	padding-inline-end: clamp(0px, 1.5vw, var(--space-7));
+	color: var(--color-text);
+	font-size: var(--type-lead);
+	line-height: var(--leading-relaxed);
+	overflow-wrap: anywhere;
+	user-select: text;
+}
+.workflow-markdown :where(h1, h2, h3, h4, h5, h6) {
+	margin: var(--space-9) 0 var(--space-4);
+	font-weight: var(--weight-semibold);
+	line-height: 1.4;
+}
+.workflow-markdown h1 {
+	font-size: var(--type-title);
+}
+.workflow-markdown h2 {
+	font-size: var(--type-heading);
+}
+.workflow-markdown h3 {
+	font-size: var(--type-heading-sm);
+}
+.workflow-markdown h4 {
+	font-size: var(--type-lead);
+}
+.workflow-markdown h5 {
+	font-size: var(--type-reading);
+}
+.workflow-markdown h6 {
+	color: var(--color-text-secondary);
+	font-size: var(--type-body);
+}
+.workflow-markdown
+	:where(p, ul, ol, pre, blockquote, hr, .workflow-table-scroll) {
+	margin: 0 0 var(--space-7);
+}
+.workflow-markdown > :first-child {
+	margin-block-start: 0;
+}
+.workflow-markdown > :last-child {
+	margin-block-end: 0;
+}
+.workflow-markdown :where(ol, ul) {
+	padding-inline-start: var(--space-9);
+}
+.workflow-markdown li + li {
+	margin-block-start: var(--space-2);
+}
+.workflow-markdown li > :where(p, ul, ol) {
+	margin-block: var(--space-2);
+}
+.workflow-markdown ul:has(> .task-list-item) {
+	list-style: none;
+	padding-inline-start: var(--space-2);
+}
+.workflow-markdown .task-list-item input {
+	margin-inline: 0 var(--space-3);
+}
+.workflow-markdown blockquote {
+	border-inline-start: var(--space-1) solid var(--color-border);
+	padding: var(--space-2) var(--space-7);
+	color: var(--color-text-secondary);
+}
+.workflow-markdown blockquote > :last-child {
+	margin-block-end: 0;
+}
+.workflow-markdown code {
+	border-radius: var(--radius-sm);
+	background: var(--color-surface-subtle);
+	padding: var(--space-1) var(--space-2);
+	font-size: var(--type-body);
+}
+.workflow-markdown pre {
+	overflow-x: auto;
+	padding: var(--space-6) var(--space-7);
+	border-radius: var(--radius-sm);
+	background: var(--color-surface-subtle);
+	line-height: var(--leading-body);
+}
+.workflow-markdown pre code {
+	padding: 0;
+	overflow-wrap: normal;
+}
+.workflow-markdown hr {
+	border: 0;
+	border-block-start: var(--stroke-hairline) solid var(--color-border);
+}
+.workflow-table-scroll {
+	max-width: 100%;
+	overflow-x: auto;
+}
+.workflow-markdown table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: var(--type-reading);
+}
+.workflow-markdown :where(th, td) {
+	border: var(--stroke-hairline) solid var(--color-border);
+	padding: var(--space-4) var(--space-6);
+	text-align: start;
+	vertical-align: top;
+}
+.workflow-markdown th {
+	background: var(--color-surface-subtle);
+	font-weight: var(--weight-semibold);
+	white-space: nowrap;
 }

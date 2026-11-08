@@ -31,10 +31,12 @@ import { TimelineView } from "./TimelineView";
 import { adjacentRecordedDay, monthBoundaries } from "./timeline-view";
 import { QueueView, SettingsView } from "./WorkspaceViews";
 import "./App.css";
+import "./analysis.css";
 import { OnboardingView } from "./OnboardingView";
 import { RestartUpdate } from "./SoftwareUpdate";
 import type { ModelState, PrivacyStatus } from "./setup";
 import { useAppUpdate } from "./useAppUpdate";
+import type { WorkflowSection } from "./WorkflowSettings";
 
 type Page =
 	| "timeline"
@@ -59,6 +61,8 @@ function errorText(error: unknown): string {
 function App() {
 	const update = useAppUpdate();
 	const [page, setPage] = useState<Page>("timeline");
+	const [analysisEntrySection, setAnalysisEntrySection] =
+		useState<WorkflowSection>();
 	const [settingsProvider, setSettingsProvider] =
 		useState<CloudProvider | null>(null);
 	useEffect(() => {
@@ -584,8 +588,10 @@ function App() {
 		void refreshTimeline(false, true);
 	}, [refreshTimeline, recordingObservation]);
 	useEffect(() => {
-		if (page === "queue") void refreshTasks();
-	}, [page, refreshTasks]);
+		if (page !== "queue") return;
+		void refreshTasks();
+		void refreshContext();
+	}, [page, refreshTasks, refreshContext]);
 	useEffect(() => {
 		if (page !== "timeline" && page !== "queue") return;
 		const timer = window.setInterval(() => {
@@ -736,14 +742,14 @@ function App() {
 		if (reorganize && !eventSubmission.current)
 			eventSubmission.current = { id: crypto.randomUUID(), key };
 		if (reorganize && eventSubmission.current?.key !== key) {
-			setDialogError("上次提交结果待确认，请先确认原提交或在智能识别查看");
+			setDialogError("上次提交结果待确认，请先确认原提交或在智能分析查看");
 			return;
 		}
 		if (
 			await mutate(
 				request,
 				reorganize
-					? "已提交，正在重新整理事件，可在智能识别查看"
+					? "已提交，正在重新整理事件，可在智能分析查看"
 					: "事件已保存",
 				reorganize ? eventSubmission.current?.id : undefined,
 			)
@@ -934,7 +940,7 @@ function App() {
 								"时间线",
 								"M8 4v16M12 6h8M12 12h6M12 18h8M4 6h.01M4 12h.01M4 18h.01",
 							],
-							["queue", "智能识别", "M20 12a8 8 0 1 1-8-8M12 7v5l3 2M17 3v6h6"],
+							["queue", "智能分析", "M20 12a8 8 0 1 1-8-8M12 7v5l3 2M17 3v6h6"],
 							[
 								"people",
 								"人物库",
@@ -956,6 +962,7 @@ function App() {
 							aria-current={page === id ? "page" : undefined}
 							title={label}
 							onClick={() => {
+								if (id === "queue") setAnalysisEntrySection(undefined);
 								setPage(id);
 								setSettingsProvider(null);
 								setDataAction(null);
@@ -1051,6 +1058,7 @@ function App() {
 				)}
 				{page === "queue" && (
 					<QueueView
+						initialSection={analysisEntrySection}
 						queuesReady={contextReady.queues}
 						queuesError={contextErrors.queues}
 						tasksReady={tasksReady}
@@ -1122,7 +1130,8 @@ function App() {
 					onClose={() => setSelection(null)}
 					onEdit={(item) => openForm({ mode: "edit", item })}
 					onTools={openTools}
-					onQueue={() => {
+					onQueue={(section) => {
+						setAnalysisEntrySection(section);
 						setSelection(null);
 						setPage("queue");
 					}}
@@ -1130,6 +1139,19 @@ function App() {
 						setDataAction({ kind, item });
 						setSelection(null);
 						setPage("settings");
+					}}
+					onConfirmedEvent={async (eventId) => {
+						const response = await core<{
+							type: string;
+							id: string;
+							event: TimelineItem;
+						}>({
+							type: "event_detail",
+							event_id: eventId,
+							offset: 0,
+							limit: 30,
+						});
+						setSelection({ item: response.event });
 					}}
 					onChanged={(rangeId) => {
 						if (rangeId) manualSelection.current = rangeId;

@@ -79,7 +79,7 @@ test('queue renders paid reruns separately from request retries and disables bus
   const task={id:'failed',provider:'asr',target_kind:'event',target_id:'event',source:'microphone',started_ms:1000,ended_ms:6000,state:'failed',manual:false};
   const render=async(error_code,busy=false)=>{
    await act(async()=>root.render(createElement(QueueView,{queues:[{provider:'asr',configured:true,paused:false,pending:0,processing:0,failed:1}],tasks:[{...task,error_code}],reviews:[],busy,onRefresh:async()=>{},onMutate:async()=>true,onSettings(){}})));
-   if(!document.querySelector('.task-row'))await act(async()=>document.querySelector('[aria-label="语音识别任务明细"]').click());
+   if(!document.querySelector('.task-row'))await act(async()=>document.querySelector('[aria-label="语音识别·精转录任务明细"]').click());
    return document.getElementById('root').innerHTML;
   };
   const rejected=await render('provider_invalid_utterance');

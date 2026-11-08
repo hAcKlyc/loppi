@@ -3,7 +3,7 @@ members = ["crates/loppi-protocol", "crates/loppi-core", "crates/loppi-cli", "cr
 resolver = "2"
 
 [workspace.package]
-version = "0.1.24"
+version = "0.1.25"
 edition = "2024"
 license = "Apache-2.0"
 authors = ["Ethan L <myagents.io@gmail.com>"]

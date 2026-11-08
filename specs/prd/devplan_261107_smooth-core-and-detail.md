@@ -72,3 +72,10 @@ updated: 2026-11-07
 - 2026-11-07：实现提交 `683e69d`。逐条复核本交付四项范围、非目标、各项证据和最终源码：全部完成，最终 HEAD 类型检查与 lint 再次通过。无未决产品问题、无未完成 mandatory 项；已停止临时 UI 测试服务。按单批契约结束，不扩大到其余性能清单。
 
 - 2026-11-07：用户要求合并发布，按已完成的本批验收准备 0.1.24；仅同步版本与面向用户的更新说明，等待精确 dev SHA 的 Mac/Windows Verify 后合入 main。真实长时录音与跨平台安装升级矩阵仍不作为本批已执行证据。
+
+### 正式发行状态
+
+- 2026-11-07：已发布 [v0.1.24](https://github.com/hAcKlyc/loppi/releases/tag/v0.1.24)，main/tag/source 为 `c6c7fd28744c89a04974c2ccad114ed93aa2bd11`，保留实现提交 `683e69d` 的原始验收归属。
+- dev `e1895a2` 与 main 精确提交的 Mac/Windows Verify 通过；发行版本本地完整 verify 通过。[Release 42366405186](https://github.com/hAcKlyc/loppi/actions/runs/42366405186) attempt 3 成功，13 个附件、三平台身份/哈希/更新签名、两 Mac 公证和固定 latest.json 均验证完成。
+- Intel 首次因 Apple 票据服务连接中断失败，第二次发布因新建草稿立即回读未找到而失败，均仅重跑失败 job；无代码、版本或签名校验变更。三平台源码一致，无覆盖公开附件。
+- 本批已完成开发、验收及发布。Windows Authenticode 仍 unsigned；真实长时录音与跨平台升级矩阵边界不变。详见[发行记录](../research/2026-11-07-github-release-0.1.24.md)。

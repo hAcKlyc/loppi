@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 pub const VERSION: &str = "volc-event-silence-v4";
 pub const WINDOW_MS: i64 = 20 * 60 * 1000;
 const MAX_CONFIRMED_SILENCE_MS: i64 = 60 * 1000;
-const SETTLE_MS: i64 = 15 * 60 * 1000;
+pub(super) const SETTLE_MS: i64 = 15 * 60 * 1000;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Part {
@@ -157,6 +157,147 @@ pub fn replan_failed(tx: &Transaction<'_>, id: Uuid, now: i64) -> Result<(), Str
     Ok(())
 }
 
+pub(super) enum CoverageRepair {
+    Retry(Uuid),
+    ReplaceEdge(Uuid, Option<(i64, i64)>),
+}
+
+pub(super) fn recoverable_coverage(
+    db: &Connection,
+    kind: &str,
+    id: &str,
+    version: &str,
+) -> Result<Vec<CoverageRepair>, String> {
+    let mut stmt = db.prepare(
+        "WITH children AS (
+           SELECT t.id,t.state,t.source,t.started_ms,t.ended_ms,count(p.id) AS segment_count,
+              min(p.started_ms) FILTER(WHERE p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms) AS first_text,
+              max(p.ended_ms) FILTER(WHERE p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms) AS last_text,
+              max(p.started_ms<t.started_ms AND p.ended_ms>t.started_ms) AS left_clip,
+              max(p.ended_ms>t.ended_ms AND p.started_ms<t.ended_ms) AS right_clip
+           FROM transcript_tasks t LEFT JOIN precise_segments p ON p.task_id=t.id
+           WHERE t.target_kind=?1 AND t.target_id=?2 AND t.target_version=?3
+             AND t.state IN ('failed','complete')
+           GROUP BY t.id,t.started_ms,t.ended_ms
+         ), repairs AS (
+           SELECT *, coalesce(left_clip OR right_clip,0) AS clipped,
+             CASE WHEN left_clip THEN first_text ELSE started_ms END AS keep_from,
+             CASE WHEN right_clip THEN last_text ELSE ended_ms END AS keep_to
+           FROM children
+         )
+         SELECT r.id,r.state='complete' AND r.clipped,r.keep_from,r.keep_to FROM repairs r
+         WHERE (r.state='failed' OR r.segment_count=0 OR (?1='event' AND r.clipped
+           AND (r.first_text IS NULL OR NOT EXISTS(SELECT 1 FROM precise_segments p WHERE p.task_id=r.id
+             AND p.started_ms<r.keep_to AND p.ended_ms>r.keep_from
+             AND (p.started_ms<r.keep_from OR p.ended_ms>r.keep_to)))))
+         AND EXISTS(SELECT 1 FROM audio_blocks b WHERE b.media_path IS NOT NULL AND b.source=r.source
+           AND b.started_ms<r.ended_ms AND b.ended_ms>r.started_ms
+           AND (NOT r.clipped OR r.first_text IS NULL OR b.started_ms<r.keep_from OR b.ended_ms>r.keep_to))
+         ORDER BY r.id",
+    ).map_err(|error| error.to_string())?;
+    let rows = stmt
+        .query_map(params![kind, id, version], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, bool>(1)?,
+                row.get::<_, Option<i64>>(2)?
+                    .zip(row.get::<_, Option<i64>>(3)?),
+            ))
+        })
+        .map_err(|error| error.to_string())?;
+    rows.map(|row| {
+        let (id, clipped, keep) = row.map_err(|error| error.to_string())?;
+        let id = Uuid::parse_str(&id).map_err(|error| error.to_string())?;
+        Ok(if clipped {
+            CoverageRepair::ReplaceEdge(id, keep)
+        } else {
+            CoverageRepair::Retry(id)
+        })
+    })
+    .collect()
+}
+
+pub(super) fn replace_clipped_coverage(
+    tx: &Transaction<'_>,
+    event_id: &str,
+    (start, end, mask): (i64, i64, i64),
+    tasks: &[(Uuid, Option<(i64, i64)>)],
+    now: i64,
+) -> Result<(), String> {
+    for (task, keep) in tasks {
+        if let Some((from, to)) = keep {
+            tx.execute(
+                "UPDATE event_asr_refs SET started_ms=?3,ended_ms=?4 WHERE event_id=?1 AND task_id=?2",
+                params![event_id, task.to_string(), from, to],
+            )
+        } else {
+            tx.execute(
+                "DELETE FROM event_asr_refs WHERE event_id=?1 AND task_id=?2",
+                params![event_id, task.to_string()],
+            )
+        }
+        .map_err(|error| error.to_string())?;
+    }
+    // The retained span keeps all previously visible text and its corrections.
+    // The existing ASR planner submits only audio without a covering reference.
+    plan_event(
+        tx,
+        event_id,
+        &asr_version(mask, start, end),
+        start,
+        end,
+        mask,
+        true,
+        now,
+        &format!("{}:{}", VERSION, Uuid::new_v4()),
+    )?;
+    Ok(())
+}
+
+pub(super) fn precise_ready(
+    db: &Connection,
+    kind: &str,
+    id: &str,
+    version: &str,
+    (start, end, mask): (i64, i64, i64),
+) -> Result<bool, String> {
+    let state = if kind == "event" {
+        event_state(db, id, version)?
+    } else {
+        manual_range_state(
+            db,
+            id,
+            version.parse::<i64>().map_err(|error| error.to_string())?,
+        )?
+    };
+    if !matches!(state.as_str(), "transcribed" | "partial_transcript") {
+        return Ok(false);
+    }
+    if state == "partial_transcript" && !recoverable_coverage(db, kind, id, version)?.is_empty() {
+        return Ok(false);
+    }
+    usable_precise_text(db, kind, id, version, (start, end, mask))
+}
+
+pub(super) fn usable_precise_text(
+    db: &Connection,
+    kind: &str,
+    id: &str,
+    version: &str,
+    (start, end, mask): (i64, i64, i64),
+) -> Result<bool, String> {
+    db.query_row(
+        "SELECT EXISTS(SELECT 1 FROM precise_segments p JOIN transcript_tasks t
+           ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms
+         WHERE t.target_kind=?1 AND t.target_id=?2 AND t.target_version=?3 AND t.state='complete'
+           AND p.started_ms>=?4 AND p.ended_ms<=?5 AND trim(p.text)!=''
+           AND ((p.source='microphone' AND ?6&1!=0) OR (p.source='system' AND ?6&2!=0)))",
+        params![kind, id, version, start, end, mask],
+        |row| row.get(0),
+    )
+    .map_err(|error| error.to_string())
+}
+
 pub fn schedule(
     tx: &Transaction<'_>,
     kind: &str,
@@ -178,16 +319,35 @@ pub fn schedule(
             return Ok(0);
         }
     }
-    let count = plan(
-        tx, kind, target, version, start, end, mask, manual, now, processor,
-    )?;
     if kind == "event" {
-        tx.execute(
-            "UPDATE event_asr_state SET planned_version=?2 WHERE event_id=?1",
-            params![target, version],
-        )
-        .map_err(|e| e.to_string())?;
+        return plan_event(
+            tx, target, version, start, end, mask, manual, now, processor,
+        );
     }
+    plan(
+        tx, kind, target, version, start, end, mask, manual, now, processor,
+    )
+}
+
+pub(super) fn plan_event(
+    tx: &Transaction<'_>,
+    id: &str,
+    version: &str,
+    start: i64,
+    end: i64,
+    mask: i64,
+    manual: bool,
+    now: i64,
+    processor: &str,
+) -> Result<usize, String> {
+    let count = plan(
+        tx, "event", id, version, start, end, mask, manual, now, processor,
+    )?;
+    tx.execute(
+        "UPDATE event_asr_state SET planned_version=?2 WHERE event_id=?1",
+        params![id, version],
+    )
+    .map_err(|e| e.to_string())?;
     Ok(count)
 }
 
@@ -242,9 +402,14 @@ pub fn local_analysis_failures(
 
 pub fn refresh(db: &mut Connection, now: i64) -> Result<(), String> {
     let tx = db.transaction().map_err(|e| e.to_string())?;
+    workflow::judge_due(&tx, now)?;
     let events = {
         let mut stmt=tx.prepare("SELECT e.id,e.started_ms,e.ended_ms,e.source_mask FROM named_events e JOIN event_asr_state s ON s.event_id=e.id
         WHERE e.deleted_ms IS NULL AND coalesce(s.planned_version,'')!=printf('%d:%d:%d',e.source_mask,e.started_ms,e.ended_ms)
+        AND (NOT EXISTS(SELECT 1 FROM event_workflow w WHERE w.event_id=e.id AND
+        (w.auto_asr=0 OR coalesce(w.decided_version,'')<>printf('%d:%d:%d',e.source_mask,e.started_ms,e.ended_ms)))
+        OR EXISTS(SELECT 1 FROM event_asr_refs r JOIN cloud_tasks t ON t.id=r.task_id
+           WHERE r.event_id=e.id AND t.manual=1 AND t.state!='superseded'))
         AND (e.completed_ms IS NOT NULL OR e.ended_ms<=?1 OR EXISTS(SELECT 1 FROM named_events n WHERE n.deleted_ms IS NULL AND n.started_ms>=e.ended_ms AND n.started_ms<=?2 AND n.source_mask&e.source_mask=e.source_mask)) ORDER BY e.ended_ms").map_err(|e|e.to_string())?;
         stmt.query_map(params![now - SETTLE_MS, now], |r| {
             Ok((
@@ -267,14 +432,7 @@ pub fn refresh(db: &mut Connection, now: i64) -> Result<(), String> {
         }
         planned += 1;
         let version = asr_version(mask, start, end);
-        plan(
-            &tx, "event", &id, &version, start, end, mask, false, now, VERSION,
-        )?;
-        tx.execute(
-            "UPDATE event_asr_state SET planned_version=?2 WHERE event_id=?1",
-            params![id, version],
-        )
-        .map_err(|e| e.to_string())?;
+        plan_event(&tx, &id, &version, start, end, mask, false, now, VERSION)?;
         if planned >= 32 {
             break;
         }

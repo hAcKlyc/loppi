@@ -30,7 +30,7 @@ flowchart LR
 | 核心 | [`crates/loppi-core/src/main.rs`](../crates/loppi-core/src/main.rs) | 唯一 SQLite 写入者；持有采集监督、时间映射、媒体、两条云队列、声纹任务和权限/容量状态。登录项与按需服务争同一个 owner 锁。 |
 | 采集来源 | [`source_process.rs`](../crates/loppi-core/src/source_process.rs)、[`record.rs`](../crates/loppi-core/src/record.rs) | 每个来源以同一签名核心可执行文件的私有子命令运行；持有原生设备、有界缓冲及封块写入。只发布不可变媒体和 core 管理的 ingestion 日志，不访问业务库。 |
 | 本地推理 | [`crates/loppi-worker/src/main.rs`](../crates/loppi-worker/src/main.rs) | 轻量 `vad` 与重型 `recognize` 独立进程；`embed` 按需复用 CampPlus。三者共用有界帧协议，父 core 消失退出；只计算，不拥有数据库。 |
-| IPC 协议 | [`crates/loppi-protocol/src/lib.rs`](../crates/loppi-protocol/src/lib.rs) | 请求/响应、稳定 ID、预期修订、重复提交标识和协议版本。当前工作树版本为 26；只读 Agent 接口见 [Agent Context 契约](tech_docs/agent-context.md)。 |
+| IPC 协议 | [`crates/loppi-protocol/src/lib.rs`](../crates/loppi-protocol/src/lib.rs) | 请求/响应、稳定 ID、预期修订、重复提交标识和协议版本。当前工作树版本为 28；只读 Agent 接口见 [Agent Context 契约](tech_docs/agent-context.md)。 |
 | macOS 桥接 | [`src-tauri/native/`](../src-tauri/native/privacy.m)、[`crates/loppi-core/native/`](../crates/loppi-core/native/system_audio.m) | 登录项、权限、截图/OCR、系统声 API 等原生操作；业务数据仍由核心裁决。 |
 | Windows 桥接 | [`protocol::platform`](../crates/loppi-protocol/src/platform.rs)、[`protocol::ipc`](../crates/loppi-protocol/src/ipc.rs)、Core/GUI 的 `native/windows.cpp` | 本机安全/文件/进程、WASAPI、截图/OCR、资源/电源、播放与托盘。业务 owner 与协议保持共用；细节见 [Windows 支持](tech_docs/windows-support.md)。 |
 
@@ -66,6 +66,8 @@ GUI 首次 IPC 经协议库 `lifecycle` 的会话屏障核对实际 Core 与随�
 物理删除由 core 的维护线程每批最多取 32 个待办。文件 IO 在 `Store` 锁之外执行，逐文件复用 `cleanup_gate` 保护播放/导出媒体寿命；成功或文件已不存在才确认完成，失败不阻挡后续路径并在下轮重试。逻辑失效与用户清理语义仍由清理事务裁决。当前容量投影仍为原有逻辑媒体口径，未扩张为全部物理临时空间。
 
 精转文字的权威时间轴来自不可变 `asr_inputs`（更早无清单任务使用已记录的任务起点和范围）。`publish_asr` 核对当前任务/清理归属、可还原的输入映射、正时长和请求范围后保存完整供应商文字与时间。VAD、当前原声文件、静默长度、首尾误差、原声占比和重叠量都不裁决文字是否可用；包括补入静默中的结果也保留，接受偶发长时间跨度。原声回放与声纹各自核对真实媒体，文字可用性与这两者独立。没有新增发布状态、队列或重试器。[发布实现](../crates/loppi-core/src/events.rs)；[算法契约](tech_docs/algorithms.md#6-两条云队列与精转)。
+
+Core 的事件流程保存在既有 SQLite 中。`workflow_config` 持有标签、自动精转和策略配置及修订。`event_workflow` 持有标签、人工归属和事件确定范围上的自动判断。`workflow_runs` 记录策略快照、输入指纹和成功结果版本。生成任务使用现有 LLM 队列；等待精转时只持有对应事件的输入依赖。GUI、Agent CLI 和只读 Context 投影共用 Core 的判断。具体契约见 [事件流程 PRD](prd/prd_0.1.25_event-workflow.md)。
 
 ### 2.2 双时间坐标
 
@@ -118,9 +120,9 @@ VAD 先事务提交 `coarse_jobs` 的来源/session/16 kHz 样本区间与 `spee
 
 `capture_supervisor` 每路独立启动/停止并处理睡眠和异常退出。公开 IOKit 睡眠/完成唤醒事实控制暂停期间的重试；早期 Wake/DarkWake 不等于设备可用，单纯灭屏不暂停采集。macOS 原生快照在睡眠标记残留时，用晚于本轮 WillSleep 的内核唤醒时间和 powerd 的 CPU/Video/Audio 完整能力共同补偿遗漏的完成唤醒通知；旧能力、DarkWake、查询失败不解除暂停，代际校验防止旧查询覆盖新睡眠。OS 实现状态键缺失时保留原通知路径，不以等待时长推断唤醒。睡眠前真实缺口与 machine_sleep 区间分开，均接受既有 journal 尾部校正。录制意图、手动暂停、容量暂停、来源开关、系统许可、模型准备及本次登录的完全退出各有独立含义。来源异常后使用有上限退避，恢复前保持真实缺口；另一来源可继续。容量边界暂停新增采集并提醒，释放空间后由用户手动恢复。[采集监督](../crates/loppi-core/src/main.rs)、[封块写入](../crates/loppi-core/src/record.rs)。
 
-每日定时录制由 Core 的 [`schedule.rs`](../crates/loppi-core/src/schedule.rs) 管理：单例 `recording_schedule` 存开关、两个当地分钟、处理游标、时区与暂停原因。原生日历 helper 只换算时间；`capture_supervisor` 在决定来源启停前，于同一个 Store 写事务中补最近一次遗漏动作并持久化游标。目标已满足也消费边界，不重启 session。手动控制先结算到期动作再应用用户意图；保存新配置只重建未来起点，关闭规则不改变录制。日历按系统时区处理 DST，时区变化仅重建未来边界，时间回拨不回放游标之前的动作。
+定时录制由 Core 的 [`schedule.rs`](../crates/loppi-core/src/schedule.rs) 管理：单例 `recording_schedule` 存开关、两个当地分钟、处理游标、时区与暂停原因。其关联的 `recording_schedule_days` 存重复日，按周一至周日的七位掩码表示，旧计划默认全选。两表由同一事务更新。日历计算按开始日筛选，跨午夜的停止归属前一天。`capture_supervisor` 在决定来源启停前，于同一个 Store 写事务中补最近一次遗漏动作并持久化游标。目标已满足也消费边界，不重启 session。手动控制先结算到期动作再应用用户意图；保存新配置只重建未来起点，关闭规则不改变录制。日历按系统时区处理 DST，时区变化仅重建未来边界，时间回拨不回放游标之前的动作。
 
-查询型启动不执行定时动作。正常登录运行或宿主既有状态刷新携带的幂等 `AppOpened` 恢复信号才开启定时结算；Core 区分本实例的正常运行许可与实际采集许可：先打开 GUI 再启用规则只安排未来动作，Core 中断后下一次宿主刷新可重新激活；重复刷新不把设置保存变成即时录制。完整退出期间宿主刷新已停止，不拉起应用。GUI、CLI 保存共用修订与请求回执；不在前端执行计时。定时开始不清除容量暂停，也不能绕过配置、模型、权限及来源开关；`schedule_pause` 与手动暂停一样先登记停止意图，停止仍走现有尾块封存路径；缺口起点随最终确认原声校正，终点由恢复采集意图关闭。设置显示下一次计划，所有录制入口仍由真实采集快照投影。设置页的规则开关即时提交；时间与容量仅在独立弹窗编辑。`useSettingMutation` 复用原修订/幂等回执提交模式，只有 UI 生命周期内的草稿、busy 和待确认请求，不是配置事实源；未知结果由用户确认同一请求，不新增自动重试或前端计时。
+查询型启动不执行定时动作。正常登录运行或宿主既有状态刷新携带的幂等 `AppOpened` 恢复信号才开启定时结算；Core 区分本实例的正常运行许可与实际采集许可：先打开 GUI 再启用规则只安排未来动作，Core 中断后下一次宿主刷新可重新激活；重复刷新不把设置保存变成即时录制。完整退出期间宿主刷新已停止，不拉起应用。GUI、CLI 保存共用修订与请求回执；不在前端执行计时。定时开始不清除容量暂停，也不能绕过配置、模型、权限及来源开关；`schedule_pause` 与手动暂停一样先登记停止意图，停止仍走现有尾块封存路径；缺口起点随最终确认原声校正，终点由恢复采集意图关闭。设置显示下一次计划，所有录制入口仍由真实采集快照投影。设置页的规则开关即时提交；录制计划和容量在独立弹窗编辑。`useSettingMutation` 复用原修订/幂等回执提交模式，只有 UI 生命周期内的草稿、busy 和待确认请求，不是配置事实源；未知结果由用户确认同一请求，不新增自动重试或前端计时。
 
 启动只恢复有索引的未完成录制/任务状态，媒体历史遍历已移到 `inventory::Scan`：每轮最多 32 个文件、每个文件单独持有媒体生命周期屏障，文件检查和删除不持有 `Store`。它区分 live / pending-deletion / capture-staging / orphan，按扫描代次分批对账孤儿配额；物理分类是带观察时间的扫描结果，不能冒充瞬时精确磁盘快照。旧版本封块 `sealing` 的恢复仍保留；截图、ASR/导出暂存和旧导出文件恢复由 `recovery::run` 在服务接收请求后分批执行，每步最多 32 项。启动只将旧导出作业标记为 recovering，后台永不领取新 pending 作业；文件 IO 后按原 job/state 确认，失联磁盘在下一轮重试。ASR/导出暂存复用各自唯一资源准入槽排除活跃文件，截图复用 cleanup_gate；不按文件时间猜测所有权。容量暂停保持粘滞，扫描不能覆盖用户暂停或自动恢复录制。
 
@@ -144,12 +146,13 @@ Windows 资源桥提供内存负载、进程 private bytes、电源与暂停/恢
 
 ## 5. 外发、修订与清理边界
 
-详情「确认事件结束」通过 `ConfirmEventCompletion` 交由 Core 一次事务处理。未改时间保留已有识别结果，写入 `named_events.completed_ms` 并立即规划精转；改时间则在既有 `event_reorganization_requests` 保存目标事件/预期修订，沿同一LLM队列与FIT_SYSTEM重新整理，人工时间仅为明确标注来源的参考。成功发布的全部结果与完成事实原子提交，失败保留旧事件。普通自动输入扣除已确认范围并排除续接/linked修改，迟到自动结果仍服从当前完成事实与冲突检查；普通显式重新整理可按最新用户意图修改。完成时间与处理进度分开，GUI只读投影。晚到封块在原入库事务中使相交已确认事件的既有ASR规划版本失效，原刷新器补未覆盖原声，复用物理请求；不增加队列、worker或重试器。普通新建/重整入口不默认写完成事实。
+详情「确认事件结束」通过 `ConfirmEventCompletion` 交由 Core 一次事务处理。未改时间时保留已有识别结果，写入 `named_events.completed_ms`，与自然稳定共用 Core 的标签及流程判断。仅命中精转条件时规划缺失覆盖。改时间时在既有 `event_reorganization_requests` 保存目标事件/预期修订，沿同一LLM队列与FIT_SYSTEM重新整理，人工时间仅为明确标注来源的参考。成功发布的全部结果与完成事实原子提交，失败保留旧事件。普通自动输入扣除已确认范围并排除续接/linked修改，迟到自动结果仍服从当前完成事实与冲突检查；普通显式重新整理可按最新用户意图修改。完成时间与处理进度分开，GUI只读投影。晚到封块在原入库事务中使相交已确认事件的既有ASR规划版本失效，原刷新器补未覆盖原声，复用物理请求；不增加队列、worker或重试器。普通新建/重整入口不默认写完成事实。
 
 
 “新建事件”表单通过`ReorganizeEvents`提交一次性用户指示。Core在同一事务保存`event_reorganization_requests`载荷和现有LLM队列的`reorganization`任务；状态只由`cloud_tasks`拥有。名称、大致时间、音源和相关旧事件完整材料进入同一FIT_SYSTEM，模型明确提出event_id修改、新建及retire_event_ids。共用发布事务检查当前输入、对象/音源权限与最终非重叠后执行；旧人工事件可按此次最新意图重组，新结果不新增人工锁，指示不再参与后续自动整理。ASR继承物理请求引用，只规划未覆盖原声；文字纠错、人物确认、绝对时刻笔记保留。模型退役不调用带永久抑制的人工删除/拆合高层命令。GUI等待时保留旧事件，状态与重试复用处理队列。
 
-- DeepSeek 事件整理任务只见候选区间的粗文字、时间、来源及“检测到人声但无可用文字”等状态；其 JSON 仅是建议，核心检查边界、来源、冲突、人工优先级及任务版本。[`llm_input` / `publish_fit`](../crates/loppi-core/src/events.rs)。
+- DeepSeek 事件整理任务只见候选区间的粗文字、时间、来源及“检测到人声但无可用文字”等状态；系统提示词附当前智能标签的模式、ID 和标准。Core 分别校验事件范围、理解及标签，检查冲突、人工优先级及当前任务版本。[`llm_input` / `publish_fit`](../crates/loppi-core/src/events.rs)。
+- 自定义策略向同一 LLM 队列提交当前范围的粗转稿或可用精转稿、时间、音源及精转说话人。策略 Prompt 与固定输出格式进入系统指令，转录作为材料。等精转的运行尚未占用 LLM 任务。Core 校验当前范围与输入后发布 Markdown 版本。
 - 火山 ASR 只见被判定或人工指定需精转的音频；事件稳定后按来源及编码时长上限建持久任务，新物理请求保持连续时间坐标；不超过一分钟且有完整同源无人声证据的空档按真实时长编码静默，超过上限、未知、采集或清理缺口分开请求，不再插入压缩接缝；旧持久输入和远端请求 ID 不变。当前适配器是 `volc.seedasr.auc`，请求 speaker 信息、分句及 `ssd_version=300`。Keychain 的 LLM/ASR 凭据分别设置、分别暂停队列。[`cloud.rs`](../crates/loppi-core/src/cloud.rs)。
 - 人工确认人物后，Core 在既有声纹循环中筛选单句/相邻短句组合样例，按质量、近似去重和每场/每人物限额入库。每个组合成员保留人工绑定证据；自动命名不回流训练。内部取样任务及证据表由 `knowledge/enrollment.rs` 管理，复用本地 worker 和清理屏障，详见[声纹入库策略](tech_docs/speaker-identity.md#短句组合与音质)。
 - 已配置 LLM 时，用户新保存的截图通过同一个持久 LLM 队列直接发送原图，输出中文摘要与完整 Markdown 转录。仅 `save_capture` 创建 `screenshot` 任务；配置或启动不回填历史。暂停、恢复、失败重试、用量统计沿用现有任务机制。原图和本地 OCR 始终保留；`moments.image_summary/image_transcript` 原子发布并更新搜索，任务状态从 `cloud_tasks` 派生。读图/上传持有既有 LLM outbound gate，网络不持有 Store；只清原声不取消截图任务，全部数据清理后不能发布迟到结果。详情按需刷新待处理记录，Markdown 禁止 HTML、远程图片及活动链接。

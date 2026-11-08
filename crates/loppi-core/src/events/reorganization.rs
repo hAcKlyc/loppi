@@ -116,7 +116,7 @@ pub fn input(db: &Connection, task: &CloudTask) -> Result<String, String> {
     for event in context["linked_events"].as_array_mut().unwrap() {
         event["summary_sentences"] = summary::indexed(event["summary"].as_str());
     }
-    let value=json!({"candidate":{"start_ms":start,"end_ms":end},"user_instruction":{"title":title,"start_ms":task.start,"end_ms":task.end,"sources":sources_for(mask),"completion_event_id":completion_id,"times_adjusted_by_user":completion.is_some()},"source_mask":mask,"summary_budget":{"target_chars":900,"tolerance_chars":1100},"vocabulary":crate::vocabulary::llm_context(db)?,"context":context,"observations":observations,"evidence":catalog}).to_string();
+    let value=json!({"candidate":{"start_ms":start,"end_ms":end},"user_instruction":{"title":title,"start_ms":task.start,"end_ms":task.end,"sources":sources_for(mask),"completion_event_id":completion_id,"times_adjusted_by_user":completion.is_some()},"source_mask":mask,"summary_budget":{"target_chars":900,"tolerance_chars":1100},"classification":workflow::classification_context(db)?,"vocabulary":crate::vocabulary::llm_context(db)?,"context":context,"observations":observations,"evidence":catalog}).to_string();
     if value.len() > 512 * 1024 {
         return Err("reorganization_input_too_large".into());
     }
@@ -282,6 +282,9 @@ pub(super) fn apply(
                 now,
             )?;
         }
+        if !protected {
+            workflow::observe(tx, &id, input, event)?;
+        }
         published.push((id, start, end, mask, !protected));
     }
     // Check the final event set after all explicit edits, not intermediate overlaps.
@@ -313,17 +316,6 @@ pub(super) fn apply(
             completion::finish(tx, id, now)?;
             continue;
         }
-        queue_asr(
-            tx,
-            "event",
-            id,
-            &asr_version(*mask, *start, *end),
-            *start,
-            *end,
-            *mask,
-            true,
-            now,
-        )?;
     }
     if let Some(id) = completion_id {
         if !retire.iter().any(|v| v == id) && !published.iter().any(|v| v.0 == id) {

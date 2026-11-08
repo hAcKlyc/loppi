@@ -9,7 +9,7 @@ mockIPC(async(command,args)=>{if(command!=='core_request')throw Error(command);c
  if(receipts.has(args.requestId))return receipts.get(args.requestId);
  if(mode==='conflict'){state={...state,revision:state.revision+1};return{type:'error',code:'revision_conflict',message:'stale'};}
  if(mode==='fail')return{type:'error',code:'database_error',message:'save failed'};
- state={...state,revision:state.revision+1,recording_schedule:{...state.recording_schedule,enabled:r.enabled,start_minute:r.start_minute,stop_minute:r.stop_minute,next_at_ms:Date.now()+3600000,next_action:'stop'}};
+ state={...state,revision:state.revision+1,recording_schedule:{...state.recording_schedule,enabled:r.enabled,start_minute:r.start_minute,stop_minute:r.stop_minute,weekday_mask:r.weekday_mask??state.recording_schedule.weekday_mask,next_at_ms:Date.now()+3600000,next_action:'stop'}};
  const result={type:'status',state};receipts.set(args.requestId,result);if(mode==='lost')throw Error('reply lost');return result;
 });
 function App(){const[s,ss]=useState(state);setPublished=ss;return h('main',{style:{maxWidth:700,margin:'50px auto'}},h('h1',null,'设置 · 记录'),h(RecordingScheduleSettings,{state:s,refresh:async()=>{if(refreshFail)throw Error('offline');ss(structuredClone(state));}}));}
@@ -20,18 +20,31 @@ const input=async(index,value)=>{const el=document.querySelectorAll('input[type=
 window.runRegression=async()=>{let n=0;const out=document.getElementById('result'),check=(ok,message)=>{if(!ok)throw Error(message);n++};try{
  await wait(100);setPublished(null);await wait(30);check(document.querySelector('[aria-busy=true]')&&!document.querySelector('[role=switch]')&&!document.querySelector('main').textContent.includes('未启用'),'首次加载不得假装未启用');setPublished(state);await wait(30);check(!state.recording_schedule.enabled&&!button('保存'),'默认关闭且没有未保存草稿');
  await click(document.querySelector('[role=switch]'));check(calls.length===1&&state.recording_schedule.enabled,'开关立即提交并生效');check(!button('保存')&&!document.querySelector('input'),'主页面没有草稿输入和保存');
- await click(button('编辑时间'));await input(1,'08:00');await click(button('保存时间'));check(calls.length===1&&document.querySelector('[role=alert]'),'相同时刻不提交');
+ await click(button('编辑计划'));
+ const days=()=>[...document.querySelectorAll('dialog .schedule-day')];
+ check(days().length===7&&days().every(day=>day.getAttribute('aria-pressed')==='true')&&document.activeElement===days()[0],'旧计划全选，星期一先获得焦点');
+ for(const day of days())await click(day);
+ check(button('保存计划').disabled&&document.querySelector('[role=alert]').textContent==='至少选择一天','空选择提示并禁用保存');
+ await click(days()[0]);check(!button('保存计划').disabled,'重新选择一天后可保存');
+ await input(1,'08:00');await click(button('保存计划'));check(calls.length===1&&document.querySelector('[role=alert]'),'相同时刻不提交');
  await click(button('取消'));check(!document.querySelector('dialog')&&state.recording_schedule.stop_minute===1380,'取消不写入');
- await click(button('编辑时间'));await input(1,'22:30');mode='fail';await click(button('保存时间'));check(document.querySelectorAll('input[type=time]')[1].value==='22:30'&&button('保存时间'),'失败保留草稿');check(state.recording_schedule.stop_minute===1380,'失败保持事实');
- mode='conflict';await click(button('保存时间'));check(button('保存时间')&&document.querySelector('[role=alert]'),'冲突保留输入并显示错误');const revision=state.revision;
- mode='ok';await click(button('保存时间'));check(calls.at(-1).request.expected_revision===revision,'显式重试使用刷新修订');check(state.recording_schedule.enabled&&!document.querySelector('dialog'),'保存成功关闭编辑');
- await click(button('编辑时间'));await input(0,'09:15');mode='lost';await click(button('保存时间'));const lost=calls.at(-1);check(button('确认上次结果')&&document.querySelector('input[type=time]').disabled&&button('取消').disabled,'结果不明禁止改写');
+ await click(button('编辑计划'));await input(1,'22:30');mode='fail';await click(button('保存计划'));check(document.querySelectorAll('input[type=time]')[1].value==='22:30'&&button('保存计划'),'失败保留草稿');check(state.recording_schedule.stop_minute===1380,'失败保持事实');
+ mode='conflict';await click(button('保存计划'));check(button('保存计划')&&document.querySelector('[role=alert]'),'冲突保留输入并显示错误');const revision=state.revision;
+ mode='ok';await click(button('保存计划'));check(calls.at(-1).request.expected_revision===revision,'显式重试使用刷新修订');check(state.recording_schedule.enabled&&!document.querySelector('dialog'),'保存成功关闭编辑');
+ await click(button('编辑计划'));await input(0,'09:15');mode='lost';await click(button('保存计划'));const lost=calls.at(-1);check(button('确认上次结果')&&document.querySelector('input[type=time]').disabled&&button('取消').disabled,'结果不明禁止改写');
  await click(button('确认上次结果'));check(JSON.stringify(calls.at(-1))===JSON.stringify(lost),'确认沿用同一请求与ID');check(!document.querySelector('dialog'),'回执确认成功');
  mode='ok';await click(document.querySelector('[role=switch]'));check(!state.recording_schedule.enabled&&state.recording_schedule.start_minute===555,'停用立即生效并保留时间');
- await click(button('编辑时间'));await input(0,'10:15');await click(button('保存时间'));check(!state.recording_schedule.enabled&&state.recording_schedule.start_minute===615,'关闭时修改时间不会启用');
+ await click(button('编辑计划'));await input(0,'10:15');await click(button('保存计划'));check(!state.recording_schedule.enabled&&state.recording_schedule.start_minute===615,'关闭时修改时间不会启用');
  mode='fail';await click(document.querySelector('[role=switch]'));check(document.querySelector('[role=switch]').getAttribute('aria-checked')==='false','失败开关不显示未提交值');
  mode='lost';await click(document.querySelector('[role=switch]'));const toggleLost=calls.at(-1);check(document.querySelector('[role=switch]').disabled&&button('确认上次结果'),'未知开关结果显示确认');await click(button('确认上次结果'));check(calls.at(-1).requestId===toggleLost.requestId&&document.querySelector('[role=switch]').getAttribute('aria-checked')==='true','同请求确认开关');
- const opener=button('编辑时间');opener.focus();await click(opener);document.querySelector('input').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await wait(40);check(!document.querySelector('dialog')&&document.activeElement===opener,'Escape 关闭并恢复发起按钮焦点');mode='ok';await click(opener);await click(button('保存时间'));check(!document.querySelector('dialog')&&document.activeElement===opener,'保存成功解锁按钮后恢复焦点');
+ const opener=button('编辑计划');opener.focus();await click(opener);document.querySelector('input').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await wait(40);check(!document.querySelector('dialog')&&document.activeElement===opener,'Escape 关闭并恢复发起按钮焦点');mode='ok';await click(opener);await click(button('保存计划'));check(!document.querySelector('dialog')&&document.activeElement===opener,'保存成功解锁按钮后恢复焦点');
+ await click(opener);for(const day of days())if(day.getAttribute('aria-label')!=='周五')await click(day);
+ await input(0,'22:00');await input(1,'06:00');
+ check(document.querySelector('.schedule-times .setting-status')?.textContent==='次日','跨午夜显示次日');
+ await click(button('保存计划'));
+ check(calls.at(-1).request.weekday_mask===16&&document.querySelector('main').textContent.includes('周五 · 22:00–次日 06:00'),'星期和跨午夜保存后回显');
+ await click(opener);check(days().filter(day=>day.getAttribute('aria-pressed')==='true').map(day=>day.textContent).join('')==='五','重开保留已选日期');await click(button('取消'));
+ await click(document.querySelector('[role=switch]'));check(state.recording_schedule.weekday_mask===16,'关闭计划保留星期选择');
  out.textContent=`PASS · ${n} 项交互检查`;return n;
  }catch(e){out.textContent='FAIL · '+e.message;throw e}};
 document.getElementById('run').onclick=()=>void window.runRegression();

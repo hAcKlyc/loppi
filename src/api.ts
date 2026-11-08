@@ -6,7 +6,7 @@ export type CloudProvider = "llm" | "asr";
 
 const errorLabels: Record<string, string> = {
 	audio_unavailable: "没有可重新识别的保留原声",
-	task_not_retryable: "任务已变化，请刷新智能识别后重试",
+	task_not_retryable: "任务已变化，请刷新智能分析后重试",
 	invalid_schedule: "请选择不同的开始和停止时间",
 	range_no_audio: "所选时间没有可精转的原声",
 	range_invalid: "请选择有效的精转时间和声音来源",
@@ -77,7 +77,7 @@ export function userError(error: unknown): string {
 		if (message.includes("event_completion_future_range"))
 			return "结束时间不能晚于当前时间";
 		if (message.includes("event_completion_pending"))
-			return "这个事件正在重新整理，可在智能识别查看";
+			return "这个事件正在重新整理，可在智能分析查看";
 		if (message.includes("no_coarse_text"))
 			return "这段时间暂无可重新整理的文字";
 
@@ -125,6 +125,8 @@ export function processingLabel(
 			return "本地语音分析失败";
 		case "settling_asr":
 			return "等待事件稳定";
+		case "asr_skipped":
+			return "按规则跳过精转";
 		case "pending_asr":
 			return "待精转";
 		case "transcribing":
@@ -170,6 +172,7 @@ export interface RecordingSchedule {
 	enabled: boolean;
 	start_minute: number;
 	stop_minute: number;
+	weekday_mask?: number;
 	paused_by_schedule: boolean;
 	next_at_ms: number | null;
 	next_action: "start" | "stop" | null;
@@ -247,6 +250,7 @@ export interface PreciseSegment extends CoarseSegment {
 }
 
 export interface TimelineItem {
+	workflow?: import("./workflow-api").EventWorkflow;
 	completed_ms?: number | null;
 	completion_state?: string | null;
 	transcription?: {

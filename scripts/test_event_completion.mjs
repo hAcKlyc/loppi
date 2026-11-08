@@ -42,12 +42,38 @@ const { DetailDrawer } = await import('../src/DetailDrawer.tsx');
 
 const started = Date.now()-3600000+123;
 const initial = { id:'completion-fixture', title:'结束确认回归', started_ms:started, ended_ms:started+1200000,
-  sources:'microphone', revision:7, processing_state:'settling_asr', coarse_segments:[], precise_segments:[] };
-let current={...initial}, key=0, failOnce=false, mutations=[], actions=[], retranscriptions=[];
+  sources:'microphone', revision:7, processing_state:'settling_asr', coarse_segments:[], precise_segments:[],
+  workflow:{phase:'undetermined',tag_state:'tagged',labels:[{id:'work',name:'工作会议'}],manual:false} };
+let current={...initial}, key=0, failOnce=false, failRunsOnce=false, staleTitleOnce=false, extraSuccess=false, longBody=false, refreshMarker=0, mutations=[], actions=[], retranscriptions=[], resultReads=[], titleEdits=[];
+const strategyRun=(id,name)=>({run_id:id+'-run',strategy_id:id,name,input:'precise',
+  state:'succeeded',result_version_id:id+'-run',created_ms:started,completed_ms:started,asr_task_ids:[]});
 mockIPC(async(command,args)=>{
  const r=args.request;
  if(r.type==='event_detail')return {type:'event',event:current};
  if(r.type==='moments')return {type:'moments',moments:[]};
+ if(r.type==='edit_event'){
+  titleEdits.push(r);
+  if(staleTitleOnce){
+   staleTitleOnce=false;current={...current,title:'其他入口保存的标题',revision:current.revision+1};
+   return {type:'error',code:'event_invalid',message:'event revision conflict'};
+  }
+  current={...current,title:r.title,revision:current.revision+1};
+  return {type:'accepted',id:args.requestId};
+ }
+ if(r.type==='workflow'){
+  if(r.action.op==='runs'&&failRunsOnce){failRunsOnce=false;throw Error('模拟策略读取失败');}
+  if(r.action.op==='runs'){
+   const minutes=strategyRun('minutes','会议纪要');
+   const runs=[minutes,strategyRun('actions','行动清单')];
+   if(extraSuccess)runs.unshift({...minutes,run_id:'earlier-body',result_version_id:'earlier-body',created_ms:started+1,completed_ms:started-1});
+   return {type:'workflow',result:{ok:true,data:{runs}}};
+  }
+  if(r.action.op==='result'){
+   resultReads.push(r.action.strategy_id);
+   return {type:'workflow',result:{ok:true,data:{...strategyRun(r.action.strategy_id,'策略'),body_markdown:r.action.cursor?'\n\n## 续页保留':r.action.strategy_id==='minutes'?'# 合成纪要\n\n## 决策\n\n- 周四交付':'# 合成行动清单',next_cursor:longBody&&!r.action.cursor?'minutes-run:12000':null}}};
+  }
+ }
+
  if(r.type==='retranscribe_event'){
   retranscriptions.push(r);
   current={...current,processing_state:'pending_asr'};
@@ -57,7 +83,7 @@ mockIPC(async(command,args)=>{
   mutations.push(args);
   if(failOnce){failOnce=false;throw Error('lost response');}
   const changed=r.started_ms!==initial.started_ms || r.ended_ms!==initial.ended_ms;
-  current={...current,completed_ms:changed?null:Date.now(),completion_state:changed?'pending':undefined,processing_state:changed?'settling_asr':'pending_asr',revision:changed?7:8};
+  current={...current,completed_ms:changed?null:Date.now(),completion_state:changed?'pending':undefined,processing_state:changed?'settling_asr':'pending_asr',revision:changed?7:8,workflow:{...initial.workflow,phase:changed?'judging':'decided'}};
   return {type:'accepted',id:args.requestId,object_id:r.event_id};
  }
  throw Error('unexpected '+r.type);
@@ -66,9 +92,9 @@ const root=createRoot(document.getElementById('root'));
 const settle=async(fn=()=>{})=>act(async()=>{await fn();await new Promise(r=>setTimeout(r,0));});
 const q=s=>document.querySelector(s);
 const button=text=>[...document.querySelectorAll('button')].find(el=>el.textContent===text);
-const render=()=>root.render(React.createElement(DetailDrawer,{key,item:current,people:[],refreshToken:0,
- onClose(){},onEdit(){actions.push('edit')},onTools(_item,mode){actions.push(mode)},onQueue(){actions.push('queue')},
- onDataAction(kind){actions.push(kind)},onChanged(){},onMessage(){}}));
+const render=()=>root.render(React.createElement(DetailDrawer,{key,item:current,people:[],refreshToken:refreshMarker,
+ onClose(){actions.push('close')},onEdit(){actions.push('edit')},onTools(_item,mode){actions.push(mode)},onQueue(){actions.push('queue')},
+ onDataAction(kind){actions.push(kind)},onChanged(){},onConfirmedEvent(){},onMessage(){}}));
 const reset=async()=>{current={...initial};key++;await settle(render);};
 const open=async()=>settle(()=>q('.event-completion-trigger').click());
 const setValue=async(input,value)=>settle(()=>{
@@ -79,6 +105,7 @@ globalThis.HTMLInputElement=window.HTMLInputElement;
 try{
  await settle(render);
  assert(q('.detail-header .event-completion-trigger'));
+ assert(!q('[aria-label="执行策略"]'),'strategy entry waits for event determination and rule evaluation');
  assert(!q('.detail-header-actions > .control-button:not([aria-label])'),'management actions are inside more');
  await open();
  let inputs=[...document.querySelectorAll('.modal input')];
@@ -90,6 +117,18 @@ try{
  assert.equal(mutations[0].request.ended_ms,initial.ended_ms,'unchanged defaults preserve millisecond identity');
  assert.match(q('.detail-status').textContent,/已确认结束.*待精转/);
  assert(!q('.event-completion-trigger'));assert(!q('.modal'));
+ assert(q('[aria-label="执行策略"]'),'strategy entry is available while queued ASR is still pending');
+ assert(button('会议纪要'));assert(button('行动清单'));assert(!button('生成内容'));
+ assert.equal(resultReads.length,0,'strategy tabs load metadata without loading markdown');
+ await settle(()=>button('会议纪要').click());
+ assert.equal(q('.workflow-markdown h1').textContent,'合成纪要');
+ assert.equal(q('.workflow-markdown h2').textContent,'决策');
+ assert.doesNotMatch(q('.workflow-results').textContent,/已生成|基于精转录/);
+ await settle(()=>button('行动清单').click());
+ assert.equal(q('.workflow-markdown h1').textContent,'合成行动清单');
+ assert.deepEqual(resultReads,['minutes','actions']);
+
+
  await reset();await open();
  inputs=[...document.querySelectorAll('.modal input')];
  await setValue(inputs[1],inputs[0].value);
@@ -137,4 +176,43 @@ try{
  assert.deepEqual(retranscriptions,[{type:'retranscribe_event',event_id:initial.id,expected_revision:initial.revision}]);
  assert(!q('.modal'));assert.match(q('.detail-status-link').textContent,/待精转/);
  console.log('PASS: four-action menu, completion and queue status navigation, audio-only rerun with usage confirmation, default precision, validation and stable uncertain receipt');
+ await reset();failRunsOnce=true;await open();await settle(()=>button('确认结束并开始处理').click());
+ assert.match(q('.workflow-tab-error').textContent,/模拟策略读取失败/);
+ assert(!button('会议纪要'));
+ await settle(()=>button('重试读取策略').click());
+ assert(button('会议纪要'));assert(!q('.workflow-tab-error'));
+ await reset();
+ assert.equal(q('.detail-meta .detail-tag').textContent,'工作会议');
+ assert(q('.detail-meta .eyebrow')&&q('.detail-meta .detail-status'));
+ assert(!button('编辑标签'));
+ await settle(()=>q('.detail-title-trigger').click());
+ assert.equal(document.activeElement,q('.detail-title-input'));
+ const actionsBeforeIme=actions.length;
+ await settle(()=>q('.detail-title-input').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,isComposing:true})));
+ assert(q('.detail-title-input'));assert.equal(actions.length,actionsBeforeIme);assert.equal(titleEdits.length,0);
+ await setValue(q('.detail-title-input'),'取消的标题');
+ await settle(()=>q('.detail-title-input').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true})));
+ assert.equal(titleEdits.length,0);
+ assert.equal(q('.detail-title-trigger').textContent,initial.title);
+ await settle(()=>q('.detail-title-trigger').click());
+ await setValue(q('.detail-title-input'),'  内联修改后的标题  ');
+ await settle(()=>q('.detail-title-input').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true})));
+ assert.deepEqual(titleEdits,[{type:'edit_event',event_id:initial.id,expected_revision:initial.revision,
+  started_ms:initial.started_ms,ended_ms:initial.ended_ms,sources:initial.sources,title:'内联修改后的标题'}]);
+ assert.equal(q('.detail-title-trigger').textContent,'内联修改后的标题');
+ assert.equal(document.activeElement,q('.detail-title-trigger'));
+ staleTitleOnce=true;
+ await settle(()=>q('.detail-title-trigger').click());
+ await setValue(q('.detail-title-input'),'过期的编辑');
+ await settle(()=>q('.detail-title-input').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true})));
+ assert.equal(titleEdits.length,2);assert(!q('.detail-title-input'));
+ assert.equal(q('.detail-title-trigger').textContent,'其他入口保存的标题');
+ assert.equal(document.activeElement,q('.detail-title-trigger'));
+
+ await reset();extraSuccess=true;longBody=true;await open();await settle(()=>button('确认结束并开始处理').click());
+ await settle(()=>button('会议纪要').click());
+ await settle(()=>button('继续阅读').click());
+ assert.match(q('.workflow-markdown').textContent,/续页保留/);
+ extraSuccess=false;refreshMarker++;await settle(render);
+ assert.match(q('.workflow-markdown').textContent,/续页保留/,'metadata refresh preserves already-loaded pages of the same version');
 }finally{await settle(()=>root.unmount());clearMocks();dom.window.close();}

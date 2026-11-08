@@ -59,6 +59,8 @@ def readiness_errors(before, state, owner, gui, build, now_ms):
     for key in ['enabled', 'start_minute', 'stop_minute']:
         if current.get(key) != previous[key]:
             errors.append(f'recording schedule changed: {key}')
+    if current.get('weekday_mask', 127) != previous.get('weekday_mask', 127):
+        errors.append('recording schedule changed: weekday_mask')
     if current.get('error'):
         errors.append(f"schedule error: {current['error']}")
     # The normal scheduler may legitimately consume a boundary during testing.

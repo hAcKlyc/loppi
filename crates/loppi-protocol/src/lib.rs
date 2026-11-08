@@ -5,6 +5,7 @@ pub mod ipc;
 mod lifecycle;
 pub mod platform;
 pub mod vocabulary;
+pub mod workflow;
 pub use diagnostic::*;
 use ipc::Stream as UnixStream;
 pub use lifecycle::{quit_gui_core, resume_gui_core};
@@ -18,7 +19,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
-pub const PROTOCOL_VERSION: u32 = 26;
+pub const PROTOCOL_VERSION: u32 = 28;
 const MAX_RESPONSE_BYTES: u64 = 48 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,6 +55,9 @@ pub enum Request {
     Context {
         query: context::Query,
     },
+    Workflow {
+        action: workflow::Action,
+    },
     Lifecycle {
         action: LifecycleAction,
     },
@@ -85,6 +89,8 @@ pub enum Request {
         enabled: bool,
         start_minute: u16,
         stop_minute: u16,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        weekday_mask: Option<u8>,
         expected_revision: i64,
     },
     SetSource {
@@ -344,6 +350,7 @@ impl Request {
     pub fn name(&self) -> &'static str {
         match self {
             Self::Context { .. } => "context",
+            Self::Workflow { .. } => "workflow",
             Self::Lifecycle { .. } => "lifecycle",
             Self::Status => "status",
             Self::Diagnose { .. } => "diagnose",
@@ -617,6 +624,8 @@ pub struct TimelinePreview {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimelineItem {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workflow: Option<workflow::EventStatus>,
     /// User-confirmed event end, independent of transcription progress.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub completed_ms: Option<i64>,
@@ -780,6 +789,10 @@ pub struct SearchHit {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Response {
+    Workflow {
+        id: Uuid,
+        result: serde_json::Value,
+    },
     Context {
         id: Uuid,
         result: serde_json::Value,
@@ -1017,11 +1030,20 @@ pub enum CaptureBlocker {
     SourceUnavailable,
 }
 
+pub const ALL_SCHEDULE_WEEKDAYS: u8 = 0x7f;
+
+fn default_schedule_weekdays() -> u8 {
+    ALL_SCHEDULE_WEEKDAYS
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecordingSchedule {
     pub enabled: bool,
     pub start_minute: u16,
     pub stop_minute: u16,
+    // Bits zero through six are Monday through Sunday.
+    #[serde(default = "default_schedule_weekdays")]
+    pub weekday_mask: u8,
     pub paused_by_schedule: bool,
     pub next_at_ms: Option<i64>,
     pub next_action: Option<String>,
@@ -1033,6 +1055,7 @@ impl Default for RecordingSchedule {
             enabled: false,
             start_minute: 480,
             stop_minute: 1380,
+            weekday_mask: ALL_SCHEDULE_WEEKDAYS,
             paused_by_schedule: false,
             next_at_ms: None,
             next_action: None,
@@ -1186,6 +1209,7 @@ fn send_with_policy(
     let decoded: Response = serde_json::from_slice(&response).map_err(|error| error.to_string())?;
     match &decoded {
         Response::Context { id, .. }
+        | Response::Workflow { id, .. }
         | Response::Lifecycle { id, .. }
         | Response::CloudConfigurationReceipt { id, .. }
         | Response::Status { id, .. }

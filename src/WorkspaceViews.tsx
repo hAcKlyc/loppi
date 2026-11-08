@@ -1,7 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { AnalysisOverview } from "./AnalysisOverview";
 import { AudioStorageSettings } from "./AudioStorageSettings";
 import {
 	type CleanupPreview,
@@ -29,6 +30,8 @@ import {
 	SegmentedOptions,
 	SettingRow,
 	Switch,
+	TabPanel,
+	Tabs,
 } from "./Controls";
 import { taskNeedsRecognition, taskStatus } from "./cloud-task-status";
 import {
@@ -45,6 +48,7 @@ import { SoftwareUpdate } from "./SoftwareUpdate";
 import type { ModelState, PrivacyStatus } from "./setup";
 import { UsageStatisticsView } from "./UsageStatistics";
 import type { AppUpdate } from "./useAppUpdate";
+import { type WorkflowSection, WorkflowSettings } from "./WorkflowSettings";
 
 type Mutation = (
 	request: { type: string; [key: string]: unknown },
@@ -77,6 +81,7 @@ function taskRange(task: CloudTask): string {
 }
 
 export function QueueView({
+	initialSection,
 	queuesReady = true,
 	queuesError,
 	tasksReady = true,
@@ -91,6 +96,7 @@ export function QueueView({
 	onMutate,
 	onSettings,
 }: {
+	initialSection?: WorkflowSection;
 	queues: CloudQueue[];
 	queuesReady?: boolean;
 	queuesError?: string;
@@ -106,12 +112,17 @@ export function QueueView({
 	onSettings: (provider: CloudProvider) => void;
 }) {
 	const [taskProvider, setTaskProvider] = useState<CloudProvider | null>(null);
+	const [section, setSection] = useState<"queue" | WorkflowSection>(
+		initialSection ?? "queue",
+	);
+	const tabsId = useId();
 	const pageTop = useRef<HTMLElement>(null);
 	const heading = useRef<HTMLHeadingElement>(null);
 	useEffect(() => {
 		void taskProvider;
 		pageTop.current?.scrollIntoView({ block: "start" });
-		heading.current?.focus({ preventScroll: true });
+		// Move focus after the event dialogs finish restoring theirs.
+		queueMicrotask(() => heading.current?.focus({ preventScroll: true }));
 	}, [taskProvider]);
 	const [statisticsRefresh, setStatisticsRefresh] = useState(0);
 	const [activeReview, setActiveReview] = useState<string | null>(null);
@@ -219,27 +230,47 @@ export function QueueView({
 					onClick={() => setTaskProvider(null)}
 				>
 					<Icon name="back" />
-					返回智能识别
+					返回智能分析
 				</Button>
 			)}
-			<div className="page-heading" data-tauri-drag-region>
+			<div
+				className={taskProvider ? "page-heading" : "page-heading analysis-top"}
+				data-tauri-drag-region
+			>
 				<h1 ref={heading} tabIndex={-1}>
 					{taskProvider
 						? `${recognitionServices[taskProvider].title}任务明细`
-						: "智能识别"}
+						: "智能分析"}
 				</h1>
-				<Button
-					type="button"
-					tone="quiet"
-					onClick={() => {
-						setStatisticsRefresh((value) => value + 1);
-						void onRefresh();
-					}}
-				>
-					刷新
-				</Button>
+				{!taskProvider && <AnalysisOverview />}
 			</div>
-			<div hidden={taskProvider !== null} inert={taskProvider !== null}>
+			{!taskProvider && (
+				<Tabs
+					id={tabsId}
+					label="智能分析页面"
+					value={section}
+					items={[
+						{ value: "queue", label: "处理队列" },
+						{ value: "labels", label: "事件分析·场景标签" },
+						{ value: "automation", label: "流程与策略" },
+					]}
+					onChange={(value) => {
+						if (value === section) return;
+						setSection(value);
+						if (value === "queue") {
+							setStatisticsRefresh((revision) => revision + 1);
+							void onRefresh();
+						}
+					}}
+					className="recognition-tabs"
+				/>
+			)}
+			<TabPanel
+				tabsId={tabsId}
+				value="queue"
+				selected={taskProvider ? "details" : section}
+				inert={taskProvider !== null || section !== "queue"}
+			>
 				<div className="queue-grid">
 					{(["llm", "asr"] as const).map((provider) => {
 						const queue = queues.find((item) => item.provider === provider);
@@ -337,7 +368,10 @@ export function QueueView({
 										<Button
 											size="compact"
 											aria-label={`${recognitionServices[provider].title}任务明细`}
-											onClick={() => setTaskProvider(provider)}
+											onClick={() => {
+												setTaskProvider(provider);
+												void onRefresh();
+											}}
 										>
 											任务明细
 										</Button>
@@ -355,7 +389,22 @@ export function QueueView({
 				<div className="recognition-statistics">
 					<UsageStatisticsView refresh={statisticsRefresh} />
 				</div>
-			</div>
+			</TabPanel>
+			{(["labels", "automation"] as const)
+				.filter((value) => value !== section)
+				.map((value) => (
+					<TabPanel
+						key={value}
+						tabsId={tabsId}
+						value={value}
+						selected={section}
+					/>
+				))}
+			<WorkflowSettings
+				section={taskProvider || section === "queue" ? null : section}
+				tabsId={tabsId}
+				onSection={setSection}
+			/>
 			{taskProvider && (
 				<>
 					<div className="section-heading">
@@ -379,9 +428,9 @@ export function QueueView({
 													? "用户发起的事件整理"
 													: task.target_kind === "screenshot"
 														? "图片理解"
-														: task.provider === "llm"
-															? "事件分析"
-															: "语音识别"}{" "}
+														: task.target_kind === "workflow"
+															? "生成内容"
+															: recognitionServices[task.provider].title}{" "}
 												· {taskRange(task)}
 											</strong>
 											<p

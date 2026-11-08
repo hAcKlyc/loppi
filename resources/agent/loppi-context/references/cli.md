@@ -50,3 +50,17 @@ loppi vocabulary remove ENTITY_UUID
 同名 set 更新该条，aliases 是完整替换列表；改名传 --id 保留实体 ID。--enabled false 暂停该条注入。最多 100 条、每条 20 个别名，名称最长 100 字，词库总计最多 64 KiB；不允许两个启用条目争用名称或别名。mentioned_objects.entity_id 由本地词库/规范名称生成，跨天稳定；它不证明两个同名对象在现实中是同一对象，也不是说话人 ID。
 
 LLM 使用规范名称、类型与别名上下文。X-ASR transducer 使用对应 BPE 词表和 modified_beam_search 做热词偏置，开关关闭恢复原解码；每条音频开始时取当前词库，词条含 `/` 或 `:` 不送入本地热词。豆包录音识别通过 request.corpus.context 注入规范名称；首次提交后该任务词库固定，重试沿用相同上下文。热词提高命中概率，不保证音频一定识别正确；原文不会被全局字符串替换。
+
+## 智能标签与事件策略
+
+```sh
+loppi workflow config show
+loppi context list --date today --tag TAG_ID
+loppi context event EVENT_ID --section overview
+loppi workflow strategies
+loppi workflow run EVENT_ID STRATEGY_ID --if-revision EVENT_REV --config-revision CONFIG_REV
+loppi workflow runs EVENT_ID --run RUN_ID
+loppi workflow result EVENT_ID STRATEGY_ID --version RESULT_VERSION_ID
+```
+
+`event tags EVENT_ID EVENT_REV --tag TAG_ID` 默认只预览，确认后将返回的 `plan` 通过 `--apply` 和原参数提交。未确定事件先走 `event complete` 或 `event confirm-range`。执行后返回的 run ID 表示请求已接受，正文以成功版本为准。缺精转稿时，默认执行返回可用选项。经用户授权后显式使用 `--input coarse` 或 `--input prepare-precise`。配置更新用 `workflow config set --file PATH --if-revision CONFIG_REV`，`--preview` 只校验，`--add-required-asr-tags` 明确扩大自动精转范围。配置文件内容取 `workflow config show` 的 `data.config`。写入不明时复用原请求 ID 与同一负载。

@@ -63,26 +63,12 @@ pub fn ranges(db: &Connection, start: i64, end: i64) -> Result<Vec<(i64, i64, i6
 }
 
 pub fn finish(tx: &Transaction<'_>, id: &str, now: i64) -> Result<(), String> {
-    let (start,end,mask): (i64,i64,i64) = tx.query_row(
-        "SELECT started_ms,ended_ms,source_mask FROM named_events WHERE id=?1 AND deleted_ms IS NULL",
-        [id], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?))).map_err(|e|e.to_string())?;
     tx.execute(
         "UPDATE named_events SET completed_ms=?2,boundary_locked=1,revision=revision+1 WHERE id=?1",
         params![id, now],
     )
     .map_err(|e| e.to_string())?;
-    asr::inherit_coverage(tx, id, start, end, mask)?;
-    queue_asr(
-        tx,
-        "event",
-        id,
-        &asr_version(mask, start, end),
-        start,
-        end,
-        mask,
-        true,
-        now,
-    )?;
+    workflow::finish(tx, id, now)?;
     Ok(())
 }
 

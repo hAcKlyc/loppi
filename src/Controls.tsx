@@ -87,12 +87,14 @@ export function SegmentedOptions<T extends string>({
 	options,
 	disabled,
 	onChange,
+	selectedRef,
 }: {
 	label: string;
 	value: T;
 	options: { value: T; label: string }[];
 	disabled?: boolean;
 	onChange: (value: T) => void;
+	selectedRef?: Ref<HTMLInputElement>;
 }) {
 	const id = useId();
 	return (
@@ -105,6 +107,7 @@ export function SegmentedOptions<T extends string>({
 				<label key={option.value}>
 					<input
 						type="radio"
+						ref={value === option.value ? selectedRef : undefined}
 						name={id}
 						value={option.value}
 						checked={value === option.value}
@@ -264,7 +267,7 @@ export function Tabs<T extends string>({
 	id: string;
 	label: string;
 	value: T;
-	items: readonly { value: T; label: string }[];
+	items: readonly { value: T; label: string; description?: string }[];
 	onChange: (value: T) => void;
 	disabled?: boolean;
 	className?: string;
@@ -290,6 +293,10 @@ export function Tabs<T extends string>({
 					id={`${id}-tab-${item.value}`}
 					role="tab"
 					aria-selected={value === item.value}
+					aria-description={item.description}
+					title={
+						item.description ? `${item.label} · ${item.description}` : undefined
+					}
 					aria-controls={`${id}-panel-${item.value}`}
 					tabIndex={focused === item.value ? 0 : -1}
 					onFocus={() => setFocused(item.value)}
@@ -531,6 +538,7 @@ export function Dialog({
 
 export function Modal({
 	title,
+	headerAction,
 	description,
 	busy,
 	onClose,
@@ -539,6 +547,7 @@ export function Modal({
 	feedback,
 }: {
 	title: string;
+	headerAction?: ReactNode;
 	description?: string;
 	busy?: boolean;
 	onClose: (reason: CloseReason) => void;
@@ -560,6 +569,9 @@ export function Modal({
 				<h2 id={id} tabIndex={-1} data-dialog-title>
 					{title}
 				</h2>
+				{headerAction && (
+					<div className="modal-header-action">{headerAction}</div>
+				)}
 				<IconButton
 					label="关闭弹窗"
 					disabled={busy}

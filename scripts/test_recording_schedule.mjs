@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {scheduleTime,scheduleMinute,nextScheduleAction} from '../src/recording-schedule.ts';
+import {scheduleTime,scheduleMinute,nextScheduleAction,scheduleSummary} from '../src/recording-schedule.ts';
 import {captureStatusView} from '../src/capture-status.ts';
 
 test('time controls round trip every minute and reject incomplete or invalid input',()=>{
@@ -16,4 +16,11 @@ test('schedule presentation uses actual capture and reports the next plan separa
  assert.match(captureStatusView(snapshot).subtitle,/开始录制/);
  assert.equal(captureStatusView({...snapshot,appearance:'listening',state:{...snapshot.state,paused_intent:false,microphone_recording:true}}).label,'正在记录');
  assert.equal(captureStatusView({...snapshot,appearance:'interrupted',state:{...snapshot.state,storage_paused:true}}).label,'空间不足');
+});
+test('weekday summary preserves legacy daily and marks overnight stops',()=>{
+ const day={start_minute:480,stop_minute:1380};
+ assert.equal(scheduleSummary(day),'每天 · 08:00–23:00');
+ assert.equal(scheduleSummary({...day,weekday_mask:31}),'周一至周五 · 08:00–23:00');
+ assert.equal(scheduleSummary({...day,weekday_mask:96}),'周末 · 08:00–23:00');
+ assert.equal(scheduleSummary({start_minute:1320,stop_minute:360,weekday_mask:16}),'周五 · 22:00–次日 06:00');
 });

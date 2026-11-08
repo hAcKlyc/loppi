@@ -2,6 +2,7 @@
 mod cli_launcher;
 mod context_cli;
 mod mcp;
+mod workflow_cli;
 use clap::{Parser, Subcommand, ValueEnum};
 use loppi_protocol::{
     AudioSource, CleanupMode, ClientKind, CloudProvider, EventSources, LogFilter, LogLevel,
@@ -93,6 +94,8 @@ enum Command {
     PrepareInstall,
     /// Read existing context for an Agent. Never launches Core.
     Context(context_cli::Context),
+    /// Manage event workflow rules and generated results.
+    Workflow(workflow_cli::Workflow),
     /// Local stdio Model Context Protocol server.
     Mcp {
         #[command(subcommand)]
@@ -152,19 +155,22 @@ enum Command {
     Pause,
     /// 恢复录音意图；实际采集仍受权限、容量和计划约束。
     Resume,
-    /// 配置每日本地时间录音计划；开关和时间会持久保存。
+    /// 配置按星期重复的本地录制计划。
     #[command(
-        after_help = "例子：loppi schedule on --start 09:00 --stop 18:00\n时间按机器本地时区，跨午夜可用；关闭计划：loppi schedule off。保存配置不等同于立即开始录音。"
+        after_help = "例子：loppi schedule on --start 09:00 --stop 18:00 --days mon,tue,wed,thu,fri\n时间按机器本地时区，跨午夜按开始日归属。关闭计划：loppi schedule off。保存后从下一个定时点生效。"
     )]
     Schedule {
         /// 是否启用；布尔选项显式传 true/false，开关位置参数使用 on/off。
         enabled: Switch,
-        /// 每日开始的本地时间 HH:MM（00:00–23:59）；省略沿用已保存的开始时间。
+        /// 开始的本地时间 HH:MM（00:00–23:59）；省略沿用已保存的开始时间。
         #[arg(long, value_parser = parse_schedule_time)]
         start: Option<u16>,
-        /// 每日停止的本地时间 HH:MM；允许跨午夜；省略沿用已保存的停止时间。
+        /// 停止的本地时间 HH:MM；允许跨午夜；省略沿用已保存的停止时间。
         #[arg(long, value_parser = parse_schedule_time)]
         stop: Option<u16>,
+        /// 逗号分隔的录制开始日，省略沿用已保存的星期。
+        #[arg(long, value_enum, value_delimiter = ',')]
+        days: Vec<ScheduleDay>,
     },
     /// 启用或关闭指定声音来源。
     Source {
@@ -453,6 +459,46 @@ enum CloudCommand {
 
 #[derive(Subcommand)]
 enum EventCommand {
+    /// Confirm an existing event has ended, then evaluate automatic rules.
+    Complete {
+        /// Event UUID from context event or event show.
+        event_id: Uuid,
+        /// Expected event revision, from the latest event read.
+        revision: i64,
+        /// Optional adjusted start (inclusive Unix milliseconds).
+        #[arg(long, requires = "to_ms")]
+        from_ms: Option<i64>,
+        /// Optional adjusted end (exclusive Unix milliseconds).
+        #[arg(long, requires = "from_ms")]
+        to_ms: Option<i64>,
+    },
+    /// Confirm a historical unorganized time range as an event.
+    ConfirmRange {
+        /// Inclusive Unix milliseconds of the selected historical range.
+        from: i64,
+        /// Exclusive Unix milliseconds of the selected historical range.
+        to: i64,
+        /// Source or sources within the selected range.
+        #[arg(long, value_enum)]
+        sources: Sources,
+        /// Optional title for the new event.
+        #[arg(long)]
+        title: Option<String>,
+    },
+    /// Preview or apply the complete tag selection for an event.
+    Tags {
+        /// Event UUID from context event or event show.
+        event_id: Uuid,
+        /// Expected event revision, from the latest event read.
+        revision: i64,
+        /// Repeat to specify the complete set of selected tag UUIDs.
+        #[arg(long, required = true)]
+        tag: Vec<Uuid>,
+        /// Apply the previously previewed plan using its returned token.
+        #[arg(long)]
+        apply: Option<String>,
+    },
+
     #[command(
         after_help = "例子：loppi event reorganize 1793500000000 1793510000000 \"按讨论主题重新整理\"\nLLM 队列暂停/未配置时等待；重组结果由 Core 校验后发布，任务可能产生费用。"
     )]
@@ -712,6 +758,17 @@ enum Switch {
     Off,
 }
 
+#[derive(Clone, Copy, ValueEnum)]
+enum ScheduleDay {
+    Mon,
+    Tue,
+    Wed,
+    Thu,
+    Fri,
+    Sat,
+    Sun,
+}
+
 fn current_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -743,6 +800,9 @@ fn main() {
                     error.to_string(),
                 ));
             }
+            if error.use_stderr() && workflow_cli::is_workflow_path(std::env::args_os().skip(1)) {
+                std::process::exit(workflow_cli::parse_error(error.to_string()));
+            }
             error.exit();
         }
     };
@@ -766,6 +826,9 @@ fn main() {
             return;
         }
         Command::Context(command) => std::process::exit(context_cli::run(command)),
+        Command::Workflow(command) => {
+            std::process::exit(workflow_cli::run(command, cli.if_revision, cli.request_id))
+        }
         Command::Integrations(command) => std::process::exit(context_cli::integrations(command)),
         Command::Mcp {
             action: McpCommand::Serve,
@@ -781,6 +844,7 @@ fn main() {
     match &cli.command {
         Command::Readme => {
             let result = std::env::current_exe()
+                .and_then(std::fs::canonicalize)
                 .map_err(|e| e.to_string())
                 .and_then(|cli| loppi_protocol::agent_assets::readme(&cli));
             match result {
@@ -926,6 +990,7 @@ fn main() {
         #[cfg(windows)]
         Command::PrepareInstall => unreachable!("local command handled above"),
         Command::Readme
+        | Command::Workflow(_)
         | Command::Context(_)
         | Command::Integrations(_)
         | Command::Mcp { .. }
@@ -965,6 +1030,7 @@ fn main() {
             enabled,
             start,
             stop,
+            days,
         } => {
             let state = match send(Request::Status) {
                 Ok(Response::Status { state, .. }) => state,
@@ -977,6 +1043,8 @@ fn main() {
                 enabled: matches!(enabled, Switch::On),
                 start_minute: start.unwrap_or(state.recording_schedule.start_minute),
                 stop_minute: stop.unwrap_or(state.recording_schedule.stop_minute),
+                weekday_mask: (!days.is_empty())
+                    .then(|| days.iter().fold(0, |mask, day| mask | (1 << *day as u8))),
                 expected_revision: cli.if_revision.unwrap_or(state.revision),
             }
         }
@@ -1095,6 +1163,49 @@ fn main() {
             limit,
         },
         Command::Event { action } => match action {
+            EventCommand::Complete {
+                event_id,
+                revision,
+                from_ms,
+                to_ms,
+            } => std::process::exit(workflow_cli::execute(
+                loppi_protocol::workflow::Action::Complete {
+                    event_id,
+                    expected_revision: revision,
+                    started_ms: from_ms,
+                    ended_ms: to_ms,
+                },
+                cli.request_id,
+            )),
+            EventCommand::ConfirmRange {
+                from,
+                to,
+                sources,
+                title,
+            } => std::process::exit(workflow_cli::execute(
+                loppi_protocol::workflow::Action::ConfirmRange {
+                    started_ms: from,
+                    ended_ms: to,
+                    sources: sources.into(),
+                    title,
+                },
+                cli.request_id,
+            )),
+            EventCommand::Tags {
+                event_id,
+                revision,
+                tag,
+                apply,
+            } => std::process::exit(workflow_cli::execute(
+                loppi_protocol::workflow::Action::Tags {
+                    event_id,
+                    expected_revision: revision,
+                    tag_ids: tag,
+                    plan: apply,
+                },
+                cli.request_id,
+            )),
+
             EventCommand::Reorganize {
                 started_ms,
                 ended_ms,
@@ -1376,6 +1487,10 @@ fn main() {
         request,
         cli.request_id.unwrap_or_else(Uuid::new_v4),
     ) {
+        Ok(Response::Workflow { result, .. }) => {
+            println!("{result}");
+            std::process::exit(if result["ok"] == true { 0 } else { 5 });
+        }
         Ok(Response::Context { result, .. }) => {
             println!("{result}");
             std::process::exit(context_cli::exit_code(&result));

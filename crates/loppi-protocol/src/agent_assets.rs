@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::{fs, io::Write};
 
 /// Independent from the product version: bump when the installed Skill changes.
-pub const SKILL_VERSION: &str = "1.0.0";
+pub const SKILL_VERSION: &str = "1.1.0";
 const README: &str = include_str!("../../../resources/agent/readme.md");
 pub const SKILL_FILES: [(&str, &str); 6] = [
     (

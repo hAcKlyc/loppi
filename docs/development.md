@@ -44,6 +44,8 @@ npm ci
 
 两入口共用 `scripts/build_windows.mjs`：生成 x64 NSIS 安装包，随包提供语音模型、离线中英文 OCR、推理 DLL、VC 运行库、WebView2 离线安装程序与第三方许可。发行入口要求干净源码，当前没有 Windows 代码签名证书，报告如实标记 `unsigned`。输出及精确依赖要求见 [Windows 支持说明](../specs/tech_docs/windows-support.md)。
 
+仅开发构建可设置 `$env:LOPPI_WINDOWS_CRT_DIR='C:\path\to\pinned-crt'` 后运行 `./build_dev.ps1`，从该目录读取锁定的 10 个 VC DLL；仍逐文件校验字节数及 SHA-256，并在本地构建报告记录来源。未设置时沿用 VS 目录；发行构建始终使用 VS 目录。
+
 默认程序目录是 `%LOCALAPPDATA%\loppi`，录音和数据库另存于 `%LOCALAPPDATA%\app.loppi.core`；默认卸载保留资料。Windows 麦克风使用桌面应用访问权限，电脑声音由 WASAPI 获取。锁屏时录音可以继续，桌面截图会明确提示不可用。系统托盘和悬浮入口共享同一只状态兔子。CLI/MCP 接入请从应用的「Agent 接入」复制当前安装路径和 PowerShell 命令。
 
 ## macOS 发行构建
