@@ -1,6 +1,6 @@
 # 应用内更新与 GitHub Releases
 
-v0.1.24 已正式发行，提供 macOS Apple Silicon、macOS Intel 与 Windows x64 更新。实际附件、签名与来源见[发行记录](../specs/research/2026-11-07-github-release-0.1.24.md)；产品行为与扩展实机验收继续参照[更新执行台账](../specs/prd/devplan_261102_github-updater.md)及[本次性能优化台账](../specs/prd/devplan_261107_smooth-core-and-detail.md)，一次发行不代表所有设备和系统场景均已覆盖。
+v0.1.25 已正式发行，提供 macOS Apple Silicon、macOS Intel 与 Windows x64 更新。附件、签名和来源见[发行记录](../specs/research/2026-11-08-github-release-0.1.25.md)。应用内更新行为与扩展实机验收见[更新执行台账](../specs/prd/devplan_261102_github-updater.md)。
 
 应用主窗口启动 10 秒后检查一次，设置 → 通用 → 软件更新也可以手动检查。检查失败不会弹窗打断录音，设置中显示反馈并允许重试。发现新版后静默下载并验签，不弹更新窗口。准备好后只在左下角侧边栏显示绿色「重启更新」按钮，点击后直接安装重启，不再联网下载。下载及签名验证完成前不停止录音。安装前通过既有 GUI/Core 会话屏障正常封存录音、退出 Core 并等待 owner 锁释放；失败不安装，也不强杀。安装失败恢复 GUI 连接能力，再由既有 AppOpened 激活流程恢复正常运行。更新成功重启后仍遵守原录音意图、暂停、来源、定时与权限边界。
 
@@ -49,7 +49,7 @@ node scripts/publish_update.mjs /absolute/release-notes.txt \
 
 1. 在 dev 准备新版本并同步现有 package、Cargo、Tauri、Plist 与锁文件，按上一公开版本更新带日期的 CHANGELOG，完成适用验收及该 dev SHA 的 Verify。
 2. 合入并推送 main。Release 检查全部版本源，等待 **同一个 main SHA** 的 Verify 成功。已经公开的版本直接跳过，不重建、不覆盖。
-3. Actions 使用 `macos-15`（ARM）、`macos-15-intel`（Intel）和 `windows-2025-vs2026`（x64）调用原有正式构建入口。Mac 完成 Developer ID 签名、公证和装订；三个平台用同一更新私钥签名。
+3. Verify 与 Release 由 Ubuntu 按锁文件准备原生归档，Release 另外准备模型。同次运行的产物只传递已校验文件，目标构建再次校验。Actions 使用 `macos-15`（ARM）、`macos-15-intel`（Intel）和 `windows-2025-vs2026`（x64）调用原有正式构建入口。Mac 完成 Developer ID 签名、公证和装订；三个平台用同一更新私钥签名。
 4. 三个构建全部成功后，统一验证源码、版本、更新签名、Mac DMG、报告和文件哈希；生成完整附件及 latest.json。CI 此时才创建新版本的 annotated tag 和内部草稿，将全部附件上传并核对。
 5. 自动公开 Release、设为 Latest，再以不携带鉴权的 HTTPS 请求核对固定 latest.json。main 不增加人工草稿确认步骤；内部草稿只是上传过程的中间态。
 

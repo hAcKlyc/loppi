@@ -258,3 +258,7 @@ loppi workflow result EVENT_ID STRATEGY_ID --version VERSION_ID
 
 - **macOS。** `0999cfd` 的 Apple Silicon 和 Intel 开发包均通过四组件身份与模型准备检查。Apple Silicon 原生界面、Intel 通过 Rosetta 验证。
 - **Windows 11 Pro x64。** `5dab0fe` 的完整 Windows 验证 10 项通过，606 测试通过、31 跳过。`336a5f2` 复验策略结果页、Markdown 与事件头，`0999cfd` 复验智能识别子页、跨页草稿及依赖补齐。最终 `cda94ff` 的受影响协议与 CLI 测试、随包 UI/CLI 和并发场景通过，Windows 机器上的汇总为 `build/windows-pipe-fix-final.json`。未签名的 x64 开发安装包 SHA-256 为 `3387d6fdac6dd8fad361f8c1495c83d74569fa43277ef84723b25278a89cb221`。
+
+### 正式发行
+
+2026-11-08，0.1.25 已正式发布至 GitHub Latest。三平台产物来自同一提交，版本统一，更新签名均通过校验。旧版录制计划迁移已在隔离数据库中验证。见[发行记录](../research/2026-11-08-github-release-0.1.25.md)。
