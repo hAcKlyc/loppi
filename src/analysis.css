@@ -13,11 +13,6 @@
 	white-space: nowrap;
 }
 
-.analysis-top > button {
-	grid-column: 3;
-	grid-row: 1;
-}
-
 .analysis-flow {
 	--analysis-wire: var(--color-border-strong);
 	--analysis-branch-arm: var(--space-5);
@@ -123,17 +118,8 @@
 
 @container (max-width: 49rem) {
 	.analysis-top.page-heading {
-		grid-template-columns: minmax(0, 1fr) auto;
+		grid-template-columns: minmax(0, 1fr);
 		gap: var(--space-5);
-	}
-
-	.analysis-top > .analysis-flow {
-		grid-column: 1 / -1;
-		grid-row: 2;
-	}
-
-	.analysis-top > button {
-		grid-column: 2;
 	}
 }
 

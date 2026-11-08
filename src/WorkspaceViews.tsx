@@ -238,18 +238,6 @@ export function QueueView({
 						: "智能分析"}
 				</h1>
 				{!taskProvider && <AnalysisOverview />}
-				{(section === "queue" || taskProvider) && (
-					<Button
-						type="button"
-						tone="quiet"
-						onClick={() => {
-							setStatisticsRefresh((value) => value + 1);
-							void onRefresh();
-						}}
-					>
-						刷新
-					</Button>
-				)}
 			</div>
 			{!taskProvider && (
 				<Tabs
@@ -258,10 +246,17 @@ export function QueueView({
 					value={section}
 					items={[
 						{ value: "queue", label: "处理队列" },
-						{ value: "labels", label: "智能标签" },
-						{ value: "automation", label: "自动流程" },
+						{ value: "labels", label: "事件分析·场景标签" },
+						{ value: "automation", label: "流程与策略" },
 					]}
-					onChange={setSection}
+					onChange={(value) => {
+						if (value === section) return;
+						setSection(value);
+						if (value === "queue") {
+							setStatisticsRefresh((revision) => revision + 1);
+							void onRefresh();
+						}
+					}}
 					className="recognition-tabs"
 				/>
 			)}
@@ -368,7 +363,10 @@ export function QueueView({
 										<Button
 											size="compact"
 											aria-label={`${recognitionServices[provider].title}任务明细`}
-											onClick={() => setTaskProvider(provider)}
+											onClick={() => {
+												setTaskProvider(provider);
+												void onRefresh();
+											}}
 										>
 											任务明细
 										</Button>
@@ -427,9 +425,7 @@ export function QueueView({
 														? "图片理解"
 														: task.target_kind === "workflow"
 															? "生成内容"
-															: task.provider === "llm"
-																? "事件分析"
-																: "语音识别"}{" "}
+															: recognitionServices[task.provider].title}{" "}
 												· {taskRange(task)}
 											</strong>
 											<p

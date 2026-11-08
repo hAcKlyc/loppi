@@ -585,8 +585,10 @@ function App() {
 		void refreshTimeline(false, true);
 	}, [refreshTimeline, recordingObservation]);
 	useEffect(() => {
-		if (page === "queue") void refreshTasks();
-	}, [page, refreshTasks]);
+		if (page !== "queue") return;
+		void refreshTasks();
+		void refreshContext();
+	}, [page, refreshTasks, refreshContext]);
 	useEffect(() => {
 		if (page !== "timeline" && page !== "queue") return;
 		const timer = window.setInterval(() => {

@@ -2731,6 +2731,12 @@ body.floating-body .float-wrap {
 	color: var(--color-text);
 	font-size: var(--type-body);
 }
+.workflow-label-heading {
+	padding-bottom: var(--space-3);
+	text-align: start;
+	font-size: var(--type-icon);
+	font-weight: var(--weight-semibold);
+}
 .workflow-config-table :is(th, td) {
 	padding: var(--space-4) var(--space-6);
 	border-bottom: var(--stroke-hairline) solid var(--color-border);

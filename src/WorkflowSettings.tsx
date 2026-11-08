@@ -180,7 +180,7 @@ export function WorkflowSettings({
 		return (
 			<TabPanel tabsId={tabsId} value={section} selected={section}>
 				<div className="panel-card" role="status">
-					{message || "正在读取智能标签与自动流程…"}
+					{message || "正在读取标签与策略配置…"}
 					{message && (
 						<Button tone="quiet" onClick={reload}>
 							重试
@@ -312,7 +312,7 @@ export function WorkflowSettings({
 				{section === "labels" ? (
 					<>
 						<div className="workflow-config-rule">
-							<span>每个事件</span>
+							<span>每个事件支持智能打标签模式</span>
 							<SegmentedOptions
 								label="标注方式"
 								value={draft.mode}
@@ -324,7 +324,8 @@ export function WorkflowSettings({
 								onChange={(mode) => update({ ...draft, mode })}
 							/>
 						</div>
-						<table className="workflow-config-table" aria-label="标签库">
+						<table className="workflow-config-table">
+							<caption className="workflow-label-heading">场景标签管理</caption>
 							<thead>
 								<tr>
 									<th scope="col">标签</th>
@@ -388,7 +389,7 @@ export function WorkflowSettings({
 				) : (
 					<table
 						className="workflow-config-table workflow-config-strategies"
-						aria-label="自动流程"
+						aria-label="流程与策略"
 					>
 						<thead>
 							<tr>
@@ -696,7 +697,7 @@ export function WorkflowSettings({
 										);
 									}}
 								>
-									去自动流程调整
+									去流程与策略调整
 								</Button>
 							</div>
 						)}
@@ -742,7 +743,7 @@ export function WorkflowSettings({
 								openAffectedRule(dependency.affected[0]);
 							}}
 						>
-							去自动流程调整
+							去流程与策略调整
 						</Button>
 						{dependency.canAdd && (
 							<Button

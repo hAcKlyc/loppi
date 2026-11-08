@@ -370,7 +370,7 @@ export function UsageStatisticsView({ refresh }: { refresh: number }) {
 			</div>
 			{error && (
 				<p className="usage-incomplete" role="alert">
-					统计暂时无法更新：{error}，可点击右上角刷新。
+					统计暂时无法更新：{error}。稍后会自动重试。
 				</p>
 			)}
 			{statistics && loadedRange !== range && !error && (

@@ -23,6 +23,7 @@ mockIPC((command,args)=>{
  if(command==='login_item_status')return 1;
  if(command!=='core_request')return null;
  const r=args.request;requests.push(structuredClone(r));
+ if(r.type==='workflow'&&r.action.op==='config_show')return{result:{ok:true,data:{revision:1,config:{mode:'single',tags:[],auto_asr:{mode:'all',tag_ids:[]},strategies:[]},other_tag:'other'}}};
  if(r.type==='cloud_status')return{type:r.type,queues};
  if(r.type==='calendar_days')return{type:r.type,days:[]};
  if(r.type==='calendar_adjacent')return{type:r.type,newer_ms:null,older_ms:null};
@@ -49,7 +50,7 @@ window.runRegression=async()=>{
  const result=document.getElementById('result');
  try{
   const before=requests.length;
-  for(const [provider,title]of[['llm','事件分析'],['asr','语音识别'],['llm','事件分析']]){
+  for(const [provider,title]of[['llm','事件分析'],['asr','语音识别·精转录'],['llm','事件分析']]){
    await click(button('智能分析'));
    const card=[...document.querySelectorAll('.recognition-card')].find(e=>e.querySelector('h2').textContent===title);
    check(card&&!/运行中|已暂停/.test(card.textContent),'卡片常态由开关呈现');
@@ -80,7 +81,8 @@ window.runTaskRegression=async()=>{
  try{
   await click(button('智能分析'));
   const tabs=[...document.querySelectorAll('.recognition-tabs [role=tab]')];
-  check(tabs.map(tab=>tab.textContent).join('|')==='处理队列|智能标签|自动流程','恢复原来的三个页签');
+  check(tabs.map(tab=>tab.textContent).join('|')==='处理队列|事件分析·场景标签|流程与策略','三个页签使用新命名');
+  check(!document.querySelector('.page-heading button'),'页头没有固定刷新按钮');
   check(tabs[0].getAttribute('aria-selected')==='true','默认展示处理队列');
   const flow=document.querySelector('.analysis-flow');
   check(flow.querySelectorAll('.analysis-step').length===4&&!flow.textContent.includes('事件确定后'),'顶部保留四节点流程，去掉分叉文案');
@@ -93,8 +95,17 @@ window.runTaskRegression=async()=>{
   const range=[...statistics.querySelectorAll('.usage-range button')].find(b=>b.textContent==='近 7 天');
   await click(range);
   const legend=statistics.querySelector('.usage-legend button');await click(legend);
+  await click(tabs[1]);
+  const mode=document.querySelector('.workflow-config-rule');
+  check(mode.textContent.includes('每个事件支持智能打标签模式')&&mode.querySelectorAll('input[type=radio]').length===2,'打标模式文案后是单选和多选');
+  check(document.querySelector('table.workflow-config-table caption').textContent==='场景标签管理','标签列表上方有标题');
+  const requestOffset=requests.length;
+  await click(tabs[0]);
+  const refreshed=requests.slice(requestOffset).map(request=>request.type);
+  check(['cloud_status','cloud_tasks','review_items','usage_statistics'].every(type=>refreshed.includes(type)),'切回处理队列自动刷新');
+  check(document.querySelector('.usage-statistics')===statistics&&range.getAttribute('aria-pressed')==='true'&&legend.getAttribute('aria-pressed')==='false','切回保留统计范围和指标');
   const reads=requests.filter(r=>r.type==='usage_statistics').length;
-  for(const[provider,title]of[['llm','事件分析'],['asr','语音识别'],['llm','事件分析']]){
+  for(const[provider,title]of[['llm','事件分析'],['asr','语音识别·精转录'],['llm','事件分析']]){
    main.scrollTop=main.scrollHeight;check(main.scrollTop>0,'主页面具有实际滚动内容');
    await click(button(title+'任务明细'));
    check(document.querySelector('h1').textContent===title+'任务明细'&&document.activeElement===document.querySelector('h1'),'任务标题及键盘焦点');
