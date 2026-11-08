@@ -31,3 +31,5 @@ class RestoreReadinessTests(unittest.TestCase):
         self.assertEqual(self.check(self.state | {'paused_intent': False}, now=10001), [])
         changed = self.state | {'recording_schedule': self.before['recording_schedule'] | {'enabled': False}}
         self.assertTrue(self.check(changed, now=10001))
+        changed_days = self.state | {'recording_schedule': self.before['recording_schedule'] | {'weekday_mask': 31}}
+        self.assertIn('recording schedule changed: weekday_mask', self.check(changed_days))

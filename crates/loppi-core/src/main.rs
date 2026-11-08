@@ -5549,6 +5549,7 @@ impl Store {
                 enabled,
                 start_minute,
                 stop_minute,
+                weekday_mask,
                 expected_revision,
             } => {
                 if start_minute >= 1440 || stop_minute >= 1440 || start_minute == stop_minute {
@@ -5558,9 +5559,18 @@ impl Store {
                         message: "choose two different valid times".into(),
                     });
                 }
+                if weekday_mask.is_some_and(|days| {
+                    !(1..=loppi_protocol::ALL_SCHEDULE_WEEKDAYS).contains(&days)
+                }) {
+                    return Ok(Response::Error {
+                        id,
+                        code: "invalid_schedule".into(),
+                        message: "choose at least one valid weekday".into(),
+                    });
+                }
                 let at = now_ms()?;
                 self.mutate(id, expected_revision, fingerprint, |tx| {
-                    schedule::save(tx, enabled, start_minute, stop_minute, at)
+                    schedule::save(tx, enabled, start_minute, stop_minute, weekday_mask, at)
                 })
             }
             Request::SetSource {

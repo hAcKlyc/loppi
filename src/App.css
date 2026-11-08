@@ -2612,6 +2612,39 @@ body.floating-body .float-wrap {
 	gap: var(--space-8);
 	padding: var(--space-6) 0;
 }
+.schedule-weekdays {
+	display: flex;
+	align-items: center;
+	gap: var(--space-6);
+	min-width: 0;
+	margin: var(--space-8) 0 0;
+	padding: 0;
+	border: 0;
+	font-size: var(--type-meta);
+}
+.schedule-weekdays > span {
+	flex: none;
+}
+.schedule-day-list {
+	display: grid;
+	grid-template-columns: repeat(7, minmax(0, 1fr));
+	gap: var(--space-3);
+	width: min(100%, 19rem);
+}
+.schedule-day {
+	min-height: var(--control-height-default);
+	padding-inline: 0;
+	border: var(--stroke-hairline) solid var(--color-border);
+	border-radius: var(--radius-sm);
+	background: var(--color-surface);
+	color: var(--color-text);
+	font-size: var(--type-meta);
+}
+.schedule-day[aria-pressed="true"] {
+	border-color: var(--color-brand);
+	background: var(--color-brand);
+	color: var(--color-on-brand);
+}
 .schedule-times label {
 	display: flex;
 	align-items: center;

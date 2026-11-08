@@ -19,7 +19,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
-pub const PROTOCOL_VERSION: u32 = 27;
+pub const PROTOCOL_VERSION: u32 = 28;
 const MAX_RESPONSE_BYTES: u64 = 48 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -89,6 +89,8 @@ pub enum Request {
         enabled: bool,
         start_minute: u16,
         stop_minute: u16,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        weekday_mask: Option<u8>,
         expected_revision: i64,
     },
     SetSource {
@@ -1028,11 +1030,20 @@ pub enum CaptureBlocker {
     SourceUnavailable,
 }
 
+pub const ALL_SCHEDULE_WEEKDAYS: u8 = 0x7f;
+
+fn default_schedule_weekdays() -> u8 {
+    ALL_SCHEDULE_WEEKDAYS
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecordingSchedule {
     pub enabled: bool,
     pub start_minute: u16,
     pub stop_minute: u16,
+    // Bits zero through six are Monday through Sunday.
+    #[serde(default = "default_schedule_weekdays")]
+    pub weekday_mask: u8,
     pub paused_by_schedule: bool,
     pub next_at_ms: Option<i64>,
     pub next_action: Option<String>,
@@ -1044,6 +1055,7 @@ impl Default for RecordingSchedule {
             enabled: false,
             start_minute: 480,
             stop_minute: 1380,
+            weekday_mask: ALL_SCHEDULE_WEEKDAYS,
             paused_by_schedule: false,
             next_at_ms: None,
             next_action: None,

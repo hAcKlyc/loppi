@@ -155,19 +155,22 @@ enum Command {
     Pause,
     /// 恢复录音意图；实际采集仍受权限、容量和计划约束。
     Resume,
-    /// 配置每日本地时间录音计划；开关和时间会持久保存。
+    /// 配置按星期重复的本地录制计划。
     #[command(
-        after_help = "例子：loppi schedule on --start 09:00 --stop 18:00\n时间按机器本地时区，跨午夜可用；关闭计划：loppi schedule off。保存配置不等同于立即开始录音。"
+        after_help = "例子：loppi schedule on --start 09:00 --stop 18:00 --days mon,tue,wed,thu,fri\n时间按机器本地时区，跨午夜按开始日归属。关闭计划：loppi schedule off。保存后从下一个定时点生效。"
     )]
     Schedule {
         /// 是否启用；布尔选项显式传 true/false，开关位置参数使用 on/off。
         enabled: Switch,
-        /// 每日开始的本地时间 HH:MM（00:00–23:59）；省略沿用已保存的开始时间。
+        /// 开始的本地时间 HH:MM（00:00–23:59）；省略沿用已保存的开始时间。
         #[arg(long, value_parser = parse_schedule_time)]
         start: Option<u16>,
-        /// 每日停止的本地时间 HH:MM；允许跨午夜；省略沿用已保存的停止时间。
+        /// 停止的本地时间 HH:MM；允许跨午夜；省略沿用已保存的停止时间。
         #[arg(long, value_parser = parse_schedule_time)]
         stop: Option<u16>,
+        /// 逗号分隔的录制开始日，省略沿用已保存的星期。
+        #[arg(long, value_enum, value_delimiter = ',')]
+        days: Vec<ScheduleDay>,
     },
     /// 启用或关闭指定声音来源。
     Source {
@@ -755,6 +758,17 @@ enum Switch {
     Off,
 }
 
+#[derive(Clone, Copy, ValueEnum)]
+enum ScheduleDay {
+    Mon,
+    Tue,
+    Wed,
+    Thu,
+    Fri,
+    Sat,
+    Sun,
+}
+
 fn current_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -1016,6 +1030,7 @@ fn main() {
             enabled,
             start,
             stop,
+            days,
         } => {
             let state = match send(Request::Status) {
                 Ok(Response::Status { state, .. }) => state,
@@ -1028,6 +1043,8 @@ fn main() {
                 enabled: matches!(enabled, Switch::On),
                 start_minute: start.unwrap_or(state.recording_schedule.start_minute),
                 stop_minute: stop.unwrap_or(state.recording_schedule.stop_minute),
+                weekday_mask: (!days.is_empty())
+                    .then(|| days.iter().fold(0, |mask, day| mask | (1 << *day as u8))),
                 expected_revision: cli.if_revision.unwrap_or(state.revision),
             }
         }

@@ -172,6 +172,7 @@ export interface RecordingSchedule {
 	enabled: boolean;
 	start_minute: number;
 	stop_minute: number;
+	weekday_mask?: number;
 	paused_by_schedule: boolean;
 	next_at_ms: number | null;
 	next_action: "start" | "stop" | null;

@@ -1,15 +1,23 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { ServiceState } from "./api";
 import { Button, Modal, Switch } from "./Controls";
 import { LoadBoundary } from "./LoadingState";
 import {
+	ALL_SCHEDULE_WEEKDAYS,
 	nextScheduleAction,
+	SCHEDULE_WEEKDAYS,
 	scheduleMinute,
+	scheduleSummary,
 	scheduleTime,
 } from "./recording-schedule";
 import { useSettingMutation } from "./useSettingMutation";
 
-type Draft = { start: string; stop: string; revision?: number };
+type Draft = {
+	start: string;
+	stop: string;
+	weekdays: number;
+	revision?: number;
+};
 
 export function RecordingScheduleSettings({
 	state,
@@ -21,6 +29,7 @@ export function RecordingScheduleSettings({
 	error?: string;
 }) {
 	const [draft, setDraft] = useState<Draft | null>(null);
+	const firstWeekday = useRef<HTMLButtonElement>(null);
 	const mutation = useSettingMutation(refresh);
 	const saved = state?.recording_schedule;
 	const locked = mutation.busy || mutation.uncertain;
@@ -39,7 +48,7 @@ export function RecordingScheduleSettings({
 		});
 	};
 	const save = async () => {
-		if (!draft || !state || !saved) return;
+		if (!draft?.weekdays || !state || !saved) return;
 		const start = scheduleMinute(draft.start),
 			stop = scheduleMinute(draft.stop);
 		if (start === null || stop === null || start === stop) {
@@ -51,6 +60,7 @@ export function RecordingScheduleSettings({
 			enabled: saved.enabled,
 			start_minute: start,
 			stop_minute: stop,
+			weekday_mask: draft.weekdays,
 			expected_revision: draft.revision ?? state.revision,
 		});
 		if (result === "saved") {
@@ -61,6 +71,9 @@ export function RecordingScheduleSettings({
 			setDraft({ ...draft, revision: undefined });
 		}
 	};
+	const start = draft && scheduleMinute(draft.start);
+	const stop = draft && scheduleMinute(draft.stop);
+	const overnight = start !== null && stop !== null && stop < start;
 	return (
 		<div className="panel-card setting-panel recording-schedule-panel">
 			<LoadBoundary
@@ -84,7 +97,7 @@ export function RecordingScheduleSettings({
 												: nextScheduleAction(saved)}
 									</span>
 								</div>
-								<p>每天到点开始或停止，仍可随时手动控制</p>
+								<p>到点开始或停止，仍可随时手动控制</p>
 							</div>
 							<Switch
 								label="定时录制"
@@ -95,10 +108,7 @@ export function RecordingScheduleSettings({
 						</div>
 						<div className="setting-row">
 							<div>
-								<strong>
-									每天 {scheduleTime(saved.start_minute)} 开始，
-									{scheduleTime(saved.stop_minute)} 停止
-								</strong>
+								<strong>{scheduleSummary(saved)}</strong>
 								<p>
 									跟随电脑本地时间，从下一个时间点执行，不改变当前录制状态。
 								</p>
@@ -112,11 +122,12 @@ export function RecordingScheduleSettings({
 									setDraft({
 										start: scheduleTime(saved.start_minute),
 										stop: scheduleTime(saved.stop_minute),
+										weekdays: saved.weekday_mask ?? ALL_SCHEDULE_WEEKDAYS,
 										revision: state?.revision,
 									});
 								}}
 							>
-								编辑时间
+								编辑计划
 							</Button>
 						</div>
 					</>
@@ -138,16 +149,51 @@ export function RecordingScheduleSettings({
 				</Button>
 			)}
 			{draft && (
-				<Modal title="编辑录制时间" busy={locked} onClose={close}>
+				<Modal
+					title="编辑录制计划"
+					busy={locked}
+					onClose={close}
+					initialFocusRef={firstWeekday}
+				>
 					<form
 						onSubmit={(event) => {
 							event.preventDefault();
 							void save();
 						}}
 					>
+						<fieldset className="schedule-weekdays" aria-label="重复日期">
+							<span>重复</span>
+							<div className="schedule-day-list">
+								{SCHEDULE_WEEKDAYS.map((day, index) => {
+									const bit = 1 << index;
+									return (
+										<button
+											key={day}
+											ref={index === 0 ? firstWeekday : undefined}
+											className="schedule-day"
+											type="button"
+											aria-label={`周${day}`}
+											aria-pressed={Boolean(draft.weekdays & bit)}
+											disabled={locked}
+											onClick={() => {
+												setDraft({ ...draft, weekdays: draft.weekdays ^ bit });
+												mutation.setError("");
+											}}
+										>
+											{day}
+										</button>
+									);
+								})}
+							</div>
+						</fieldset>
+						{!draft.weekdays && (
+							<p className="schedule-error" role="alert">
+								至少选择一天
+							</p>
+						)}
 						<div className="schedule-times">
 							<label>
-								每天开始录制
+								开始
 								<input
 									type="time"
 									required
@@ -160,7 +206,7 @@ export function RecordingScheduleSettings({
 								/>
 							</label>
 							<label>
-								每天停止录制
+								停止
 								<input
 									type="time"
 									required
@@ -171,12 +217,13 @@ export function RecordingScheduleSettings({
 										mutation.setError("");
 									}}
 								/>
+								{overnight && <span className="setting-status">次日</span>}
 							</label>
 						</div>
 						<p className="schedule-note">
 							{saved?.enabled
-								? "保存后从下一个时间点执行，不改变当前录制状态。"
-								: "定时录制已关闭。保存时间不会开启定时录制。"}
+								? "保存后从下一个定时点执行。"
+								: "定时录制已关闭，保存后保留关闭状态。"}
 						</p>
 						{mutation.error && (
 							<p role="alert" className="schedule-error">
@@ -192,12 +239,16 @@ export function RecordingScheduleSettings({
 							>
 								取消
 							</Button>
-							<Button type="submit" tone="primary" disabled={mutation.busy}>
+							<Button
+								type="submit"
+								tone="primary"
+								disabled={mutation.busy || !draft.weekdays}
+							>
 								{mutation.busy
 									? "正在应用…"
 									: mutation.uncertain
 										? "确认上次结果"
-										: "保存时间"}
+										: "保存计划"}
 							</Button>
 						</div>
 					</form>

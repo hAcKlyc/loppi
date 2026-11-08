@@ -60,6 +60,7 @@ def main():
         try:
             initial = cli('status')['state']
             assert not initial['recording_schedule']['enabled']
+            assert initial['recording_schedule']['weekday_mask'] == 127
             request({'type': 'app_opened'})  # Before first enabling the rule.
             now = time.time()
             boundary = (int(now) // 60 + 1) * 60
@@ -103,6 +104,16 @@ def main():
             cli('status')
             assert request({'type': 'app_opened'})['state']['paused_intent']
             print('PASS: query-only never consumes; host refresh restores restarted Core; processed boundary cannot override later manual pause', flush=True)
+
+            friday = cli('schedule', 'off', '--days', 'fri', '--start', '22:00', '--stop', '06:00')['state']
+            assert friday['recording_schedule']['weekday_mask'] == 16
+            kept = cli('schedule', 'off', '--stop', '07:00')['state']
+            assert kept['recording_schedule']['weekday_mask'] == 16
+            invalid = request({'type': 'set_recording_schedule', 'enabled': False, 'start_minute': 1320,
+                               'stop_minute': 420, 'weekday_mask': 0, 'expected_revision': kept['revision']})
+            assert invalid['code'] == 'invalid_schedule'
+            assert cli('status')['state']['recording_schedule']['weekday_mask'] == 16
+            print('PASS: CLI weekday selection, omission preserves days, and empty mask is rejected', flush=True)
         finally:
             quit()
             process.wait(timeout=5)
