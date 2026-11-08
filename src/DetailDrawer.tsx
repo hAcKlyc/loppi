@@ -51,6 +51,7 @@ import {
 	workflowRetryTask,
 	workflowRunStatus,
 } from "./WorkflowEvent";
+import type { WorkflowSection } from "./WorkflowSettings";
 import { useWorkflowRequestId, workflow } from "./workflow-api";
 
 const PAGE_SIZE = 30;
@@ -65,7 +66,7 @@ type Props = {
 	onClose: () => void;
 	onEdit: (item: TimelineItem) => void;
 	onTools: (item: TimelineItem, mode?: "split" | "merge" | "delete") => void;
-	onQueue: () => void;
+	onQueue: (section?: WorkflowSection) => void;
 	onDataAction: (kind: "export" | "cleanup", item: TimelineItem) => void;
 	onChanged: (manualRangeId?: string) => void;
 	onConfirmedEvent: (eventId: string) => Promise<void>;
@@ -1338,7 +1339,7 @@ export function DetailDrawer({
 										className="detail-status-link"
 										disabled={busy}
 										title={busy ? undefined : "查看处理进度"}
-										onClick={onQueue}
+										onClick={() => onQueue()}
 									>
 										{statusText} <span aria-hidden="true">›</span>
 									</button>
@@ -2050,6 +2051,7 @@ export function DetailDrawer({
 					eventId={eventId}
 					revision={detail.revision}
 					onClose={() => setStrategyOpen(false)}
+					onManage={() => onQueue("automation")}
 					onRun={(run) => {
 						workflowTabs.accept(run);
 						setTab(`strategy-${run.strategy_id}`);
@@ -2061,6 +2063,7 @@ export function DetailDrawer({
 				<WorkflowTagEditor
 					item={detail}
 					onClose={() => setTagEditor(false)}
+					onManage={() => onQueue("labels")}
 					onSaved={() => {
 						setTagEditor(false);
 						void load(offset.current);

@@ -57,6 +57,7 @@ const requests = [];
 let cloudReadMode = 'ready';
 let cloudReleases = [];
 let partialTasks = [], partialReviews = [];
+let timelineItems = [];
 const workflowConfig = {
   mode: 'single',
   tags: [
@@ -81,6 +82,8 @@ mockIPC((command, args) => {
   if (r.type === 'workflow') {
     const { op, config, add_required_asr_tags } = r.action;
     if (op === 'config_show') return { result: { ok: true, data: { revision: 3, config: workflowConfig, other_tag: 'other' } } };
+    if (op === 'strategies') return { result: { ok: true, data: { revision: 3, strategies: [] } } };
+    if (op === 'runs') return { result: { ok: true, data: { runs: [] } } };
     assert.equal(op, 'config_set');
     if (!add_required_asr_tags) return { result: { ok: false, error: { code: 'asr_rule_conflict', details: { affected: [{ strategy_id: 'minutes', name: '会议纪要', tag_ids: ['client'] }] } } } };
     return { result: { ok: true, data: { revision: 4, config: { ...config, auto_asr: { mode: 'tags', tag_ids: ['work', 'client'] } }, other_tag: 'other' } } };
@@ -97,7 +100,8 @@ mockIPC((command, args) => {
   if (r.type === 'moments') return { type: r.type, moments: [] };
   if (r.type === 'people') return { type: r.type, people: [] };
   if (r.type === 'models') return { type: r.type, state: { phase: 'ready', speaker_phase: 'ready', progress_percent: 100 } };
-  if (r.type === 'timeline') return { type: r.type, items: [], gaps: [] };
+  if (r.type === 'timeline') return { type: r.type, items: timelineItems, gaps: [] };
+  if (r.type === 'event_detail') return { type: 'event', event: timelineItems.find(item => item.id === r.event_id) };
   if (r.type === 'range_detail') return { type: 'event', event: { precise_segments: [precise], coarse_segments: [] } };
   if (r.type === 'usage_statistics') return { type: r.type, statistics: { started_ms: r.boundaries[0], currency: 'CNY', days: r.boundaries.slice(0, -1).map(started_ms => ({ started_ms, covered: true, partial: false, asr: series, llm: series })) } };
   return { type: r.type, tasks: [], items: [] };
@@ -110,6 +114,42 @@ const settingsProps = {
 
 test('recognition settings navigation uses existing pages, focuses the service row and preserves queue controls', async t => {
   try {
+    await t.test('event dialogs manage strategies and scene labels directly without saving', async () => {
+      const start = new Date().setHours(0, 0, 0, 0);
+      timelineItems = [{
+        id: 'management-fixture', title: '合成管理入口', started_ms: start, ended_ms: start + 1000,
+        sources: 'microphone', revision: 1, fit_state: 'complete', completed_ms: start + 1000,
+        processing_state: 'transcribed', recording_sources: [], coarse_segments: [], precise_segments: [],
+        workflow: { phase: 'decided', tag_state: 'unclassified', labels: [], manual: false },
+      }];
+      try {
+        await settle(() => root.render(h(App, { key: 'workflow-management' })));
+        for (const [opener, title, destination] of [
+          ['执行策略', '执行策略', '流程与策略'],
+          ['编辑标签 · 添加标签', '编辑事件标签', '事件分析·场景标签'],
+        ]) {
+          const before = requests.length;
+          await click(document.querySelector('.event-card'));
+          await click(select(opener));
+          const dialog = document.querySelector('dialog.modal[open]');
+          assert.equal(dialog.querySelector('.modal-title h2').textContent, title);
+          const manage = dialog.querySelector('.modal-header-action button');
+          assert.equal(manage.textContent, '管理');
+          if (title === '执行策略') assert.match(dialog.textContent, /添加策略/);
+          await click(manage);
+          assert.equal(document.querySelector('.recognition-tabs [aria-selected=true]').textContent, destination);
+          assert(!document.querySelector('dialog[open]'));
+          assert(document.activeElement === document.querySelector('h1'), 'destination heading receives focus, got ' + document.activeElement?.tagName);
+          assert(requests.slice(before).filter(r => r.type === 'workflow').every(r => ['runs', 'strategies', 'config_show'].includes(r.action.op)));
+          await click(select('时间线'));
+        }
+        await click(select('智能分析'));
+        assert.equal(document.querySelector('.recognition-tabs [aria-selected=true]').textContent, '处理队列');
+      } finally {
+        timelineItems = [];
+      }
+    });
+
     await t.test('real App card buttons reach both named rows repeatedly without opening or verifying keys', async () => {
       await settle(() => root.render(h(App)));
       assert.equal(select('智能分析').getAttribute('title'), '智能分析');

@@ -142,6 +142,15 @@
 	letter-spacing: var(--tracking-heading);
 	margin: 0;
 }
+.modal-header-action {
+	flex: none;
+	margin-inline: auto var(--space-3);
+	padding-inline-start: var(--space-4);
+}
+.modal-title:has(> .modal-header-action) h2 {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
 .modal > label {
 	margin: var(--space-7) 0;
 }

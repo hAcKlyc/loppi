@@ -36,6 +36,7 @@ import { OnboardingView } from "./OnboardingView";
 import { RestartUpdate } from "./SoftwareUpdate";
 import type { ModelState, PrivacyStatus } from "./setup";
 import { useAppUpdate } from "./useAppUpdate";
+import type { WorkflowSection } from "./WorkflowSettings";
 
 type Page =
 	| "timeline"
@@ -60,6 +61,8 @@ function errorText(error: unknown): string {
 function App() {
 	const update = useAppUpdate();
 	const [page, setPage] = useState<Page>("timeline");
+	const [analysisEntrySection, setAnalysisEntrySection] =
+		useState<WorkflowSection>();
 	const [settingsProvider, setSettingsProvider] =
 		useState<CloudProvider | null>(null);
 	useEffect(() => {
@@ -959,6 +962,7 @@ function App() {
 							aria-current={page === id ? "page" : undefined}
 							title={label}
 							onClick={() => {
+								if (id === "queue") setAnalysisEntrySection(undefined);
 								setPage(id);
 								setSettingsProvider(null);
 								setDataAction(null);
@@ -1054,6 +1058,7 @@ function App() {
 				)}
 				{page === "queue" && (
 					<QueueView
+						initialSection={analysisEntrySection}
 						queuesReady={contextReady.queues}
 						queuesError={contextErrors.queues}
 						tasksReady={tasksReady}
@@ -1125,7 +1130,8 @@ function App() {
 					onClose={() => setSelection(null)}
 					onEdit={(item) => openForm({ mode: "edit", item })}
 					onTools={openTools}
-					onQueue={() => {
+					onQueue={(section) => {
+						setAnalysisEntrySection(section);
 						setSelection(null);
 						setPage("queue");
 					}}

@@ -28,11 +28,13 @@ export function WorkflowPicker({
 	eventId,
 	revision,
 	onClose,
+	onManage,
 	onRun,
 }: {
 	eventId: string;
 	revision: number;
 	onClose: () => void;
+	onManage: () => void;
 	onRun: (run: WorkflowRun) => void;
 }) {
 	const [catalog, setCatalog] = useState<Strategies | null>(null);
@@ -93,6 +95,11 @@ export function WorkflowPicker({
 	return (
 		<Modal
 			title={choice ? choice.strategy.name : "执行策略"}
+			headerAction={
+				<Button tone="quiet" size="compact" disabled={busy} onClick={onManage}>
+					管理
+				</Button>
+			}
 			busy={busy}
 			feedback={message}
 			onClose={onClose}
@@ -171,10 +178,12 @@ type Preview = {
 export function WorkflowTagEditor({
 	item,
 	onClose,
+	onManage,
 	onSaved,
 }: {
 	item: TimelineItem;
 	onClose: () => void;
+	onManage: () => void;
 	onSaved: () => void;
 }) {
 	const [settings, setSettings] = useState<WorkflowSettings | null>(null);
@@ -282,6 +291,11 @@ export function WorkflowTagEditor({
 	return (
 		<Modal
 			title="编辑事件标签"
+			headerAction={
+				<Button tone="quiet" size="compact" disabled={busy} onClick={onManage}>
+					管理
+				</Button>
+			}
 			busy={busy}
 			feedback={message}
 			onClose={onClose}

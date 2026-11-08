@@ -538,6 +538,7 @@ export function Dialog({
 
 export function Modal({
 	title,
+	headerAction,
 	description,
 	busy,
 	onClose,
@@ -546,6 +547,7 @@ export function Modal({
 	feedback,
 }: {
 	title: string;
+	headerAction?: ReactNode;
 	description?: string;
 	busy?: boolean;
 	onClose: (reason: CloseReason) => void;
@@ -567,6 +569,9 @@ export function Modal({
 				<h2 id={id} tabIndex={-1} data-dialog-title>
 					{title}
 				</h2>
+				{headerAction && (
+					<div className="modal-header-action">{headerAction}</div>
+				)}
 				<IconButton
 					label="关闭弹窗"
 					disabled={busy}

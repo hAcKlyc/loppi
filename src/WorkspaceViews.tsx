@@ -81,6 +81,7 @@ function taskRange(task: CloudTask): string {
 }
 
 export function QueueView({
+	initialSection,
 	queuesReady = true,
 	queuesError,
 	tasksReady = true,
@@ -95,6 +96,7 @@ export function QueueView({
 	onMutate,
 	onSettings,
 }: {
+	initialSection?: WorkflowSection;
 	queues: CloudQueue[];
 	queuesReady?: boolean;
 	queuesError?: string;
@@ -110,14 +112,17 @@ export function QueueView({
 	onSettings: (provider: CloudProvider) => void;
 }) {
 	const [taskProvider, setTaskProvider] = useState<CloudProvider | null>(null);
-	const [section, setSection] = useState<"queue" | WorkflowSection>("queue");
+	const [section, setSection] = useState<"queue" | WorkflowSection>(
+		initialSection ?? "queue",
+	);
 	const tabsId = useId();
 	const pageTop = useRef<HTMLElement>(null);
 	const heading = useRef<HTMLHeadingElement>(null);
 	useEffect(() => {
 		void taskProvider;
 		pageTop.current?.scrollIntoView({ block: "start" });
-		heading.current?.focus({ preventScroll: true });
+		// Move focus after the event dialogs finish restoring theirs.
+		queueMicrotask(() => heading.current?.focus({ preventScroll: true }));
 	}, [taskProvider]);
 	const [statisticsRefresh, setStatisticsRefresh] = useState(0);
 	const [activeReview, setActiveReview] = useState<string | null>(null);
