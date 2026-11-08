@@ -58,6 +58,19 @@ function versionCheck() {
   }
   return version;
 }
+
+export function prepareNativeLibraries(extracted) {
+  const native = settings.native;
+  const archive = join(root, 'build/cache/native', native.sha256, native.archive);
+  fetchAsset(archive, native);
+  // Re-extract the verified archive; extracted files are never trusted as cache.
+  mkdirSync(extracted, { recursive: true });
+  run('tar', ['-xjf', archive, '-C', extracted]);
+  const lib = join(extracted, native.directory, 'lib');
+  for (const file of readdirSync(lib).filter(f => f.endsWith('.a'))) architectures(join(lib, file), ['arm64', 'x86_64']);
+  return lib;
+}
+
 function prepareAssets(stage) {
   const cache = resolve('build/cache/models', sha(lockBytes));
   const seen = new Set();
@@ -68,17 +81,7 @@ function prepareAssets(stage) {
     fetchAsset(join(cache, asset.path), asset);
   }
   writeFileSync(join(cache, 'models.lock.json'), lockBytes);
-  const native = settings.native;
-  const nativeCache = resolve('build/cache/native', native.sha256);
-  const archive = join(nativeCache, native.archive);
-  fetchAsset(archive, native);
-  // Re-extract the verified archive; extracted files are never trusted as cache.
-  const extracted = join(stage, 'native');
-  mkdirSync(extracted, { recursive: true });
-  run('tar', ['-xjf', archive, '-C', extracted]);
-  const lib = join(extracted, native.directory, 'lib');
-  for (const file of readdirSync(lib).filter(f => f.endsWith('.a'))) architectures(join(lib, file), ['arm64', 'x86_64']);
-  return { cache, lib };
+  return { cache, lib: prepareNativeLibraries(join(stage, 'native')) };
 }
 
 export function buildPlan(argv, config = settings) {

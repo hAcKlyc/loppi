@@ -28,6 +28,15 @@ jobs:
           xcrun --sdk macosx --show-sdk-version
       - name: Install frontend test dependencies
         run: npm ci --no-audit --no-fund
+      - name: Prepare the same checksum-locked inference libraries as the macOS release
+        run: |
+          node --input-type=module <<'JS'
+          import { appendFileSync, mkdtempSync } from 'node:fs';
+          import { join } from 'node:path';
+          import { prepareNativeLibraries } from './scripts/build.mjs';
+          const lib = prepareNativeLibraries(mkdtempSync(join(process.env.RUNNER_TEMP, 'loppi-native-')));
+          appendFileSync(process.env.GITHUB_ENV, `SHERPA_ONNX_LIB_DIR=${lib}\n`);
+          JS
       - name: Verify the same gate as local development
         run: python3 scripts/verify.py --report build/verification.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
