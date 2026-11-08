@@ -61,7 +61,7 @@ jobs:
             appendFileSync(process.env.GITHUB_OUTPUT, `model_transfer=${join(transfer, relative(cacheRoot, cache))}\n`);
           }
           JS
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: build-input-native-macOS
           path: ${{ steps.assets.outputs.transfer }}/native/
@@ -69,7 +69,7 @@ jobs:
           compression-level: 0
           overwrite: true
           retention-days: 7
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: build-input-native-Windows
           path: ${{ steps.assets.outputs.transfer }}/windows/
@@ -77,7 +77,7 @@ jobs:
           compression-level: 0
           overwrite: true
           retention-days: 7
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: inputs.include_models
         with:
           name: build-input-models
