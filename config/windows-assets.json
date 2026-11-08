@@ -3,7 +3,9 @@
   "minimum_build": 22000,
   "target": "x86_64-pc-windows-msvc",
   "native": {
-    "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/v2.0.0/sherpa-onnx-v2.0.0-win-x64-shared-MD-Release-lib.tar.bz2",
+    "url": "https://api.github.com/repos/k2-fsa/sherpa-onnx/releases/assets/669622208?download=1",
+    "accept": "application/octet-stream",
+    "archive": "sherpa-onnx-2.0.0.tar.bz2",
     "bytes": 7270549,
     "sha256": "2b7f798a6586cc8cf37e226a82cd7f9727d7fe5ae73ef6244edbee766279a386",
     "directory": "sherpa-onnx-v2.0.0-win-x64-shared-MD-Release-lib"

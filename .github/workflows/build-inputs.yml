@@ -1,0 +1,88 @@
+name: Prepare locked build inputs
+on:
+  workflow_call:
+    inputs:
+      include_models:
+        type: boolean
+        default: false
+    outputs:
+      model_cache:
+        value: ${{ jobs.prepare.outputs.model_cache }}
+permissions:
+  contents: read
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      model_cache: ${{ steps.assets.outputs.model_cache }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            build/cache/native
+            build/cache/windows
+          key: native-build-inputs-v1-${{ hashFiles('config/build-targets.json', 'config/windows-assets.json') }}
+      - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        if: inputs.include_models
+        with:
+          path: build/cache/models
+          key: model-build-inputs-v1-${{ hashFiles('config/models.lock.json') }}
+      - name: Download and verify public build inputs
+        id: assets
+        env:
+          INCLUDE_MODELS: ${{ inputs.include_models }}
+        run: |
+          node --input-type=module <<'JS'
+          import { appendFileSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
+          import { dirname, join, relative } from 'node:path';
+          import { models, prepareMacNativeArchive, prepareModelCache, prepareWindowsNativeArchive } from './scripts/build-assets.mjs';
+          const cacheRoot = join(process.cwd(), 'build/cache');
+          const transfer = mkdtempSync(join(process.env.RUNNER_TEMP, 'loppi-build-inputs-'));
+          function stage(path) {
+            const destination = join(transfer, relative(cacheRoot, path));
+            mkdirSync(dirname(destination), { recursive: true });
+            copyFileSync(path, destination);
+          }
+          stage(prepareMacNativeArchive(JSON.parse(readFileSync('config/build-targets.json')).native));
+          stage(prepareWindowsNativeArchive(JSON.parse(readFileSync('config/windows-assets.json')).native));
+          appendFileSync(process.env.GITHUB_OUTPUT, `transfer=${transfer}\n`);
+          if (process.env.INCLUDE_MODELS === 'true') {
+            const cache = prepareModelCache();
+            for (const asset of models.files) stage(join(cache, asset.path));
+            stage(join(cache, 'models.lock.json'));
+            appendFileSync(process.env.GITHUB_OUTPUT, `model_cache=${relative(process.cwd(), cache)}\n`);
+            appendFileSync(process.env.GITHUB_OUTPUT, `model_transfer=${join(transfer, relative(cacheRoot, cache))}\n`);
+          }
+          JS
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: build-input-native-macOS
+          path: ${{ steps.assets.outputs.transfer }}/native/
+          if-no-files-found: error
+          compression-level: 0
+          overwrite: true
+          retention-days: 7
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: build-input-native-Windows
+          path: ${{ steps.assets.outputs.transfer }}/windows/
+          if-no-files-found: error
+          compression-level: 0
+          overwrite: true
+          retention-days: 7
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: inputs.include_models
+        with:
+          name: build-input-models
+          path: ${{ steps.assets.outputs.model_transfer }}
+          if-no-files-found: error
+          compression-level: 0
+          overwrite: true
+          retention-days: 7

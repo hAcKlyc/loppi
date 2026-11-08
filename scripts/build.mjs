@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 // Build-time downloads only. The installed application never downloads models.
-import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, cpSync, lstatSync, readdirSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -8,32 +7,15 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync, execFileSync } from 'node:child_process';
 import { parseEnv } from 'node:util';
 import { createMacUpdateArchive, signingEnv, writePlatformManifest } from './updater-artifacts.mjs';
+import { checked, modelLockBytes, models, prepareMacNativeArchive, prepareModelCache, sha } from './build-assets.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const settings = JSON.parse(readFileSync(join(root, 'config/build-targets.json')));
-const lockBytes = readFileSync(join(root, 'config/models.lock.json'));
-const models = JSON.parse(lockBytes);
-const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 const output = (cmd, args) => execFileSync(cmd, args, { encoding: 'utf8' }).trim();
 function run(cmd, args, env = process.env) {
   const result = spawnSync(cmd, args, { env, stdio: 'inherit' });
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(`${cmd} failed (${result.status})`);
-}
-function checked(path, spec) {
-  if (!existsSync(path)) return false;
-  const stat = lstatSync(path);
-  return stat.isFile() && !stat.isSymbolicLink() && stat.size === spec.bytes && sha(readFileSync(path)) === spec.sha256;
-}
-function fetchAsset(path, spec) {
-  if (checked(path, spec)) return;
-  mkdirSync(dirname(path), { recursive: true });
-  // Download to a temporary sibling. Never accept a partial or stale cache hit.
-  const temporary = `${path}.download-${process.pid}`;
-  const headers = spec.accept ? ['--header', `Accept: ${spec.accept}`] : [];
-  run('curl', ['--fail', '--location', '--retry', '3', '--silent', '--show-error', ...headers, spec.url, '--output', temporary]);
-  if (!checked(temporary, spec)) throw new Error(`Asset checksum mismatch: ${spec.url}`);
-  run('/bin/mv', ['-f', temporary, path]);
 }
 function architectures(path, expected) {
   const actual = output('lipo', ['-archs', path]).split(/\s+/).sort();
@@ -62,27 +44,13 @@ function versionCheck() {
 
 export function prepareNativeLibraries(extracted) {
   const native = settings.native;
-  const archive = join(root, 'build/cache/native', native.sha256, native.archive);
-  fetchAsset(archive, native);
+  const archive = prepareMacNativeArchive(native);
   // Re-extract the verified archive; extracted files are never trusted as cache.
   mkdirSync(extracted, { recursive: true });
   run('tar', ['-xjf', archive, '-C', extracted]);
   const lib = join(extracted, native.directory, 'lib');
   for (const file of readdirSync(lib).filter(f => f.endsWith('.a'))) architectures(join(lib, file), ['arm64', 'x86_64']);
   return lib;
-}
-
-function prepareAssets(stage) {
-  const cache = resolve('build/cache/models', sha(lockBytes));
-  const seen = new Set();
-  if (models.schema !== 1 || !models.files.length) throw new Error('Invalid model lock');
-  for (const asset of models.files) {
-    if (!asset.path || asset.path.split('/').some(p => !p || p === '.' || p === '..') || asset.path.includes('\\') || seen.has(asset.path)) throw new Error('Invalid model asset path');
-    seen.add(asset.path);
-    fetchAsset(join(cache, asset.path), asset);
-  }
-  writeFileSync(join(cache, 'models.lock.json'), lockBytes);
-  return { cache, lib: prepareNativeLibraries(join(stage, 'native')) };
 }
 
 export function buildPlan(argv, config = settings) {
@@ -145,8 +113,8 @@ function buildTarget(target, { release, version, source, epoch, dirty, env: base
     throw new Error('Quit the application running from this build output before rebuilding');
   }
   mkdirSync(stage, { recursive: true });
-  const assets = prepareAssets(stage);
-  env.SHERPA_ONNX_LIB_DIR = assets.lib;
+  const modelCache = prepareModelCache();
+  env.SHERPA_ONNX_LIB_DIR = prepareNativeLibraries(join(stage, 'native'));
   for (const rustTarget of platform.rust_targets) {
     run('cargo', ['build', '--locked', '--release', '--target', rustTarget, '-p', 'loppi-core', '-p', 'loppi-cli', '-p', 'loppi-worker'], env);
   }
@@ -165,9 +133,9 @@ function buildTarget(target, { release, version, source, epoch, dirty, env: base
   for (const spec of models.files) {
     const destination = join(bundledModels, spec.path);
     mkdirSync(dirname(destination), { recursive: true });
-    cpSync(join(assets.cache, spec.path), destination);
+    cpSync(join(modelCache, spec.path), destination);
   }
-  writeFileSync(join(bundledModels, 'models.lock.json'), lockBytes);
+  writeFileSync(join(bundledModels, 'models.lock.json'), modelLockBytes);
   cpSync('THIRD_PARTY_NOTICES.md', join(helper, 'Contents/Resources/THIRD_PARTY_NOTICES.md'));
   cpSync('licenses', join(helper, 'Contents/Resources/licenses'), { recursive: true });
   const override = join(stage, 'tauri.json');
@@ -183,7 +151,7 @@ function buildTarget(target, { release, version, source, epoch, dirty, env: base
   }
   const modelRoot = join(app, 'Contents/Library/LoginItems/LoppiCore.app/Contents/Resources/models');
   for (const spec of models.files) if (!checked(join(modelRoot, spec.path), spec)) throw new Error(`Bundled asset mismatch: ${spec.path}`);
-  if (!readFileSync(join(modelRoot, 'models.lock.json')).equals(lockBytes)) throw new Error('Bundled lock mismatch');
+  if (!readFileSync(join(modelRoot, 'models.lock.json')).equals(modelLockBytes)) throw new Error('Bundled lock mismatch');
   const nativeArch = hostArchitecture();
   const nativeExecution = platform.architectures.includes(nativeArch);
   const rosettaExecution = !nativeExecution && nativeArch === 'arm64' && platform.architectures.includes('x86_64')
@@ -205,7 +173,7 @@ function buildTarget(target, { release, version, source, epoch, dirty, env: base
   if (checkedArch && !platform.architectures.includes(checkedArch)) throw new Error('Worker runtime architecture disagrees with target');
   const report = {
     version, source, dirty, target, architectures: platform.architectures, built_at_epoch: Number(epoch),
-    models_lock_sha256: sha(lockBytes), models_bytes: models.files.reduce((n, f) => n + f.bytes, 0),
+    models_lock_sha256: sha(modelLockBytes), models_bytes: models.files.reduce((n, f) => n + f.bytes, 0),
     native: { version: settings.native.version, sha256: settings.native.sha256 },
     toolchain: { node: process.version, rust: output('rustc', ['--version']), xcode: output('xcodebuild', ['-version']), sdk: output('xcrun', ['--show-sdk-version']) },
     identity, runtime, runtime_execution: checkedArch ? (checkedArch === nativeArch ? 'native' : 'rosetta') : 'not_available',

@@ -5,6 +5,7 @@ import {resolve,join,dirname} from 'node:path';
 import {spawnSync,execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {signingEnv,writePlatformManifest} from './updater-artifacts.mjs';
+import {prepareWindowsNativeArchive} from './build-assets.mjs';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const spec=JSON.parse(readFileSync(join(root,'config/windows-assets.json')));
 const hash=path=>createHash('sha256').update(readFileSync(path)).digest('hex');
@@ -32,7 +33,7 @@ export async function main(argv=process.argv.slice(2)){
   const crt=localCrt?spec.vc_runtime.files.map(item=>join(localCrt,item.name)):files(join(redist,'x64')).filter(path=>/Microsoft\.VC[0-9]+\.CRT[\\/]/i.test(path));
   const runtime=spec.vc_runtime.files.map(item=>{const source=crt.find(path=>path.endsWith(item.name));if(!source||!existsSync(source)||!statSync(source).isFile())throw new Error(`missing pinned Microsoft redistributable ${item.name}`);if(statSync(source).size!==item.bytes||hash(source)!==item.sha256)throw new Error(`changed pinned Microsoft redistributable ${item.name}: byte count or SHA256 mismatch`);return {source,name:item.name};});
   const cache=resolve('build/cache/windows');mkdirSync(cache,{recursive:true});
-  const archive=join(cache,'sherpa-onnx-2.0.0.tar.bz2');asset(archive,spec.native);run('tar',['-xjf',archive,'-C',cache]);
+  const archive=prepareWindowsNativeArchive(spec.native);run('tar',['-xjf',archive,'-C',cache]);
   const native=join(cache,spec.native.directory,'lib');
   run(process.execPath,['scripts/prepare_windows_ocr.mjs']);
   const ocr=join(cache,'ocr-runtime');
