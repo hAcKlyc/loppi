@@ -111,9 +111,9 @@ export function TimelineView({
 		dateButton.current?.focus();
 	};
 	const activeItem = liveCard(items, recordingState, date, today.getTime());
-	const closeCalendar = useCallback(() => {
+	const closeCalendar = useCallback((restoreFocus = true) => {
 		setCalendarOpen(false);
-		dateButton.current?.focus();
+		if (restoreFocus) dateButton.current?.focus();
 	}, []);
 	const position = (ms: number) =>
 		`${Math.max(0, Math.min(100, ((ms - from) / (to - from)) * 100))}%`;

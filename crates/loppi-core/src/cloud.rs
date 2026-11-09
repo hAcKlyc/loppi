@@ -5,7 +5,7 @@ use base64::Engine;
 use loppi_protocol::CloudProvider;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::io::{BufRead, BufReader, Read};
+use std::io::{self, BufRead, BufReader, Read};
 use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
@@ -14,6 +14,7 @@ use uuid::Uuid;
 
 const SERVICE: &str = "app.loppi.cloud";
 const DEEPSEEK_URL: &str = "https://api.deepseek.com/chat/completions";
+const LLM_NETWORK_TIMEOUT: Duration = Duration::from_secs(60);
 const VOLC_SUBMIT: &str = "https://openspeech.bytedance.com/api/v3/auc/bigmodel/submit";
 const VOLC_QUERY: &str = "https://openspeech.bytedance.com/api/v3/auc/bigmodel/query";
 const VOLC_RESOURCE: &str = "volc.seedasr.auc";
@@ -119,6 +120,134 @@ fn agent() -> &'static ureq::Agent {
     })
 }
 
+// Keep the streaming connection pool and I/O runtime alive across LLM calls.
+// The async client applies the read timeout alongside each request's deadline.
+struct ChatHttp {
+    runtime: tokio::runtime::Runtime,
+    client: reqwest::Client,
+}
+
+impl ChatHttp {
+    fn new(network_timeout: Duration) -> Result<Self, Failure> {
+        let tls = rustls::ClientConfig::builder_with_provider(
+            rustls::crypto::ring::default_provider().into(),
+        )
+        .with_safe_default_protocol_versions()
+        .map_err(|_| "provider_transport".to_owned())?
+        .with_root_certificates(rustls::RootCertStore::from_iter(
+            webpki_roots::TLS_SERVER_ROOTS.iter().cloned(),
+        ))
+        .with_no_client_auth();
+        let client = reqwest::Client::builder()
+            .tls_backend_preconfigured(tls)
+            .no_proxy()
+            .connect_timeout(network_timeout)
+            .read_timeout(network_timeout)
+            .redirect(reqwest::redirect::Policy::none())
+            .retry(reqwest::retry::never())
+            .build()
+            .map_err(|_| "provider_transport".to_owned())?;
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_all()
+            .build()
+            .map_err(|_| "provider_transport".to_owned())?;
+        Ok(Self { runtime, client })
+    }
+
+    fn send(
+        &self,
+        endpoint: &str,
+        key: &str,
+        body: String,
+        deadline: Instant,
+    ) -> Result<ChatBody<'_>, Failure> {
+        let timeout = remaining(deadline)?;
+        let request = self
+            .client
+            .post(endpoint)
+            .timeout(timeout)
+            .bearer_auth(key)
+            .header("Content-Type", "application/json")
+            .body(body);
+        let response = self
+            .runtime
+            .block_on(async { request.send().await })
+            .map_err(|error| {
+                if error.is_timeout() {
+                    timeout_code(deadline)
+                } else {
+                    "provider_transport"
+                }
+                .to_owned()
+            })?;
+        if !response.status().is_success() {
+            return Err(http_failure(
+                response.status().as_u16(),
+                response
+                    .headers()
+                    .get("Retry-After")
+                    .and_then(|value| value.to_str().ok()),
+            ));
+        }
+        Ok(ChatBody {
+            runtime: &self.runtime,
+            response,
+            chunk: bytes::Bytes::new(),
+        })
+    }
+}
+
+struct ChatBody<'a> {
+    runtime: &'a tokio::runtime::Runtime,
+    response: reqwest::Response,
+    chunk: bytes::Bytes,
+}
+
+impl Read for ChatBody<'_> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if buf.is_empty() {
+            return Ok(0);
+        }
+        while self.chunk.is_empty() {
+            let chunk = self
+                .runtime
+                .block_on(self.response.chunk())
+                .map_err(|error| {
+                    if error.is_timeout() {
+                        io::Error::new(io::ErrorKind::TimedOut, error)
+                    } else {
+                        io::Error::other(error)
+                    }
+                })?;
+            let Some(chunk) = chunk else {
+                return Ok(0);
+            };
+            self.chunk = chunk;
+        }
+        let len = buf.len().min(self.chunk.len());
+        buf[..len].copy_from_slice(&self.chunk.split_to(len));
+        Ok(len)
+    }
+}
+
+fn chat_http() -> Result<&'static ChatHttp, Failure> {
+    static CLIENT: OnceLock<ChatHttp> = OnceLock::new();
+    if let Some(client) = CLIENT.get() {
+        return Ok(client);
+    }
+    let client = ChatHttp::new(LLM_NETWORK_TIMEOUT)?;
+    Ok(CLIENT.get_or_init(|| client))
+}
+
+fn timeout_code(deadline: Instant) -> &'static str {
+    if Instant::now() >= deadline {
+        "provider_deadline"
+    } else {
+        "provider_read_timeout"
+    }
+}
+
 /// Internal scheduling metadata, never a supplier body or credential.
 #[derive(Debug)]
 pub struct Failure {
@@ -165,14 +294,18 @@ fn checked_response(
 ) -> Result<ureq::Response, Failure> {
     match response {
         Ok(response) => Ok(response),
-        Err(ureq::Error::Status(code, response)) => Err(Failure {
-            code: format!("provider_http_{code}"),
-            context: Default::default(),
-            retry_after_ms: response
-                .header("Retry-After")
-                .and_then(|v| retry_after(v, std::time::SystemTime::now())),
-        }),
+        Err(ureq::Error::Status(code, response)) => {
+            Err(http_failure(code, response.header("Retry-After")))
+        }
         Err(_) => Err("provider_transport".to_owned().into()),
+    }
+}
+
+fn http_failure(code: u16, retry: Option<&str>) -> Failure {
+    Failure {
+        code: format!("provider_http_{code}"),
+        context: Default::default(),
+        retry_after_ms: retry.and_then(|value| retry_after(value, std::time::SystemTime::now())),
     }
 }
 
@@ -193,12 +326,12 @@ fn json_response(response: Result<ureq::Response, ureq::Error>) -> Result<Value,
 // a paid request at the old 60s boundary. The request still has an absolute
 // deadline, an idle-read timeout, and a bounded total response. Reasoning is
 // consumed but never retained, published or logged.
-fn streamed_chat(response: Result<ureq::Response, ureq::Error>) -> Result<Value, Failure> {
-    let response = checked_response(response).map_err(|mut e| {
-        e.context.cause = Some("response_headers".into());
-        e
-    })?;
-    let mut reader = BufReader::new(response.into_reader().take(8_000_001));
+fn streamed_chat(
+    response: impl Read,
+    deadline: Instant,
+    mut on_content: Option<&mut dyn FnMut(&str)>,
+) -> Result<Value, Failure> {
+    let mut reader = BufReader::new(response.take(8_000_001));
     let mut bytes = 0;
     let mut line = String::new();
     let mut data = String::new();
@@ -213,7 +346,7 @@ fn streamed_chat(response: Result<ureq::Response, ureq::Error>) -> Result<Value,
                     e.kind(),
                     std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
                 ) {
-                    "provider_read_timeout".to_owned()
+                    timeout_code(deadline).to_owned()
                 } else {
                     "provider_read_failed".to_owned()
                 },
@@ -247,6 +380,9 @@ fn streamed_chat(response: Result<ureq::Response, ureq::Error>) -> Result<Value,
                 .and_then(Value::as_str)
             {
                 content.push_str(delta);
+                if let Some(update) = on_content.as_mut() {
+                    update(&content);
+                }
             }
             if let Some(reason) = chunk
                 .pointer("/choices/0/finish_reason")
@@ -351,6 +487,22 @@ pub fn describe_image(
     )
 }
 
+pub fn chat_markdown(
+    key: &str,
+    model: &str,
+    system: &str,
+    user: &str,
+    deadline: Instant,
+    meter: &dyn Meter,
+    on_content: &mut dyn FnMut(&str),
+) -> Result<String, Failure> {
+    let (id, response) = chat_response(
+        key, model, system, json!(user), deadline, meter, true, DEEPSEEK_URL, Some(on_content),
+    )?;
+    observe_usage(meter, meter.llm_response(&id, &response));
+    Ok(complete_chat_content(&response)?.to_owned())
+}
+
 fn image_content(png_base64: &str) -> Value {
     json!([
         {"type":"text","text":"请输出这张截图的摘要和完整 Markdown 文字转录。"},
@@ -368,10 +520,25 @@ fn chat_content(
     thinking: bool,
     endpoint: &str,
 ) -> Result<Value, Failure> {
+    let (id, response) =
+        chat_response(key, model, system, user, deadline, meter, thinking, endpoint, None)?;
+    parse_metered_chat_content(meter, &id, &response)
+}
+
+fn chat_response(
+    key: &str,
+    model: &str,
+    system: &str,
+    user: Value,
+    deadline: Instant,
+    meter: &dyn Meter,
+    thinking: bool,
+    endpoint: &str,
+    on_content: Option<&mut dyn FnMut(&str)>,
+) -> Result<(String, Value), Failure> {
     let mut body = json!({
         "model": model,
         "thinking": {"type": if thinking { "enabled" } else { "disabled" }},
-        "response_format": {"type":"json_object"},
         "stream": true,
         "stream_options": {"include_usage":true},
         "messages": [
@@ -379,6 +546,9 @@ fn chat_content(
             {"role":"user","content":user}
         ]
     });
+    if on_content.is_none() {
+        body["response_format"] = json!({"type":"json_object"});
+    }
     // Window fitting must reconcile old facts with corrections in one call.
     // Low effort enables that reasoning without changing screenshot requests.
     if thinking {
@@ -393,30 +563,34 @@ fn chat_content(
             }
         }
     }
-    let timeout = remaining(deadline)?;
+    remaining(deadline)?;
     let usage_id = meter.begin(model, None, None)?;
     if offline_test() && endpoint == DEEPSEEK_URL {
         return Err("test_offline".to_owned().into());
     }
     let headers_started = Instant::now();
-    let response = agent()
-        .post(endpoint)
-        .timeout(timeout)
-        .set("Authorization", &format!("Bearer {key}"))
-        .set("Content-Type", "application/json")
-        .send_string(&body.to_string());
+    let response =
+        chat_http().and_then(|client| client.send(endpoint, key, body.to_string(), deadline));
     let headers_ms = headers_started.elapsed().as_millis() as u64;
     let body_started = Instant::now();
     let response = metered_result(
         meter,
         &usage_id,
-        streamed_chat(response).map_err(|mut error| {
-            error.context.headers_ms = Some(headers_ms);
-            error.context.body_ms = Some(body_started.elapsed().as_millis() as u64);
-            error
-        }),
+        response
+            .map_err(|mut error| {
+                error.context.cause = Some("response_headers".into());
+                error.context.headers_ms = Some(headers_ms);
+                error
+            })
+            .and_then(|response| {
+                streamed_chat(response, deadline, on_content).map_err(|mut error| {
+                    error.context.headers_ms = Some(headers_ms);
+                    error.context.body_ms = Some(body_started.elapsed().as_millis() as u64);
+                    error
+                })
+            }),
     )?;
-    parse_metered_chat_content(meter, &usage_id, &response)
+    Ok((usage_id, response))
 }
 
 fn observe_usage(meter: &dyn Meter, result: Result<(), String>) {
@@ -436,7 +610,7 @@ fn parse_metered_chat_content(
     parse_chat_content(response)
 }
 
-pub(crate) fn parse_chat_content(response: &Value) -> Result<Value, Failure> {
+fn complete_chat_content(response: &Value) -> Result<&str, Failure> {
     let choice = response
         .get("choices")
         .and_then(Value::as_array)
@@ -460,10 +634,14 @@ pub(crate) fn parse_chat_content(response: &Value) -> Result<Value, Failure> {
             },
         });
     }
-    let content = choice
+    choice
         .pointer("/message/content")
         .and_then(Value::as_str)
-        .ok_or_else(|| "provider_missing_content".to_owned())?;
+        .ok_or_else(|| "provider_missing_content".to_owned().into())
+}
+
+pub(crate) fn parse_chat_content(response: &Value) -> Result<Value, Failure> {
+    let content = complete_chat_content(response)?;
     serde_json::from_str::<UniqueJson>(content)
         .map(|value| value.0)
         .map_err(|error| {
@@ -1245,28 +1423,39 @@ mod tests {
 
     #[test]
     fn streaming_discards_reasoning_requires_completion_and_preserves_usage() {
-        let content = json!({"ok":true}).to_string();
         let stream = format!(
-            ": keep-alive\n\ndata: {}\n\ndata: {}\n\ndata: {}\n\ndata: [DONE]\n\n",
+            ": keep-alive\n\ndata: {}\n\ndata: {}\n\ndata: {}\n\ndata: {}\n\ndata: [DONE]\n\n",
             json!({"choices":[{"delta":{"reasoning_content":"private reasoning"}}]}),
-            json!({"choices":[{"delta":{"content":content},"finish_reason":"stop"}]}),
+            json!({"choices":[{"delta":{"content":"{\"ok\":"}}]}),
+            json!({"choices":[{"delta":{"content":"true}"},"finish_reason":"stop"}]}),
             json!({"choices":[],"usage":{"prompt_tokens":20,"completion_tokens":10}})
         );
-        let response = streamed_chat(Ok(ureq::Response::new(200, "OK", &stream).unwrap())).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(1);
+        let mut prefixes = Vec::new();
+        let response = streamed_chat(
+            stream.as_bytes(),
+            deadline,
+            Some(&mut |body| prefixes.push(body.to_owned())),
+        ).unwrap();
+        assert_eq!(prefixes, ["{\"ok\":", "{\"ok\":true}"]);
         assert_eq!(parse_chat_content(&response).unwrap(), json!({"ok":true}));
         assert_eq!(response["usage"]["prompt_tokens"], 20);
         assert!(!response.to_string().contains("private reasoning"));
         let truncated = stream.replace("data: [DONE]\n\n", "");
+        prefixes.clear();
         assert_eq!(
-            streamed_chat(Ok(ureq::Response::new(200, "OK", &truncated).unwrap()))
+            streamed_chat(
+                truncated.as_bytes(),
+                deadline,
+                Some(&mut |body| prefixes.push(body.to_owned())),
+            )
                 .unwrap_err()
                 .code,
             "provider_incomplete_output"
         );
+        assert_eq!(prefixes, ["{\"ok\":", "{\"ok\":true}"]);
         assert_eq!(
-            streamed_chat(Ok(
-                ureq::Response::new(200, "OK", "data: [DONE]\n\n").unwrap()
-            ))
+            streamed_chat(&b"data: [DONE]\n\n"[..], deadline, None)
             .unwrap_err()
             .code,
             "provider_incomplete_output"
@@ -1274,60 +1463,71 @@ mod tests {
     }
 
     #[test]
-    fn streamed_requests_bound_slow_headers_body_disconnect_and_no_response() {
+    fn llm_network_timeout_and_model_deadline_apply_independently() {
         use std::io::Write;
         use std::net::TcpListener;
-        for mode in ["headers", "body", "disconnect", "silent"] {
+        let network = Duration::from_millis(250);
+        let client = ChatHttp::new(network).unwrap();
+        for mode in ["headers", "stall", "disconnect", "stream", "complete", "rate_limited"] {
             let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-            let address = listener.local_addr().unwrap();
+            let endpoint = format!("http://{}", listener.local_addr().unwrap());
             let server = std::thread::spawn(move || {
                 let (mut stream, _) = listener.accept().unwrap();
                 let mut request = [0; 4096];
-                let _ = stream.read(&mut request);
-                if mode == "headers" || mode == "silent" {
-                    std::thread::sleep(Duration::from_millis(300));
-                    if mode == "headers" {
-                        let _ = stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n");
-                    }
+                stream.read(&mut request).unwrap();
+                if mode == "rate_limited" {
+                    stream.write_all(b"HTTP/1.1 429 Too Many Requests\r\nContent-Length: 0\r\nRetry-After: 123\r\nConnection: close\r\n\r\n").unwrap();
                     return;
                 }
-                stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: 10000\r\nConnection: close\r\n\r\n").unwrap();
-                let _ =
-                    stream.write_all(b"data: {\"choices\":[{\"delta\":{\"content\":\"{\"}}]}\n\n");
-                if mode == "body" {
-                    // Bytes continue arriving inside the idle timeout. The
-                    // total request budget must still end this stream.
-                    for _ in 0..100 {
-                        std::thread::sleep(Duration::from_millis(10));
+                if mode == "headers" {
+                    std::thread::sleep(Duration::from_millis(450));
+                    return;
+                }
+                stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\ndata: {\"choices\":[{\"delta\":{\"content\":\"first\"}}]}\n\n").unwrap();
+                if mode == "stall" {
+                    std::thread::sleep(Duration::from_millis(450));
+                }
+                if matches!(mode, "stream" | "complete") {
+                    let count = if mode == "stream" { 30 } else { 8 };
+                    for _ in 0..count {
+                        std::thread::sleep(Duration::from_millis(50));
                         if stream.write_all(b": keep-alive\n\n").is_err() {
-                            break;
+                            return;
                         }
                     }
                 }
+                if mode == "complete" {
+                    stream.write_all(b"data: {\"choices\":[{\"delta\":{\"content\":\" last\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n").unwrap();
+                }
             });
             let began = Instant::now();
-            let error = streamed_chat(
-                agent()
-                    .post(&format!("http://{address}"))
-                    .timeout(Duration::from_millis(100))
-                    .send_string("{}"),
-            )
-            .unwrap_err();
-            assert!(
-                matches!(
-                    error.code.as_str(),
-                    "provider_read_timeout"
-                        | "provider_transport"
-                        | "provider_incomplete_output"
-                        | "provider_read_failed"
-                ),
-                "{mode}: {}",
-                error.code
-            );
-            assert!(began.elapsed() < Duration::from_secs(2), "{mode}");
-            if mode != "disconnect" {
-                assert!(began.elapsed() >= Duration::from_millis(80), "{mode}");
+            let deadline = began + if mode == "stream" {
+                Duration::from_millis(400)
+            } else {
+                Duration::from_secs(2)
+            };
+            let mut prefixes = Vec::new();
+            let result = client.send(&endpoint, "fixture", "{}".into(), deadline)
+                .and_then(|response| streamed_chat(
+                    response, deadline, Some(&mut |body| prefixes.push(body.to_owned())),
+                ));
+            match mode {
+                "headers" | "stall" => assert_eq!(result.unwrap_err().code, "provider_read_timeout"),
+                "disconnect" => assert_eq!(result.unwrap_err().code, "provider_incomplete_output"),
+                "stream" => assert_eq!(result.unwrap_err().code, "provider_deadline"),
+                "complete" => {
+                    assert_eq!(complete_chat_content(&result.unwrap()).unwrap(), "first last");
+                    assert_eq!(prefixes, ["first", "first last"]);
+                    assert!(began.elapsed() > network);
+                }
+                "rate_limited" => {
+                    let error = result.unwrap_err();
+                    assert_eq!(error.code, "provider_http_429");
+                    assert_eq!(error.retry_after_ms, Some(123_000));
+                }
+                _ => unreachable!(),
             }
+            assert!(began.elapsed() < Duration::from_secs(2), "{mode}");
             server.join().unwrap();
         }
     }

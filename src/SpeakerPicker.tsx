@@ -171,6 +171,7 @@ export function SpeakerPicker({
 			ref={panel}
 			className="speaker-picker"
 			role="dialog"
+			tabIndex={-1}
 			aria-labelledby={`${id}-title`}
 			aria-busy={pending}
 			onMouseDown={(event) => {

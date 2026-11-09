@@ -6,11 +6,34 @@ const start=new Date(2026,10,2,10,0).getTime()+123;
 const initial={id:'00000000-0000-0000-0000-000000000001',title:'产品设计评审',started_ms:start,ended_ms:start+1800000,sources:'both',revision:1,processing_state:'settling_asr',coarse_segments:[{id:'coarse',source:'microphone',started_ms:start+60000,ended_ms:start+90000,text:'我们确认了事件结束后的处理方式，接下来补充交互和验证。'}],precise_segments:[]};
 let current={...initial},version=0,requestCount=0,receipt=null;
 const params=new URLSearchParams(location.search);const root=createRoot(document.getElementById('root'));
+const strategy={id:'minutes',name:'会议纪要',input:'coarse',tag_ids:[]};
+let run,markdown='';
+if(params.has('workflow')){
+ current={...initial,processing_state:'transcribed',completed_ms:start+1800000,workflow:{phase:'decided',tag_state:'tagged',labels:[{id:'work',name:'产品讨论'}],manual:false}};
+ window.workflowFixture=(state,body)=>{
+  markdown=body;
+  run={...run,state,result_version_id:state==='succeeded'?run.run_id:undefined};
+ };
+}
 function render(){root.render(React.createElement(DetailDrawer,{item:current,people:[],refreshToken:version,onClose:()=>root.render(null),onEdit:()=>alert('合成预览：编辑事件'),onTools:(_item,mode)=>alert('合成预览：'+mode),onDataAction:kind=>alert('合成预览：'+kind),onQueue:()=>alert('合成预览：查看智能分析'),onChanged:()=>{version++;render()},onMessage:()=>{}}))}
 mockIPC(async(command,args)=>{
  const r=args.request;
  if(r.type==='event_detail')return {type:'event',event:current};
  if(r.type==='moments')return {type:'moments',moments:[{id:'note',kind:'comment',anchor_ms:start+1200000,created_ms:start+1200000,text:'合成样本：会后立即检查内容，允许人工校正起止时间。'}]};
+ if(r.type==='workflow'){
+  const {op,cursor}=r.action;
+  const reply=data=>({type:'workflow',result:{ok:true,data}});
+  if(op==='strategies')return reply({revision:1,strategies:[strategy]});
+  if(op==='runs')return reply({runs:run?[run]:[]});
+  if(op==='run'){
+   run={run_id:'fixture-run',strategy_id:strategy.id,name:strategy.name,input:strategy.input,state:'queued',created_ms:start,asr_task_ids:[]};
+   return reply(run);
+  }
+  if(op==='output'){
+   const offset=Number(cursor??0);
+   return reply({run,output:run.state==='queued'?null:{append:offset>0,cursor:String(markdown.length),body_markdown:markdown.slice(offset)}});
+  }
+ }
  if(r.type==='confirm_event_completion'){
   requestCount++;
   if(params.has('uncertain')&&requestCount===1){receipt=args.requestId;throw Error('合成回执丢失')}

@@ -141,6 +141,11 @@ pub enum Action {
         #[serde(default)]
         latest_only: bool,
     },
+    Output {
+        event_id: Uuid,
+        run_id: Uuid,
+        cursor: Option<String>,
+    },
     Result {
         event_id: Uuid,
         strategy_id: Uuid,
@@ -158,6 +163,7 @@ impl Action {
                 | Self::Strategies
                 | Self::Tags { plan: None, .. }
                 | Self::Runs { .. }
+                | Self::Output { .. }
                 | Self::Result { .. }
         )
     }

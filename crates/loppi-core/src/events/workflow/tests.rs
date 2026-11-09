@@ -224,6 +224,64 @@ fn changing_classifier_during_historical_organization_preserves_summary_and_retr
 }
 
 #[test]
+fn workflow_output_streams_attempt_scoped_deltas_and_reads_the_whole_saved_body() {
+    let mut db = database();
+    let (_, strategy) = settings(&db, Input::Coarse, false);
+    block(&db);
+    let id = event(&mut db, json!([OTHER_TAG]));
+    complete(&mut db, id);
+    let queued = change(&mut db, run(id, strategy, ManualInput::Configured), NOW);
+    let run_id = Uuid::parse_str(queued["data"]["run_id"].as_str().unwrap()).unwrap();
+    let live = LiveOutput::default();
+    let queued = read_output(&db, &live, id, run_id, None).unwrap();
+    assert_eq!(queued["data"]["run"]["state"], "queued");
+    assert!(queued["data"]["output"].is_null());
+    let task = take_task(&mut db, CloudProvider::Llm, NOW + 1).unwrap().unwrap();
+    let first = live.start(task.id, 1).unwrap();
+    first.update("# 未完成");
+    let chunk = read_output(&db, &live, id, run_id, None).unwrap();
+    assert_eq!(chunk["data"]["run"]["state"], "running");
+    assert_eq!(chunk["data"]["output"]["body_markdown"], "# 未完成");
+    let cursor = chunk["data"]["output"]["cursor"].as_str();
+    first.update("# 未完成\n\n新内容");
+    let chunk = read_output(&db, &live, id, run_id, cursor).unwrap();
+    assert_eq!(chunk["data"]["output"]["body_markdown"], "\n\n新内容");
+    assert_eq!(chunk["data"]["output"]["append"], true);
+    assert_eq!(
+        read_output(&db, &live, id, Uuid::new_v4(), None).unwrap_err(),
+        "run_not_found"
+    );
+    let other = event(&mut db, json!([OTHER_TAG]));
+    assert_eq!(read_output(&db, &live, other, run_id, None).unwrap_err(), "run_not_found");
+    drop(first);
+    assert!(read_output(&db, &live, id, run_id, None).unwrap()["data"]["output"].is_null());
+    assert_eq!(
+        read_result(&db, &scope(&db, &id.to_string()).unwrap().unwrap(), strategy, None, None)
+            .unwrap_err(),
+        "result_unavailable"
+    );
+
+    db.execute("UPDATE cloud_tasks SET submit_attempts=2 WHERE id=?1", [task.id.to_string()]).unwrap();
+    let second = live.start(task.id, 2).unwrap();
+    second.update("# 已重新生成");
+    let chunk = read_output(&db, &live, id, run_id, cursor).unwrap();
+    assert_eq!(chunk["data"]["output"]["append"], false);
+    assert_eq!(chunk["data"]["output"]["body_markdown"], "# 已重新生成");
+    let final_body = format!("# 已重新生成\n\n{}\n\n全文结尾", "较长正文。".repeat(3_000));
+    publish(&mut db, &task, &final_body, NOW + 2).unwrap();
+    drop(second);
+    let cursor = chunk["data"]["output"]["cursor"].as_str();
+    let tail = read_output(&db, &live, id, run_id, cursor).unwrap();
+    assert_eq!(tail["data"]["run"]["state"], "succeeded");
+    assert_eq!(tail["data"]["output"]["append"], true);
+    assert_eq!(tail["data"]["output"]["body_markdown"], &final_body["# 已重新生成".len()..]);
+    assert_eq!(
+        read_output(&db, &live, id, run_id, None).unwrap()["data"]["output"]["body_markdown"],
+        final_body
+    );
+}
+
+#[test]
 fn configuration_save_and_reverse_validation_are_atomic() {
     let db = database();
     let (tag, _) = settings(&db, Input::Precise, true);
@@ -365,13 +423,13 @@ fn two_manual_inputs_share_one_asr_and_keep_result_versions() {
         publish(
             &mut db,
             &task,
-            json!({"body_markdown":"无效输出","actions":["execute"]}),
+            " ",
             NOW + 3
         )
         .unwrap_err(),
         "invalid_workflow_output"
     );
-    publish(&mut db, &task, json!({"body_markdown":"粗转稿"}), NOW + 3).unwrap();
+    publish(&mut db, &task, "粗转稿", NOW + 3).unwrap();
     let precise = change(
         &mut db,
         run(id, strategy, ManualInput::PreparePrecise),
@@ -406,7 +464,7 @@ fn two_manual_inputs_share_one_asr_and_keep_result_versions() {
         .unwrap()
         .unwrap();
     assert!(task_input(&db, &task).unwrap().1.contains("负责人是李明"));
-    publish(&mut db, &task, json!({"body_markdown":"精转稿"}), NOW + 9).unwrap();
+    publish(&mut db, &task, "精转稿", NOW + 9).unwrap();
     let scope = scope(&db, &id.to_string()).unwrap().unwrap();
     assert_eq!(
         read_result(&db, &scope, strategy, None, None).unwrap()["body_markdown"],
@@ -427,7 +485,7 @@ fn two_manual_inputs_share_one_asr_and_keep_result_versions() {
     clear(&tx, START, END, 1, NOW + 10).unwrap();
     tx.commit().unwrap();
     assert!(read_result(&db, &scope, strategy, None, None).is_err());
-    publish(&mut db, &task, json!({"body_markdown":"迟到"}), NOW + 11).unwrap();
+    publish(&mut db, &task, "迟到", NOW + 11).unwrap();
     assert!(read_result(&db, &scope, strategy, None, None).is_err());
 }
 
@@ -485,7 +543,7 @@ fn verify_late_audio(asr_completes_first: bool) {
     publish(
         &mut db,
         &original,
-        json!({"body_markdown":"旧覆盖"}),
+        "旧覆盖",
         NOW + 7,
     )
     .unwrap();
@@ -507,7 +565,7 @@ fn verify_late_audio(asr_completes_first: bool) {
     publish(
         &mut db,
         &current,
-        json!({"body_markdown":"两段都到齐"}),
+        "两段都到齐",
         NOW + 9,
     )
     .unwrap();

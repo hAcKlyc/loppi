@@ -43,12 +43,9 @@ export type WorkflowRun = {
 	created_ms: number;
 	completed_ms?: number;
 };
-export type WorkflowResult = WorkflowRun & {
-	body_markdown: string;
-	next_cursor: string | null;
-	started_ms: number;
-	ended_ms: number;
-	audio_coverage?: { reasons: string[] }[];
+export type WorkflowOutput = {
+	run: WorkflowRun;
+	output: { append: boolean; cursor: string; body_markdown: string } | null;
 };
 
 const errors: Record<string, string> = {
@@ -69,6 +66,7 @@ const errors: Record<string, string> = {
 	event_not_found: "此事件已不可用",
 	strategy_not_found: "此策略已不可用，请重新选择",
 	result_unavailable: "此结果已不可用",
+	run_not_found: "此生成任务已不可用",
 };
 
 export class WorkflowError extends Error {
