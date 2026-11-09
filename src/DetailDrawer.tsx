@@ -48,7 +48,6 @@ import {
 	WorkflowPicker,
 	WorkflowResultPanel,
 	WorkflowTagEditor,
-	workflowRetryTask,
 	workflowRunStatus,
 } from "./WorkflowEvent";
 import type { WorkflowSection } from "./WorkflowSettings";
@@ -210,6 +209,7 @@ export function DetailDrawer({
 	const [detailError, setDetailError] = useState<string | null>(null);
 	const [selectedTab, setTab] = useState("transcript");
 	const [strategyOpen, setStrategyOpen] = useState(false);
+	const focusNewStrategy = useRef(false);
 	const [tagEditor, setTagEditor] = useState(false);
 	const eventId = detail.id ?? detail.manual_range_id ?? null;
 	const canRunStrategy =
@@ -225,14 +225,19 @@ export function DetailDrawer({
 		: undefined;
 	const tab =
 		selectedTab === "info" || strategyTab ? selectedTab : "transcript";
-	const strategyRetry = strategyTab?.versions.length
-		? workflowRetryTask(strategyTab.run)
-		: undefined;
 	useLayoutEffect(() => {
-		document
-			.getElementById(`${tabsId}-tab-${tab}`)
-			?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
-	}, [tab, tabsId]);
+		const button = document.getElementById(`${tabsId}-tab-${tab}`);
+		button?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+		if (
+			!strategyOpen &&
+			tab.startsWith("strategy-") &&
+			focusNewStrategy.current
+		) {
+			focusNewStrategy.current = false;
+			// Let the closing dialog restore focus before moving it to the new tab.
+			queueMicrotask(() => button?.focus({ preventScroll: true }));
+		}
+	}, [tab, tabsId, strategyOpen]);
 	const offset = useRef(0);
 	const initialScroll = useRef(initialAt);
 	const transcriptRef = useRef<HTMLDivElement>(null);
@@ -1022,6 +1027,13 @@ export function DetailDrawer({
 										aria-haspopup="dialog"
 										aria-expanded={assigning === segment.id}
 										disabled={busy}
+										onMouseDown={(event) => {
+											if (event.button === 0 && assigning === segment.id) {
+												// Keep focus on the trigger until its click closes the picker.
+												event.preventDefault();
+												event.currentTarget.focus({ preventScroll: true });
+											}
+										}}
 										onClick={(event) => {
 											speakerAnchor.current = event.currentTarget;
 											setAssigning(
@@ -1413,8 +1425,15 @@ export function DetailDrawer({
 								}
 							}}
 							onBlur={(event) => {
-								if (!event.currentTarget.contains(event.relatedTarget as Node))
-									event.currentTarget.open = false;
+								const { currentTarget, relatedTarget } = event;
+								// WebKit briefly focuses the drawer during a mouse press on a menu button.
+								// Pointer dismissal is handled separately, so wait for the button's click.
+								if (
+									relatedTarget &&
+									relatedTarget !== currentTarget.closest("dialog") &&
+									!currentTarget.contains(relatedTarget)
+								)
+									currentTarget.open = false;
 							}}
 						>
 							<summary aria-label="更多事件操作">
@@ -1587,14 +1606,6 @@ export function DetailDrawer({
 									>
 										<Icon name="plus" />
 									</IconButton>
-								)}
-								{strategyRetry && (
-									<Button
-										tone="quiet"
-										onClick={() => void workflowTabs.retry(strategyRetry)}
-									>
-										{strategyTab?.run.task_id ? "重试生成" : "重试精转"}
-									</Button>
 								)}
 							</div>
 							{canRunStrategy && !strategyTab && workflowTabs.message && (
@@ -1908,22 +1919,30 @@ export function DetailDrawer({
 									</Button>
 								)}
 						</TabPanel>
-						{eventId && strategyTab && (
-							<TabPanel
-								key={tab}
-								tabsId={tabsId}
-								value={tab}
-								selected={tab}
-								className="detail-scroll"
-							>
-								<WorkflowResultPanel
-									eventId={eventId}
-									tab={strategyTab}
-									message={workflowTabs.message}
-									onRetry={workflowTabs.retry}
-								/>
-							</TabPanel>
-						)}
+						{canRunStrategy &&
+							workflowTabs.tabs.map((strategy) => {
+								const value = `strategy-${strategy.run.strategy_id}`;
+								return (
+									<TabPanel
+										key={value}
+										tabsId={tabsId}
+										value={value}
+										selected={tab}
+										className="detail-scroll"
+									>
+										{value === tab && (
+											<WorkflowResultPanel
+												eventId={eventId}
+												tab={strategy}
+												message={workflowTabs.message}
+												reload={workflowTabs.reload}
+												onUpdate={workflowTabs.update}
+												onRetry={workflowTabs.retry}
+											/>
+										)}
+									</TabPanel>
+								);
+							})}
 					</div>
 					<aside className="notes-panel">
 						<div className="notes-heading">
@@ -2053,6 +2072,7 @@ export function DetailDrawer({
 					onClose={() => setStrategyOpen(false)}
 					onManage={() => onQueue("automation")}
 					onRun={(run) => {
+						focusNewStrategy.current = true;
 						workflowTabs.accept(run);
 						setTab(`strategy-${run.strategy_id}`);
 						setStrategyOpen(false);

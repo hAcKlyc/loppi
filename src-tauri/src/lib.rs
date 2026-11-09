@@ -33,6 +33,12 @@ async fn core_request(
     }
     let runtime = Arc::clone(&app.state::<Arc<EntryRuntime>>());
     let status = matches!(request, loppi_protocol::Request::Status);
+    let refresh_entry = !matches!(
+        &request,
+        loppi_protocol::Request::Workflow {
+            action: loppi_protocol::workflow::Action::Output { .. },
+        }
+    );
     tauri::async_runtime::spawn_blocking(move || {
         if status {
             runtime.refresh(&app);
@@ -50,7 +56,9 @@ async fn core_request(
             request,
             request_id.unwrap_or_else(uuid::Uuid::new_v4),
         );
-        runtime.request_refresh();
+        if refresh_entry {
+            runtime.request_refresh();
+        }
         result
     })
     .await

@@ -7,7 +7,7 @@ type Props = {
 	date: Date;
 	days: number[] | null;
 	onDate: (date: Date) => void;
-	onClose: () => void;
+	onClose: (restoreFocus?: boolean) => void;
 };
 export function RecordCalendar({ date, days, onDate, onClose }: Props) {
 	const [month, setMonth] = useState(
@@ -19,6 +19,7 @@ export function RecordCalendar({ date, days, onDate, onClose }: Props) {
 		error?: boolean;
 	} | null>(null);
 	const root = useRef<HTMLDivElement>(null);
+	const previousMonth = useRef<HTMLButtonElement>(null);
 	const start = month.getTime();
 	const loading = result?.month !== start;
 	const available = result?.month === start ? result.days : null;
@@ -53,18 +54,35 @@ export function RecordCalendar({ date, days, onDate, onClose }: Props) {
 		};
 	}, [start, currentMonth, days]);
 	useEffect(() => {
-		root.current
-			?.querySelector<HTMLButtonElement>(".calendar-month-heading button")
-			?.focus();
-		const close = (event: PointerEvent) => {
-			if (
-				event.target instanceof Node &&
-				!root.current?.parentElement?.contains(event.target)
-			)
-				onClose();
+		const anchor = root.current?.parentElement;
+		if (!anchor) return;
+		previousMonth.current?.focus({ preventScroll: true });
+		const onPointerDown = (event: PointerEvent) => {
+			if (event.target instanceof Node && !anchor.contains(event.target))
+				onClose(false);
 		};
-		document.addEventListener("pointerdown", close);
-		return () => document.removeEventListener("pointerdown", close);
+		const onFocusOut = (event: FocusEvent) => {
+			if (
+				event.relatedTarget instanceof Node &&
+				!anchor.contains(event.relatedTarget)
+			)
+				onClose(false);
+		};
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (event.key === "Escape") {
+				event.preventDefault();
+				event.stopPropagation();
+				onClose();
+			}
+		};
+		document.addEventListener("pointerdown", onPointerDown);
+		anchor.addEventListener("focusout", onFocusOut);
+		anchor.addEventListener("keydown", onKeyDown);
+		return () => {
+			document.removeEventListener("pointerdown", onPointerDown);
+			anchor.removeEventListener("focusout", onFocusOut);
+			anchor.removeEventListener("keydown", onKeyDown);
+		};
 	}, [onClose]);
 	const today = new Date();
 	const todayStart = new Date(
@@ -72,6 +90,19 @@ export function RecordCalendar({ date, days, onDate, onClose }: Props) {
 		today.getMonth(),
 		today.getDate(),
 	).getTime();
+	const todayMonth = new Date(
+		today.getFullYear(),
+		today.getMonth(),
+		1,
+	).getTime();
+	const moveMonth = (offset: -1 | 1, button: HTMLButtonElement) => {
+		const next = new Date(month.getFullYear(), month.getMonth() + offset, 1);
+		// The next-month button becomes disabled on reaching the current month.
+		(next.getTime() >= todayMonth ? previousMonth.current : button)?.focus({
+			preventScroll: true,
+		});
+		setMonth(next);
+	};
 	const dates = monthBoundaries(month).slice(0, -1);
 	const offset = (month.getDay() + 6) % 7;
 	return (
@@ -80,20 +111,14 @@ export function RecordCalendar({ date, days, onDate, onClose }: Props) {
 			className="calendar-popover"
 			role="dialog"
 			aria-label="选择有记录的日期"
-			onKeyDown={(event) => {
-				if (event.key === "Escape") {
-					event.stopPropagation();
-					onClose();
-				}
-			}}
+			tabIndex={-1}
 		>
 			<div className="calendar-month-heading">
 				<button
+					ref={previousMonth}
 					type="button"
 					aria-label="上个月"
-					onClick={() =>
-						setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))
-					}
+					onClick={(event) => moveMonth(-1, event.currentTarget)}
 				>
 					‹
 				</button>
@@ -104,13 +129,8 @@ export function RecordCalendar({ date, days, onDate, onClose }: Props) {
 					className="calendar-month-next"
 					type="button"
 					aria-label="下个月"
-					disabled={
-						start >=
-						new Date(today.getFullYear(), today.getMonth(), 1).getTime()
-					}
-					onClick={() =>
-						setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))
-					}
+					disabled={start >= todayMonth}
+					onClick={(event) => moveMonth(1, event.currentTarget)}
 				>
 					›
 				</button>

@@ -229,6 +229,7 @@ fn run() -> Result<(), String> {
         readers: reads::Pool::open(&directory.join("loppi.sqlite"))?,
         store: Mutex::new(store),
         llm_outbound: Mutex::new(()),
+        workflow_output: events::workflow::LiveOutput::default(),
         asr_outbound: Mutex::new(()),
         voice_outbound: Mutex::new(()),
         cleanup_gate: Mutex::new(()),
@@ -1562,7 +1563,7 @@ fn process_cloud_task(
 ) -> Result<(), cloud::Failure> {
     let deadline = Instant::now()
         + Duration::from_secs(if task.provider == loppi_protocol::CloudProvider::Llm {
-            180
+            15 * 60
         } else {
             60
         });
@@ -1627,22 +1628,28 @@ fn process_cloud_task(
             if task.target_kind == "workflow" {
                 let key = active_cloud_credential(shared, task.provider)?;
                 let meter = usage::Recorder::task(shared, task.provider, task.id)?;
-                let (system, input) = {
+                let ((system, input), attempt) = {
                     let store = shared.store.lock().map_err(|e| e.to_string())?;
                     if !events::task_current(&store.db, task)? {
                         events::supersede_task(&store.db, task, now)?;
                         return Ok(());
                     }
                     let prompt = events::workflow::task_input(&store.db, task)?;
-                    store.db.execute("UPDATE cloud_tasks SET submit_attempts=submit_attempts+1 WHERE id=?1 AND state='processing'",
-                        [task.id.to_string()]).map_err(|error| error.to_string())?;
-                    prompt
+                    let attempt = store.db.query_row(
+                        "UPDATE cloud_tasks SET submit_attempts=submit_attempts+1 WHERE id=?1 AND state='processing' RETURNING submit_attempts",
+                        [task.id.to_string()],
+                        |row| row.get(0),
+                    ).map_err(|error| error.to_string())?;
+                    (prompt, attempt)
                 };
-                let output = cloud::chat(&key, &task.model_id, &system, &input, deadline, &meter)
-                    .map_err(|error| record_account_failure(shared, task, error))?;
+                let preview = shared.workflow_output.start(task.id, attempt)?;
+                let output = cloud::chat_markdown(
+                    &key, &task.model_id, &system, &input, deadline, &meter,
+                    &mut |body| preview.update(body),
+                ).map_err(|error| record_account_failure(shared, task, error))?;
                 drop(outbound);
                 let mut store = shared.store.lock().map_err(|e| e.to_string())?;
-                events::workflow::publish(&mut store.db, task, output, now_ms()?)?;
+                events::workflow::publish(&mut store.db, task, &output, now_ms()?)?;
                 return Ok(());
             }
             // Capture prior-event summaries under the same gate as cleanup,
@@ -2234,6 +2241,7 @@ struct CoreState {
     readers: reads::Pool,
     store: Mutex<Store>,
     llm_outbound: Mutex<()>,
+    workflow_output: events::workflow::LiveOutput,
     asr_outbound: Mutex<()>,
     voice_outbound: Mutex<()>,
     cleanup_gate: Mutex<()>,
@@ -2854,10 +2862,16 @@ fn handle_request(
         Request::Start { .. } | Request::Resume { .. }
     );
     let request_name = envelope.request.name();
-    if !matches!(
+    let log_request = !matches!(
         request_name,
         "status" | "app_opened" | "logs" | "log" | "playback_valid"
-    ) {
+    ) && !matches!(
+        &envelope.request,
+        Request::Workflow {
+            action: loppi_protocol::workflow::Action::Output { .. },
+        }
+    );
+    if log_request {
         let mut event = LogEvent::simple("ipc", LogLevel::Info, "request_received");
         event.correlation_id = Some(envelope.id);
         event.context = Some(loppi_protocol::LogContext {
@@ -3083,7 +3097,12 @@ fn handle_request(
                 }
             }
             Request::Workflow { action } => {
-                if action.read_only() {
+                if let loppi_protocol::workflow::Action::Output { event_id, run_id, cursor } = &action {
+                    let result = shared.readers.snapshot().and_then(|db| {
+                        events::workflow::read_output(&db, &shared.workflow_output, *event_id, *run_id, cursor.as_deref())
+                    });
+                    workflow_reply(envelope.id, result)
+                } else if action.read_only() {
                     let now = now_ms()?;
                     let result = shared
                         .readers
@@ -4588,12 +4607,7 @@ fn handle_request(
         }
         _ => None,
     };
-    if failure.is_some()
-        || !matches!(
-            request_name,
-            "status" | "app_opened" | "logs" | "log" | "playback_valid"
-        )
-    {
+    if failure.is_some() || log_request {
         let mut event = LogEvent::simple(
             "ipc",
             if failure.is_some() {

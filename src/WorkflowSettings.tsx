@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { userError } from "./api";
 import {
 	Button,
 	Field,
@@ -22,9 +23,9 @@ import {
 } from "./workflow-api";
 
 const NEW_ID = "00000000-0000-0000-0000-000000000000";
+const HAS_TEXT = /[^\p{White_Space}]/u;
 
 export type WorkflowSection = "labels" | "automation";
-type LabelOption = WorkflowLabel & { removed?: boolean };
 type Editor =
 	| { kind: "tag"; index: number | null; value: WorkflowTag }
 	| { kind: "auto_asr"; value: WorkflowConfig["auto_asr"] }
@@ -35,33 +36,43 @@ type Dependency = {
 	name?: string;
 	tag_ids: string[];
 };
+type ConfigWrite = {
+	op: "config_set";
+	config: WorkflowConfig;
+	expected_revision: number;
+	add_required_asr_tags: boolean;
+};
+type Feedback =
+	| { kind: "applied" }
+	| { kind: "retry"; action: ConfigWrite }
+	| { kind: "error"; message: string; code?: string; affected: Dependency[] };
 
 function TagChoices({
 	tags,
 	ids,
 	onChange,
+	disabled,
 }: {
-	tags: LabelOption[];
+	tags: WorkflowLabel[];
 	ids: string[];
 	onChange: (ids: string[]) => void;
+	disabled: boolean;
 }) {
 	return (
 		<div className="workflow-tag-options">
-			{tags
-				.filter((tag) => !tag.removed || ids.includes(tag.id))
-				.map((tag) => (
-					<label key={tag.id}>
-						<input
-							type="checkbox"
-							checked={ids.includes(tag.id)}
-							onChange={(event) =>
-								onChange(selectedIds(ids, tag.id, event.target.checked))
-							}
-						/>
-						{tag.name}
-						{tag.removed && "（已移除，请取消勾选）"}
-					</label>
-				))}
+			{tags.map((tag) => (
+				<label key={tag.id}>
+					<input
+						type="checkbox"
+						checked={ids.includes(tag.id)}
+						disabled={disabled}
+						onChange={(event) =>
+							onChange(selectedIds(ids, tag.id, event.target.checked))
+						}
+					/>
+					{tag.name}
+				</label>
+			))}
 		</div>
 	);
 }
@@ -82,17 +93,13 @@ export function WorkflowSettings({
 	onSection: (section: WorkflowSection) => void;
 }) {
 	const [saved, setSaved] = useState<Settings | null>(null);
-	const [draft, setDraft] = useState<WorkflowConfig | null>(null);
 	const [loadAttempt, setLoadAttempt] = useState(0);
+	const [loadError, setLoadError] = useState("");
 	const [busy, setBusy] = useState(false);
-	const [message, setMessage] = useState("");
+	const saving = useRef(false);
+	const [feedback, setFeedback] = useState<Feedback | null>(null);
 	const [editor, setEditor] = useState<Editor | null>(null);
 	const selectedAsrMode = useRef<HTMLInputElement>(null);
-	const [conflict, setConflict] = useState(false);
-	const [dependency, setDependency] = useState<{
-		canAdd: boolean;
-		affected: Dependency[];
-	} | null>(null);
 	const requestId = useWorkflowRequestId();
 	const active = section !== null;
 
@@ -104,12 +111,10 @@ export function WorkflowSettings({
 			(value) => {
 				if (!live) return;
 				setSaved(value);
-				setDraft(value.config);
-				setMessage("");
+				setLoadError("");
 			},
 			(error: unknown) => {
-				if (live)
-					setMessage(error instanceof Error ? error.message : "无法读取配置");
+				if (live) setLoadError(userError(error));
 			},
 		);
 		return () => {
@@ -117,50 +122,59 @@ export function WorkflowSettings({
 		};
 	}, [active, saved, loadAttempt]);
 
-	function update(next: WorkflowConfig) {
-		setDraft(next);
-		setMessage("");
-		setDependency(null);
+	function edit(next: Editor | null) {
+		setEditor(next);
+		setFeedback(null);
 	}
 
-	async function save(addRequiredTags = false) {
-		if (!saved || !draft || busy || conflict) return;
+	async function save(action: ConfigWrite) {
+		if (saving.current) return;
+		saving.current = true;
 		setBusy(true);
-		setMessage("");
+		setFeedback(null);
 		try {
-			const action = {
-				op: "config_set",
-				config: draft,
-				expected_revision: saved.revision,
-				add_required_asr_tags: addRequiredTags,
-			};
 			const value = await workflow<Settings>(action, requestId(action));
 			setSaved(value);
-			setDraft(value.config);
-			setDependency(null);
-			setMessage("已保存 · 对后续事件生效");
+			setEditor(null);
+			setFeedback({ kind: "applied" });
 		} catch (error) {
 			if (error instanceof WorkflowError) {
-				const affected =
-					(error.details as { affected?: Dependency[] } | null)?.affected ?? [];
-				setDependency(
-					affected.length
-						? { canAdd: error.code === "asr_rule_conflict", affected }
-						: null,
-				);
-				setConflict(error.code === "revision_conflict");
+				setFeedback({
+					kind: "error",
+					code: error.code,
+					message: error.message,
+					affected:
+						(error.details as { affected?: Dependency[] } | null)?.affected ??
+						[],
+				});
+			} else if (
+				error instanceof Error &&
+				error.message.startsWith("core_transport:")
+			) {
+				setFeedback({ kind: "retry", action });
+			} else {
+				setFeedback({ kind: "error", message: userError(error), affected: [] });
 			}
-			setMessage(error instanceof Error ? error.message : "配置未保存");
 		} finally {
+			saving.current = false;
 			setBusy(false);
 		}
 	}
 
+	function submit(config: WorkflowConfig, addRequiredTags = false) {
+		if (!saved || locked) return;
+		void save({
+			op: "config_set",
+			config,
+			expected_revision: saved.revision,
+			add_required_asr_tags: addRequiredTags,
+		});
+	}
+
 	function reload() {
+		edit(null);
 		setSaved(null);
-		setDraft(null);
-		setMessage("");
-		setConflict(false);
+		setLoadError("");
 		setLoadAttempt((value) => value + 1);
 	}
 
@@ -176,12 +190,12 @@ export function WorkflowSettings({
 	}
 
 	if (!section) return null;
-	if (!draft || !saved) {
+	if (!saved) {
 		return (
 			<TabPanel tabsId={tabsId} value={section} selected={section}>
 				<div className="panel-card" role="status">
-					{message || "正在读取标签与策略配置…"}
-					{message && (
+					{loadError || "正在读取标签与策略配置…"}
+					{loadError && (
 						<Button tone="quiet" onClick={reload}>
 							重试
 						</Button>
@@ -191,34 +205,40 @@ export function WorkflowSettings({
 		);
 	}
 
-	const dirty = draft !== saved.config;
-	const labels = [
-		...draft.tags.filter((tag) => tag.id !== NEW_ID),
-		...saved.config.tags
-			.filter((tag) => !draft.tags.some((item) => item.id === tag.id))
-			.map((tag) => ({ ...tag, removed: true })),
-		{ id: saved.other_tag, name: "其他" },
-	];
+	const { config } = saved;
+	const error = feedback?.kind === "error" ? feedback : null;
+	const retry = feedback?.kind === "retry" ? feedback.action : null;
+	const conflict = error?.code === "revision_conflict";
+	const locked = busy || retry !== null || conflict;
+	const extendAsr =
+		editor?.kind === "strategy" && error?.code === "asr_rule_conflict";
+	const labels = [...config.tags, { id: saved.other_tag, name: "其他" }];
 	const labelName = (id: string) =>
 		labels.find((tag) => tag.id === id)?.name ?? id;
 	const editorValid =
-		editor?.kind === "auto_asr" ||
-		Boolean(
-			editor?.value.name &&
-				(editor.kind === "tag" ? editor.value.criteria : editor.value.prompt),
-		);
+		editor?.kind === "auto_asr"
+			? editor.value.mode === "all" || editor.value.tag_ids.length > 0
+			: Boolean(
+					editor &&
+						HAS_TEXT.test(editor.value.name) &&
+						HAS_TEXT.test(
+							editor.kind === "tag"
+								? editor.value.criteria
+								: editor.value.prompt,
+						),
+				);
 	const editedTagId =
 		editor?.kind === "tag" && editor.value.id !== NEW_ID
 			? editor.value.id
 			: undefined;
 	const asrReference =
 		editedTagId !== undefined &&
-		draft.auto_asr.mode === "tags" &&
-		draft.auto_asr.tag_ids.includes(editedTagId);
+		config.auto_asr.mode === "tags" &&
+		config.auto_asr.tag_ids.includes(editedTagId);
 	const strategyReferences =
 		editedTagId === undefined
 			? []
-			: draft.strategies.flatMap((strategy, index) =>
+			: config.strategies.flatMap((strategy, index) =>
 					strategy.tag_ids.includes(editedTagId)
 						? [{ name: strategy.name, index }]
 						: [],
@@ -228,68 +248,69 @@ export function WorkflowSettings({
 		...strategyReferences.map(({ name }) => name),
 	];
 
-	function openAffectedRule(rule: Dependency | undefined) {
-		if (rule?.kind === "auto_asr") {
-			openAutomation("auto_asr");
-			return;
-		}
-		// Core trims new names before reporting conflicts. Use its whitespace
-		// semantics only to find the row, without modifying the editor value.
-		const index =
-			rule &&
-			draft?.strategies.findIndex((strategy) =>
-				rule.strategy_id === NEW_ID
-					? strategy.id === NEW_ID &&
-						strategy.name.replace(
-							/^\p{White_Space}+|\p{White_Space}+$/gu,
-							"",
-						) === rule.name
-					: strategy.id === rule.strategy_id,
-			);
-		openAutomation(index);
+	function openAffectedRule(rule: Dependency) {
+		edit(null);
+		openAutomation(
+			rule.kind === "auto_asr"
+				? "auto_asr"
+				: config.strategies.findIndex(
+						(strategy) => strategy.id === rule.strategy_id,
+					),
+		);
 	}
 
-	function applyEditor() {
-		if (!draft || !editor || !editorValid) return;
+	function closeEditor() {
+		setEditor(null);
+		if (!retry && !conflict) setFeedback(null);
+	}
+
+	function applyEditor(addRequiredTags = false) {
+		if (!editor || !editorValid || locked) return;
+		const previous =
+			editor.kind === "auto_asr"
+				? config.auto_asr
+				: editor.index === null
+					? undefined
+					: (editor.kind === "tag" ? config.tags : config.strategies)[
+							editor.index
+						];
+		if (editor.value === previous) {
+			edit(null);
+			return;
+		}
 		if (editor.kind === "auto_asr") {
-			if (editor.value !== draft.auto_asr)
-				update({ ...draft, auto_asr: editor.value });
+			submit({ ...config, auto_asr: editor.value });
 		} else if (editor.kind === "tag") {
-			update({
-				...draft,
-				tags: editList(draft.tags, editor.index, editor.value),
+			submit({
+				...config,
+				tags: editList(config.tags, editor.index, editor.value),
 			});
 		} else {
-			update({
-				...draft,
-				strategies: editList(draft.strategies, editor.index, editor.value),
-			});
+			submit(
+				{
+					...config,
+					strategies: editList(config.strategies, editor.index, editor.value),
+				},
+				addRequiredTags,
+			);
 		}
-		setEditor(null);
 	}
 
 	function removeEditor() {
-		if (
-			!draft ||
-			!editor ||
-			editor.kind === "auto_asr" ||
-			editor.index === null
-		)
-			return;
-		update(
+		if (!editor || editor.kind === "auto_asr" || editor.index === null) return;
+		submit(
 			editor.kind === "tag"
 				? {
-						...draft,
-						tags: draft.tags.filter((_, index) => index !== editor.index),
+						...config,
+						tags: config.tags.filter((_, index) => index !== editor.index),
 					}
 				: {
-						...draft,
-						strategies: draft.strategies.filter(
+						...config,
+						strategies: config.strategies.filter(
 							(_, index) => index !== editor.index,
 						),
 					},
 		);
-		setEditor(null);
 	}
 
 	function triggerSummary(ids: string[], empty: string) {
@@ -306,23 +327,49 @@ export function WorkflowSettings({
 		);
 	}
 
+	const failureMessage = retry
+		? "未收到设置结果，可重试同一次操作。"
+		: error?.message;
+	const resolution = retry ? (
+		<Button tone="primary" onClick={() => void save(retry)}>
+			重试
+		</Button>
+	) : conflict ? (
+		<Button tone="primary" onClick={reload}>
+			读取最新配置
+		</Button>
+	) : null;
+
 	return (
 		<TabPanel tabsId={tabsId} value={section} selected={section}>
 			<div className="workflow-settings">
+				{!editor && (busy || feedback) && (
+					<div className="workflow-config-feedback">
+						{failureMessage ? (
+							<p role="alert">{failureMessage}</p>
+						) : (
+							<p role="status">{busy ? "正在应用设置…" : "设置已生效"}</p>
+						)}
+						{resolution}
+					</div>
+				)}
 				{section === "labels" ? (
 					<>
 						<div className="workflow-config-rule">
 							<span>每个事件支持智能打标签模式</span>
-							<SegmentedOptions
-								label="标注方式"
-								value={draft.mode}
-								options={[
-									{ value: "single", label: "单选" },
-									{ value: "multiple", label: "多选" },
-								]}
-								disabled={busy}
-								onChange={(mode) => update({ ...draft, mode })}
-							/>
+							<div className="workflow-config-rule-options">
+								<SegmentedOptions
+									label="标注方式"
+									value={config.mode}
+									options={[
+										{ value: "single", label: "单选" },
+										{ value: "multiple", label: "多选" },
+									]}
+									disabled={locked}
+									onChange={(mode) => submit({ ...config, mode })}
+								/>
+								<small>适用于后续事件的自动标注。</small>
+							</div>
 						</div>
 						<table className="workflow-config-table">
 							<caption className="workflow-label-heading">场景标签管理</caption>
@@ -334,9 +381,9 @@ export function WorkflowSettings({
 										<Button
 											tone="primary"
 											size="compact"
-											disabled={busy}
+											disabled={locked}
 											onClick={() =>
-												setEditor({
+												edit({
 													kind: "tag",
 													index: null,
 													value: { id: NEW_ID, name: "", criteria: "" },
@@ -350,7 +397,7 @@ export function WorkflowSettings({
 								</tr>
 							</thead>
 							<tbody>
-								{draft.tags.map((tag, index) => (
+								{config.tags.map((tag, index) => (
 									<tr key={tag.id === NEW_ID ? `new-${index}` : tag.id}>
 										<th scope="row">
 											<span className="workflow-chip">{tag.name}</span>
@@ -364,10 +411,8 @@ export function WorkflowSettings({
 											<IconButton
 												label={`编辑标签 · ${tag.name}`}
 												tooltip="编辑标签"
-												disabled={busy}
-												onClick={() =>
-													setEditor({ kind: "tag", index, value: tag })
-												}
+												disabled={locked}
+												onClick={() => edit({ kind: "tag", index, value: tag })}
 											>
 												<Icon name="edit" />
 											</IconButton>
@@ -400,9 +445,9 @@ export function WorkflowSettings({
 									<Button
 										tone="primary"
 										size="compact"
-										disabled={busy}
+										disabled={locked}
 										onClick={() =>
-											setEditor({
+											edit({
 												kind: "strategy",
 												index: null,
 												value: {
@@ -429,9 +474,9 @@ export function WorkflowSettings({
 								</th>
 								<td>事件音频</td>
 								<td>
-									{draft.auto_asr.mode === "all"
+									{config.auto_asr.mode === "all"
 										? "全部有效事件"
-										: triggerSummary(draft.auto_asr.tag_ids, "未选择标签")}
+										: triggerSummary(config.auto_asr.tag_ids, "未选择标签")}
 								</td>
 								<td>
 									<Button
@@ -440,16 +485,16 @@ export function WorkflowSettings({
 										size="compact"
 										className="workflow-flow-edit"
 										aria-label="编辑自动精转"
-										disabled={busy}
+										disabled={locked}
 										onClick={() =>
-											setEditor({ kind: "auto_asr", value: draft.auto_asr })
+											edit({ kind: "auto_asr", value: config.auto_asr })
 										}
 									>
 										编辑
 									</Button>
 								</td>
 							</tr>
-							{draft.strategies.map((strategy, index) => (
+							{config.strategies.map((strategy, index) => (
 								<tr key={strategy.id === NEW_ID ? `new-${index}` : strategy.id}>
 									<th scope="row">{strategy.name}</th>
 									<td>{inputLabel(strategy.input)}</td>
@@ -461,9 +506,9 @@ export function WorkflowSettings({
 											tone="quiet"
 											size="compact"
 											className="workflow-flow-edit"
-											disabled={busy}
+											disabled={locked}
 											onClick={() =>
-												setEditor({
+												edit({
 													kind: "strategy",
 													index,
 													value: strategy,
@@ -478,41 +523,6 @@ export function WorkflowSettings({
 						</tbody>
 					</table>
 				)}
-				{(dirty || message) && (
-					<div className="workflow-config-actions">
-						<p role="status">
-							{message ||
-								(draft.mode !== saved.config.mode
-									? "有未保存的改动 · 新标注方式适用于后续事件"
-									: "有未保存的改动")}
-						</p>
-						{conflict ? (
-							<Button tone="secondary" onClick={reload}>
-								放弃草稿并重新加载
-							</Button>
-						) : (
-							dirty && (
-								<div>
-									<Button
-										tone="quiet"
-										disabled={busy}
-										onClick={() => update(saved.config)}
-									>
-										放弃改动
-									</Button>
-									<Button
-										tone="primary"
-										busy={busy}
-										busyLabel="正在保存"
-										onClick={() => void save()}
-									>
-										保存配置
-									</Button>
-								</div>
-							)
-						)}
-					</div>
-				)}
 			</div>
 			{editor && (
 				<Modal
@@ -521,7 +531,8 @@ export function WorkflowSettings({
 							? "编辑自动精转"
 							: `${editor.index === null ? "添加" : "编辑"}${editor.kind === "tag" ? "标签" : "策略"}`
 					}
-					onClose={() => setEditor(null)}
+					busy={busy}
+					onClose={closeEditor}
 					initialFocusRef={
 						editor.kind === "auto_asr" ? selectedAsrMode : undefined
 					}
@@ -530,7 +541,7 @@ export function WorkflowSettings({
 						className="workflow-config-editor"
 						onSubmit={(event) => {
 							event.preventDefault();
-							applyEditor();
+							if (!extendAsr) applyEditor();
 						}}
 					>
 						{editor.kind === "auto_asr" ? (
@@ -540,13 +551,14 @@ export function WorkflowSettings({
 									<SegmentedOptions
 										label="自动精转条件"
 										value={editor.value.mode}
+										disabled={locked}
 										selectedRef={selectedAsrMode}
 										options={[
 											{ value: "all", label: "全部有效事件" },
 											{ value: "tags", label: "包含任一标签" },
 										]}
 										onChange={(mode) =>
-											setEditor({
+											edit({
 												kind: "auto_asr",
 												value:
 													mode === "all"
@@ -558,20 +570,22 @@ export function WorkflowSettings({
 									{editor.value.mode === "tags" && (
 										<TagChoices
 											tags={labels}
+											disabled={locked}
 											ids={editor.value.tag_ids}
 											onChange={(tag_ids) =>
-												setEditor({
+												edit({
 													kind: "auto_asr",
 													value: { mode: "tags", tag_ids },
 												})
 											}
 										/>
 									)}
+									{!editorValid && <small>至少选择一个触发标签。</small>}
 								</div>
 								<details className="workflow-config-disclosure">
 									<summary>音频发送</summary>
 									<p>
-										补转时会把符合条件的音频发送给精转服务。已有稿件会优先复用。
+										设置适用于后续处理。补转时会把符合条件的音频发送给精转服务，已有稿件会优先复用。
 									</p>
 								</details>
 							</>
@@ -581,6 +595,7 @@ export function WorkflowSettings({
 									{(attributes) => (
 										<input
 											{...attributes}
+											disabled={locked}
 											value={editor.value.name}
 											placeholder={
 												editor.kind === "tag"
@@ -588,7 +603,7 @@ export function WorkflowSettings({
 													: "例如：会议纪要"
 											}
 											onChange={(event) =>
-												setEditor({
+												edit({
 													...editor,
 													value: { ...editor.value, name: event.target.value },
 												} as Editor)
@@ -601,11 +616,12 @@ export function WorkflowSettings({
 										{(attributes) => (
 											<textarea
 												{...attributes}
+												disabled={locked}
 												rows={4}
 												value={editor.value.criteria}
 												placeholder="例如：讨论项目进展、决策或工作安排。排除一般寒暄。"
 												onChange={(event) =>
-													setEditor({
+													edit({
 														...editor,
 														value: {
 															...editor.value,
@@ -625,9 +641,10 @@ export function WorkflowSettings({
 											{(attributes) => (
 												<select
 													{...attributes}
+													disabled={locked}
 													value={editor.value.input}
 													onChange={(event) =>
-														setEditor({
+														edit({
 															...editor,
 															value: {
 																...editor.value,
@@ -648,11 +665,12 @@ export function WorkflowSettings({
 											{(attributes) => (
 												<textarea
 													{...attributes}
+													disabled={locked}
 													rows={6}
 													value={editor.value.prompt}
 													placeholder="例如：用 Markdown 列出决策与待办，保留明确的负责人和截止日期。"
 													onChange={(event) =>
-														setEditor({
+														edit({
 															...editor,
 															value: {
 																...editor.value,
@@ -669,29 +687,28 @@ export function WorkflowSettings({
 											</span>
 											<TagChoices
 												tags={labels}
+												disabled={locked}
 												ids={editor.value.tag_ids}
 												onChange={(tag_ids) =>
-													setEditor({
+													edit({
 														...editor,
 														value: { ...editor.value, tag_ids },
 													})
 												}
 											/>
-											{draft.tags.some((tag) => tag.id === NEW_ID) && (
-												<small>新建标签保存配置后才可选择。</small>
-											)}
 										</div>
 									</>
 								)}
 							</>
 						)}
-						{referencedBy.length > 0 && (
+						{referencedBy.length > 0 && !failureMessage && (
 							<div className="workflow-config-hint">
 								已被 {referencedBy.join("、")} 引用。
 								<Button
 									tone="quiet"
+									disabled={locked}
 									onClick={() => {
-										setEditor(null);
+										edit(null);
 										openAutomation(
 											asrReference ? "auto_asr" : strategyReferences[0]?.index,
 										);
@@ -701,60 +718,54 @@ export function WorkflowSettings({
 								</Button>
 							</div>
 						)}
+						{failureMessage && <p role="alert">{failureMessage}</p>}
+						{error && error.affected.length > 0 && (
+							<div className="workflow-config-hint">
+								<ul>
+									{error.affected.map((rule) => (
+										<li key={rule.strategy_id ?? "auto_asr"}>
+											{rule.name ?? "自动精转"} ·{" "}
+											{rule.tag_ids.map(labelName).join("、")}
+										</li>
+									))}
+								</ul>
+								{extendAsr ? (
+									<p>加入后，符合这些标签的事件音频可能发送给精转服务。</p>
+								) : (
+									<Button
+										tone="quiet"
+										onClick={() => openAffectedRule(error.affected[0])}
+									>
+										去流程与策略调整
+									</Button>
+								)}
+							</div>
+						)}
 						<div className="modal-actions">
 							{editor.kind !== "auto_asr" && editor.index !== null && (
-								<Button tone="quiet" onClick={removeEditor}>
+								<Button tone="quiet" disabled={locked} onClick={removeEditor}>
 									{editor.kind === "tag" ? "移除标签" : "移除策略"}
 								</Button>
 							)}
-							<Button tone="quiet" onClick={() => setEditor(null)}>
-								取消
+							<Button tone="quiet" disabled={busy} onClick={closeEditor}>
+								{retry || conflict ? "关闭" : "取消"}
 							</Button>
-							<Button type="submit" tone="primary" disabled={!editorValid}>
-								应用到草稿
-							</Button>
+							{resolution ??
+								(extendAsr ? (
+									<Button tone="primary" onClick={() => applyEditor(true)}>
+										补齐精转标签并保存
+									</Button>
+								) : (
+									<Button
+										type="submit"
+										tone="primary"
+										disabled={locked || !editorValid}
+									>
+										保存
+									</Button>
+								))}
 						</div>
 					</form>
-				</Modal>
-			)}
-			{dependency && (
-				<Modal
-					title={dependency.canAdd ? "补齐自动精转标签" : "配置仍有依赖"}
-					description={message}
-					busy={busy}
-					onClose={() => setDependency(null)}
-				>
-					<ul>
-						{dependency.affected.map((item) => (
-							<li key={`${item.name ?? "asr"}-${item.tag_ids.join(",")}`}>
-								{item.name ?? "自动精转"}
-								{item.tag_ids.length
-									? ` · ${item.tag_ids.map(labelName).join("、")}`
-									: " · 请至少选一个标签"}
-							</li>
-						))}
-					</ul>
-					<div className="modal-actions">
-						<Button
-							tone="quiet"
-							disabled={busy}
-							onClick={() => {
-								setDependency(null);
-								openAffectedRule(dependency.affected[0]);
-							}}
-						>
-							去流程与策略调整
-						</Button>
-						{dependency.canAdd && (
-							<Button
-								tone="primary"
-								disabled={busy}
-								onClick={() => void save(true)}
-							>
-								加入并保存
-							</Button>
-						)}
-					</div>
 				</Modal>
 			)}
 		</TabPanel>

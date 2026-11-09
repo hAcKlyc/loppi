@@ -44,7 +44,10 @@ const started = Date.now()-3600000+123;
 const initial = { id:'completion-fixture', title:'结束确认回归', started_ms:started, ended_ms:started+1200000,
   sources:'microphone', revision:7, processing_state:'settling_asr', coarse_segments:[], precise_segments:[],
   workflow:{phase:'undetermined',tag_state:'tagged',labels:[{id:'work',name:'工作会议'}],manual:false} };
-let current={...initial}, key=0, failOnce=false, failRunsOnce=false, staleTitleOnce=false, extraSuccess=false, longBody=false, refreshMarker=0, mutations=[], actions=[], retranscriptions=[], resultReads=[], titleEdits=[];
+let current={...initial}, key=0, failOnce=false, failRunsOnce=false, staleTitleOnce=false, extraSuccess=false, refreshMarker=0, mutations=[], actions=[], retranscriptions=[], titleEdits=[];
+let liveRun, output, failCatalogOnce=false;
+const outputReads=[], submissions=[];
+const fullBody='# 合成纪要\n\n## 决策\n\n'+('较长正文。'.repeat(4500))+'\n\n## 全文结尾';
 const strategyRun=(id,name)=>({run_id:id+'-run',strategy_id:id,name,input:'precise',
   state:'succeeded',result_version_id:id+'-run',created_ms:started,completed_ms:started,asr_task_ids:[]});
 mockIPC(async(command,args)=>{
@@ -65,12 +68,32 @@ mockIPC(async(command,args)=>{
   if(r.action.op==='runs'){
    const minutes=strategyRun('minutes','会议纪要');
    const runs=[minutes,strategyRun('actions','行动清单')];
+   if(liveRun)runs.unshift(liveRun);
    if(extraSuccess)runs.unshift({...minutes,run_id:'earlier-body',result_version_id:'earlier-body',created_ms:started+1,completed_ms:started-1});
    return {type:'workflow',result:{ok:true,data:{runs}}};
   }
-  if(r.action.op==='result'){
-   resultReads.push(r.action.strategy_id);
-   return {type:'workflow',result:{ok:true,data:{...strategyRun(r.action.strategy_id,'策略'),body_markdown:r.action.cursor?'\n\n## 续页保留':r.action.strategy_id==='minutes'?'# 合成纪要\n\n## 决策\n\n- 周四交付':'# 合成行动清单',next_cursor:longBody&&!r.action.cursor?'minutes-run:12000':null}}};
+  if(r.action.op==='strategies'){
+   if(failCatalogOnce){failCatalogOnce=false;throw Error('模拟策略目录读取失败');}
+   return {type:'workflow',result:{ok:true,data:{revision:4,strategies:[{id:'minutes',name:'会议纪要',input:'precise',tag_ids:[]}]}}};
+  }
+  if(r.action.op==='run'){
+   submissions.push(r.action);
+   liveRun={...strategyRun('minutes','会议纪要'),run_id:'manual-minutes',created_ms:started+1000,completed_ms:undefined,result_version_id:undefined,state:'queued',task_id:'llm-task'};
+   output=null;
+   return {type:'workflow',result:{ok:true,data:liveRun}};
+  }
+  if(r.action.op==='output'){
+   outputReads.push(r.action);
+   const {run_id,cursor}=r.action;
+   const run=run_id===liveRun?.run_id ? liveRun : {...strategyRun(run_id==='actions-run'?'actions':'minutes','策略'),run_id,completed_ms:run_id==='earlier-body'?started-1:started};
+   const doc=run_id===liveRun?.run_id ? output : {
+    attempt:'saved', body:run_id==='minutes-run'?fullBody:run_id==='actions-run'?'# 合成行动清单':'# 较旧版本',
+   };
+   const [attempt,offset]=cursor?.split(':')??[];
+   const append=Boolean(doc && attempt===doc.attempt);
+   return {type:'workflow',result:{ok:true,data:{run,output:doc&&{
+    append,cursor:doc.attempt+':'+doc.body.length,body_markdown:doc.body.slice(append?Number(offset):0),
+   }}}};
   }
  }
 
@@ -119,14 +142,14 @@ try{
  assert(!q('.event-completion-trigger'));assert(!q('.modal'));
  assert(q('[aria-label="执行策略"]'),'strategy entry is available while queued ASR is still pending');
  assert(button('会议纪要'));assert(button('行动清单'));assert(!button('生成内容'));
- assert.equal(resultReads.length,0,'strategy tabs load metadata without loading markdown');
+ assert.equal(outputReads.length,0,'strategy tabs load metadata without loading markdown');
  await settle(()=>button('会议纪要').click());
  assert.equal(q('.workflow-markdown h1').textContent,'合成纪要');
  assert.equal(q('.workflow-markdown h2').textContent,'决策');
  assert.doesNotMatch(q('.workflow-results').textContent,/已生成|基于精转录/);
  await settle(()=>button('行动清单').click());
  assert.equal(q('.workflow-markdown h1').textContent,'合成行动清单');
- assert.deepEqual(resultReads,['minutes','actions']);
+ assert.deepEqual(outputReads.map(r=>r.run_id),['minutes-run','actions-run']);
 
 
  await reset();await open();
@@ -150,9 +173,21 @@ try{
  await reset();
  assert.deepEqual([...document.querySelectorAll('.detail-menu-items button')].map(el=>el.textContent),['编辑','调整分段','导出','清理数据']);
  for(const [label,action] of [['编辑','edit'],['调整分段','split'],['导出','export'],['清理数据','cleanup']]){
-  await settle(()=>q('.detail-menu summary').click());assert(q('.detail-menu').open);
-  await settle(()=>button(label).click());assert.equal(actions.at(-1),action);assert(!q('.detail-menu').open);
+  const summary=q('.detail-menu summary'), drawer=q('dialog.drawer-layer');
+  await settle(()=>{summary.focus();summary.click()});assert(q('.detail-menu').open);
+  await settle(()=>{
+   // WebKit moves focus to the enclosing dialog on mouse down, before click.
+   drawer.tabIndex=-1;
+   drawer.focus();
+  });
+  assert(q('.detail-menu').open,'temporary drawer focus keeps the menu available');
+  await settle(()=>button(label).click());
+  assert.equal(actions.at(-1),action);assert(!q('.detail-menu').open);
+  assert.equal(document.activeElement,summary);
  }
+ await settle(()=>q('.detail-menu summary').click());
+ await settle(()=>q('[aria-label="关闭详情"]').focus());
+ assert(!q('.detail-menu').open,'moving keyboard focus outside closes the menu');
  await settle(()=>q('.detail-menu summary').click());
  await settle(()=>q('.detail-menu summary').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true})));
  assert(!q('.detail-menu').open);assert.equal(document.activeElement,q('.detail-menu summary'));
@@ -209,10 +244,54 @@ try{
  assert.equal(q('.detail-title-trigger').textContent,'其他入口保存的标题');
  assert.equal(document.activeElement,q('.detail-title-trigger'));
 
- await reset();extraSuccess=true;longBody=true;await open();await settle(()=>button('确认结束并开始处理').click());
+ await reset();extraSuccess=true;await open();await settle(()=>button('确认结束并开始处理').click());
  await settle(()=>button('会议纪要').click());
- await settle(()=>button('继续阅读').click());
- assert.match(q('.workflow-markdown').textContent,/续页保留/);
+ assert.match(q('.workflow-markdown').textContent,/全文结尾/,'saved output renders fully without a continuation button');
+ assert(!button('继续阅读'));assert.doesNotMatch(q('.workflow-markdown').textContent,/较旧版本/);
  extraSuccess=false;refreshMarker++;await settle(render);
- assert.match(q('.workflow-markdown').textContent,/续页保留/,'metadata refresh preserves already-loaded pages of the same version');
+ assert.match(q('.workflow-markdown').textContent,/全文结尾/);
+
+ const plus=q('[aria-label="执行策略"]');
+ failCatalogOnce=true;
+ await settle(()=>plus.click());
+ assert.match(q('.modal').textContent,/模拟策略目录读取失败/);
+ await settle(()=>button('重新读取策略').click());
+ await settle(()=>q('.modal .workflow-choices button').click());
+ assert.equal(submissions.length,1);
+ assert.equal(document.activeElement,button('会议纪要'),'focus moves from the closed picker to the selected strategy tab');
+ assert.equal(button('会议纪要').getAttribute('aria-selected'),'true');
+ for(const tab of document.querySelectorAll('[role=tab]')) assert(document.getElementById(tab.getAttribute('aria-controls')));
+ assert.match(q('.workflow-output-state').textContent,/排队中/);
+ assert(q('.workflow-loading-dots[aria-hidden=true]'));
+ assert.match(q('.workflow-markdown').textContent,/全文结尾/,'previous completed result stays available while queued');
+
+ async function until(check){
+  for(let i=0;i<35;i++){
+   if(check())return;
+   await settle(()=>new Promise(r=>setTimeout(r,50)));
+  }
+  assert(check(),'progress update reached the selected tab');
+ }
+ liveRun={...liveRun,state:'running'};
+ output={attempt:'first',body:'# 流式纪要\n\n第一段'};
+ await until(()=>q('.workflow-markdown')?.textContent.includes('第一段'));
+ assert.match(q('.workflow-output-state').textContent,/生成中/);
+ assert(!q('.workflow-markdown').textContent.includes('全文结尾'));
+ output.body+='\n\n第二段';
+ await until(()=>q('.workflow-markdown')?.textContent.includes('第二段'));
+ assert(outputReads.some(r=>r.run_id===liveRun.run_id&&r.cursor?.startsWith('first:')));
+ output={attempt:'replacement',body:'# 重试结果'};
+ await until(()=>q('.workflow-markdown')?.textContent.includes('重试结果'));
+ assert.doesNotMatch(q('.workflow-markdown').textContent,/第一段|第二段/);
+ output.body+='\n\n'+fullBody;
+ liveRun={...liveRun,state:'succeeded',completed_ms:started+2000,result_version_id:liveRun.run_id};
+ await until(()=>q('.workflow-markdown')?.textContent.includes('全文结尾'));
+ assert.match(q('.workflow-markdown').textContent,/重试结果/);
+ assert(!q('.workflow-loading-dots'));assert(!button('继续阅读'));
+ await settle(()=>button('文本转录').click());
+ await settle(()=>button('会议纪要').click());
+ assert.match(q('.workflow-markdown').textContent,/全文结尾/);
+ const reads=outputReads.length;
+ await settle(()=>new Promise(r=>setTimeout(r,525)));
+ assert.equal(outputReads.length,reads,'polling stops once the selected result is complete');
 }finally{await settle(()=>root.unmount());clearMocks();dom.window.close();}

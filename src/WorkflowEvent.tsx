@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { core, type TimelineItem } from "./api";
@@ -9,7 +9,7 @@ import {
 	selectedIds,
 	useWorkflowRequestId,
 	WorkflowError,
-	type WorkflowResult,
+	type WorkflowOutput,
 	type WorkflowRun,
 	type WorkflowSettings,
 	type WorkflowStrategy,
@@ -38,14 +38,18 @@ export function WorkflowPicker({
 	onRun: (run: WorkflowRun) => void;
 }) {
 	const [catalog, setCatalog] = useState<Strategies | null>(null);
+	const [catalogAttempt, setCatalogAttempt] = useState(0);
+	const [catalogFailed, setCatalogFailed] = useState(false);
 	const [choice, setChoice] = useState<{
 		strategy: Strategy;
 		available: Choices;
 	} | null>(null);
 	const [busy, setBusy] = useState(false);
+	const submitting = useRef(false);
 	const [message, setMessage] = useState("");
 	const requestId = useWorkflowRequestId();
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: Retry invalidates the strategy catalog.
 	useEffect(() => {
 		let active = true;
 		void workflow<Strategies>({ op: "strategies" }).then(
@@ -53,19 +57,31 @@ export function WorkflowPicker({
 				if (active) setCatalog(value);
 			},
 			(error) => {
-				if (active) setMessage(messageOf(error));
+				if (active) {
+					setCatalogFailed(true);
+					setMessage(messageOf(error));
+				}
 			},
 		);
 		return () => {
 			active = false;
 		};
-	}, []);
+	}, [catalogAttempt]);
+
+	function reloadCatalog() {
+		setChoice(null);
+		setCatalog(null);
+		setCatalogFailed(false);
+		setMessage("");
+		setCatalogAttempt((attempt) => attempt + 1);
+	}
 
 	async function run(
 		strategy: Strategy,
 		input: ManualWorkflowInput = "configured",
 	) {
-		if (!catalog || busy) return;
+		if (!catalog || submitting.current) return;
+		submitting.current = true;
 		const action = {
 			op: "run",
 			event_id: eventId,
@@ -84,10 +100,18 @@ export function WorkflowPicker({
 				error.code === "precise_input_unavailable"
 			) {
 				setChoice({ strategy, available: error.details as Choices });
+			} else if (
+				error instanceof WorkflowError &&
+				error.code === "revision_conflict" &&
+				(error.details as { revision?: number } | null)?.revision === revision
+			) {
+				reloadCatalog();
+				setMessage("策略设置已更新，请重新选择。");
 			} else {
 				setMessage(messageOf(error));
 			}
 		} finally {
+			submitting.current = false;
 			setBusy(false);
 		}
 	}
@@ -117,7 +141,10 @@ export function WorkflowPicker({
 						<Button
 							tone="quiet"
 							disabled={busy}
-							onClick={() => setChoice(null)}
+							onClick={() => {
+								setChoice(null);
+								setMessage("");
+							}}
 						>
 							返回
 						</Button>
@@ -153,7 +180,17 @@ export function WorkflowPicker({
 					{catalog?.strategies.length === 0 && (
 						<p>请先在「智能分析 → 流程与策略」添加策略。</p>
 					)}
-					{!catalog && !message && <p>正在读取策略…</p>}
+					{!catalog &&
+						(catalogFailed ? (
+							<Button tone="quiet" onClick={reloadCatalog}>
+								重新读取策略
+							</Button>
+						) : (
+							<p role="status">
+								正在读取策略
+								<LoadingDots />
+							</p>
+						))}
 				</div>
 			)}
 		</Modal>
@@ -388,7 +425,7 @@ export function WorkflowTagEditor({
 
 const labels: Record<string, string> = {
 	waiting_precise: "等待精转",
-	queued: "已排队",
+	queued: "排队中",
 	running: "生成中",
 	succeeded: "已生成",
 	failed: "处理失败",
@@ -406,6 +443,12 @@ const reasons: Record<string, string> = {
 	invalid_workflow_output: "生成结果格式无效",
 	queue_paused: "云端处理已暂停",
 	provider_unconfigured: "云端服务尚未配置",
+	provider_not_configured: "云端服务尚未配置",
+	provider_read_timeout: "等待模型响应超时",
+	provider_deadline: "模型生成达到时限",
+	provider_incomplete_output: "模型响应提前结束",
+	provider_transport: "暂时无法连接模型服务",
+	provider_http_402: "云端账号余额不足",
 };
 
 export function workflowRunStatus(run: WorkflowRun) {
@@ -414,7 +457,7 @@ export function workflowRunStatus(run: WorkflowRun) {
 	return reason ? `${state} · ${reason}` : state;
 }
 
-export function workflowRetryTask(run: WorkflowRun) {
+function workflowRetryTask(run: WorkflowRun) {
 	return run.state === "failed" && run.task_id
 		? run.task_id
 		: run.retry_asr_task_id;
@@ -422,7 +465,7 @@ export function workflowRetryTask(run: WorkflowRun) {
 
 type WorkflowTab = {
 	run: WorkflowRun;
-	versions: string[];
+	latestResult?: WorkflowRun;
 };
 
 export function useWorkflowTabs(eventId: string | null, refreshToken: number) {
@@ -454,7 +497,10 @@ export function useWorkflowTabs(eventId: string | null, refreshToken: number) {
 			}
 		}
 		void load().catch((error) => {
-			if (live) setMessage(messageOf(error));
+			if (!live) return;
+			if (error instanceof WorkflowError && error.code === "event_not_found")
+				setRuns([]);
+			setMessage(messageOf(error));
 		});
 		return () => {
 			live = false;
@@ -463,8 +509,14 @@ export function useWorkflowTabs(eventId: string | null, refreshToken: number) {
 
 	const tabs = new Map<string, WorkflowTab>();
 	for (const run of runs) {
-		const tab = tabs.get(run.strategy_id) ?? { run, versions: [] };
-		if (run.result_version_id) tab.versions.push(run.result_version_id);
+		const tab = tabs.get(run.strategy_id) ?? { run };
+		if (
+			run.result_version_id &&
+			(!tab.latestResult ||
+				(run.completed_ms ?? 0) > (tab.latestResult.completed_ms ?? 0))
+		) {
+			tab.latestResult = run;
+		}
 		tabs.set(run.strategy_id, tab);
 	}
 	function refresh() {
@@ -478,6 +530,12 @@ export function useWorkflowTabs(eventId: string | null, refreshToken: number) {
 		]);
 		refresh();
 	}
+
+	const update = useCallback((run: WorkflowRun) => {
+		setRuns((prior) =>
+			prior.map((current) => (current.run_id === run.run_id ? run : current)),
+		);
+	}, []);
 
 	async function retry(taskId: string) {
 		try {
@@ -494,90 +552,191 @@ export function useWorkflowTabs(eventId: string | null, refreshToken: number) {
 		),
 		message,
 		accept,
+		update,
 		refresh,
+		reload,
 		retry,
 	};
+}
+
+function isGenerating(run: WorkflowRun) {
+	return ["waiting_precise", "queued", "running"].includes(run.state);
+}
+
+function LoadingDots() {
+	return (
+		<span className="workflow-loading-dots" aria-hidden="true">
+			<span>.</span>
+			<span>.</span>
+			<span>.</span>
+		</span>
+	);
+}
+
+function useWorkflowOutput(
+	eventId: string,
+	runId: string | undefined,
+	reload: number,
+	onUpdate?: (run: WorkflowRun) => void,
+) {
+	const [view, setView] = useState<{ run: WorkflowRun; body: string } | null>(
+		null,
+	);
+	const [readError, setReadError] = useState("");
+	// biome-ignore lint/correctness/useExhaustiveDependencies: Reload restarts polling after a retry.
+	useEffect(() => {
+		if (!runId) return;
+		let live = true;
+		let cursor: string | undefined;
+		let body = "";
+		let previous: WorkflowRun | undefined;
+		let timer: number;
+		setReadError("");
+		const schedule = (delay: number) => {
+			timer = window.setTimeout(() => void poll(), delay);
+		};
+		async function poll() {
+			if (document.hidden) {
+				schedule(900);
+				return;
+			}
+			try {
+				const { run, output } = await workflow<WorkflowOutput>({
+					op: "output",
+					event_id: eventId,
+					run_id: runId,
+					cursor,
+				});
+				if (!live) return;
+				const lastBody = body;
+				if (output) {
+					body = output.append
+						? body + output.body_markdown
+						: output.body_markdown;
+					cursor = output.cursor;
+				} else if (run.state !== "running") {
+					body = "";
+					cursor = undefined;
+				}
+				const changed =
+					previous?.state !== run.state ||
+					previous.reason !== run.reason ||
+					previous.task_id !== run.task_id ||
+					previous.retry_asr_task_id !== run.retry_asr_task_id ||
+					previous.result_version_id !== run.result_version_id;
+				if (changed) onUpdate?.(run);
+				if (changed || body !== lastBody) setView({ run, body });
+				previous = run;
+				setReadError("");
+				if (isGenerating(run)) schedule(run.state === "running" ? 450 : 900);
+			} catch (error) {
+				if (!live) return;
+				setReadError(messageOf(error));
+				if (
+					error instanceof WorkflowError &&
+					["run_not_found", "event_not_found"].includes(error.code)
+				) {
+					setView(null);
+				} else {
+					schedule(1500);
+				}
+			}
+		}
+		void poll();
+		return () => {
+			live = false;
+			window.clearTimeout(timer);
+		};
+	}, [eventId, runId, reload, onUpdate]);
+	return { view: view?.run.run_id === runId ? view : null, error: readError };
 }
 
 export function WorkflowResultPanel({
 	eventId,
 	tab,
 	message,
+	reload,
+	onUpdate,
 	onRetry,
 }: {
 	eventId: string;
 	tab: WorkflowTab;
 	message: string;
-	onRetry: (id: string) => void;
+	reload: number;
+	onUpdate: (run: WorkflowRun) => void;
+	onRetry: (id: string) => Promise<void>;
 }) {
-	const { run, versions } = tab;
-	const version = versions.join(",");
-	const [result, setResult] = useState<WorkflowResult | null>(null);
-	const [error, setError] = useState("");
-	const [loading, setLoading] = useState(false);
+	const current = useWorkflowOutput(eventId, tab.run.run_id, reload, onUpdate);
+	const latestId = tab.latestResult?.run_id;
+	const previous = useWorkflowOutput(
+		eventId,
+		latestId === tab.run.run_id ? undefined : latestId,
+		0,
+	);
+	const run = current.view?.run ?? tab.run;
+	const preferLatest =
+		run.state === "succeeded" && latestId && latestId !== run.run_id;
+	const showPrevious =
+		run.state !== "succeeded" && !current.view?.body && previous.view?.body;
+	const body =
+		preferLatest || showPrevious ? previous.view?.body : current.view?.body;
+	const readError = (preferLatest ? previous : current).error;
+	const blocked =
+		run.state === "queued" &&
+		[
+			"queue_paused",
+			"provider_unconfigured",
+			"provider_not_configured",
+			"provider_http_402",
+		].includes(run.reason ?? "");
+	const loading =
+		(isGenerating(run) && !blocked) ||
+		(run.state === "succeeded" && !body && !readError);
+	const status =
+		run.state === "succeeded" ? "正在读取" : workflowRunStatus(run);
+	const retryTask = workflowRetryTask(run);
+	const [retrying, setRetrying] = useState(false);
 
-	useEffect(() => {
-		if (!version) {
-			setResult(null);
-			return;
-		}
-		let live = true;
-		setError("");
-		void workflow<WorkflowResult>({
-			op: "result",
-			event_id: eventId,
-			strategy_id: run.strategy_id,
-		}).then(
-			(value) => {
-				if (live)
-					setResult((prior) =>
-						prior?.result_version_id === value.result_version_id
-							? prior
-							: value,
-					);
-			},
-			(error) => {
-				if (live) {
-					setResult(null);
-					setError(messageOf(error));
-				}
-			},
-		);
-		return () => {
-			live = false;
-		};
-	}, [eventId, run.strategy_id, version]);
-
-	async function readMore() {
-		if (!result?.next_cursor || loading) return;
-		const currentResult = result;
-		setLoading(true);
+	async function retry(id: string) {
+		setRetrying(true);
 		try {
-			const next = await workflow<WorkflowResult>({
-				op: "result",
-				event_id: eventId,
-				strategy_id: currentResult.strategy_id,
-				version_id: currentResult.result_version_id,
-				cursor: currentResult.next_cursor,
-			});
-			setResult((prior) =>
-				prior === currentResult
-					? { ...next, body_markdown: prior.body_markdown + next.body_markdown }
-					: prior,
-			);
-		} catch (error) {
-			setError(messageOf(error));
+			await onRetry(id);
 		} finally {
-			setLoading(false);
+			setRetrying(false);
 		}
 	}
 
-	const retryTask = workflowRetryTask(run);
 	return (
 		<div className="workflow-results">
-			{error || message ? <p role="status">{error || message}</p> : null}
-			{version && result ? (
+			{(readError || message) && (
+				<p className="workflow-output-status" role="status">
+					{readError || message}
+				</p>
+			)}
+			{(!body || run.state !== "succeeded") && (
+				<div className="workflow-output-state">
+					{!(readError && run.state === "succeeded") && (
+						<p className="workflow-output-status" role="status">
+							{status}
+							{loading && <LoadingDots />}
+						</p>
+					)}
+					{retryTask && (
+						<Button
+							tone="quiet"
+							busy={retrying}
+							onClick={() => void retry(retryTask)}
+						>
+							{run.task_id ? "重试生成" : "重试精转"}
+						</Button>
+					)}
+				</div>
+			)}
+			{body && (
 				<>
+					{showPrevious && (
+						<p className="workflow-output-status">上一次生成的内容</p>
+					)}
 					<article className="workflow-markdown">
 						<Markdown
 							remarkPlugins={[remarkGfm]}
@@ -592,32 +751,10 @@ export function WorkflowResultPanel({
 								),
 							}}
 						>
-							{result.body_markdown}
+							{body}
 						</Markdown>
 					</article>
-					{result.next_cursor && (
-						<Button
-							tone="quiet"
-							disabled={loading}
-							onClick={() => void readMore()}
-						>
-							继续阅读
-						</Button>
-					)}
 				</>
-			) : (
-				<div className="detail-empty">
-					{!error && (
-						<p role="status">
-							{version ? "正在读取…" : workflowRunStatus(run)}
-						</p>
-					)}
-					{!version && retryTask && (
-						<Button tone="quiet" onClick={() => onRetry(retryTask)}>
-							{run.task_id ? "重试生成" : "重试精转"}
-						</Button>
-					)}
-				</div>
 			)}
 		</div>
 	);

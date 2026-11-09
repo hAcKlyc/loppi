@@ -2812,7 +2812,7 @@ body.floating-body .float-wrap {
 	gap: var(--space-2);
 }
 .workflow-config-hint,
-.workflow-config-actions p {
+.workflow-config-feedback p {
 	margin: 0;
 	color: var(--color-text-secondary);
 	font-size: var(--type-meta);
@@ -2828,24 +2828,18 @@ body.floating-body .float-wrap {
 	padding: var(--space-6);
 	font-size: var(--type-meta);
 }
-.workflow-config-actions {
+.workflow-config-feedback {
 	display: flex;
 	align-items: center;
-	justify-content: space-between;
 	gap: var(--space-5);
-	position: sticky;
-	bottom: 0;
-	z-index: 1;
 	flex-wrap: wrap;
-	border: var(--stroke-hairline) solid var(--color-border);
-	border-radius: var(--radius-md);
-	background: var(--color-surface);
-	padding: var(--space-4) var(--space-6);
 }
-.workflow-config-actions > div {
-	display: flex;
-	gap: var(--space-3);
-	margin-inline-start: auto;
+.workflow-config-rule-options small {
+	color: var(--color-text-secondary);
+}
+:is(.workflow-config-feedback, .workflow-config-editor) p[role="alert"] {
+	margin: 0;
+	color: var(--color-danger);
 }
 .workflow-config-editor {
 	display: grid;
@@ -2937,6 +2931,47 @@ body.floating-body .float-wrap {
 .workflow-results {
 	padding-block-start: var(--space-8);
 	justify-items: start;
+}
+.workflow-output-state {
+	display: flex;
+	align-items: center;
+	gap: var(--space-4);
+	flex-wrap: wrap;
+}
+.workflow-output-status {
+	margin: 0;
+	color: var(--color-text-secondary);
+	font-size: var(--type-meta);
+	line-height: var(--leading-body);
+}
+.workflow-loading-dots {
+	display: inline-flex;
+	margin-inline-start: var(--space-1);
+	letter-spacing: 0.04em;
+}
+.workflow-loading-dots > span {
+	animation: workflow-loading-dot 1.35s infinite;
+}
+.workflow-loading-dots > span:nth-child(2) {
+	animation-delay: 0.16s;
+}
+.workflow-loading-dots > span:nth-child(3) {
+	animation-delay: 0.32s;
+}
+@keyframes workflow-loading-dot {
+	0%,
+	60%,
+	100% {
+		opacity: 0.3;
+	}
+	30% {
+		opacity: 1;
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.workflow-loading-dots > span {
+		animation: none;
+	}
 }
 .workflow-markdown {
 	width: 100%;

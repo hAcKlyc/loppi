@@ -58,7 +58,7 @@ let cloudReadMode = 'ready';
 let cloudReleases = [];
 let partialTasks = [], partialReviews = [];
 let timelineItems = [];
-const workflowConfig = {
+let workflowConfig = {
   mode: 'single',
   tags: [
     { id: 'work', name: '工作会议', criteria: '讨论项目进展' },
@@ -71,6 +71,15 @@ const workflowConfig = {
     { id: 'asr-name', name: '自动精转', input: 'coarse', prompt: '列出待办', tag_ids: ['work'] },
   ],
 };
+let workflowRevision = 3;
+let workflowFailure = null;
+let holdWorkflowWrite = false;
+let releaseWorkflowWrite;
+let loseWorkflowReply = false;
+const workflowWrites = [];
+const workflowReceipts = new Map();
+const workflowError = (code, details) => ({ result: { ok: false, error: { code, details } } });
+const workflowSnapshot = () => ({ result: { ok: true, data: { revision: workflowRevision, config: workflowConfig, other_tag: 'other' } } });
 mockIPC((command, args) => {
   if (command === 'onboarding_status') return { completed: true };
   if (command === 'entry_snapshot') return { sequence: 1, state, error: null, mode: 'top', appearance: 'sleeping', control: 'resume', detail: null, notice: null };
@@ -80,13 +89,35 @@ mockIPC((command, args) => {
   const r = args.request;
   requests.push(r);
   if (r.type === 'workflow') {
-    const { op, config, add_required_asr_tags } = r.action;
-    if (op === 'config_show') return { result: { ok: true, data: { revision: 3, config: workflowConfig, other_tag: 'other' } } };
+    const { op, config, expected_revision, add_required_asr_tags } = r.action;
+    if (op === 'config_show') return workflowSnapshot();
     if (op === 'strategies') return { result: { ok: true, data: { revision: 3, strategies: [] } } };
     if (op === 'runs') return { result: { ok: true, data: { runs: [] } } };
     assert.equal(op, 'config_set');
-    if (!add_required_asr_tags) return { result: { ok: false, error: { code: 'asr_rule_conflict', details: { affected: [{ strategy_id: 'minutes', name: '会议纪要', tag_ids: ['client'] }] } } } };
-    return { result: { ok: true, data: { revision: 4, config: { ...config, auto_asr: { mode: 'tags', tag_ids: ['work', 'client'] } }, other_tag: 'other' } } };
+    const { requestId } = args;
+    workflowWrites.push({ action: r.action, requestId });
+    const finish = () => {
+      if (workflowReceipts.has(requestId)) return workflowReceipts.get(requestId);
+      if (expected_revision !== workflowRevision) return workflowError('revision_conflict');
+      if (workflowFailure) {
+        const error = workflowFailure;
+        workflowFailure = null;
+        return error;
+      }
+      workflowRevision++;
+      const withId = item => item.id.startsWith('00000000-') ? { ...item, id: 'created-' + workflowRevision } : item;
+      workflowConfig = { ...config, tags: config.tags.map(withId), strategies: config.strategies.map(withId) };
+      if (add_required_asr_tags) workflowConfig.auto_asr = { mode: 'tags', tag_ids: ['work', 'client'] };
+      const result = workflowSnapshot();
+      workflowReceipts.set(requestId, result);
+      if (loseWorkflowReply) {
+        loseWorkflowReply = false;
+        throw Error('合成设置响应丢失');
+      }
+      return result;
+    };
+    if (holdWorkflowWrite) return new Promise(resolve => { releaseWorkflowWrite = () => resolve(finish()); });
+    return finish();
   }
   if (r.type === 'cloud_status') {
     if (cloudReadMode === 'failure') throw Error('合成队列读取失败');
@@ -344,84 +375,181 @@ test('recognition settings navigation uses existing pages, focuses the service r
       assert(!document.querySelector('.task-row, .review-row, .list-empty'));
     });
 
-    await t.test('workflow subpages share one draft and resolve precise input dependencies through Core', async () => {
+    await t.test('workflow settings apply once, keep invalid changes in the editor and recover lost replies safely', async () => {
       await settle(() => root.render(h(SettingsView, settingsProps)));
       assert.doesNotMatch(document.querySelector('.page-container').textContent, /场景标签管理|生成策略/);
       const reads = () => requests.filter(r => r.action?.op === 'config_show').length;
       const readCount = reads();
-      await settle(() => root.render(h(QueueView, {
-        queues, tasks: [], reviews: [], busy: false, onRefresh: async () => {}, onSettings() {}, onMutate: async () => true,
-      })));
-      const tab = name => [...document.querySelectorAll('[role=tab]')].find(button => button.textContent === name);
+      const props = { queues, tasks: [], reviews: [], busy: false, onRefresh: async () => {}, onSettings() {}, onMutate: async () => true };
+      await settle(() => root.render(h(QueueView, props)));
+      const tab = name => [...document.querySelectorAll('[role=tab]')].find(item => item.textContent === name);
       const button = (name, scope = document) => [...scope.querySelectorAll('button')].find(item => (item.querySelector('.button-labels > span:not([aria-hidden=true])')?.textContent ?? item.textContent) === name);
+      const dialog = () => document.querySelector('dialog[open]');
+      const save = () => click(button('保存', dialog()));
+      const tag = name => [...dialog().querySelectorAll('label')].find(item => item.textContent === name).querySelector('input');
+      const setValue = async (field, value) => settle(() => {
+        Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), 'value').set.call(field, value);
+        field.dispatchEvent(new Event(field.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true }));
+      });
+      const assertApplied = () => {
+        assert(!dialog());
+        assert.equal(document.querySelector('.workflow-config-feedback [role=status]').textContent, '设置已生效');
+        assert.doesNotMatch(document.querySelector('.workflow-settings').textContent, /未保存的改动|保存配置|确认设置/);
+      };
       assert.equal(reads(), readCount);
       for (const item of document.querySelectorAll('[role=tab]')) assert(document.getElementById(item.getAttribute('aria-controls')));
       await click(tab('事件分析·场景标签'));
       assert.equal(reads(), readCount + 1);
-      assert.match(document.querySelector('.workflow-config-rule').textContent, /每个事件支持智能打标签模式.*单选.*多选/s);
+      assert.match(document.querySelector('.workflow-config-rule').textContent, /每个事件支持智能打标签模式.*单选.*多选.*后续事件/s);
       const labelTable = document.querySelector('table.workflow-config-table');
       assert.equal(labelTable.caption.textContent, '场景标签管理');
       assert.match(labelTable.textContent, /判断标准.*系统兜底/s);
+
+      holdWorkflowWrite = true;
+      const beforeMode = workflowWrites.length;
       await click(document.querySelector('input[value="multiple"]'));
-      assert.match(document.querySelector('[role=status]').textContent, /新标注方式适用于后续事件/);
+      assert.equal(workflowWrites.length, beforeMode + 1);
+      assert.equal(workflowWrites.at(-1).action.expected_revision, 3);
+      assert.equal(workflowWrites.at(-1).action.config.mode, 'multiple');
+      assert(document.querySelector('input[value="single"]').checked, 'selection reflects the committed setting until the write completes');
+      assert(select('编辑标签 · 工作会议').disabled);
+      await click(tab('处理队列'));
+      holdWorkflowWrite = false;
+      await settle(releaseWorkflowWrite);
+      await click(tab('事件分析·场景标签'));
+      assertApplied();
+      assert.equal(workflowConfig.mode, 'multiple');
+      assert(document.querySelector('input[value="multiple"]').checked);
+      assert.equal(reads(), readCount + 1);
+
       await click(select('编辑标签 · 工作会议'));
-      const labelEditor = document.querySelector('dialog');
-      assert.equal(labelEditor.querySelector('textarea').value, '讨论项目进展');
-      await click(button('去流程与策略调整', labelEditor));
+      assert.equal(dialog().querySelector('textarea').value, '讨论项目进展');
+      await click(button('去流程与策略调整', dialog()));
       await settle(() => new Promise(resolve => requestAnimationFrame(resolve)));
       assert.equal(document.activeElement, select('编辑自动精转'));
       await click(tab('事件分析·场景标签'));
-      await click(select('编辑标签 · \uFEFF工作会议'));
-      await click(button('应用到草稿', document.querySelector('dialog')));
-      await click(tab('处理队列'));
+      await click(button('添加标签'));
+      await setValue(dialog().querySelector('input'), '现场笔记');
+      await setValue(dialog().querySelector('textarea'), '记录关键决定');
+      await save();
+      assertApplied();
+      const createdTag = workflowConfig.tags.at(-1);
+      assert.match(createdTag.id, /^created-/);
+      await click(select('编辑标签 · 现场笔记'));
+      await setValue(dialog().querySelector('textarea'), '记录关键决定与负责人');
+      await save();
+      assertApplied();
+      assert.equal(workflowConfig.tags.at(-1).criteria, '记录关键决定与负责人');
+
       await click(tab('流程与策略'));
-      assert.equal(reads(), readCount + 1);
-      assert.match(document.querySelector('[role=status]').textContent, /未保存的改动/);
       const flows = document.querySelector('table[aria-label="流程与策略"]');
       const asrRow = flows.querySelector('tbody tr:first-child');
       assert.match(asrRow.textContent, /自动精转\s*官方.*事件音频.*工作会议/s);
-      assert(!flows.querySelector('input'), 'workflow list only shows summaries');
+      assert(!flows.querySelector('input'));
+      await click(button('添加策略'));
+      await setValue(dialog().querySelector('input'), '行动清单');
+      await setValue(dialog().querySelector('textarea'), '列出负责人');
+      await click(tag('现场笔记'));
+      await save();
+      assertApplied();
+      assert.deepEqual(workflowConfig.strategies.at(-1).tag_ids, [createdTag.id]);
+      await click(select('编辑策略 · 行动清单'));
+      await click(tag('现场笔记'));
+      await setValue(dialog().querySelector('select'), 'precise');
+      await save();
+      assertApplied();
+      assert.equal(workflowConfig.strategies.at(-1).input, 'precise');
+      assert.match(flows.textContent, /行动清单精转录仅手动/);
+      await click(select('编辑策略 · 行动清单'));
+      await click(button('移除策略', dialog()));
+      assertApplied();
+      assert(!select('编辑策略 · 行动清单'));
+
       await click(select('编辑自动精转'));
-      const autoAsr = document.querySelector('dialog');
-      assert.equal(autoAsr.querySelector('input[value="tags"]').checked, true);
-      assert.equal(document.activeElement, autoAsr.querySelector('input[value="tags"]'));
-      assert.doesNotMatch(autoAsr.textContent, /移除/);
-      await click(autoAsr.querySelector('input[value="all"]'));
-      await click(button('取消', autoAsr));
+      assert.equal(document.activeElement, dialog().querySelector('input[value="tags"]'));
+      const beforeCancel = workflowWrites.length;
+      await click(dialog().querySelector('input[value="all"]'));
+      await click(button('取消', dialog()));
+      assert.equal(workflowWrites.length, beforeCancel);
       assert.match(asrRow.textContent, /工作会议/);
       await click(select('编辑自动精转'));
-      const asrEditor = document.querySelector('dialog');
-      await click(asrEditor.querySelector('input[value="all"]'));
-      await click(button('应用到草稿', asrEditor));
+      await click(dialog().querySelector('input[value="all"]'));
+      await save();
+      assertApplied();
       assert.match(asrRow.textContent, /全部有效事件/);
-      assert.doesNotMatch(asrRow.textContent, /工作会议/);
       await click(select('编辑自动精转'));
-      const tagsEditor = document.querySelector('dialog');
-      await click(tagsEditor.querySelector('input[value="tags"]'));
-      assert.equal(tagsEditor.querySelectorAll('input[type=checkbox]:checked').length, 0);
-      await click([...tagsEditor.querySelectorAll('label')].find(item => item.textContent === '工作会议').querySelector('input'));
-      await click(button('应用到草稿', tagsEditor));
+      await click(dialog().querySelector('input[value="tags"]'));
+      assert(button('保存', dialog()).disabled);
+      await click(tag('工作会议'));
+      await save();
+      assertApplied();
+
+      const missingClient = [{ strategy_id: 'minutes', name: '会议纪要', tag_ids: ['client'] }];
       await click(select('编辑策略 · 会议纪要'));
-      const strategyEditor = document.querySelector('dialog');
-      assert.equal(strategyEditor.querySelector('select').value, 'precise');
-      await click([...strategyEditor.querySelectorAll('label')].find(item => item.textContent === '客户回访').querySelector('input'));
-      await click(button('应用到草稿', strategyEditor));
-      await click(button('保存配置'));
-      assert.match(document.querySelector('dialog').textContent, /会议纪要 · 客户回访/);
-      await click(button('去流程与策略调整', document.querySelector('dialog')));
+      await click(tag('客户回访'));
+      workflowFailure = workflowError('asr_rule_conflict', { affected: missingClient });
+      const beforeDependency = workflowRevision;
+      await save();
+      assert.match(dialog().textContent, /会议纪要 · 客户回访.*音频可能发送/s);
+      assert(tag('客户回访').checked);
+      assert.equal(workflowRevision, beforeDependency);
+      assert.deepEqual(workflowConfig.auto_asr.tag_ids, ['work']);
+      assert.deepEqual(workflowConfig.strategies[0].tag_ids, ['work']);
+      await click(button('补齐精转标签并保存', dialog()));
+      assertApplied();
+      assert.deepEqual(workflowWrites.slice(-2).map(({ action }) => [action.expected_revision, action.add_required_asr_tags]), [[beforeDependency, false], [beforeDependency, true]]);
+      assert.deepEqual(workflowConfig.strategies[0].tag_ids, ['work', 'client']);
+      assert.deepEqual([...asrRow.querySelectorAll('.workflow-chip')].map(chip => chip.textContent), ['工作会议', '客户回访']);
+
+      await click(select('编辑自动精转'));
+      await click(tag('客户回访'));
+      workflowFailure = workflowError('asr_rule_conflict', { affected: missingClient });
+      await save();
+      assert(!button('补齐精转标签并保存', dialog()));
+      assert.deepEqual(workflowConfig.auto_asr.tag_ids, ['work', 'client']);
+      await click(button('去流程与策略调整', dialog()));
       await settle(() => new Promise(resolve => requestAnimationFrame(resolve)));
       assert.equal(document.activeElement, select('编辑策略 · 会议纪要'));
-      await click(button('保存配置'));
-      await click(button('加入并保存', document.querySelector('dialog')));
-      assert.match(document.querySelector('[role=status]').textContent, /已保存/);
-      const writes = requests.filter(r => r.action?.op === 'config_set').map(r => r.action);
-      assert.deepEqual(writes.map(w => [w.expected_revision, w.config.mode, w.add_required_asr_tags]), [[3, 'multiple', false], [3, 'multiple', false], [3, 'multiple', true]]);
-      assert.deepEqual(writes.at(-1).config.strategies[0].tag_ids, ['work', 'client']);
-      assert.deepEqual(writes.at(-1).config.tags, workflowConfig.tags);
-      assert.deepEqual([...asrRow.querySelectorAll('.workflow-chip')].map(tag => tag.textContent), ['工作会议', '客户回访']);
-      await click(select('编辑自动精转'));
-      assert.deepEqual([...document.querySelectorAll('dialog input[type=checkbox]:checked')].map(input => input.parentElement.textContent), ['工作会议', '客户回访']);
-      await click(button('取消', document.querySelector('dialog')));
+
+      await click(tab('事件分析·场景标签'));
+      await click(select('编辑标签 · 工作会议'));
+      workflowFailure = workflowError('tag_rule_conflict', { affected: [{ kind: 'auto_asr', tag_ids: ['work'] }] });
+      await click(button('移除标签', dialog()));
+      assert.match(dialog().textContent, /仍引用该标签.*自动精转 · 工作会议/s);
+      assert(select('编辑标签 · 工作会议'));
+      await click(button('取消', dialog()));
+      await click(select('编辑标签 · 现场笔记'));
+      await click(button('移除标签', dialog()));
+      assertApplied();
+      assert(!select('编辑标签 · 现场笔记'));
+
+      await click(select('编辑标签 · 工作会议'));
+      await setValue(dialog().querySelector('input'), '客户回访');
+      workflowFailure = workflowError('invalid_tag_definition');
+      await save();
+      assert.match(dialog().querySelector('[role=alert]').textContent, /各不相同/);
+      assert.equal(dialog().querySelector('input').value, '客户回访');
+      await setValue(dialog().querySelector('input'), '团队会议');
+      loseWorkflowReply = true;
+      await save();
+      assert.match(dialog().querySelector('[role=alert]').textContent, /未收到设置结果/);
+      assert(dialog().querySelector('input').disabled);
+      const lost = workflowWrites.at(-1), committed = workflowRevision;
+      await click(button('重试', dialog()));
+      assertApplied();
+      assert.deepEqual(workflowWrites.at(-1), lost);
+      assert.equal(workflowRevision, committed, 'retry must reuse the receipt instead of applying a second edit');
+      assert(select('编辑标签 · 团队会议'));
+
+      workflowRevision++;
+      workflowConfig = { ...workflowConfig, mode: 'single' };
+      await click(document.querySelector('input[value="single"]'));
+      assert.match(document.querySelector('.workflow-config-feedback [role=alert]').textContent, /设置已更新/);
+      assert(document.querySelector('input[value="multiple"]').checked);
+      await click(button('读取最新配置'));
+      assert(document.querySelector('input[value="single"]').checked);
+      await settle(() => root.render(h(QueueView, { ...props, key: 'reopen-workflow', initialSection: 'automation' })));
+      assert.match(document.querySelector('table[aria-label="流程与策略"]').textContent, /团队会议.*客户回访/s);
     });
 
     await t.test('QueueView task and review actions remain reachable before queue status succeeds or when it returns no providers', async () => {

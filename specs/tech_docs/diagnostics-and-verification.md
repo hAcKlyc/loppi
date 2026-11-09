@@ -127,7 +127,7 @@ python3 scripts/smoke_recognizer.py --worker target/debug/loppi-worker --models 
 
 Core 在建立日志线程前生成唯一 run_id；LogWorker/UniLogs 共用它，started 只保留带构建身份的一条。resources 模式变化与公开 IOKit 睡眠/完成唤醒写脱敏事件，diagnostics.json 保留当前 power 事实。采集失败事件增加当前容量阈值/可用磁盘、丢帧和排队时长；替换快照不会替代这些故障历史。声纹 backlog 同时包含观察和入库待办的有界下界；oldest_voice_ms 是所抽待办的原音频年龄，voice_last_success_ms 是 ready 观察的最近成功时刻，voice_deferred_reason 表示当前资源准入条件，不冒充故障发生时原因。音质拒绝记录当前解码片段的 RMS 百万分值、削波 ppm 和样本数，不含音频或人物信息。
 
-HTTP 402 在既有 cloud_queues.blocked_reason 表达账号阻塞，独立于用户 paused/configured；明确继续、有效目标的手动重试、成功保存已验证的新配置才解除。解除队列不批量重跑失败历史。供应商重试由既有 cloud_tasks.retry_failures 保留预算，凭据等待不消耗；网络失败最多 8 次，整份整理输出无效最多 3 次，显式重试重置预算且保留原付费请求身份。LLM 使用有界 SSE 流，忽略思考正文，收到完整终止和结束原因后才进入原发布流程；180 秒总时限、45 秒空闲读取及 8MB 响应上限仍生效。故障日志区分 headers/body 阶段与耗时。普通 status/app_opened 客户端在写回时主动断开只记 request_cancelled info；其它执行和写回故障仍保留。
+HTTP 402 在既有 cloud_queues.blocked_reason 表达账号阻塞，独立于用户 paused/configured；明确继续、有效目标的手动重试、成功保存已验证的新配置才解除。解除队列不批量重跑失败历史。供应商重试由既有 cloud_tasks.retry_failures 保留预算，凭据等待不消耗；网络失败最多 8 次，整份整理输出无效最多 3 次，显式重试重置预算且保留原付费请求身份。LLM 使用有界 SSE 流，忽略思考正文，收到完整终止和结束原因后才进入原发布流程；队列中的 LLM 单次尝试有 15 分钟总预算、60 秒网络超时和 8 MB 响应上限。故障日志区分 headers/body 阶段与耗时。普通 status/app_opened 客户端在写回时主动断开只记 request_cancelled info；其它执行和写回故障仍保留。
 
 离线 runner 显式传 LOPPI_TEST_PARENT_PID 并使用独立 LOPPI_DATA_DIR，Core 用 kqueue 绑定运行者生命周期；该模式禁止读取/写入 Keychain 与访问正式供应商端点。正式 Login 没有此环境，不改变后台驻留。默认 verify 设置此绑定；手动 runner 同样绑定自身。真实模型和录制验收使用合成数据/隔离副本，付费历史回放仍不自动运行。
 

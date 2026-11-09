@@ -75,14 +75,15 @@ const picker = () => document.querySelector('.speaker-picker');
 const chips = () => [...document.querySelectorAll('button.speaker-chip')];
 const button = text => [...picker().querySelectorAll('button')].find(b => b.textContent.trim() === text);
 const option = text => [...picker().querySelectorAll('.speaker-picker-option')].find(b => b.textContent.includes(text));
-// WebKit moves focus from the search field to its containing dialog on an
-// uncanceled mousedown, before delivering click. HTMLElement.click() misses this.
+// WebKit focuses a nearby focusable ancestor on uncanceled mouse down, before click.
 const pointer = async target => {
   assert(target && !target.disabled, 'enabled pointer target');
   await settle(() => {
     target.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0 }));
     if (target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }))) {
-      target.closest('dialog')?.focus();
+      const fallback = target.closest('.speaker-picker[tabindex], .transcript-list, dialog');
+      if (fallback?.matches('dialog')) fallback.tabIndex = -1;
+      fallback?.focus();
     }
   });
   if (target.isConnected) await settle(() => target.click());
@@ -101,6 +102,12 @@ try {
   })));
   await settle();
   assert(chips().length, document.body.textContent);
+  await open();
+  await pointer(picker().querySelector('h3'));
+  assert(picker()?.contains(document.activeElement), 'pressing the picker heading keeps focus inside');
+  await pointer(chips()[0]);
+  assert.equal(picker(), null, 'clicking the same speaker chip closes without reopening');
+  assert.equal(document.activeElement, chips()[0]);
   await open();
   await pointer(option('测试人物').querySelector('.speaker-picker-option-name'));
   assert(picker(), 'WebKit option click must not dismiss before confirming');

@@ -30,7 +30,7 @@ flowchart LR
 | 核心 | [`crates/loppi-core/src/main.rs`](../crates/loppi-core/src/main.rs) | 唯一 SQLite 写入者；持有采集监督、时间映射、媒体、两条云队列、声纹任务和权限/容量状态。登录项与按需服务争同一个 owner 锁。 |
 | 采集来源 | [`source_process.rs`](../crates/loppi-core/src/source_process.rs)、[`record.rs`](../crates/loppi-core/src/record.rs) | 每个来源以同一签名核心可执行文件的私有子命令运行；持有原生设备、有界缓冲及封块写入。只发布不可变媒体和 core 管理的 ingestion 日志，不访问业务库。 |
 | 本地推理 | [`crates/loppi-worker/src/main.rs`](../crates/loppi-worker/src/main.rs) | 轻量 `vad` 与重型 `recognize` 独立进程；`embed` 按需复用 CampPlus。三者共用有界帧协议，父 core 消失退出；只计算，不拥有数据库。 |
-| IPC 协议 | [`crates/loppi-protocol/src/lib.rs`](../crates/loppi-protocol/src/lib.rs) | 请求/响应、稳定 ID、预期修订、重复提交标识和协议版本。当前工作树版本为 28；只读 Agent 接口见 [Agent Context 契约](tech_docs/agent-context.md)。 |
+| IPC 协议 | [`crates/loppi-protocol/src/lib.rs`](../crates/loppi-protocol/src/lib.rs) | 请求/响应、稳定 ID、预期修订、重复提交标识和协议版本。当前工作树版本为 29；只读 Agent 接口见 [Agent Context 契约](tech_docs/agent-context.md)。 |
 | macOS 桥接 | [`src-tauri/native/`](../src-tauri/native/privacy.m)、[`crates/loppi-core/native/`](../crates/loppi-core/native/system_audio.m) | 登录项、权限、截图/OCR、系统声 API 等原生操作；业务数据仍由核心裁决。 |
 | Windows 桥接 | [`protocol::platform`](../crates/loppi-protocol/src/platform.rs)、[`protocol::ipc`](../crates/loppi-protocol/src/ipc.rs)、Core/GUI 的 `native/windows.cpp` | 本机安全/文件/进程、WASAPI、截图/OCR、资源/电源、播放与托盘。业务 owner 与协议保持共用；细节见 [Windows 支持](tech_docs/windows-support.md)。 |
 
@@ -134,7 +134,7 @@ VAD 先事务提交 `coarse_jobs` 的来源/session/16 kHz 样本区间与 `spee
 
 每个 journal 的单发布者在平台发布锁下修改名称（macOS 为目录 inode，Windows 为 `.publication.lock`）；核心仅在枚举最多 128 个名称时尝试共享锁，忙则让出，读取媒体、数据库和推理均在释放目录锁后执行。来源写线程最多等 2 秒，回调不接触该锁。这样获得已发布记录的前缀，不能先分析后来块再补入此前块。journal 未排空时，分析领取必须有相邻块（含数字静音/已清理元数据）、归属同一来源 session 的真实缺口，或匹配代次的清理边界；会话关闭或墙钟已过去 8 秒不能单独证明流结束。media_gaps.source_session_id 表示原始采集归属，与生命周期补尾的 tail_session_id 含义分开，部分清理后两者仍保留。
 
-云请求复用进程内 `ureq::Agent` 连接池，凭据仍逐请求附加。LLM 使用 SSE 读取进展，单任务共享 180 秒总预算；ASR 共享 60 秒预算，每次网络请求只获剩余时间（含响应体）；底层系统 DNS、Keychain 和不可取消文件 IO 是平台例外，预算耗尽后不再发起新请求。响应读取/截止失败作为瞬态错误保留原远端请求 ID，退避后先查询原请求。内部 Failure 只携带脱敏代码与 Retry-After 的秒数/HTTP-date 延迟，429（以及带该头的 503）把 provider 冷却下界写回原 cloud_queues，重启仍生效、不改 paused。二次退避附有任务 ID 派生的 0–20% 抖动；每四次领取中三次保留人工优先（其中一次最新优先）、一次按最旧待办，持续人工工作不会饿死历史自动任务。[云客户端](../crates/loppi-core/src/cloud.rs)。
+云请求复用各自的进程内连接池，凭据逐请求附加。LLM 通过 `reqwest` 读取 SSE。队列任务单次尝试的总预算为 15 分钟，建立连接、等待响应头和等待读到下一批响应数据各有 60 秒网络限制。响应持续到达时可超过 60 秒，总预算仍继续计时。ASR 通过 `ureq` 共享 60 秒预算，每次请求使用剩余时间（含响应体）。Keychain 和不可取消的系统 IO 可能超出预算。ASR 读取或截止失败时保留原远端请求 ID，退避后先查询原请求。内部 Failure 只携带脱敏代码与 Retry-After 的秒数/HTTP-date 延迟，429（以及带该头的 503）把 provider 冷却下界写回原 cloud_queues，重启仍生效、不改 paused。二次退避附有任务 ID 派生的 0–20% 抖动；每四次领取中三次保留人工优先（其中一次最新优先）、一次按最旧待办，持续人工工作不会饿死历史自动任务。[云客户端](../crates/loppi-core/src/cloud.rs)。
 
 Keychain 访问依赖运行进程与磁盘 bundle 的签名身份一致。发行构建脚本在编译前拒绝覆盖当前正在运行的构建目录 App；日常运行使用独立的 `/Applications/loppi.app` 安装副本。后台读取仍禁止授权弹窗，不复制密钥或放宽 ACL。Core 重启及成功重新保存某 provider 凭据时，复用现有 cloud_tasks 唤醒对应凭据错误的 pending/submitted 任务；保留任务/远端请求 ID、provider 冷却与用户暂停，不重跑已完成或其他失败任务。凭据阻塞及普通重试作为现有任务事实的投影展示，不与“正在记录”互相覆盖。
 
@@ -152,7 +152,7 @@ Windows 资源桥提供内存负载、进程 private bytes、电源与暂停/恢
 “新建事件”表单通过`ReorganizeEvents`提交一次性用户指示。Core在同一事务保存`event_reorganization_requests`载荷和现有LLM队列的`reorganization`任务；状态只由`cloud_tasks`拥有。名称、大致时间、音源和相关旧事件完整材料进入同一FIT_SYSTEM，模型明确提出event_id修改、新建及retire_event_ids。共用发布事务检查当前输入、对象/音源权限与最终非重叠后执行；旧人工事件可按此次最新意图重组，新结果不新增人工锁，指示不再参与后续自动整理。ASR继承物理请求引用，只规划未覆盖原声；文字纠错、人物确认、绝对时刻笔记保留。模型退役不调用带永久抑制的人工删除/拆合高层命令。GUI等待时保留旧事件，状态与重试复用处理队列。
 
 - DeepSeek 事件整理任务只见候选区间的粗文字、时间、来源及“检测到人声但无可用文字”等状态；系统提示词附当前智能标签的模式、ID 和标准。Core 分别校验事件范围、理解及标签，检查冲突、人工优先级及当前任务版本。[`llm_input` / `publish_fit`](../crates/loppi-core/src/events.rs)。
-- 自定义策略向同一 LLM 队列提交当前范围的粗转稿或可用精转稿、时间、音源及精转说话人。策略 Prompt 与固定输出格式进入系统指令，转录作为材料。等精转的运行尚未占用 LLM 任务。Core 校验当前范围与输入后发布 Markdown 版本。
+- 自定义策略向同一 LLM 队列提交当前范围的粗转稿或可用精转稿、时间、音源及精转说话人。策略 Prompt 与 Markdown 输出要求进入系统指令，转录作为材料。等精转的运行尚未占用 LLM 任务。Core 在内存中保存当前生成尝试的有界正文，详情页按运行和游标读取增量。流正常结束后，Core 校验当前范围与输入并发布完整 Markdown 版本。
 - 火山 ASR 只见被判定或人工指定需精转的音频；事件稳定后按来源及编码时长上限建持久任务，新物理请求保持连续时间坐标；不超过一分钟且有完整同源无人声证据的空档按真实时长编码静默，超过上限、未知、采集或清理缺口分开请求，不再插入压缩接缝；旧持久输入和远端请求 ID 不变。当前适配器是 `volc.seedasr.auc`，请求 speaker 信息、分句及 `ssd_version=300`。Keychain 的 LLM/ASR 凭据分别设置、分别暂停队列。[`cloud.rs`](../crates/loppi-core/src/cloud.rs)。
 - 人工确认人物后，Core 在既有声纹循环中筛选单句/相邻短句组合样例，按质量、近似去重和每场/每人物限额入库。每个组合成员保留人工绑定证据；自动命名不回流训练。内部取样任务及证据表由 `knowledge/enrollment.rs` 管理，复用本地 worker 和清理屏障，详见[声纹入库策略](tech_docs/speaker-identity.md#短句组合与音质)。
 - 已配置 LLM 时，用户新保存的截图通过同一个持久 LLM 队列直接发送原图，输出中文摘要与完整 Markdown 转录。仅 `save_capture` 创建 `screenshot` 任务；配置或启动不回填历史。暂停、恢复、失败重试、用量统计沿用现有任务机制。原图和本地 OCR 始终保留；`moments.image_summary/image_transcript` 原子发布并更新搜索，任务状态从 `cloud_tasks` 派生。读图/上传持有既有 LLM outbound gate，网络不持有 Store；只清原声不取消截图任务，全部数据清理后不能发布迟到结果。详情按需刷新待处理记录，Markdown 禁止 HTML、远程图片及活动链接。
