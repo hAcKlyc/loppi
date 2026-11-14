@@ -4,6 +4,7 @@ on:
     branches: [codex/verify-0.1.27-windows]
 permissions:
   contents: read
+  actions: read
 jobs:
   build_and_install:
     runs-on: windows-2025-vs2026
@@ -17,22 +18,11 @@ jobs:
         with:
           ref: 0862177ee2dbc6d0b9dd0b011f31649bc5781736
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
-          node-version: '24'
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
-        with:
-          python-version: '3.13'
-      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
-        with:
-          arch: x64
-      - name: Build versioned development installer
-        shell: pwsh
-        run: |
-          npm ci --no-audit --no-fund
-          if ($LASTEXITCODE -ne 0) { throw 'npm ci failed' }
-          ./build_dev.ps1
-          if ($LASTEXITCODE -ne 0) { throw 'Windows candidate build failed' }
+          name: windows-candidate
+          run-id: '43619786928'
+          github-token: ${{ github.token }}
       - name: Exercise NSIS and installed components on the hosted Windows VM
         shell: pwsh
         run: |
@@ -42,6 +32,8 @@ jobs:
           $env:LOPPI_DATA_DIR = Join-Path $env:RUNNER_TEMP 'loppi-candidate-data'
           $env:LOPPI_TEST_PARENT_PID = [string]$PID
           $startup = @{}
+          $cli = $null
+          $gui = Join-Path $dest 'loppi-desktop.exe'
           try {
             $result = Start-Process -FilePath $installer.FullName -ArgumentList "/S /D=$dest" -PassThru -Wait
             if ($result.ExitCode -ne 0) { throw "NSIS install failed: $($result.ExitCode)" }
@@ -75,15 +67,24 @@ jobs:
               runtime = $runtime; models_ready = $ready; gui_product_version = $guiVersion
             }
           } finally {
-            if ($cli -and (Test-Path -LiteralPath $cli)) { & $cli quit | Out-Null }
+            if ($cli -and (Test-Path -LiteralPath $cli)) {
+              $shutdown = & $cli prepare-install
+              $startup.prepare_install_exit = $LASTEXITCODE
+              $startup.prepare_install = "$shutdown"
+            }
             $uninstaller = Join-Path $dest 'uninstall.exe'
             if (Test-Path -LiteralPath $uninstaller) {
+              $uninstallTimer = [Diagnostics.Stopwatch]::StartNew()
               $uninstall = Start-Process -FilePath $uninstaller -ArgumentList '/S' -PassThru -Wait
               $startup.uninstaller_exit = $uninstall.ExitCode
+              while ((Test-Path -LiteralPath $gui) -and $uninstallTimer.Elapsed.TotalSeconds -lt 20) {
+                Start-Sleep -Milliseconds 250
+              }
               $startup.app_removed = -not (Test-Path -LiteralPath $gui)
               $startup.data_retained = Test-Path -LiteralPath (Join-Path $env:LOPPI_DATA_DIR 'loppi.sqlite')
               if ($uninstall.ExitCode -ne 0 -or -not $startup.app_removed -or -not $startup.data_retained) {
                 $startup | ConvertTo-Json -Depth 8 | Set-Content build/windows/candidate-install.json
+                $startup | ConvertTo-Json -Depth 8
                 throw 'Unexpected Windows uninstall or data retention result'
               }
             }
@@ -92,11 +93,7 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:
-          name: windows-candidate
-          path: |
-            target/x86_64-pc-windows-msvc/release/bundle/nsis/loppi_0.1.27_x64-setup.exe
-            build/windows/release-info-windows-x64.json
-            build/windows/candidate-install.json
-            build/windows/pe-dependencies-final.json
+          name: windows-install-evidence
+          path: build/windows/candidate-install.json
           if-no-files-found: warn
           retention-days: 14
