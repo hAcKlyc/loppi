@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "scope": "Locked third-party Cargo packages (all platforms and build/test dependencies) plus production npm packages; not a binary SBOM. License files are upstream texts, not a project-wide license grant.",
-  "cargo_lock_sha256": "1c96091ade2f1fba86e546eebc9eab619f8594fee4879525a6616017e84e73f3",
-  "npm_lock_sha256": "55627c9c2f59c6cc92982886ef2261781f219027a331e6030a05b7a321e9463d",
+  "scope": "Locked third-party Cargo packages and production npm packages. The separately documented updater Cargo packages are covered in updater-third-party.txt. This is not a binary SBOM.",
+  "cargo_lock_sha256": "8e1ea97d3a1a7dc81435af067e61b53e5d7887c75d35543eeae4d6d6b6025f59",
+  "npm_lock_sha256": "ec629cf33d2aa2522e27454f6017b0de09dd7768c4c7d5b45247b7093d43d00b",
   "packages": [
     {
       "ecosystem": "crates.io",
@@ -4300,11 +4300,11 @@
     {
       "ecosystem": "crates.io",
       "name": "libc",
-      "version": "0.2.189",
+      "version": "0.2.191",
       "license": "MIT OR Apache-2.0",
       "license_file": null,
-      "source": "https://static.crates.io/crates/libc/libc-0.2.189.crate",
-      "archive_sha256": "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2",
+      "source": "https://static.crates.io/crates/libc/libc-0.2.191.crate",
+      "archive_sha256": "65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a",
       "notices": [
         {
           "upstream_path": "LICENSE-APACHE",
@@ -6263,11 +6263,11 @@
     {
       "ecosystem": "crates.io",
       "name": "rtrb",
-      "version": "0.4.0",
+      "version": "0.4.1",
       "license": "MIT OR Apache-2.0",
       "license_file": null,
-      "source": "https://static.crates.io/crates/rtrb/rtrb-0.4.0.crate",
-      "archive_sha256": "9278fb35b3e730abe136e9b395b5b81b96d06b9f5478a50f0c8430a2237b22de",
+      "source": "https://static.crates.io/crates/rtrb/rtrb-0.4.1.crate",
+      "archive_sha256": "5974e397833d890f2f74963408e0d4a6cd8eda2f6a445ae06750291b5d7a997e",
       "notices": [
         {
           "upstream_path": "LICENSE-APACHE",
@@ -6933,11 +6933,11 @@
     {
       "ecosystem": "crates.io",
       "name": "sherpa-onnx",
-      "version": "2.0.0",
+      "version": "2.0.1",
       "license": "Apache-2.0",
       "license_file": null,
-      "source": "https://static.crates.io/crates/sherpa-onnx/sherpa-onnx-2.0.0.crate",
-      "archive_sha256": "daa4cc60ab08bf6f0f015ce982a99a792c0df5b2d1b102688329f0e93ba50c75",
+      "source": "https://static.crates.io/crates/sherpa-onnx/sherpa-onnx-2.0.1.crate",
+      "archive_sha256": "6956e34735af6efe416f5879181eee8e1b51be57dc6ce0a053691ae747114089",
       "notices": [
         {
           "upstream_path": "LICENSE",
@@ -6948,11 +6948,11 @@
     {
       "ecosystem": "crates.io",
       "name": "sherpa-onnx-sys",
-      "version": "2.0.0",
+      "version": "2.0.1",
       "license": "Apache-2.0",
       "license_file": null,
-      "source": "https://static.crates.io/crates/sherpa-onnx-sys/sherpa-onnx-sys-2.0.0.crate",
-      "archive_sha256": "d3e8ed33aa539ebfe102a65afe5dcff8e63d8180881973f052d6098badfdd8de",
+      "source": "https://static.crates.io/crates/sherpa-onnx-sys/sherpa-onnx-sys-2.0.1.crate",
+      "archive_sha256": "5bc46e5fb3aab39141d48ad8763d0891e0b9e0fbc8e3bdefaa63704d1bf00054",
       "notices": [
         {
           "upstream_path": "LICENSE",
@@ -8522,11 +8522,11 @@
     {
       "ecosystem": "crates.io",
       "name": "uuid",
-      "version": "1.26.1",
+      "version": "1.29.0",
       "license": "Apache-2.0 OR MIT",
       "license_file": null,
-      "source": "https://static.crates.io/crates/uuid/uuid-1.26.1.crate",
-      "archive_sha256": "2ef6dac1e96601b4fb3acccccff2139741fcb757cb9a36089bf5be91cfb285ce",
+      "source": "https://static.crates.io/crates/uuid/uuid-1.29.0.crate",
+      "archive_sha256": "4a0e2d11620c50695fe12bbbfde96b3477fe606e7284c22d505c12ce51214514",
       "notices": [
         {
           "upstream_path": "LICENSE-APACHE",
@@ -10426,10 +10426,10 @@
     {
       "ecosystem": "npm",
       "name": "@tauri-apps/plugin-dialog",
-      "version": "2.8.0",
+      "version": "2.8.4",
       "license": "MIT OR Apache-2.0",
-      "source": "https://registry.npmjs.org/@tauri-apps/plugin-dialog/-/plugin-dialog-2.8.0.tgz",
-      "integrity": "sha512-HSSD5C8UFE9ijD1wue84F7jjaIReFmj8AAPtS+xyjYRltJafIc4BiWHY7SJ6vbbew6u+YljEJHfyNfy5VwywXg==",
+      "source": "https://registry.npmjs.org/@tauri-apps/plugin-dialog/-/plugin-dialog-2.8.4.tgz",
+      "integrity": "sha512-+6ZOiXenOaxXwb8qCbBPdT2jX2cFPaVVHGIskrpmJLpmWj+qKRTD6X/z9x7hTdSQn7NedcoXCkWGej4a7dC4lw==",
       "notices": [
         {
           "upstream_path": "LICENSE.spdx",
@@ -11602,10 +11602,10 @@
     {
       "ecosystem": "npm",
       "name": "react",
-      "version": "19.3.0",
+      "version": "19.3.1",
       "license": "MIT",
-      "source": "https://registry.npmjs.org/react/-/react-19.3.0.tgz",
-      "integrity": "sha512-E8LUcbtBWt20bbl2YoHfx4ZDBdxVTfOKtCZn9cDSJ4l6/nuoApcpIBcj47t2wZoVX8g2ZHuMHbiShgCR1T5Sog==",
+      "source": "https://registry.npmjs.org/react/-/react-19.3.1.tgz",
+      "integrity": "sha512-QNhWdt7nrgVWWQG58QuGsAR3jv3Hbe4mb4vz7w2csnHavciZJgda1CPNaldF6eVxv90ud3jUXpKlHL69gO38yw==",
       "notices": [
         {
           "upstream_path": "LICENSE",
@@ -11616,10 +11616,10 @@
     {
       "ecosystem": "npm",
       "name": "react-dom",
-      "version": "19.3.0",
+      "version": "19.3.1",
       "license": "MIT",
-      "source": "https://registry.npmjs.org/react-dom/-/react-dom-19.3.0.tgz",
-      "integrity": "sha512-JDk8dgif51OjFoDE70+OT9ICyYr+69HlmihNwp1+Nsfbna3t5sIiCa9ZJktDmQ4/1b/rn26hIAR2uYXDMr5r0Q==",
+      "source": "https://registry.npmjs.org/react-dom/-/react-dom-19.3.1.tgz",
+      "integrity": "sha512-Y0bARz53lhEC1NMCASs0/j+faB/zqt3R8hpvg1e8+61ZVJ4UL0UdC4cBbXfZMcIuhrfgeILTLe+ZeBCavQPtKQ==",
       "notices": [
         {
           "upstream_path": "LICENSE",

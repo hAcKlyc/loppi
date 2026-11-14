@@ -4,7 +4,7 @@ loppi 自有代码、文档和图像采用根目录 [Apache License 2.0](LICENSE
 
 ## 应用依赖
 
-[组件清单](licenses/component-inventory.json)按当前 `Cargo.lock` 与 `package-lock.json` 记录精确版本、声明许可、来源和许可文本哈希。清单包含 **571 个第三方 Cargo 包**（含构建、测试与其他平台依赖）及 **108 个前端生产依赖**，用于来源与许可追踪，不是某个平台二进制实际链接内容的 SBOM。
+[组件清单](licenses/component-inventory.json)按当前 `Cargo.lock` 与 `package-lock.json` 记录精确版本、声明许可、来源和许可文本哈希。清单包含 **571 个第三方 Cargo 包**（含构建、测试与其他平台依赖）及 **108 个前端生产依赖**，用于来源与许可追踪，不是某个平台二进制实际链接内容的 SBOM。其余 **19 个更新器相关 Cargo 包**见[更新器依赖声明](licenses/updater-third-party.txt)，其版本和源码校验和由 Cargo 锁文件固定。
 
 - [前端许可原文](licenses/frontend-third-party.txt)：React、Tauri JS API、Markdown 及其生产依赖的版权与许可声明。
 - [Rust 包内许可原文](licenses/rust-third-party.txt)及[上游补充声明](licenses/rust-upstream-notices.txt)：保留 crate 自带文本，缺少独立许可文件的包补充其固定源码提交中的声明或明确的标准许可文本。
@@ -19,7 +19,7 @@ loppi 自有代码、文档和图像采用根目录 [Apache License 2.0](LICENSE
 | X-ASR Zipformer Transducer | Apache-2.0；固定权重与作者 LICENSE 见 `config/models.lock.json` |
 | Silero VAD | MIT；固定模型与 LICENSE 见模型锁文件 |
 | CampPlus / 3D-Speaker | Apache-2.0；固定模型与 LICENSE 见模型锁文件 |
-| sherpa-onnx 2.0.0 | Apache-2.0；原文与来源见 `licenses/sherpa-onnx.txt`、`licenses/sources.json` |
+| sherpa-onnx 2.0.1 | Apache-2.0；原文与来源见 `licenses/sherpa-onnx.txt`、`licenses/sources.json` |
 | ONNX Runtime 1.28.2 | MIT；完整第三方声明见 `licenses/onnxruntime-third-party.txt` |
 
 原生语音运行库还包含 kaldi-decoder、kaldi-native-fbank、kaldifst/OpenFst、KissFFT、PortAudio、SentencePiece 和 utf8proc，其原始文本及固定来源哈希保存在 `licenses/`。Opus、SQLite 及 Rust 绑定按各自条款提供；相关包及随包原生源码中的许可已列入 Rust 文本，SQLite 原生实现另见其[公有领域声明](https://www.sqlite.org/copyright.html)。

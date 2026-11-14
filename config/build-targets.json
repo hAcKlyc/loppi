@@ -37,12 +37,12 @@
     }
   },
   "native": {
-    "version": "2.0.0",
-    "url": "https://api.github.com/repos/k2-fsa/sherpa-onnx/releases/assets/669430089?download=1",
+    "version": "2.0.1",
+    "url": "https://api.github.com/repos/k2-fsa/sherpa-onnx/releases/assets/678692838?download=1",
     "accept": "application/octet-stream",
-    "archive": "sherpa-onnx-v2.0.0-osx-universal2-static-lib.tar.bz2",
-    "directory": "sherpa-onnx-v2.0.0-osx-universal2-static-lib",
-    "bytes": 41041332,
-    "sha256": "8ed41bf3b27ce55d6527bbc0f7754598c5afbb18e814ff0bddbc9ecd50fb09c5"
+    "archive": "sherpa-onnx-v2.0.1-osx-universal2-static-lib.tar.bz2",
+    "directory": "sherpa-onnx-v2.0.1-osx-universal2-static-lib",
+    "bytes": 41058578,
+    "sha256": "b0e83bb95767af7a1655f3c7cdf637381d4cf593b6a661b3d1beff23bab72b71"
   }
 }

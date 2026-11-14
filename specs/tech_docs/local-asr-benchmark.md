@@ -1,6 +1,6 @@
 # 本地粗转：评测集、评测结果与当前选型
 
-更新：2026-10-25。**用户确认默认粗转采用 X-ASR 中英离线 Zipformer Transducer INT8，2026-06-03 权重，sherpa-onnx 2.0.0、CPU/2线程。** 本页是客户端仓库的持续入口；原始数据、参考和运行保存在平级 `hear-asr-benchmark`。源码生效与安装版生效分别记录，不由源码推断当前运行的 `.app` 已更新。
+更新：2026-10-25。**用户确认默认粗转采用 X-ASR 中英离线 Zipformer Transducer INT8，2026-06-03 权重，当时的 sherpa-onnx 2.0.0、CPU/2线程。** 当前客户端使用 `config/build-targets.json` 锁定的原生运行库。本页是客户端仓库的持续入口；原始数据、参考和运行保存在平级 `hear-asr-benchmark`。源码生效与安装版生效分别记录，不由源码推断当前运行的 `.app` 已更新。
 
 ## 评测集在哪里
 

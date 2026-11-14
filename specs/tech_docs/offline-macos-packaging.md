@@ -16,7 +16,7 @@ Core 保持 ModelState / PrepareModels / Governor 的既有职责。后台首检
 
 默认两包顺序构建，避免共享 Cargo/前端输出竞争。一次入口执行共用版本、源码 SHA 与 epoch；每目标单独 stage、App 与输出目录。四个执行组件必须与目标架构完全相同，不能误带另一 slice；单架构不使用 lipo 合并。每包独立包含一份同样的模型。
 
-`config/build-targets.json` 同时固定最低 macOS 13.0、目标及 sherpa-onnx 2.0.0 Universal 静态库的 URL/大小/SHA。Node/npm、Rust 两 target、Xcode 和 `npm ci` 是开发机前提；实际版本写入报告，不承诺字节级可复现。资源缓存按 SHA 分开，临时 helper/配置属于各 stage。`SHERPA_ONNX_LIB_DIR` 指向核验后的原生库；禁止 `target-cpu=native`。
+`config/build-targets.json` 同时固定最低 macOS 13.0、目标及 sherpa-onnx Universal 静态库的 URL/大小/SHA。Node/npm、Rust 两 target、Xcode 和 `npm ci` 是开发机前提；实际版本写入报告，不承诺字节级可复现。资源缓存按 SHA 分开，临时 helper/配置属于各 stage。`SHERPA_ONNX_LIB_DIR` 指向核验后的原生库；禁止 `target-cpu=native`。
 
 - build：允许脏源码，优化编译，生成 `build/dev/<版本>/<平台>/loppi_<版本>_<平台>-dev.dmg`，附 `build-info.json` 与 `SHA256SUMS`。内部候选不要求 Developer ID、公证或 Gatekeeper 分发验收；仍验证实际 DMG 挂载、Applications 链接、完整内容和可执行时的离线模型加载。
 - release：要求干净源码及签名/公证配置，生成 `build/releases/<版本>/<平台>/loppi_<版本>_<平台>.dmg`，附 `release-info.json` 与 `SHA256SUMS`。逐包先签 worker、helper、CLI，最后签 App，再签 DMG、公证、装订、Gatekeeper、只读挂载与内容比对。全部成功才写该包报告和校验和；两包均成功后才打印批次完成。
