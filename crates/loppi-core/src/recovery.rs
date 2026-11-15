@@ -2,7 +2,7 @@
 //! starts capture before these bounded sweeps; only the old export jobs are
 //! marked during startup. Live work is excluded by its existing admission slot
 //! or media lifetime guard, never by a timestamp heuristic.
-use crate::{CoreState, archive, events, moments, resources};
+use crate::{CoreState, archive, events, ingestion, moments, resources};
 use std::fs::{self, ReadDir};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -20,13 +20,21 @@ pub fn run(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
     let mut files: [Option<ReadDir>; 3] = [None, None, None];
     let mut after = String::new();
     let mut jobs_done = true;
+    let mut quarantine_sessions = None;
+    let mut quarantine_files: Option<ReadDir> = None;
     while !stop.load(Ordering::Acquire) {
-        if files.iter().all(Option::is_none) && jobs_done && Instant::now() >= next {
+        if files.iter().all(Option::is_none)
+            && jobs_done
+            && quarantine_sessions.is_none()
+            && quarantine_files.is_none()
+            && Instant::now() >= next
+        {
             files = [
                 entries(&shared.directory),
                 entries(&shared.directory.join("export_tmp")),
                 entries(&shared.directory.join("screenshots")),
             ];
+            quarantine_sessions = entries(&shared.directory.join("ingestion-quarantine"));
             after.clear();
             jobs_done = false;
             next = Instant::now() + Duration::from_secs(1800);
@@ -80,6 +88,30 @@ pub fn run(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
             }
             if done {
                 *iterator = None;
+            }
+        }
+        for _ in 0..32 {
+            if stop.load(Ordering::Acquire) {
+                return;
+            }
+            if let Some(entry) = quarantine_files.as_mut().and_then(Iterator::next) {
+                if let Ok(entry) = entry {
+                    let _ = ingestion::recover_quarantined(
+                        &shared.store,
+                        &shared.cleanup_gate,
+                        &shared.directory,
+                        &entry.path(),
+                    );
+                }
+            } else {
+                quarantine_files = None;
+                let Some(session) = quarantine_sessions.as_mut().and_then(Iterator::next) else {
+                    quarantine_sessions = None;
+                    break;
+                };
+                if let Ok(session) = session {
+                    quarantine_files = entries(&session.path());
+                }
             }
         }
         if !jobs_done {

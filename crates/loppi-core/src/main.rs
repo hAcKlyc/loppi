@@ -393,6 +393,7 @@ fn ingest_session_locked(
         }
     };
     let mut entries = Vec::new();
+    let mut retry = None;
     for path in paths {
         // Ready supersedes prepared during the atomic publication window.
         if path.extension().is_some_and(|e| e == "prepared")
@@ -402,7 +403,8 @@ fn ingest_session_locked(
         }
         match ingestion::load(&path) {
             Ok(entry) => entries.push((path, entry)),
-            Err(_) => {
+            Err(ingestion::PrepareError::Retry(code)) => retry = Some(code),
+            Err(ingestion::PrepareError::Invalid(_)) => {
                 ingestion::quarantine(directory, &path).map_err(|_| "ingestion_quarantine")?
             }
         }
@@ -475,6 +477,9 @@ fn ingest_session_locked(
                 .map_err(|_| "ingestion_pause_storage")?;
         }
     }
+    if let Some(code) = retry {
+        return Err(code.into());
+    }
     if closed
         && ingestion::finish_journal(directory, session).map_err(|_| "ingestion_finish_journal")?
     {
@@ -527,12 +532,101 @@ fn ingestion_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
     }
 }
 
+fn cleanup_error(id: uuid::Uuid, message: String) -> Response {
+    Response::Error {
+        id,
+        code: "cleanup_failed".into(),
+        message,
+    }
+}
+
+fn complete_cleanup(
+    tx: &Transaction<'_>,
+    id: uuid::Uuid,
+    scope: &cleanup::PreviewScope,
+    prepared: &cleanup::PreparedMedia,
+) -> Result<Response, String> {
+    let (cleared_audio_blocks, physical_deletions_pending) =
+        cleanup::apply(tx, scope, prepared, now_ms()?)?;
+    Ok(Response::CleanupComplete {
+        id,
+        cleared_audio_blocks,
+        physical_deletions_pending,
+    })
+}
+
+// Callers share the same outbound and media barriers. Only the receipt owner
+// differs: a synchronous IPC mutation, or the already accepted job.
+fn run_cleanup(
+    shared: &CoreState,
+    scope: &cleanup::PreviewScope,
+    commit: impl FnOnce(&mut Store, &cleanup::PreparedMedia) -> Result<Response, String>,
+) -> Result<Response, String> {
+    let originals = {
+        let store = shared.store.lock().map_err(|e| e.to_string())?;
+        cleanup::originals(&store.db, scope)?
+    };
+    let prepared = cleanup::prepare_media(&shared.directory, scope, originals)?;
+    let result = shared
+        .store
+        .lock()
+        .map_err(|e| e.to_string())
+        .and_then(|mut store| commit(&mut store, &prepared));
+    if matches!(result, Ok(Response::CleanupComplete { .. })) {
+        cleanup::clear_staging_markers(&shared.directory, &prepared);
+    } else {
+        cleanup::remove_prepared(&shared.directory, &prepared);
+    }
+    result
+}
+
+fn advance_cleanup(shared: &CoreState) -> Result<(), String> {
+    let token = {
+        let store = shared.store.lock().map_err(|e| e.to_string())?;
+        cleanup::next_job(&store.db)?
+    };
+    let Some(token) = token else { return Ok(()) };
+    let Ok(_llm) = shared.llm_outbound.try_lock() else {
+        return Ok(());
+    };
+    let Ok(_asr) = shared.asr_outbound.try_lock() else {
+        return Ok(());
+    };
+    let Ok(_voice) = shared.voice_outbound.try_lock() else {
+        return Ok(());
+    };
+    let Ok(_media) = shared.cleanup_gate.try_lock() else {
+        return Ok(());
+    };
+    let scope = {
+        let store = shared.store.lock().map_err(|e| e.to_string())?;
+        cleanup::queued_scope(&store.db, token)
+    };
+    let result = scope.and_then(|scope| {
+        run_cleanup(shared, &scope, |store, prepared| {
+            let tx = store.db.transaction().map_err(|e| e.to_string())?;
+            let response = complete_cleanup(&tx, token, &scope, prepared)?;
+            cleanup::finish_job(&tx, token, &response)?;
+            tx.commit().map_err(|e| e.to_string())?;
+            Ok(response)
+        })
+    });
+    if let Err(error) = result {
+        let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+        let tx = store.db.transaction().map_err(|e| e.to_string())?;
+        cleanup::finish_job(&tx, token, &cleanup_error(token, error))?;
+        tx.commit().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 // The database owns deletion intent; filesystem latency never holds Store.
 // A cursor lets failed unlinks yield to later work, then retry next sweep.
 fn maintenance_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
     let mut after = String::new();
     let mut last_optimize = Instant::now();
     while !stop.load(Ordering::Acquire) {
+        let _ = advance_cleanup(&shared);
         if let Ok(mut store) = shared.store.lock() {
             if last_optimize.elapsed() >= Duration::from_secs(3600) {
                 let _ = store.db.execute_batch("PRAGMA optimize;");
@@ -1208,7 +1302,14 @@ fn cloud_loop(
             .store
             .lock()
             .map_err(|e| e.to_string())
-            .and_then(|mut store| events::take_task_fair(&mut store.db, provider, now, turn));
+            .and_then(|mut store| {
+                // Let an accepted clear drain existing provider work. New
+                // requests must yield so the cleanup barriers can converge.
+                if cleanup::next_job(&store.db)?.is_some() {
+                    return Ok(None);
+                }
+                events::take_task_fair(&mut store.db, provider, now, turn)
+            });
         let task = match task {
             Ok(Some(task)) => task,
             Ok(None) => {
@@ -1698,7 +1799,7 @@ fn process_cloud_task(
             Ok(())
         }
         loppi_protocol::CloudProvider::Asr => {
-            let query = {
+            let (query, account) = {
                 let _outbound = shared.asr_outbound.lock().map_err(|e| e.to_string())?;
                 let current = {
                     let store = shared.store.lock().map_err(|e| e.to_string())?;
@@ -1714,10 +1815,12 @@ fn process_cloud_task(
                     events::defer_paused(&mut store.db, task, now)?;
                     return Ok(());
                 }
-                let key = active_cloud_credential(shared, task.provider)?;
+                let account = active_cloud_account(shared, task.provider)?;
+                let key = cloud_key(task.provider, &account)?;
                 let meter = usage::Recorder::task(shared, task.provider, task.id)?;
-                cloud::query_audio(&key, task.remote_id, deadline, &meter)
-                    .map_err(|error| record_account_failure(shared, task, error))?
+                let query = cloud::query_audio(&key, task.remote_id, deadline, &meter)
+                    .map_err(|error| record_account_failure(shared, task, error))?;
+                (query, account)
             };
             match query {
                 cloud::AsrQuery::Complete(utterances) => {
@@ -1733,31 +1836,24 @@ fn process_cloud_task(
                     events::asr_wait(&store.db, task, now_ms()?).map_err(Into::into)
                 }
                 cloud::AsrQuery::Missing => {
-                    if task.submit_attempts > 0 && now - task.updated_ms < 60_000 {
-                        let store = shared.store.lock().map_err(|e| e.to_string())?;
-                        return events::asr_wait(&store.db, task, now_ms()?).map_err(Into::into);
-                    }
-                    if task.submit_attempts >= 3 {
-                        return Err("provider_missing_submitted_task".to_owned().into());
-                    }
-                    if queue_is_paused(shared, task.provider)? {
+                    let (input, parts) = {
+                        let _outbound = shared.asr_outbound.lock().map_err(|e| e.to_string())?;
                         let mut store = shared.store.lock().map_err(|e| e.to_string())?;
-                        events::defer_paused(&mut store.db, task, now)?;
-                        return Ok(());
-                    }
-                    let parts = {
-                        let store = shared.store.lock().map_err(|e| e.to_string())?;
-                        events::audio_manifest(&store.db, task)?
+                        let now = now_ms()?;
+                        if !events::asr::can_send_after_missing(&store.db, task, &account, now)? {
+                            return events::asr_wait(&store.db, task, now).map_err(Into::into);
+                        }
+                        let input = events::asr::input(&store.db, task.id)?;
+                        if !asr_upload_current(&mut store.db, task, input.as_ref(), now)? {
+                            return Ok(());
+                        }
+                        (input, events::audio_manifest(&store.db, task)?)
                     };
-                    let input = {
-                        let store = shared.store.lock().map_err(|e| e.to_string())?;
-                        events::asr::input(&store.db, task.id)?
-                    };
-                    let (ogg, audio_duration) = if let Some(input) = input {
+                    let (ogg, audio_duration) = if let Some(input) = &input {
                         (
                             events::asr::assemble(
                                 &shared.directory,
-                                &events::asr::resolve_media(&input, &parts)?,
+                                &events::asr::resolve_media(input, &parts)?,
                             )?,
                             input.duration_ms,
                         )
@@ -1768,23 +1864,19 @@ fn process_cloud_task(
                         )
                     };
                     let _outbound = shared.asr_outbound.lock().map_err(|e| e.to_string())?;
-                    // Recheck after audio decoding: a boundary edit or cleanup
-                    // may have superseded the task before any upload.
-                    let current = {
-                        let store = shared.store.lock().map_err(|e| e.to_string())?;
-                        events::task_current(&store.db, task)?
-                    };
-                    if !current {
-                        let store = shared.store.lock().map_err(|e| e.to_string())?;
-                        events::supersede_task(&store.db, task, now)?;
-                        return Ok(());
-                    }
-                    if queue_is_paused(shared, task.provider)? {
+                    // The same authorization and credential must survive the
+                    // interval between the provider's Missing and this upload.
+                    {
                         let mut store = shared.store.lock().map_err(|e| e.to_string())?;
-                        events::defer_paused(&mut store.db, task, now)?;
-                        return Ok(());
+                        if !asr_upload_current(&mut store.db, task, input.as_ref(), now_ms()?)? {
+                            return Ok(());
+                        }
                     }
-                    let key = active_cloud_credential(shared, task.provider)?;
+                    if active_cloud_account(shared, task.provider)? != account {
+                        let store = shared.store.lock().map_err(|e| e.to_string())?;
+                        return events::asr_wait(&store.db, task, now_ms()?).map_err(Into::into);
+                    }
+                    let key = cloud_key(task.provider, &account)?;
                     cloud::remaining(deadline)?;
                     {
                         let store = shared.store.lock().map_err(|e| e.to_string())?;
@@ -1845,18 +1937,52 @@ fn record_account_failure(
     error
 }
 
+// The existing outbound gate serializes this check with event edits, pause
+// and cleanup. Only an unsent obsolete input is automatically replanned.
+fn asr_upload_current(
+    db: &mut Connection,
+    task: &events::CloudTask,
+    input: Option<&events::asr::Input>,
+    now: i64,
+) -> Result<bool, String> {
+    if !events::task_current(db, task)? {
+        events::supersede_task(db, task, now)?;
+        return Ok(false);
+    }
+    if events::is_paused(db, task.provider)? {
+        events::defer_paused(db, task, now)?;
+        return Ok(false);
+    }
+    if events::asr::upload_allowed(db, task, input)? {
+        return Ok(true);
+    }
+    if task.submit_attempts == 0 {
+        events::asr::replan_unsent(db, task.id, now)?;
+        return Ok(false);
+    }
+    Err("asr_upload_scope_changed".into())
+}
+
 // Call only while holding this provider's outbound gate. Configuration swaps
-// and retires Keychain references under the same gate.
+// and retires system credential references under the same gate.
+fn active_cloud_account(
+    shared: &CoreState,
+    provider: loppi_protocol::CloudProvider,
+) -> Result<String, String> {
+    let store = shared.store.lock().map_err(|e| e.to_string())?;
+    events::credential_reference(&store.db, provider)?
+        .ok_or_else(|| "credential_missing".to_owned())
+}
+
+fn cloud_key(provider: loppi_protocol::CloudProvider, reference: &str) -> Result<String, String> {
+    cloud::credential(provider, reference)?.ok_or_else(|| "credential_missing".to_owned())
+}
+
 fn active_cloud_credential(
     shared: &CoreState,
     provider: loppi_protocol::CloudProvider,
 ) -> Result<String, String> {
-    let reference = {
-        let store = shared.store.lock().map_err(|e| e.to_string())?;
-        events::credential_reference(&store.db, provider)?
-    }
-    .ok_or_else(|| "credential_missing".to_owned())?;
-    cloud::credential(provider, &reference)?.ok_or_else(|| "credential_missing".to_owned())
+    cloud_key(provider, &active_cloud_account(shared, provider)?)
 }
 
 fn queue_is_paused(
@@ -1864,10 +1990,7 @@ fn queue_is_paused(
     provider: loppi_protocol::CloudProvider,
 ) -> Result<bool, String> {
     let store = shared.store.lock().map_err(|e| e.to_string())?;
-    Ok(events::queue_states(&store.db)?
-        .into_iter()
-        .find(|q| q.provider == provider)
-        .is_some_and(|q| q.paused))
+    events::is_paused(&store.db, provider)
 }
 
 fn decode_saved_block(directory: &Path, block: &PendingBlock) -> Result<Vec<f32>, String> {
@@ -2819,15 +2942,21 @@ fn serve_one(stream: &mut UnixStream, shared: &Arc<CoreState>) -> Result<bool, S
             )
         }
     };
-    stream
+    let delivery = stream
         .set_write_timeout(Some(Duration::from_secs(3)))
         .and_then(|()| stream.write_all(&body))
         .map_err(|error| {
             let code = ipc_io_code(&error, true);
             ipc_failure(shared, Some(id), Some(command), code);
             code.to_owned()
-        })?;
-    Ok(quit)
+        });
+    // Quit and handoff have already been accepted. The consumer must shut
+    // down and release the owner even when the caller missed the reply.
+    if quit {
+        Ok(true)
+    } else {
+        delivery.map(|()| false)
+    }
 }
 
 fn handle_request(
@@ -2864,7 +2993,7 @@ fn handle_request(
     let request_name = envelope.request.name();
     let log_request = !matches!(
         request_name,
-        "status" | "app_opened" | "logs" | "log" | "playback_valid"
+        "status" | "app_opened" | "logs" | "log" | "playback_valid" | "cleanup_result"
     ) && !matches!(
         &envelope.request,
         Request::Workflow {
@@ -3229,6 +3358,7 @@ fn handle_request(
                 limit,
             } => {
                 let result = shared.readers.snapshot().and_then(|reader| {
+                    let generation = ingestion::cleanup_generation(&reader)?;
                     reader
                         .cached(("event", event_id, offset, limit), |db| {
                             events::event_detail(db, event_id, offset, limit)
@@ -3237,6 +3367,7 @@ fn handle_request(
                             id: envelope.id,
                             event,
                             snapshot_version: Some(reader.version_key(shared.run_id)),
+                            cleanup_generation: Some(generation),
                         })
                 });
                 read_response(envelope.id, result)
@@ -3249,6 +3380,7 @@ fn handle_request(
                 limit,
             } => {
                 let result = shared.readers.snapshot().and_then(|reader| {
+                    let generation = ingestion::cleanup_generation(&reader)?;
                     reader
                         .cached(
                             ("range", started_ms, ended_ms, sources, offset, limit),
@@ -3262,6 +3394,7 @@ fn handle_request(
                             id: envelope.id,
                             event,
                             snapshot_version: Some(reader.version_key(shared.run_id)),
+                            cleanup_generation: Some(generation),
                         })
                 });
                 read_response(envelope.id, result)
@@ -3796,7 +3929,7 @@ fn handle_request(
                     let store = shared.store.lock().map_err(|e| e.to_string())?;
                     (
                         store.prior_mutation_response(envelope.id, &mutation_fingerprint)?,
-                        playback::generation(&store.db)?,
+                        ingestion::cleanup_generation(&store.db)?,
                     )
                 };
                 if let Some(prior) = prior {
@@ -3880,7 +4013,7 @@ fn handle_request(
                     let _gate = shared.cleanup_gate.lock().map_err(|e| e.to_string())?;
                     let db = shared.readers.snapshot()?;
                     let chunk = playback::chunk(&db, &shared.directory, from_ms, to_ms, sources)?;
-                    Ok((chunk, playback::generation(&db)?))
+                    Ok((chunk, ingestion::cleanup_generation(&db)?))
                 });
                 match result {
                     Ok(((wav_base64, has_audio, next_audio_ms), generation)) => {
@@ -3943,6 +4076,56 @@ fn handle_request(
                     },
                 }
             }
+            Request::QueueCleanup {
+                preview_token,
+                confirmed_all_data,
+            } => {
+                let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+                store.mutate_response(envelope.id, &mutation_fingerprint, |tx| {
+                    Ok(
+                        match cleanup::queue(tx, preview_token, confirmed_all_data, now_ms()?) {
+                            Ok(()) => Response::Accepted {
+                                id: envelope.id,
+                                object_id: preview_token,
+                            },
+                            Err(error) => {
+                                let rejected = Response::Error {
+                                    id: envelope.id,
+                                    code: "cleanup_invalid".into(),
+                                    message: error,
+                                };
+                                if envelope.id == preview_token {
+                                    Response::CleanupResult {
+                                        id: envelope.id,
+                                        accepted: false,
+                                        result: Some(Box::new(rejected)),
+                                    }
+                                } else {
+                                    rejected
+                                }
+                            }
+                        },
+                    )
+                })?
+            }
+            Request::CleanupResult { preview_token } => {
+                let reader = shared.readers.snapshot()?;
+                match cleanup::job_result(&reader, preview_token)? {
+                    Some(result) => Response::CleanupResult {
+                        id: envelope.id,
+                        accepted: true,
+                        result: result.map(Box::new),
+                    },
+                    None => {
+                        let result = cleanup::recorded_rejection(&reader, preview_token)?;
+                        if result.is_some() || cleanup::preview_is_available(&reader, preview_token, now_ms()?)? {
+                            Response::CleanupResult { id: envelope.id, accepted: false, result }
+                        } else {
+                            Response::Error { id: envelope.id, code: "cleanup_not_found".into(), message: "cleanup request not found".into() }
+                        }
+                    }
+                }
+            }
             Request::ExecuteCleanup {
                 preview_token,
                 confirmed_all_data,
@@ -3951,76 +4134,32 @@ fn handle_request(
                 let _asr = shared.asr_outbound.lock().map_err(|e| e.to_string())?;
                 let _voice = shared.voice_outbound.lock().map_err(|e| e.to_string())?;
                 let _cleanup_gate = shared.cleanup_gate.lock().map_err(|e| e.to_string())?;
-                // Core publication is fenced by cleanup_gate. Source helpers
-                // keep sealing; generation/range tombstones filter late journals.
-                let snapshot = (|| {
+                let scope = {
                     let store = shared.store.lock().map_err(|e| e.to_string())?;
-                    if let Some(previous) =
-                        store.prior_mutation_response(envelope.id, &mutation_fingerprint)?
-                    {
-                        Ok(Err(previous))
-                    } else {
-                        let scope = cleanup::verified_scope(
+                    match store.prior_mutation_response(envelope.id, &mutation_fingerprint)? {
+                        Some(previous) => Ok(Err(previous)),
+                        None => cleanup::verified_scope(
                             &store.db,
                             preview_token,
                             confirmed_all_data,
                             now_ms()?,
-                        )?;
-                        let originals = cleanup::originals(&store.db, &scope)?;
-                        Ok(Ok((scope, originals)))
+                        )
+                        .map(Ok),
                     }
-                })();
-                match snapshot {
+                };
+                match scope {
                     Ok(Err(previous)) => previous,
-                    Ok(Ok((scope, originals))) => {
-                        match cleanup::prepare_media(&shared.directory, &scope, originals) {
-                            Ok(prepared) => {
-                                let result = {
-                                    let mut store =
-                                        shared.store.lock().map_err(|e| e.to_string())?;
-                                    store.mutate_response(
-                                        envelope.id,
-                                        &mutation_fingerprint,
-                                        |tx| {
-                                            let (cleared_audio_blocks, physical_deletions_pending) =
-                                                cleanup::apply(tx, &scope, &prepared, now_ms()?)?;
-                                            Ok(Response::CleanupComplete {
-                                                id: envelope.id,
-                                                cleared_audio_blocks,
-                                                physical_deletions_pending,
-                                            })
-                                        },
-                                    )
-                                };
-                                match result {
-                                    Ok(response @ Response::CleanupComplete { .. }) => {
-                                        cleanup::clear_staging_markers(
-                                            &shared.directory,
-                                            &prepared,
-                                        );
-                                        response
-                                    }
-                                    Ok(response) => {
-                                        cleanup::remove_prepared(&shared.directory, &prepared);
-                                        response
-                                    }
-                                    Err(error) => {
-                                        cleanup::remove_prepared(&shared.directory, &prepared);
-                                        Response::Error {
-                                            id: envelope.id,
-                                            code: "cleanup_failed".into(),
-                                            message: error,
-                                        }
-                                    }
-                                }
+                    Ok(Ok(scope)) => run_cleanup(shared, &scope, |store, prepared| {
+                        store.mutate_response(envelope.id, &mutation_fingerprint, |tx| {
+                            if cleanup::job_result(tx, preview_token)?.is_some() {
+                                return Err(
+                                    "cleanup was already accepted for background processing".into(),
+                                );
                             }
-                            Err(error) => Response::Error {
-                                id: envelope.id,
-                                code: "cleanup_failed".into(),
-                                message: error,
-                            },
-                        }
-                    }
+                            complete_cleanup(tx, envelope.id, &scope, prepared)
+                        })
+                    })
+                    .unwrap_or_else(|error| cleanup_error(envelope.id, error)),
                     Err(error) => Response::Error {
                         id: envelope.id,
                         code: "cleanup_invalid".into(),
@@ -5180,7 +5319,13 @@ impl Store {
     fn record_sleep_gap(&mut self, session_id: uuid::Uuid, sleep_ms: i64) -> Result<(), String> {
         let tx = self.db.transaction().map_err(|e| e.to_string())?;
         let id = session_id.to_string();
-        ingestion::record_tail_gap(&tx, &id, "source_failure")?;
+        let already_split: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM media_gaps WHERE tail_session_id=?1 AND reason='machine_sleep')",
+            [&id], |row| row.get(0),
+        ).map_err(|e| e.to_string())?;
+        if !already_split {
+            ingestion::record_tail_gap(&tx, &id, "source_failure")?;
+        }
         // Preserve a real failure preceding sleep. Late journal import still
         // shortens both pieces through their existing tail_session_id owner.
         tx.execute("INSERT INTO media_gaps(id,source,started_ms,ended_ms,reason,tail_session_id)
@@ -5714,6 +5859,8 @@ impl Store {
             | Request::PlaybackValid { .. }
             | Request::PreviewCleanup { .. }
             | Request::ExecuteCleanup { .. }
+            | Request::QueueCleanup { .. }
+            | Request::CleanupResult { .. }
             | Request::ExportRange { .. } => {
                 unreachable!("handled by IPC dispatcher")
             }
@@ -6169,6 +6316,7 @@ mod tests {
         // Completed wake may deliver the boundary again. It remains idempotent
         // through the old session owner, rather than inventing a new gap owner.
         store.record_open_sleep_gaps(5000).unwrap();
+        store.record_open_sleep_gaps(9000).unwrap();
         let rows = store.db.prepare("SELECT started_ms,ended_ms,reason,tail_session_id FROM media_gaps ORDER BY started_ms").unwrap().query_map([], |r| Ok((r.get::<_,i64>(0)?,r.get::<_,Option<i64>>(1)?,r.get::<_,String>(2)?,r.get::<_,String>(3)?))).unwrap().collect::<rusqlite::Result<Vec<_>>>().unwrap();
         assert_eq!(
             rows,
@@ -6179,7 +6327,8 @@ mod tests {
                     "source_failure".into(),
                     failed.to_string()
                 ),
-                (5000, None, "machine_sleep".into(), failed.to_string())
+                (5000, Some(9000), "machine_sleep".into(), failed.to_string()),
+                (9000, None, "machine_sleep".into(), failed.to_string())
             ]
         );
         assert_eq!(retry_delay, Duration::ZERO);
@@ -6195,7 +6344,7 @@ mod tests {
         let ended: i64 = store
             .db
             .query_row(
-                "SELECT ended_ms FROM media_gaps WHERE reason='machine_sleep'",
+                "SELECT max(ended_ms) FROM media_gaps WHERE reason='machine_sleep'",
                 [],
                 |r| r.get(0),
             )

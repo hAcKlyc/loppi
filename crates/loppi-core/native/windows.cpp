@@ -392,7 +392,19 @@ extern "C" uint64_t loppi_process_footprint(int pid) {
   return ok ? memory.PrivateUsage : 0;
 }
 extern "C" uint64_t loppi_background_footprint() {
-  return loppi_process_footprint((int)GetCurrentProcessId());
+  DWORD self = GetCurrentProcessId();
+  uint64_t total = loppi_process_footprint((int)self);
+  HANDLE processes = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+  if (processes == INVALID_HANDLE_VALUE)
+    return total;
+  PROCESSENTRY32W entry = {sizeof(entry)};
+  for (BOOL ok = Process32FirstW(processes, &entry); ok;
+       ok = Process32NextW(processes, &entry)) {
+    if (entry.th32ParentProcessID == self)
+      total += loppi_process_footprint((int)entry.th32ProcessID);
+  }
+  CloseHandle(processes);
+  return total;
 }
 struct Power {
   uint32_t available, sleeping;
@@ -401,18 +413,25 @@ struct Power {
 };
 static std::mutex power_mutex;
 static Power power_state = {};
-static ULONGLONG slept_at = 0;
 static ULONG CALLBACK power_event(void *, ULONG type, void *) {
   std::lock_guard<std::mutex> lock(power_mutex);
-  if (type == PBT_APMSUSPEND) {
+  if (type == PBT_APMSUSPEND && !power_state.sleeping) {
+    FILETIME wall;
+    GetSystemTimeAsFileTime(&wall);
+    ULARGE_INTEGER ticks;
+    ticks.LowPart = wall.dwLowDateTime;
+    ticks.HighPart = wall.dwHighDateTime;
+    // FILETIME uses 100 ns from 1601. Core splits gaps on Unix milliseconds.
+    constexpr uint64_t unix_epoch = 116444736000000000ULL;
+    power_state.sleep_ms = ticks.QuadPart >= unix_epoch
+                               ? (int64_t)((ticks.QuadPart - unix_epoch) / 10000)
+                               : 0;
     power_state.sleeping = 1;
-    slept_at = GetTickCount64();
-  } else if (type == PBT_APMRESUMEAUTOMATIC || type == PBT_APMRESUMESUSPEND) {
-    if (power_state.sleeping) {
-      power_state.sleep_ms = GetTickCount64() - slept_at;
-      power_state.generation++;
-    }
+    power_state.generation++;
+  } else if ((type == PBT_APMRESUMEAUTOMATIC || type == PBT_APMRESUMESUSPEND) &&
+             power_state.sleeping) {
     power_state.sleeping = 0;
+    power_state.generation++;
   }
   return ERROR_SUCCESS;
 }

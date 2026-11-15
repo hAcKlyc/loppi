@@ -116,6 +116,8 @@ VAD 先事务提交 `coarse_jobs` 的来源/session/16 kHz 样本区间与 `spee
 
 ## 4. 采集与生命周期
 
+Windows 休眠起点采用本轮原生 suspend 通知的 Unix 毫秒，suspend 和完成 resume 分别推进采集监督看到的代次。重复通知共享该轮起点。Windows 后台内存计量包含 Core 和当前直接子进程的 private bytes。两平台沿用原资源预算，严重压力解除后可先进入受限档，持续健康后恢复常态。
+
 麦克风和电脑声音各有来源开关、录制 session、封块与缺口。麦克风桥接在 [`microphone.rs`](../crates/loppi-core/src/microphone.rs)；电脑声音在 [`system_audio.rs`](../crates/loppi-core/src/system_audio.rs) 及原生实现。macOS 14.2 及以上在授权预检通过后使用 Core Audio Tap，实时更新公开进程排除列表；其他情况沿用 ScreenCaptureKit，音频采集和探测都注册 Audio 与 Screen 输出，Screen 回调只消费交付、不保留像素。GUI 统一用原生 AVAudioPlayer 输出，复用 ContinuousPlayback 的双块预读/清理/真实时间控制；音频不经过 WebKit GPU。开始播放前，Core 通过来源 Progress 确认当前 GUI 已排除。旧 SCK 快照遇 GUI 身份变化沿用来源监督重建，准备期间回放保持静音。`src-tauri/tauri.conf.json` 当前声明最低 macOS 13.0，不能据此认为所有路径已在 13–25 实测通过。
 
 `capture_supervisor` 每路独立启动/停止并处理睡眠和异常退出。公开 IOKit 睡眠/完成唤醒事实控制暂停期间的重试；早期 Wake/DarkWake 不等于设备可用，单纯灭屏不暂停采集。macOS 原生快照在睡眠标记残留时，用晚于本轮 WillSleep 的内核唤醒时间和 powerd 的 CPU/Video/Audio 完整能力共同补偿遗漏的完成唤醒通知；旧能力、DarkWake、查询失败不解除暂停，代际校验防止旧查询覆盖新睡眠。OS 实现状态键缺失时保留原通知路径，不以等待时长推断唤醒。睡眠前真实缺口与 machine_sleep 区间分开，均接受既有 journal 尾部校正。录制意图、手动暂停、容量暂停、来源开关、系统许可、模型准备及本次登录的完全退出各有独立含义。来源异常后使用有上限退避，恢复前保持真实缺口；另一来源可继续。容量边界暂停新增采集并提醒，释放空间后由用户手动恢复。[采集监督](../crates/loppi-core/src/main.rs)、[封块写入](../crates/loppi-core/src/record.rs)。
@@ -131,6 +133,8 @@ VAD 先事务提交 `coarse_jobs` 的来源/session/16 kHz 样本区间与 `spee
 [`ingestion`](../crates/loppi-core/src/ingestion.rs) 先同步 prepared 元数据，随后同步并发布 Opus，再同步含长度/hash 的 ready 元数据。每 session 最多 64 个待入库记录；核心按时间顺序、短事务导入，持久回执跨越数据库提交到 journal 删除同步的窗口，避免重复或清理后复活。缺失/损坏媒体保留隔离元数据并记录缺口，暂时性 IO / 重编码失败保留待重试。清理与导入共用媒体屏障；来源继续落盘，迟到块按 session 代次、来源、所选范围及清理提交时刻裁剪，保留未选尾部和操作之后的新录音，因此清理不再全局暂停设备。恢复日志不是第二个业务事实库。
 
 手动暂停、定时停止、容量暂停与来源关闭产生的意图缺口，复用 `media_gaps.source_session_id` 归属当时的来源 session。创建时考虑已确认尾部；最终块或迟到 journal 入库时，与封块/回执同一事务按该 session 的 `last_confirmed_ms` 缩短缺口，关闭区间保持有效边界。历史无归属缺口仅在同源封块明确覆盖起点且 session 唯一时关联；升级迁移及之后的旧 journal 均能校正。清理分片保留归属且不会被重新创建；callback/source-failure 等物理缺口继续各自处理。修正由既有 ingestion owner 完成，不分散到时间线、文字、声纹读取方。
+
+索引日志暂时不可读时，待入库 session 保留在既有轮询中。后台恢复有界检查旧隔离中的 ready 日志，核对已关闭会话、回执、样本重叠、媒体长度和校验和，将可恢复记录交回同一入库路径及清理代次检查。Core 接受退出或接管时，收尾与 owner 锁释放由 Core 自身驱动。
 
 每个 journal 的单发布者在平台发布锁下修改名称（macOS 为目录 inode，Windows 为 `.publication.lock`）；核心仅在枚举最多 128 个名称时尝试共享锁，忙则让出，读取媒体、数据库和推理均在释放目录锁后执行。来源写线程最多等 2 秒，回调不接触该锁。这样获得已发布记录的前缀，不能先分析后来块再补入此前块。journal 未排空时，分析领取必须有相邻块（含数字静音/已清理元数据）、归属同一来源 session 的真实缺口，或匹配代次的清理边界；会话关闭或墙钟已过去 8 秒不能单独证明流结束。media_gaps.source_session_id 表示原始采集归属，与生命周期补尾的 tail_session_id 含义分开，部分清理后两者仍保留。
 
@@ -160,13 +164,15 @@ Windows 资源桥提供内存负载、进程 private bytes、电源与暂停/恢
 - 人工改事件范围、标题、句段文字或人物时检查对象当前修订；迟到云结果必须核对目标版本。人工文字以独立修订保存，重转后无法唯一映射的放入待核对。[`events.rs`](../crates/loppi-core/src/events.rs)、[`knowledge.rs`](../crates/loppi-core/src/knowledge.rs)。
 - 清理前先生成带范围/模式/内容签名的预览；`清除原始音频`保留文字和已提取的声纹特征，`清除全部数据`还删除范围内的文字、动作、关联声纹样例等并要求额外确认。逻辑墓碑先生效，再处理共享封块和物理删除。[`cleanup.rs`](../crates/loppi-core/src/cleanup.rs)。
 
-清理先等待既有 outbound 屏障，再取得 cleanup_gate，等待网络期间不阻塞入库。导出逐块在媒体屏障内核对并读取源数据，编码与目标 TAR 数据写入在锁外；最终文件同步在锁外完成，清理范围复核与发布 rename 仍在同一短屏障内，目录同步在发布后释放屏障再执行。rename 本身仍是平台文件操作，不宣称任意挂载故障下绝对无等待。
+GUI 确认时 Core 验证预览并持久受理，固定范围、模式和声源。维护循环等待既有 outbound 屏障后取得 `cleanup_gate`，在范围内重新读取执行时材料。清理、候选失效与成功回执同事务提交，未完成的受理在下次启动继续。旧同步入口共用执行路径。导出逐块在媒体屏障内核对并读取源数据，编码与目标 TAR 数据写入在锁外；最终文件同步在锁外完成，清理范围复核与发布 rename 仍在同一短屏障内，目录同步在发布后释放屏障再执行。rename 本身仍是平台文件操作，不宣称任意挂载故障下绝对无等待。
 
 所有回放、搜索与导出只读取当前有效投影。导出在核心生成受限归档，不把媒体目录路径交给 UI/CLI；搜索索引仅是派生数据，不作为内容存在性的裁判。[`playback.rs`](../crates/loppi-core/src/playback.rs)、[`knowledge.rs`](../crates/loppi-core/src/knowledge.rs)、[`archive.rs`](../crates/loppi-core/src/archive.rs)。
 
 读取使用固定八个只读连接，每次请求持有一个短 WAL 快照，获取与 SQL 共用 3 秒预算；progress handler 在 SQLite 执行中取消超时查询，退出即回滚释放快照。每连接最多缓存一页、4 MiB，按该连接的 data_version 失效，压力下清空；缓存不是修订权威。详情修订按 256 行批量取得纠错/人物/声纹依据，组修订分页计算，沿用原摘要字节格式，旧页面 revision 仍有效。短词走时间索引，长词先探测最多 4096 个 FTS postings：常见词按时间流式校验 FTS，稀有词用 FTS 直接定位，最终可见性/去重/分页语义相同。音频范围读取通过带媒体路径／语音活动条件的 source + ended_ms 部分索引定位相交块，避免先扫描来源全部历史；来源掩码以 CASE/IN 集合表达，规避 SQLite 的 OR 分支选回旧 started_ms 索引。
 
 GUI 上下文刷新合并在途请求，仅前台聚焦时周期刷新。时间线主内容成功即展示，现场记录失败独立提示；初次空日的自动定位仍等待日期和现场记录事实。详情响应可附带 Core run、只读连接序号和 SQLite data_version 组成的 snapshot_version；它只标识同一连接的读快照，不是事件修订或新持久状态。已加载各页均来自同一快照时，周期刷新先读第一页，标识与范围相同即保留正文；任何数据库写入、连接切换或 Core 重启都沿原路径重读，缺字段的旧响应也保持原行为。持续录音有写入时该优化不会省略重读，不承诺按事件精确失效。转录合并和静态行正文只依赖内容/编辑状态，播放时钟只更新位置和选中态。连续播放由 [`src/playback.ts`](../src/playback.ts) 通过 PlaybackAudio/NativeAudio facade 管理单一原生渲染会话：一个网络/解码请求、至多当前和下一段两个 5 秒缓冲，按音频时钟接续，UI 计时只更新绝对时刻。切位置、来源、关闭或本页发起清理立即停止并淘汰旧代次，迟到结果不能发声；下一块预取失败时保留已排程的当前音频，到边界再报告读取错误；整段无媒体仍按原规则跳到下一可用时刻。跨客户端清理通过既有 ingestion 清理 generation 检测：chunk 附可选 generation，播放期间以最多一个在途 playback_valid 只读请求检查相交清理（约每 300ms 加 IPC 延迟），命中即停止并释放缓冲。校验失败安全停止；无 generation 的旧 core 响应保持单块播放，不预取。不会把清理与实时发声虚构为零延迟跨进程原子操作。交互入口不变。
+
+日期导航用各素材的起止时间索引寻找邻日，时间线和现场记录各自显示读取结果。日视图和缺口查询接受最长 25 小时的当地日。详情和清理代次来自同一只读快照，翻页期间代次变化会从首批重读当前范围，在原滚动区域一次替换转录文字。
 
 ## 6. 构建与分发形态
 

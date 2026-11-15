@@ -70,6 +70,7 @@ const days = [ancient, long, short, recent];
 const state = { revision: 1, enabled_intent: true, paused_intent: true, storage_paused: false, microphone_enabled: true, system_enabled: true, capture_state: 'paused', microphone_phase: 'idle', system_phase: 'idle', microphone_recording: false, system_recording: false };
 const requests = [];
 let blockCalendar, blockMoments, failMoments = false;
+let cleanupAccepted = false;
 let holdDay = null, deferred = [], failAdjacent = false, malformed = false, momentsOnly = false, empty = false;
 mockIPC((command, args) => {
   if (command === 'onboarding_status') return { completed: true };
@@ -79,6 +80,7 @@ mockIPC((command, args) => {
   if (command !== 'core_request') return null;
   const r = args.request;
   requests.push(r);
+  if (r.type === 'cleanup_result') return {type:r.type,accepted:cleanupAccepted,result:cleanupAccepted?{type:'cleanup_complete'}:null};
   const available = empty ? [] : momentsOnly ? [today] : days;
   if (r.type === 'calendar_days' && blockCalendar) return new Promise(resolve => { blockCalendar.resolve=()=>resolve({type:r.type,days:[]}); });
   if (r.type === 'calendar_days') return { type: r.type, days: available.filter(at => at >= r.boundaries[0] && at < r.boundaries.at(-1)) };
@@ -107,14 +109,18 @@ const selected = () => q('.date-choice')?.dataset.date;
 const until = async check => { for (let i = 0; i < 100; i++) { if (check()) return; await settle(); } throw Error('synthetic navigation did not settle'); };
 const click = async button => { assert(button && !button.disabled); await settle(() => button.click()); };
 try {
- days.push(today);blockCalendar={};blockMoments={};
+ days.push(today);
  await settle(()=>root.render(React.createElement(App)));
- await until(()=>q('.event-card'));
+ await until(()=>q('.event-card') && older() && !older().disabled);
+ blockCalendar={};blockMoments={};currentNow+=300;
+ await settle(()=>window.dispatchEvent(new Event('focus')));
+ await until(()=>blockCalendar.resolve);
  assert(blockCalendar.resolve,'calendar is still pending');
- await settle(()=>{blockCalendar.resolve();blockCalendar=null;});
  await until(()=>blockMoments.resolve);
  assert(q('.event-card'),'pending moments cannot hide timeline');
- await settle(()=>{blockMoments.resolve();blockMoments=null;});
+ await settle(()=>{blockMoments.resolve([{id:'independent',kind:'mark',anchor_ms:today+1000}]);blockMoments=null;});
+ await until(() => q('.event-card')?.textContent.includes('1 条现场记录'));
+ await settle(()=>{blockCalendar.resolve();blockCalendar=null;});
  failMoments=false;blockMoments={};
  currentNow+=300;
  await settle(()=>window.dispatchEvent(new Event('focus')));
@@ -130,5 +136,20 @@ try {
  await settle(()=>window.dispatchEvent(new Event('focus')));
  await until(()=>document.body.textContent.includes('现场记录读取失败'));
  assert(q('.event-card'),'failed moments cannot hide successful timeline');
+ // The existing App retains an unresolved confirmation across view restarts
+ // and announces it only once the Core exposes the durable acceptance.
+ await settle(()=>root.render(null));
+ failMoments=false;
+ const key='loppi.pendingCleanupNotifications', token='31415926-5358-4897-9323-846264338327';
+ window.localStorage.setItem(key,JSON.stringify([{token,announced:false}]));
+ await settle(()=>root.render(React.createElement(App)));
+ await until(()=>requests.some(r=>r.type==='cleanup_result'&&r.preview_token===token));
+ assert(!document.body.textContent.includes('已受理，将在后台清理'));
+ assert(window.localStorage.getItem(key).includes(token));
+ await settle(()=>root.render(null));
+ cleanupAccepted=true;
+ await settle(()=>root.render(React.createElement(App)));
+ await until(()=>document.body.textContent.includes('已受理，将在后台清理'));
+ assert.equal(window.localStorage.getItem(key),'[]');
  console.log('PASS: stale moments stop paging; timeline renders before calendar/moments and survives auxiliary failure');
 } finally {await settle(()=>root.unmount());clearMocks();dom.window.close();}

@@ -1528,6 +1528,7 @@ fn main() {
             | Response::MomentSaved { .. }
             | Response::CleanupPreview { .. }
             | Response::CleanupComplete { .. }
+            | Response::CleanupResult { .. }
             | Response::ExportComplete { .. }),
         ) => {
             println!("{}", serde_json::to_string_pretty(&response).unwrap());

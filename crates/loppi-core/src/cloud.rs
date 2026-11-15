@@ -330,6 +330,7 @@ fn streamed_chat(
     response: impl Read,
     deadline: Instant,
     mut on_content: Option<&mut dyn FnMut(&str)>,
+    observed_usage: &mut Value,
 ) -> Result<Value, Failure> {
     let mut reader = BufReader::new(response.take(8_000_001));
     let mut bytes = 0;
@@ -337,7 +338,6 @@ fn streamed_chat(
     let mut data = String::new();
     let mut content = String::new();
     let mut finish = Value::Null;
-    let mut usage = Value::Null;
     loop {
         line.clear();
         let count = reader.read_line(&mut line).map_err(|e| {
@@ -370,7 +370,7 @@ fn streamed_chat(
                     return Err("provider_incomplete_output".to_owned().into());
                 }
                 return Ok(
-                    json!({"choices":[{"message":{"content":content},"finish_reason":finish}],"usage":usage}),
+                    json!({"choices":[{"message":{"content":content},"finish_reason":finish}],"usage":std::mem::take(observed_usage)}),
                 );
             }
             let chunk: Value =
@@ -390,8 +390,12 @@ fn streamed_chat(
             {
                 finish = reason.clone();
             }
-            if let Some(value) = chunk.get("usage").filter(|v| !v.is_null()) {
-                usage = value.clone();
+            if let Some(value) = chunk.get("usage").filter(|value| {
+                ["prompt_tokens", "completion_tokens"]
+                    .into_iter()
+                    .any(|field| crate::usage::token(value, field).is_some())
+            }) {
+                *observed_usage = value.clone();
             }
             data.clear();
         } else if let Some(value) = line.strip_prefix("data:") {
@@ -583,7 +587,15 @@ fn chat_response(
                 error
             })
             .and_then(|response| {
-                streamed_chat(response, deadline, on_content).map_err(|mut error| {
+                let mut usage = Value::Null;
+                let result = streamed_chat(response, deadline, on_content, &mut usage);
+                if result.is_err() && !usage.is_null() {
+                    observe_usage(
+                        meter,
+                        meter.llm_response(&usage_id, &json!({"usage":usage})),
+                    );
+                }
+                result.map_err(|mut error| {
                     error.context.headers_ms = Some(headers_ms);
                     error.context.body_ms = Some(body_started.elapsed().as_millis() as u64);
                     error
@@ -1158,51 +1170,48 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let endpoint = format!("http://{}/chat/completions", listener.local_addr().unwrap());
         let server = std::thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            stream
-                .set_read_timeout(Some(Duration::from_secs(5)))
-                .unwrap();
-            let mut reader = BufReader::new(&mut stream);
-            let mut size = 0;
-            loop {
-                let mut line = String::new();
-                reader.read_line(&mut line).unwrap();
-                if line == "\r\n" {
-                    break;
-                }
-                if let Some((name, value)) = line.split_once(':') {
-                    if name.eq_ignore_ascii_case("content-length") {
-                        size = value.trim().parse::<usize>().unwrap();
+            for completes in [true, false] {
+                let (mut stream, _) = listener.accept().unwrap();
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(5)))
+                    .unwrap();
+                let mut reader = BufReader::new(&mut stream);
+                let mut size = 0;
+                loop {
+                    let mut line = String::new();
+                    reader.read_line(&mut line).unwrap();
+                    if line == "\r\n" {
+                        break;
+                    }
+                    if let Some((name, value)) = line.split_once(':') {
+                        if name.eq_ignore_ascii_case("content-length") {
+                            size = value.trim().parse::<usize>().unwrap();
+                        }
                     }
                 }
+                let mut bytes = vec![0; size];
+                reader.read_exact(&mut bytes).unwrap();
+                let request: Value = serde_json::from_slice(&bytes).unwrap();
+                assert_eq!(request["messages"][1]["content"][1]["image_url"]["detail"], "original");
+                assert!(request["messages"][1]["content"][1]["image_url"]["url"]
+                    .as_str().unwrap().starts_with("data:image/png;base64,"));
+                assert_eq!(request["response_format"]["type"], "json_object");
+                assert_eq!(request["thinking"]["type"], "disabled");
+                assert!(request.get("reasoning_effort").is_none());
+                assert_eq!(request["stream"], true);
+                let response = format!(
+                    "data: {}\n\ndata: {}\n\ndata: {}\n\n{}",
+                    json!({"choices":[{"finish_reason":"stop","delta":{"content":json!({"summary":"测试图摘要","transcript":"# Hello\n\n完整转录"}).to_string()}}]}),
+                    json!({"choices":[],"usage":{"prompt_tokens":20,"completion_tokens":10}}),
+                    json!({"choices":[],"usage":{"prompt_tokens":100_000_001}}),
+                    if completes { "data: [DONE]\n\n" } else { "" },
+                );
+                write!(stream,"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",response.len(),response).unwrap();
             }
-            let mut bytes = vec![0; size];
-            reader.read_exact(&mut bytes).unwrap();
-            let request: Value = serde_json::from_slice(&bytes).unwrap();
-            assert_eq!(
-                request["messages"][1]["content"][1]["image_url"]["detail"],
-                "original"
-            );
-            assert!(
-                request["messages"][1]["content"][1]["image_url"]["url"]
-                    .as_str()
-                    .unwrap()
-                    .starts_with("data:image/png;base64,")
-            );
-            assert_eq!(request["response_format"]["type"], "json_object");
-            assert_eq!(request["thinking"]["type"], "disabled");
-            assert!(request.get("reasoning_effort").is_none());
-            assert_eq!(request["stream"], true);
-            let response = format!(
-                "data: {}\n\ndata: {}\n\ndata: [DONE]\n\n",
-                json!({"choices":[{"finish_reason":"stop","delta":{"content":json!({"summary":"测试图摘要","transcript":"# Hello\n\n完整转录"}).to_string()}}]}),
-                json!({"choices":[],"usage":{"prompt_tokens":20,"completion_tokens":10}})
-            );
-            write!(stream,"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",response.len(),response).unwrap();
         });
         struct TestMeter {
-            begun: Cell<bool>,
-            observed: Cell<bool>,
+            begun: Cell<usize>,
+            observed: Cell<usize>,
         }
         impl Meter for TestMeter {
             fn begin(
@@ -1212,12 +1221,13 @@ mod tests {
                 _: Option<i64>,
             ) -> Result<String, String> {
                 assert_eq!(model, "deepseek-flash");
-                self.begun.set(true);
-                Ok("test".into())
+                self.begun.set(self.begun.get() + 1);
+                Ok(self.begun.get().to_string())
             }
-            fn llm_response(&self, _: &str, response: &Value) -> Result<(), String> {
+            fn llm_response(&self, id: &str, response: &Value) -> Result<(), String> {
+                assert_eq!(id, (self.observed.get() + 1).to_string());
                 assert_eq!(response["usage"]["prompt_tokens"], 20);
-                self.observed.set(true);
+                self.observed.set(self.observed.get() + 1);
                 Ok(())
             }
             fn asr_response(&self, _: Uuid, _: &str, _: &Value) -> Result<(), String> {
@@ -1231,8 +1241,8 @@ mod tests {
             }
         }
         let meter = TestMeter {
-            begun: Cell::new(false),
-            observed: Cell::new(false),
+            begun: Cell::new(0),
+            observed: Cell::new(0),
         };
         let directory = tempfile::tempdir().unwrap();
         let mut store = crate::Store::new(rusqlite::Connection::open_in_memory().unwrap()).unwrap();
@@ -1286,7 +1296,20 @@ mod tests {
         assert_eq!(row.image_summary.as_deref(), Some("测试图摘要"));
         assert_eq!(row.image_transcript.as_deref(), Some("# Hello\n\n完整转录"));
         assert_eq!(row.image_state.as_deref(), Some("complete"));
-        assert!(meter.begun.get() && meter.observed.get());
+        assert_eq!((meter.begun.get(), meter.observed.get()), (1, 1));
+        let interrupted = chat_content(
+            "fake-test-key",
+            &task.model_id,
+            moments::IMAGE_SYSTEM,
+            image_content(&png),
+            Instant::now() + Duration::from_secs(5),
+            &meter,
+            false,
+            &endpoint,
+        )
+        .unwrap_err();
+        assert_eq!(interrupted.code, "provider_incomplete_output");
+        assert_eq!((meter.begun.get(), meter.observed.get()), (2, 2));
         server.join().unwrap();
     }
 
@@ -1436,28 +1459,33 @@ mod tests {
             stream.as_bytes(),
             deadline,
             Some(&mut |body| prefixes.push(body.to_owned())),
-        ).unwrap();
+            &mut Value::Null,
+        )
+        .unwrap();
         assert_eq!(prefixes, ["{\"ok\":", "{\"ok\":true}"]);
         assert_eq!(parse_chat_content(&response).unwrap(), json!({"ok":true}));
         assert_eq!(response["usage"]["prompt_tokens"], 20);
         assert!(!response.to_string().contains("private reasoning"));
         let truncated = stream.replace("data: [DONE]\n\n", "");
         prefixes.clear();
+        let mut observed = Value::Null;
         assert_eq!(
             streamed_chat(
                 truncated.as_bytes(),
                 deadline,
                 Some(&mut |body| prefixes.push(body.to_owned())),
+                &mut observed,
             )
                 .unwrap_err()
                 .code,
             "provider_incomplete_output"
         );
         assert_eq!(prefixes, ["{\"ok\":", "{\"ok\":true}"]);
+        assert_eq!(observed["prompt_tokens"], 20);
         assert_eq!(
-            streamed_chat(&b"data: [DONE]\n\n"[..], deadline, None)
-            .unwrap_err()
-            .code,
+            streamed_chat(&b"data: [DONE]\n\n"[..], deadline, None, &mut Value::Null)
+                .unwrap_err()
+                .code,
             "provider_incomplete_output"
         );
     }
@@ -1507,10 +1535,16 @@ mod tests {
                 Duration::from_secs(2)
             };
             let mut prefixes = Vec::new();
-            let result = client.send(&endpoint, "fixture", "{}".into(), deadline)
-                .and_then(|response| streamed_chat(
-                    response, deadline, Some(&mut |body| prefixes.push(body.to_owned())),
-                ));
+            let result = client
+                .send(&endpoint, "fixture", "{}".into(), deadline)
+                .and_then(|response| {
+                    streamed_chat(
+                        response,
+                        deadline,
+                        Some(&mut |body| prefixes.push(body.to_owned())),
+                        &mut Value::Null,
+                    )
+                });
             match mode {
                 "headers" | "stall" => assert_eq!(result.unwrap_err().code, "provider_read_timeout"),
                 "disconnect" => assert_eq!(result.unwrap_err().code, "provider_incomplete_output"),

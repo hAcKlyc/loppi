@@ -6,6 +6,7 @@ pub const VERSION: &str = "volc-event-silence-v4";
 pub const WINDOW_MS: i64 = 20 * 60 * 1000;
 const MAX_CONFIRMED_SILENCE_MS: i64 = 60 * 1000;
 pub(super) const SETTLE_MS: i64 = 15 * 60 * 1000;
+pub(super) const MISSING_GRACE_MS: i64 = 60_000;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Part {
@@ -100,14 +101,24 @@ pub fn rejected_result(error: &str) -> bool {
 /// The original input, remote ID, usage and history remain immutable. Using the
 /// current memberships handles split/merged events without rerunning siblings.
 pub fn replan_failed(tx: &Transaction<'_>, id: Uuid, now: i64) -> Result<(), String> {
-    let mut statement = tx.prepare("SELECT t.target_kind,t.target_id,t.target_version,t.started_ms,t.ended_ms,t.source
-        FROM transcript_tasks t WHERE t.id=?1 AND (
+    replace_input(tx, id, now, true)
+}
+
+pub fn replan_unsent(db: &mut Connection, id: Uuid, now: i64) -> Result<(), String> {
+    let tx = db.transaction().map_err(|e| e.to_string())?;
+    replace_input(&tx, id, now, false)?;
+    tx.commit().map_err(|e| e.to_string())
+}
+
+fn replace_input(tx: &Transaction<'_>, id: Uuid, now: i64, explicit: bool) -> Result<(), String> {
+    let mut statement = tx.prepare("SELECT t.target_kind,t.target_id,t.target_version,t.started_ms,t.ended_ms,t.source,t.manual
+        FROM transcript_tasks t WHERE t.id=?1 AND (?2 OR t.submit_attempts=0) AND (
           (t.target_kind='event' AND EXISTS(SELECT 1 FROM named_events e WHERE e.id=t.target_id
             AND e.deleted_ms IS NULL AND t.target_version=printf('%d:%d:%d',e.source_mask,e.started_ms,e.ended_ms)))
           OR (t.target_kind='range' AND EXISTS(SELECT 1 FROM manual_ranges m WHERE m.id=t.target_id
             AND t.target_version=cast(m.revision AS TEXT))))").map_err(|e| e.to_string())?;
     let targets = statement
-        .query_map([id.to_string()], |r| {
+        .query_map(params![id.to_string(), explicit], |r| {
             Ok((
                 r.get::<_, String>(0)?,
                 r.get::<_, String>(1)?,
@@ -115,6 +126,7 @@ pub fn replan_failed(tx: &Transaction<'_>, id: Uuid, now: i64) -> Result<(), Str
                 r.get::<_, i64>(3)?,
                 r.get::<_, i64>(4)?,
                 r.get::<_, String>(5)?,
+                r.get::<_, bool>(6)?,
             ))
         })
         .map_err(|e| e.to_string())?
@@ -129,13 +141,13 @@ pub fn replan_failed(tx: &Transaction<'_>, id: Uuid, now: i64) -> Result<(), Str
     )
     .map_err(|e| e.to_string())?;
     let run = format!("{VERSION}:{}", Uuid::new_v4());
-    for (kind, target, version, start, end, source) in targets {
+    for (kind, target, version, start, end, source, manual) in targets {
         let retained: bool = tx.query_row(
             "SELECT EXISTS(SELECT 1 FROM audio_blocks WHERE source=?1 AND media_path IS NOT NULL
              AND started_ms<?3 AND ended_ms>?2)",
             params![source,start,end], |r| r.get(0),
         ).map_err(|e| e.to_string())?;
-        if !retained {
+        if explicit && !retained {
             // Never commit half of a shared task's replacement.
             return Err("audio_unavailable".into());
         }
@@ -149,7 +161,7 @@ pub fn replan_failed(tx: &Transaction<'_>, id: Uuid, now: i64) -> Result<(), Str
             start,
             end,
             source_bit(&source),
-            true,
+            explicit || manual,
             now,
             &run,
         )?;
@@ -368,7 +380,7 @@ pub fn settling_state(
           OR EXISTS(SELECT 1 FROM candidate_windows WHERE started_ms<?3 AND ended_ms>?2 AND state IN('pending','processing'))
           OR EXISTS(SELECT 1 FROM coarse_segments c WHERE c.started_ms<?3 AND c.ended_ms>?5
              AND ((c.source='microphone' AND ?4&1!=0) OR (c.source='system' AND ?4&2!=0))
-             AND NOT EXISTS(SELECT 1 FROM candidate_windows w WHERE w.state IN('complete','failed') AND w.started_ms<=c.started_ms AND w.ended_ms>=c.ended_ms)
+             AND NOT EXISTS(SELECT 1 FROM candidate_windows w WHERE w.state IN('complete','failed') AND w.error_code IS NOT 'data_cleared' AND w.started_ms<=c.started_ms AND w.ended_ms>=c.ended_ms)
              AND NOT EXISTS(SELECT 1 FROM named_events n WHERE n.deleted_ms IS NULL AND n.id!=?1
                 AND n.started_ms<=c.started_ms AND n.ended_ms>=c.ended_ms
                 AND ((c.source='microphone' AND n.source_mask&1!=0) OR (c.source='system' AND n.source_mask&2!=0))))",
@@ -484,6 +496,7 @@ fn plan(
             }
         }
         covered.sort_unstable();
+        let mut covered = covered.into_iter().peekable();
         let mut stmt=tx.prepare("SELECT id,started_ms,ended_ms,frames,media_path FROM audio_blocks WHERE source=?1 AND media_path IS NOT NULL AND started_ms<?3 AND ended_ms>?2 ORDER BY started_ms,id").map_err(|e|e.to_string())?;
         let blocks = stmt
             .query_map(params![source, start, end], |r| {
@@ -502,22 +515,30 @@ fn plan(
         let mut duration = 0;
         let mut source_cursor = start;
         for (id, a, b, frames, path) in blocks {
-            let mut spans = vec![(a.max(start).max(source_cursor), b.min(end))];
-            source_cursor = source_cursor.max(b.min(end));
-            for &(x, y) in &covered {
-                spans = spans
-                    .into_iter()
-                    .flat_map(|(a, b)| {
-                        if y <= a || x >= b {
-                            vec![(a, b)]
-                        } else {
-                            vec![(a, x.min(b)), (y.max(a), b)]
-                        }
-                    })
-                    .filter(|(a, b)| b > a)
-                    .collect();
+            let mut from = a.max(start).max(source_cursor);
+            let to = b.min(end);
+            source_cursor = source_cursor.max(to);
+            let mut spans = Vec::new();
+            while from < to {
+                let Some(&(covered_start, covered_end)) = covered.peek() else {
+                    break;
+                };
+                if covered_start >= to {
+                    break;
+                }
+                if covered_start > from {
+                    spans.push((from, covered_start));
+                }
+                from = from.max(covered_end);
+                if covered_end > to {
+                    break; // This coverage can also intersect the next block.
+                }
+                covered.next();
             }
-            for (from, to) in spans.into_iter().filter(|(a, b)| b > a) {
+            if from < to {
+                spans.push((from, to));
+            }
+            for (from, to) in spans {
                 let gap = parts.last().map(|p| from - p.end).unwrap_or(0).max(0);
                 // A synthetic separator does not make provider word timing
                 // invertible: a single word can span multiple source runs.
@@ -725,6 +746,89 @@ pub fn current(db: &Connection, task: &CloudTask) -> Result<Option<bool>, String
         )
         .map_err(|e| e.to_string())?;
     Ok(Some(active))
+}
+
+/// Current event/range views authorize source samples. Physical inputs remain
+/// immutable for remote queries and result mapping after the event is edited.
+pub fn upload_allowed(
+    db: &Connection,
+    task: &CloudTask,
+    input: Option<&Input>,
+) -> Result<bool, String> {
+    let Some(source) = task.source.as_deref() else {
+        return Ok(false);
+    };
+    let mask = source_bit(source);
+    let cleared: bool = db
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM clear_ranges c JOIN cloud_tasks t ON t.id=?1
+           WHERE c.source_mask&?2!=0 AND c.committed_ms>=t.created_ms
+             AND c.from_ms<t.ended_ms AND c.to_ms>t.started_ms)",
+            params![task.id.to_string(), mask],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if cleared {
+        return Ok(false);
+    }
+    let mut stmt = db.prepare(
+        "SELECT max(t.started_ms,coalesce(e.started_ms,m.started_ms)),
+                min(t.ended_ms,coalesce(e.ended_ms,m.ended_ms))
+           FROM transcript_tasks t
+           LEFT JOIN named_events e ON t.target_kind='event' AND e.id=t.target_id
+                AND e.deleted_ms IS NULL AND t.target_version=printf('%d:%d:%d',e.source_mask,e.started_ms,e.ended_ms)
+           LEFT JOIN manual_ranges m ON t.target_kind='range' AND m.id=t.target_id
+                AND t.target_version=cast(m.revision AS TEXT)
+           WHERE t.id=?1 AND coalesce(e.source_mask,m.source_mask,0)&?2!=0
+           ORDER BY 1,2",
+    ).map_err(|e| e.to_string())?;
+    let spans = stmt
+        .query_map(params![task.id.to_string(), mask], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    let covered = |mut from: i64, to: i64| {
+        for &(start, end) in &spans {
+            if start > from {
+                break;
+            }
+            from = from.max(end);
+            if from >= to {
+                return true;
+            }
+        }
+        false
+    };
+    Ok(match input {
+        Some(input) => {
+            !input.parts.is_empty() && input.parts.iter().all(|p| covered(p.start, p.end))
+        }
+        None => covered(task.start, task.end),
+    })
+}
+
+/// A provider Missing response only describes the connection that queried it.
+pub fn can_send_after_missing(
+    db: &Connection,
+    task: &CloudTask,
+    connection: &str,
+    now: i64,
+) -> Result<bool, String> {
+    if task.submit_attempts == 0 {
+        return Ok(true);
+    }
+    if now.saturating_sub(task.updated_ms) < MISSING_GRACE_MS {
+        return Ok(false);
+    }
+    if !crate::usage::recorded_asr_submission(db, task.id, task.remote_id, connection)? {
+        return Err("asr_submit_account_unverified".into());
+    }
+    if task.submit_attempts >= 2 {
+        return Err("provider_missing_submitted_task".into());
+    }
+    Ok(true)
 }
 
 /// Cleanup can replace a physical block without changing the selected samples.

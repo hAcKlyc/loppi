@@ -45,14 +45,14 @@ const row = (prefix, index, width) => ({ id: `${prefix}-${index}`, source: 'micr
 let coarse = Array.from({ length: 120 }, (_, i) => row('coarse', i, 20_000));
 let precise = Array.from({ length: 465 }, (_, i) => ({ ...row('precise', i, 5_000), revision: 0 }));
 const base = { id: 'fixture', title: '分页回归', started_ms: from, ended_ms: from + 2_400_000, sources: 'microphone', processing_state: 'partial_transcript', coarse_segments: [], precise_segments: [] };
-let version = 0, key = 0, initialAt, failOffset = null, holdOffset = null, hold, release, calls = [];
+let version = 0, key = 0, initialAt, failOffset = null, holdOffset = null, hold, release, calls = [], cleanupGeneration;
 mockIPC(async (command, { request }) => {
   if (request.type === 'event_detail') {
     assert.equal(request.limit, pageSize, 'preserve bounded IPC pages');
     calls.push(request.offset);
     if (request.offset === holdOffset) await hold;
     if (request.offset === failOffset) throw Error('simulated page failure');
-    return { type: 'event', event: { ...base, coarse_segments: coarse.slice(request.offset, request.offset + request.limit), precise_segments: precise.slice(request.offset, request.offset + request.limit) } };
+    return { type: 'event', cleanup_generation: cleanupGeneration, event: { ...base, coarse_segments: coarse.slice(request.offset, request.offset + request.limit), precise_segments: precise.slice(request.offset, request.offset + request.limit) } };
   }
   if (request.type === 'session_speakers') return { type: 'session_speakers', speakers: [] };
   if (request.type === 'moments') return { type: 'moments', moments: [] };
@@ -120,6 +120,27 @@ try {
   await settle(render); await intersect();
   assert.equal(rows().length, pageSize); assert(!q('.transcript-pagination'));
 
+  // Clearing an earlier sentence shifts later OFFSETs. Rebuild the visible
+  // prefix and the requested page together in the same scrolling element.
+  precise = Array.from({ length: 100 }, (_, i) => ({ ...row('precise', i, 5_000), revision: 0 }));
+  cleanupGeneration = 1; key++; calls = [];
+  await settle(render);
+  const beforeClear = rows().map(r => r.textContent);
+  const clearedList = q('.transcript-list'); clearedList.scrollTop = 123;
+  precise.shift(); cleanupGeneration++;
+  block(0); await intersect();
+  assert.deepEqual(calls, [0, pageSize, 0]);
+  assert.equal(clearedList.style.visibility, 'hidden', 'deleted text is concealed as soon as the new generation is known');
+  assert.equal(clearedList.getAttribute('aria-hidden'), 'true');
+  assert.deepEqual(rows().map(r => r.textContent), beforeClear, 'old row layout preserves the scroll position until replay completes');
+  await unblock();
+  assert.equal(q('.transcript-list'), clearedList);
+  assert.equal(clearedList.style.visibility, '');
+  assert.equal(clearedList.scrollTop, 123);
+  assert.equal(rows().length, 2 * pageSize - 1);
+  assert.deepEqual(rows().map(r => r.textContent.match(/precise \d+/)?.[0]), precise.slice(0, rows().length).map(r => r.text));
+  cleanupGeneration = undefined;
+
   // Opening at a time held behind an unresolved coarse sentence must fetch it.
   coarse = [row('coarse', 0, 1_000_000)];
   precise = Array.from({ length: 250 }, (_, i) => ({ ...row('precise', i, 5_000), revision: 0, ended_ms: from + i * 5_000 + 1_000 }));
@@ -140,7 +161,7 @@ try {
   const atClose = calls.length; await unblock();
   assert(!q('.detail-drawer')); assert.equal(observers.size, 0);
   assert.equal(calls.length, atClose, 'closed detail does not request further pages');
-  console.log('PASS: precise/coarse boundary, scroll paging, concurrency, errors/retry, EOF, views, seek, refresh and close');
+  console.log('PASS: precise/coarse boundary, scroll paging, concurrent cleanup, errors/retry, EOF, views, seek, refresh and close');
 } finally {
   await settle(() => root.unmount()); clearMocks(); dom.window.close();
 }
