@@ -450,6 +450,10 @@ async fn native<T: Send + 'static>(
 }
 extern "C" fn native_event(kind: i32, value: i32, generation: u64) {
     let Some(app) = HOST.get() else { return };
+    if kind == 13 {
+        crate::updater::reconsider_schedule(app);
+        return;
+    }
     #[cfg(windows)]
     {
         if kind == 11 {

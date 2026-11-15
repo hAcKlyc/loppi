@@ -309,6 +309,9 @@ static BOOL hitRegion(LoppiEntryGeometry g, NSInteger mode, NSInteger view, BOOL
     weak.dragPending=NO;
     weak.view=0; [weak releaseFocus:NO]; [weak layout]; [weak notify:3 value:0];
   }]];
+  [_tokens addObject:[NSWorkspace.sharedWorkspace.notificationCenter addObserverForName:NSWorkspaceDidWakeNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n){
+    (void)n; [weak notify:13 value:0];
+  }]];
   for(NSString *name in @[NSApplicationDidBecomeActiveNotification,NSApplicationDidResignActiveNotification]) {
     [_tokens addObject:[center addObserverForName:name object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n){ (void)n;
       if(!NSApp.isActive && weak.mode==0 && weak.view!=0) {
