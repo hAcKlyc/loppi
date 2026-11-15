@@ -10,7 +10,7 @@ function updateStatus(update: AppUpdate): string {
 	if (update.available)
 		return `${update.available.version} 已准备好，可在左下角重启更新`;
 	if (update.checked && !update.error) return "当前已是最新版本";
-	return "启动后自动检查并下载更新";
+	return "每半小时自动检查并下载更新";
 }
 
 export function SoftwareUpdate({ update }: { update: AppUpdate }) {

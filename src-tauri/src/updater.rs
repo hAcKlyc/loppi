@@ -1,31 +1,222 @@
-//! The desktop host owns updates; renderers cannot invoke the plugin installer.
-//! Downloads (including signature verification) finish before touching the Core.
+//! The desktop host owns checks, the verified package and installation.
+mod schedule;
+
+use schedule::{DOWNLOAD_RETRY, Deadline, QUICK_RETRY, Schedule, Time};
 use serde::Serialize;
 use std::io::{Read, Seek, Write};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tauri::{Manager, State, ipc::Channel};
-use tauri_plugin_updater::{Update, UpdaterExt};
+use tauri::async_runtime::{Mutex as AsyncMutex, spawn, spawn_blocking};
+use tauri::{Emitter, Manager, State};
+use tauri_plugin_updater::{Error as PluginError, Update, UpdaterExt};
+use tokio::{sync::Notify, time::timeout};
 
-#[derive(Default)]
-pub struct Updates(tauri::async_runtime::Mutex<Option<ReadyUpdate>>);
+const STATUS_EVENT: &str = "loppi-update-status";
+
+pub struct Updates {
+    work: AsyncMutex<Work>,
+    status: Mutex<UpdateStatus>,
+    wake: Notify,
+}
+
+impl Default for Updates {
+    fn default() -> Self {
+        Self {
+            work: AsyncMutex::new(Work {
+                schedule: Schedule::new(Time::now()),
+                ready: None,
+                failed_download: None,
+            }),
+            status: Mutex::default(),
+            wake: Notify::new(),
+        }
+    }
+}
+
+struct Work {
+    schedule: Schedule,
+    ready: Option<ReadyUpdate>,
+    failed_download: Option<FailedDownload>,
+}
 
 struct ReadyUpdate {
     update: Update,
     file: Arc<std::fs::File>,
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AvailableUpdate {
-    current_version: String,
+struct FailedDownload {
     version: String,
+    signature: String,
+    retry: Option<Deadline>,
+    message: String,
+}
+
+impl FailedDownload {
+    fn matches(&self, update: &Update) -> bool {
+        self.version == update.version && self.signature == update.signature
+    }
+
+    fn can_retry(&self, now: Time) -> bool {
+        self.retry
+            .is_some_and(|deadline| deadline.remaining(now).is_zero())
+    }
+}
+
+enum DownloadError {
+    Network,
+    Signature,
+    Storage(String),
+}
+
+impl DownloadError {
+    fn delay(&self, already_failed: bool) -> Option<Duration> {
+        match self {
+            Self::Network if !already_failed => Some(QUICK_RETRY),
+            Self::Network | Self::Storage(_) => Some(DOWNLOAD_RETRY),
+            Self::Signature => None,
+        }
+    }
+
+    fn message(self) -> String {
+        match self {
+            Self::Network => "更新包下载失败，请检查网络后重试".into(),
+            Self::Signature => "更新包签名验证失败，请稍后检查新版".into(),
+            Self::Storage(message) => message,
+        }
+    }
 }
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Progress {
-    phase: &'static str,
+struct AvailableUpdate {
+    current_version: String,
+    version: String,
+}
+
+#[derive(Clone, Copy, Default, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum Phase {
+    #[default]
+    Idle,
+    Checking,
+    Downloading,
+    Stopping,
+    Installing,
+}
+
+#[derive(Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateStatus {
+    revision: u64,
+    phase: Phase,
+    available: Option<AvailableUpdate>,
+    checked: bool,
+    error: String,
+}
+
+impl Updates {
+    fn publish(&self, app: &tauri::AppHandle, change: impl FnOnce(&mut UpdateStatus)) {
+        let snapshot = {
+            let mut status = self.status.lock().unwrap();
+            change(&mut status);
+            status.revision += 1;
+            status.clone()
+        };
+        let _ = app.emit_to("main", STATUS_EVENT, snapshot);
+    }
+
+    async fn check(&self, app: &tauri::AppHandle, work: &mut Work, manual: bool) {
+        self.publish(app, |status| {
+            status.phase = Phase::Checking;
+            status.error.clear();
+        });
+        let result = self.prepare(app, work, manual).await;
+        self.publish(app, |status| {
+            status.phase = Phase::Idle;
+            status.available = work.ready.as_ref().map(|ready| AvailableUpdate {
+                current_version: app.package_info().version.to_string(),
+                version: ready.update.version.clone(),
+            });
+            status.checked |= result.is_ok();
+            status.error = result.err().unwrap_or_default();
+        });
+    }
+
+    async fn prepare(
+        &self,
+        app: &tauri::AppHandle,
+        work: &mut Work,
+        manual: bool,
+    ) -> Result<(), String> {
+        let result = lookup(app).await;
+        work.schedule.checked(Time::now(), result.is_ok());
+        let Some(mut update) = result? else {
+            work.ready = None;
+            work.failed_download = None;
+            return Ok(());
+        };
+        if work.ready.as_ref().is_some_and(|ready| {
+            ready.update.version == update.version && ready.update.signature == update.signature
+        }) {
+            work.failed_download = None;
+            return Ok(());
+        }
+        let failure = work.failed_download.as_ref().filter(|f| f.matches(&update));
+        if let Some(failure) = failure
+            && !manual
+            && !failure.can_retry(Time::now())
+        {
+            return Err(failure.message.clone());
+        }
+        let already_failed = failure.is_some();
+        self.publish(app, |status| status.phase = Phase::Downloading);
+        match download(&mut update).await {
+            Ok(file) => {
+                work.ready = Some(ReadyUpdate { update, file });
+                work.failed_download = None;
+                Ok(())
+            }
+            Err(error) => {
+                let now = Time::now();
+                let delay = error.delay(already_failed);
+                let retry = delay.map(|delay| Deadline::after(now, delay));
+                if delay == Some(QUICK_RETRY) {
+                    work.schedule
+                        .check_by(now, Deadline::after(now, QUICK_RETRY));
+                }
+                let message = error.message();
+                work.failed_download = Some(FailedDownload {
+                    version: update.version,
+                    signature: update.signature,
+                    retry,
+                    message: message.clone(),
+                });
+                Err(message)
+            }
+        }
+    }
+}
+
+pub fn start(app: tauri::AppHandle) {
+    spawn(async move {
+        let updates = app.state::<Updates>();
+        loop {
+            let delay = {
+                let mut work = updates.work.lock().await;
+                if work.schedule.remaining(Time::now()).is_zero() {
+                    updates.check(&app, &mut work, false).await;
+                }
+                work.schedule.remaining(Time::now())
+            };
+            let _ = timeout(delay, updates.wake.notified()).await;
+        }
+    });
+}
+
+pub fn reconsider_schedule(app: &tauri::AppHandle) {
+    if let Some(updates) = app.try_state::<Updates>() {
+        updates.wake.notify_one();
+    }
 }
 
 fn require_main(window: &tauri::WebviewWindow) -> Result<(), String> {
@@ -37,67 +228,66 @@ fn require_main(window: &tauri::WebviewWindow) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn update_status(
+    window: tauri::WebviewWindow,
+    updates: State<'_, Updates>,
+) -> Result<UpdateStatus, String> {
+    require_main(&window)?;
+    Ok(updates.status.lock().unwrap().clone())
+}
+
+#[tauri::command]
 pub async fn check_update(
     app: tauri::AppHandle,
     window: tauri::WebviewWindow,
     updates: State<'_, Updates>,
-    progress: Channel<Progress>,
-) -> Result<Option<AvailableUpdate>, String> {
+) -> Result<(), String> {
     require_main(&window)?;
-    let mut slot = updates
-        .0
-        .try_lock()
-        .map_err(|_| "更新操作正在进行，请稍后重试")?;
-    let update = app
-        .updater_builder()
+    let revision = updates.status.lock().unwrap().revision;
+    let mut work = updates.work.lock().await;
+    // A check that finished while this request waited already served it.
+    // Taking the lock also works when the scheduler was only reading its deadline.
+    let current_revision = updates.status.lock().unwrap().revision;
+    if current_revision == revision {
+        updates.check(&app, &mut work, true).await;
+        updates.wake.notify_one();
+    }
+    Ok(())
+}
+
+async fn lookup(app: &tauri::AppHandle) -> Result<Option<Update>, String> {
+    app.updater_builder()
         .timeout(Duration::from_secs(30))
-        // The plugin's default hook clears WebView resources and hides Windows
-        // before ShellExecute can report failure. Keep the host usable if the
-        // installer cannot launch; successful process exit releases OS resources.
+        // Keep Windows usable if the installer fails to launch.
         .on_before_exit(|| {})
         .build()
         .map_err(|e| format!("无法准备更新检查：{e}"))?
         .check()
         .await
-        .map_err(|_| "无法检查更新，请检查网络后重试".to_string())?;
-    let Some(mut update) = update else {
-        *slot = None;
-        return Ok(None);
-    };
-    let available = AvailableUpdate {
-        current_version: app.package_info().version.to_string(),
-        version: update.version.clone(),
-    };
-    if slot
-        .as_ref()
-        .is_some_and(|ready| ready.update.version == update.version)
-    {
-        return Ok(Some(available));
-    }
+        .map_err(|_| "无法检查更新，请检查网络后重试".to_string())
+}
+
+async fn download(update: &mut Update) -> Result<Arc<std::fs::File>, DownloadError> {
     update.timeout = Some(Duration::from_secs(15 * 60));
-    let _ = progress.send(Progress {
-        phase: "downloading",
-    });
-    let bytes = update.download(|_, _| {}, || {}).await.map_err(|_| {
-        "更新包下载或签名验证失败，录音未因更新而停止；请检查网络后重试".to_string()
-    })?;
-    // An anonymous session file avoids retaining the full installer in RAM.
-    // The OS removes it when the handle closes, even on Windows process exit.
-    let file = tauri::async_runtime::spawn_blocking(move || -> Result<_, String> {
+    let bytes = update
+        .download(|_, _| {}, || {})
+        .await
+        .map_err(|error| match error {
+            PluginError::Reqwest(_) | PluginError::Network(_) => DownloadError::Network,
+            _ => DownloadError::Signature,
+        })?;
+    // The anonymous file is scoped to the host session. Only verified bytes
+    // can become ready, and neither installation nor restart needs the network.
+    let file = spawn_blocking(move || -> Result<_, String> {
         let mut file = tempfile::tempfile().map_err(|e| format!("无法暂存更新包：{e}"))?;
         file.write_all(&bytes)
             .map_err(|e| format!("无法暂存更新包：{e}"))?;
         Ok(file)
     })
     .await
-    .map_err(|e| e.to_string())??;
-    // Only verified bytes may make the restart button available. No network
-    // request is needed on the user-triggered installation path.
-    *slot = Some(ReadyUpdate {
-        update,
-        file: Arc::new(file),
-    });
-    Ok(Some(available))
+    .map_err(|e| DownloadError::Storage(e.to_string()))?
+    .map_err(DownloadError::Storage)?;
+    Ok(Arc::new(file))
 }
 
 // Shared ordering makes both failure boundaries explicit. Reopening IPC does
@@ -125,21 +315,27 @@ pub async fn install_update(
     window: tauri::WebviewWindow,
     updates: State<'_, Updates>,
     version: String,
-    progress: Channel<Progress>,
 ) -> Result<(), String> {
     require_main(&window)?;
-    let slot = updates
-        .0
+    let work = updates
+        .work
         .try_lock()
         .map_err(|_| "更新操作正在进行，请稍后重试")?;
-    let ready = slot.as_ref().ok_or("更新尚未下载完成，请先检查更新")?;
+    let ready = work
+        .ready
+        .as_ref()
+        .ok_or("更新尚未下载完成，请先检查更新")?;
     if ready.update.version != version {
         return Err("可用版本已变化，请重新检查并确认更新".into());
     }
     let update = ready.update.clone();
     let file = Arc::clone(&ready.file);
     let host = app.clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    updates.publish(&app, |status| {
+        status.phase = Phase::Stopping;
+        status.error.clear();
+    });
+    let result = spawn_blocking(move || {
         // Read the verified session file before asking the Core to leave. A
         // disk/read failure must not interrupt recording or consume the update.
         let mut file = file
@@ -149,7 +345,6 @@ pub async fn install_update(
         let mut bytes = Vec::new();
         file.read_to_end(&mut bytes)
             .map_err(|e| format!("无法读取更新包：{e}"))?;
-        let _ = progress.send(Progress { phase: "stopping" });
         install_when_stopped(
             || {
                 loppi_protocol::quit_gui_core()
@@ -157,9 +352,8 @@ pub async fn install_update(
             },
             || {
                 crate::playback_output::shutdown();
-                let _ = progress.send(Progress {
-                    phase: "installing",
-                });
+                host.state::<Updates>()
+                    .publish(&host, |status| status.phase = Phase::Installing);
                 update
                     .install(bytes.as_slice())
                     .map_err(|e| format!("安装更新失败：{e}"))
@@ -173,9 +367,17 @@ pub async fn install_update(
         )
     })
     .await
-    .map_err(|e| format!("更新任务未完成，请重新打开 loppi：{e}"))??;
+    .map_err(|e| format!("更新任务未完成，请重新打开 loppi：{e}"))
+    .and_then(|result| result);
+    if let Err(message) = result {
+        updates.publish(&app, |status| {
+            status.phase = Phase::Idle;
+            status.error = message;
+        });
+        return Ok(());
+    }
     // Windows' installer exits and relaunches us itself; macOS returns here.
-    drop(slot);
+    drop(work);
     app.restart();
 }
 

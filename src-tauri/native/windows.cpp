@@ -91,6 +91,8 @@ static LRESULT CALLBACK procedure(HWND w, UINT msg, WPARAM wp, LPARAM lp,
   Entry *e = entry(w);
   if (!e)
     return DefSubclassProc(w, msg, wp, lp);
+  if (msg == WM_POWERBROADCAST && wp == PBT_APMRESUMEAUTOMATIC)
+    notify(e, 13, 0);
   if (msg == WM_APP + 43) {
     EndMenu();
     notify(e, 12, 1);
