@@ -1,4 +1,4 @@
-// Real React hook and components; only desktop IPC/clock and dialog API are mocked.
+// Real React hook and components driven by mocked host snapshots and events.
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { registerHooks } from 'node:module';
@@ -29,71 +29,110 @@ registerHooks({
 });
 const { default: React, act } = await import('react');
 const { createRoot } = await import('react-dom/client');
+const { emit } = await import('@tauri-apps/api/event');
 const { mockIPC, clearMocks } = await import('@tauri-apps/api/mocks');
 const { useAppUpdate } = await import('../src/useAppUpdate.ts');
 const { SoftwareUpdate, RestartUpdate } = await import('../src/SoftwareUpdate.tsx');
 const h = React.createElement;
 
-test('startup silently downloads once; only a ready update shows the sidebar restart button', async () => {
-  const timers = new Map(); let timerId = 0;
-  const nativeSet = window.setTimeout, nativeClear = window.clearTimeout;
-  window.setTimeout = (callback, delay) => { assert.equal(delay, 10_000); timers.set(++timerId, callback); return timerId; };
-  window.clearTimeout = id => timers.delete(id);
-  const calls = []; let failCheck = false, pendingCheck, pendingInstall;
-  const update = { currentVersion: '1.0.0', version: '1.1.0' };
-  let latest = update;
+test('host snapshots reveal verified updates across window reloads and preserve the install action', async () => {
+  const event = 'loppi-update-status';
+  const available = { currentVersion: '1.0.0', version: '1.1.0' };
+  const initial = { revision: 0, available: null, phase: 'idle', checked: false, error: '' };
+  let status = initial;
+  let pendingSnapshot, pendingInstall, readInitial = true;
+  const calls = [];
+  const listeners = new Map();
+  async function publish(fields) {
+    status = { ...status, ...fields, revision: status.revision + 1 };
+    await emit(event, status);
+  }
   mockIPC(async (command, args) => {
+    if (command === 'plugin:event|listen') {
+      assert.equal(args.event, event);
+      listeners.set(args.handler, args.handler);
+      return args.handler;
+    }
+    if (command === 'plugin:event|unlisten') {
+      listeners.delete(args.eventId);
+      return;
+    }
+    if (command === 'plugin:event|emit') {
+      for (const [id, handler] of listeners) {
+        window.__TAURI_INTERNALS__.runCallback(handler, { ...args, id });
+      }
+      return;
+    }
     calls.push(command);
     if (command === 'plugin:app|version') return '1.0.0';
-    if (command === 'check_update') {
-      if (failCheck) throw 'offline';
-      args.progress.onmessage({ phase: 'downloading', downloaded: 50, total: 100 });
-      return new Promise(resolve => { pendingCheck = () => resolve(latest); });
+    if (command === 'update_status') {
+      if (readInitial) {
+        readInitial = false;
+        return new Promise(resolve => { pendingSnapshot = () => resolve(initial); });
+      }
+      return status;
     }
-    if (command === 'install_update') { assert.equal(args.version, '1.1.0'); return new Promise((resolve, reject) => { pendingInstall = { resolve, reject, channel: args.progress }; }); }
+    if (command === 'check_update') {
+      await publish({ phase: 'checking', error: '' });
+      await publish({ phase: 'idle', error: 'offline' });
+      return;
+    }
+    if (command === 'install_update') {
+      assert.equal(args.version, available.version);
+      await publish({ phase: 'stopping', error: '' });
+      return new Promise(resolve => {
+        pendingInstall = async error => {
+          await publish({ phase: 'idle', error });
+          resolve();
+        };
+      });
+    }
     throw Error(command);
   });
-  let controller;
-  function Harness() { controller = useAppUpdate(); return h(React.Fragment, null, h('aside', { className: 'sidebar' }, h(RestartUpdate, { update: controller })), h(SoftwareUpdate, { update: controller })); }
+
+  function Harness() {
+    const update = useAppUpdate();
+    return h(React.Fragment, null, h('aside', { className: 'sidebar' }, h(RestartUpdate, { update })), h(SoftwareUpdate, { update }));
+  }
   const root = createRoot(document.getElementById('root'));
-  const settle = async fn => act(async () => { await fn?.(); await new Promise(resolve => setTimeout(resolve, 0)); });
+  const render = () => root.render(h(React.StrictMode, null, h(Harness)));
+  const settle = async fn => act(async () => { await fn(); await new Promise(resolve => setTimeout(resolve, 0)); });
   const restart = () => document.querySelector('.restart-update-button');
+  const check = () => document.querySelector('.software-update-setting button');
   try {
-    await settle(() => root.render(h(React.StrictMode, null, h(Harness))));
-    assert.equal(timers.size, 1, 'StrictMode cleanup leaves only one startup timer');
-    assert.equal(calls.filter(c => c === 'check_update').length, 0);
-    await settle(() => { for (const callback of timers.values()) callback(); });
-    assert.equal(calls.filter(c => c === 'check_update').length, 1);
-    assert.equal(restart(), null, 'download has not finished yet');
-    assert.equal(document.querySelector('dialog'), null);
+    await settle(render);
+    assert.equal(calls.includes('check_update'), false, 'renderer does not schedule checks');
+    await settle(() => publish({ phase: 'downloading' }));
+    await settle(() => pendingSnapshot());
+    assert.equal(restart(), null, 'host has not verified the package');
     assert.match(document.body.textContent, /后台下载/);
-    await settle(() => { void controller.check(); });
-    assert.equal(calls.filter(c => c === 'check_update').length, 1, 'busy download cannot start a second operation');
-    await settle(() => pendingCheck());
-    assert.equal(restart().textContent.includes('重启更新'), true);
+    assert.equal(check().disabled, true, 'manual check joins host work');
+
+    await settle(() => root.render(null));
+    await settle(() => publish({ phase: 'idle', available, checked: true }));
+    await settle(render);
+    assert.match(restart().textContent, /重启更新/);
     assert.equal(calls.includes('install_update'), false, 'ready update waits for the user');
+    assert.equal(calls.includes('check_update'), false, 'reopening only reads the cached host state');
+
     await settle(() => { restart().click(); restart().click(); });
-    assert.equal(calls.filter(c => c === 'install_update').length, 1, 'double click starts one install');
-    assert.equal(calls.filter(c => c === 'check_update').length, 1, 'restart makes no new check or download request');
-    assert.equal(document.querySelector('dialog'), null, 'click directly installs without a popup');
-    assert.equal(restart().disabled, true);
-    await settle(() => pendingInstall.channel.onmessage({ phase: 'stopping', downloaded: 100, total: 100 }));
+    assert.equal(calls.filter(c => c === 'install_update').length, 1);
+    assert.equal(calls.includes('check_update'), false, 'install uses the verified local package');
     assert.match(document.body.textContent, /等待后台退出/);
-    await settle(() => pendingInstall.reject('后台未能正常退出'));
+    assert.equal(document.querySelector('dialog'), null);
+    assert.equal(restart().disabled, true);
+    await settle(() => pendingInstall('后台未能正常退出'));
     assert.match(document.querySelector('.sidebar-update [role=alert]').textContent, /后台未能正常退出/);
-    assert.equal(restart().disabled, false);
-    await settle(() => { restart().click(); });
-    assert.equal(calls.filter(c => c === 'install_update').length, 2);
-    await settle(() => pendingInstall.reject('安装失败'));
-    failCheck = true; await settle(() => controller.check());
+
+    await settle(() => check().click());
+    assert.equal(calls.filter(c => c === 'check_update').length, 1);
     assert.match(document.querySelector('[role=alert]').textContent, /offline/);
-    assert(restart(), 'a failed recheck does not discard a verified cached update');
-    failCheck = false; latest = null;
-    await settle(() => { void controller.check(); });
-    await settle(() => pendingCheck());
+    assert.equal(restart().disabled, false, 'failed recheck retains a verified update');
+    await settle(() => publish({ checked: true, available: null, error: '' }));
     assert.match(document.body.textContent, /当前已是最新版本/);
     assert.equal(restart(), null);
   } finally {
-    await settle(() => root.unmount()); clearMocks(); window.setTimeout = nativeSet; window.clearTimeout = nativeClear;
+    await settle(() => root.unmount());
+    clearMocks();
   }
 });

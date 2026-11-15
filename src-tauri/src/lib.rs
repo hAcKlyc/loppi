@@ -457,9 +457,13 @@ pub fn run() {
             .build()?;
             entry::install(app.handle(), &window, &runtime)?;
             runtime.start(app.handle().clone());
+            updater::start(app.handle().clone());
             Ok(())
         })
         .on_window_event(|window, event| {
+            if window.label() == "main" && matches!(event, tauri::WindowEvent::Focused(true)) {
+                updater::reconsider_schedule(window.app_handle());
+            }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 if window.label() == "main" {
@@ -468,6 +472,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            updater::update_status,
             updater::check_update,
             updater::install_update,
             build_info,

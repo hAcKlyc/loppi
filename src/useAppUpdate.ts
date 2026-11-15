@@ -1,87 +1,91 @@
 import { getVersion } from "@tauri-apps/api/app";
-import { Channel, invoke, isTauri } from "@tauri-apps/api/core";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { invoke, isTauri } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { useEffect, useRef, useState } from "react";
 
-export type AvailableUpdate = {
-	currentVersion: string;
-	version: string;
+type UpdateStatus = {
+	revision: number;
+	available: { currentVersion: string; version: string } | null;
+	phase: "idle" | "checking" | "downloading" | "stopping" | "installing";
+	checked: boolean;
+	error: string;
 };
-export type UpdateProgress = {
-	phase: "downloading" | "stopping" | "installing";
+
+const initialStatus: UpdateStatus = {
+	revision: -1,
+	available: null,
+	phase: "idle",
+	checked: false,
+	error: "",
 };
 
 export function useAppUpdate() {
 	const [currentVersion, setCurrentVersion] = useState("");
-	const [available, setAvailable] = useState<AvailableUpdate | null>(null);
-	const [phase, setPhase] = useState<
-		"idle" | "checking" | UpdateProgress["phase"]
-	>("idle");
-	const [error, setError] = useState("");
-	const [checked, setChecked] = useState(false);
+	const [status, setStatus] = useState(initialStatus);
+	const [requestError, setRequestError] = useState("");
+	const revision = useRef(initialStatus.revision);
 	const working = useRef(false);
-	const attempted = useRef(false);
-	const check = useCallback(async () => {
-		if (working.current || !isTauri()) return;
-		working.current = true;
-		attempted.current = true;
-		setPhase("checking");
-		setError("");
-		try {
-			const channel = new Channel<UpdateProgress>();
-			channel.onmessage = (value) => {
-				setPhase(value.phase);
-			};
-			const update = await invoke<AvailableUpdate | null>("check_update", {
-				progress: channel,
-			});
-			setAvailable(update);
-			if (update) setCurrentVersion(update.currentVersion);
-			setChecked(true);
-		} catch (cause) {
-			setError(String(cause));
-		} finally {
-			working.current = false;
-			setPhase("idle");
-		}
-	}, []);
+
 	useEffect(() => {
 		if (!isTauri()) return;
-		void getVersion()
-			.then(setCurrentVersion)
-			.catch(() => {});
-		const timer = window.setTimeout(() => {
-			if (!attempted.current) void check();
-		}, 10_000);
-		return () => window.clearTimeout(timer);
-	}, [check]);
-	const install = async () => {
-		if (working.current || !available) return;
-		working.current = true;
-		setError("");
-		setPhase("stopping");
-		const channel = new Channel<UpdateProgress>();
-		channel.onmessage = (value) => {
-			setPhase(value.phase);
+		let disposed = false;
+		let unlisten: UnlistenFn | undefined;
+		const accept = (next: UpdateStatus) => {
+			if (disposed || next.revision <= revision.current) return;
+			revision.current = next.revision;
+			setStatus(next);
+			setRequestError("");
 		};
-		try {
-			await invoke("install_update", {
-				version: available.version,
-				progress: channel,
+		void getVersion()
+			.then((version) => {
+				if (!disposed) setCurrentVersion(version);
+			})
+			.catch(() => {});
+		void listen<UpdateStatus>("loppi-update-status", ({ payload }) =>
+			accept(payload),
+		)
+			.then(async (stop) => {
+				if (disposed) {
+					stop();
+					return;
+				}
+				unlisten = stop;
+				accept(await invoke<UpdateStatus>("update_status"));
+			})
+			.catch((error) => {
+				if (!disposed) setRequestError(String(error));
 			});
-		} catch (cause) {
-			setError(String(cause));
-			setPhase("idle");
+		return () => {
+			disposed = true;
+			unlisten?.();
+		};
+	}, []);
+
+	const request = async (command: string, args?: { version: string }) => {
+		if (working.current || !isTauri()) return;
+		working.current = true;
+		setRequestError("");
+		try {
+			await invoke(command, args);
+		} catch (error) {
+			setRequestError(String(error));
+		} finally {
 			working.current = false;
 		}
 	};
+
 	return {
-		currentVersion,
-		available,
-		phase,
-		error,
-		checked,
-		check,
-		install,
+		currentVersion: status.available?.currentVersion || currentVersion,
+		available: status.available,
+		phase: status.phase,
+		error: requestError || status.error,
+		checked: status.checked,
+		check: () => request("check_update"),
+		install: async () => {
+			if (status.available) {
+				await request("install_update", { version: status.available.version });
+			}
+		},
 	};
 }
 
