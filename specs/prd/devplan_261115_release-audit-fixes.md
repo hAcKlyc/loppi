@@ -57,3 +57,9 @@ updated: 2026-11-15
 - 2026-11-15：代码提交 `43b15626a52a41e57d5a392d1a26e40b77901f16` 的本机 `scripts/verify.py` 22 项全部通过，含 23、24、25 小时时间线、真实 Core 断连退出、丢失受理和拒绝回包后的清理回执。Windows 原生模拟覆盖两个休眠周期、重复通知、直接子进程 private bytes，以及快照失败回退。压力恢复由可控时间序列验证。
 - 2026-11-15：挂载同一干净提交构建的 0.1.27 Apple Silicon 开发 DMG，以 Codex Computer Use 在候选 App 操作隔离合成库。前后日期跨过空白天且当天重点可见。65 句详情在另一客户端清理首句后从第 02 句开始，第 29–34 句跨原分页边界连续出现。界面清理所选的两个五秒样本，观察到「已受理，将在后台清理」，Core 回执和文件均验证完成，转录和非选中内容保留。开发包 SHA-256 为 `83c9908d57c21bc7e6d9ef1f7c02bd353b835a305789c7ff3826b851030637fe`。
 - 2026-11-15：最终候选包重跑双声源 24 小时夹具，补尾约 1.47 秒，并发状态请求最慢约 25 ms，仍只增加两个任务。GitHub 对同一代码提交的离线门禁全部通过，Mac 22 项、Windows 10 项。交付限 `codex/release-0.1.27`，正式发行与暂缓的硬件验收沿用原安排。[GitHub Verify](https://github.com/hAcKlyc/loppi/actions/runs/43691206704)
+
+### 正式发行进度
+
+- 2026-11-15，候选 `c2c4a1a17c59853e0e988b05ae630a15ddfd223b` 已合并到 `main`，发行源码为 `bfa8458498d73896d319af9a601b6d8b472f78fb`。Mac 首轮检查中测试在监听地址出现后直接写库，遇到尚未创建的云队列表。用验收二进制复核，Core 在建表完成后响应状态请求。同一 `main` 提交重跑 Mac 检查后，Mac 和 Windows 均通过。[main Verify](https://github.com/hAcKlyc/loppi/actions/runs/43700990300)
+- 同一提交的 Windows x64 发行包构建通过。下载工作流产物复核安装器、各组件来源、SHA-256 和 0.1.27 更新签名。Windows 安装器的 Authenticode 状态为 `unsigned`。[Windows x64 发行构建](https://github.com/hAcKlyc/loppi/actions/runs/43700990374/job/132776694403)
+- Apple Silicon 和 Intel 构建提交公证均收到 Apple 403，提示所需协议尚未签署或已过期。正式发行任务跳过，`v0.1.27` 标签尚未创建。GitHub Latest 与匿名更新清单仍为 0.1.26。账户持有人处理协议后，使用同一发行工作流重跑失败任务，再验证公开发行与三平台更新地址。[发行工作流](https://github.com/hAcKlyc/loppi/actions/runs/43700990374) · [固定更新清单](https://github.com/hAcKlyc/loppi/releases/latest/download/latest.json)
