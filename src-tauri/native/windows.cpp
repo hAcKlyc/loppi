@@ -32,6 +32,7 @@ struct Entry {
   double anchor_x = 0, anchor_y = 0;
   HWND prior = nullptr;
   NOTIFYICONDATAW tray{};
+  HPOWERNOTIFY power_notifications = nullptr;
 };
 static Entry *entry(HWND w) {
   return static_cast<Entry *>(GetPropW(w, L"LoppiEntry"));
@@ -91,7 +92,8 @@ static LRESULT CALLBACK procedure(HWND w, UINT msg, WPARAM wp, LPARAM lp,
   Entry *e = entry(w);
   if (!e)
     return DefSubclassProc(w, msg, wp, lp);
-  if (msg == WM_POWERBROADCAST && wp == PBT_APMRESUMEAUTOMATIC)
+  if (msg == WM_POWERBROADCAST &&
+      (wp == PBT_APMRESUMEAUTOMATIC || wp == PBT_APMRESUMESUSPEND))
     notify(e, 13, 0);
   if (msg == WM_APP + 43) {
     EndMenu();
@@ -216,6 +218,12 @@ extern "C" void loppi_entry_install(void *value, Callback callback) {
   e->callback = callback;
   SetPropW(w, L"LoppiEntry", e);
   SetWindowSubclass(w, procedure, 42, 0);
+  // Register explicitly so the window also receives Modern Standby resumes.
+  e->power_notifications =
+      RegisterSuspendResumeNotification(w, DEVICE_NOTIFY_WINDOW_HANDLE);
+  if (!e->power_notifications)
+    std::fprintf(stderr, "loppi: could not register power notifications (%lu)\n",
+                 GetLastError());
   SetTimer(w, 42, 40, nullptr);
   e->tray.cbSize = sizeof(e->tray);
   e->tray.hWnd = w;
@@ -413,6 +421,8 @@ extern "C" void loppi_entry_dispose(void *value) {
   Shell_NotifyIconW(NIM_DELETE, &e->tray);
   if (e->tray.hIcon)
     DestroyIcon(e->tray.hIcon);
+  if (e->power_notifications)
+    UnregisterSuspendResumeNotification(e->power_notifications);
   RemoveWindowSubclass(w, procedure, 42);
   RemovePropW(w, L"LoppiEntry");
   delete e;

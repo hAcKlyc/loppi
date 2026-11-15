@@ -43,20 +43,31 @@ impl Deadline {
 }
 
 pub(super) struct Schedule {
-    next: Deadline,
+    lookup: Deadline,
+    download: Option<Deadline>,
     check_retry_used: bool,
 }
 
 impl Schedule {
     pub(super) fn new(now: Time) -> Self {
         Self {
-            next: Deadline::after(now, STARTUP_DELAY),
+            lookup: Deadline::after(now, STARTUP_DELAY),
+            download: None,
             check_retry_used: false,
         }
     }
 
     pub(super) fn remaining(&self, now: Time) -> Duration {
-        self.next.remaining(now)
+        let lookup = self.lookup.remaining(now);
+        self.download
+            .map_or(lookup, |download| lookup.min(download.remaining(now)))
+    }
+
+    pub(super) fn checking(&mut self, now: Time) {
+        // Consume due attempts only. An earlier manual or wake check may fail
+        // while a short download retry still needs its own future lookup.
+        self.download
+            .take_if(|deadline| deadline.remaining(now).is_zero());
     }
 
     pub(super) fn checked(&mut self, now: Time, success: bool) {
@@ -66,13 +77,15 @@ impl Schedule {
             CHECK_INTERVAL
         };
         self.check_retry_used = !success;
-        self.next = Deadline::after(now, delay);
+        self.lookup = Deadline::after(now, delay);
+        if success {
+            // The current package will rearm its short retry if still pending.
+            self.download = None;
+        }
     }
 
-    pub(super) fn check_by(&mut self, now: Time, retry: Deadline) {
-        if retry.remaining(now) < self.next.remaining(now) {
-            self.next = retry;
-        }
+    pub(super) fn retry_download_at(&mut self, retry: Deadline) {
+        self.download = Some(retry);
     }
 }
 
@@ -138,15 +151,39 @@ mod tests {
     }
 
     #[test]
-    fn download_retry_can_advance_a_check_but_cannot_postpone_it() {
+    fn manual_failures_before_a_download_retry_do_not_postpone_it() {
         let now = Time::now();
         let mut schedule = Schedule::new(now);
         schedule.checked(now, true);
-        schedule.check_by(now, Deadline::after(now, DOWNLOAD_RETRY));
-        assert_eq!(schedule.remaining(now), CHECK_INTERVAL);
-        schedule.check_by(now, Deadline::after(now, QUICK_RETRY));
-        assert_eq!(schedule.remaining(now), QUICK_RETRY);
-        schedule.check_by(now, Deadline::after(now, DOWNLOAD_RETRY));
-        assert_eq!(schedule.remaining(now), QUICK_RETRY);
+        schedule.retry_download_at(Deadline::after(now, QUICK_RETRY));
+
+        for elapsed in [60, 120] {
+            let manual = after(now, elapsed);
+            schedule.checking(manual);
+            schedule.checked(manual, false);
+        }
+
+        let due = after(now, 600);
+        assert!(schedule.remaining(due).is_zero());
+        schedule.checking(due);
+        schedule.checked(due, false);
+        assert_eq!(schedule.remaining(due), CHECK_INTERVAL);
+    }
+
+    #[test]
+    fn an_overdue_lookup_can_rearm_the_current_packages_quick_retry() {
+        let now = Time::now();
+        let mut schedule = Schedule::new(now);
+        schedule.checked(now, true);
+        let woke = after(now, 3600);
+        let download_retry = Deadline::after(woke, QUICK_RETRY);
+        schedule.retry_download_at(download_retry);
+        assert!(schedule.remaining(woke).is_zero());
+
+        schedule.checking(woke);
+        schedule.checked(woke, true);
+        schedule.retry_download_at(download_retry);
+        assert_eq!(schedule.remaining(woke), QUICK_RETRY);
+        assert!(schedule.remaining(after(woke, 600)).is_zero());
     }
 }

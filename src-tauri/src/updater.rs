@@ -3,6 +3,7 @@ mod schedule;
 
 use schedule::{DOWNLOAD_RETRY, Deadline, QUICK_RETRY, Schedule, Time};
 use serde::Serialize;
+use std::collections::HashMap;
 use std::io::{Read, Seek, Write};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -25,7 +26,7 @@ impl Default for Updates {
             work: AsyncMutex::new(Work {
                 schedule: Schedule::new(Time::now()),
                 ready: None,
-                failed_download: None,
+                failed_downloads: HashMap::new(),
             }),
             status: Mutex::default(),
             wake: Notify::new(),
@@ -36,7 +37,7 @@ impl Default for Updates {
 struct Work {
     schedule: Schedule,
     ready: Option<ReadyUpdate>,
-    failed_download: Option<FailedDownload>,
+    failed_downloads: HashMap<(String, String), FailedDownload>,
 }
 
 struct ReadyUpdate {
@@ -45,20 +46,48 @@ struct ReadyUpdate {
 }
 
 struct FailedDownload {
-    version: String,
-    signature: String,
-    retry: Option<Deadline>,
+    retry: DownloadRetry,
     message: String,
 }
 
+#[derive(Clone, Copy)]
+enum DownloadRetry {
+    Soon(Deadline),
+    Later(Deadline),
+    Manual,
+}
+
 impl FailedDownload {
-    fn matches(&self, update: &Update) -> bool {
-        self.version == update.version && self.signature == update.signature
+    fn record(error: DownloadError, now: Time, previous: Option<&Self>) -> Self {
+        let signature_rejected =
+            previous.is_some_and(|failure| matches!(failure.retry, DownloadRetry::Manual));
+        let retry = match error {
+            _ if signature_rejected => DownloadRetry::Manual,
+            DownloadError::Signature => DownloadRetry::Manual,
+            DownloadError::Network if previous.is_none() => {
+                DownloadRetry::Soon(Deadline::after(now, QUICK_RETRY))
+            }
+            _ => DownloadRetry::Later(Deadline::after(now, DOWNLOAD_RETRY)),
+        };
+        Self {
+            retry,
+            message: error.message(),
+        }
     }
 
     fn can_retry(&self, now: Time) -> bool {
-        self.retry
-            .is_some_and(|deadline| deadline.remaining(now).is_zero())
+        match self.retry {
+            DownloadRetry::Soon(deadline) | DownloadRetry::Later(deadline) => {
+                deadline.remaining(now).is_zero()
+            }
+            DownloadRetry::Manual => false,
+        }
+    }
+
+    fn schedule_retry(&self, schedule: &mut Schedule) {
+        if let DownloadRetry::Soon(deadline) = self.retry {
+            schedule.retry_download_at(deadline);
+        }
     }
 }
 
@@ -69,14 +98,6 @@ enum DownloadError {
 }
 
 impl DownloadError {
-    fn delay(&self, already_failed: bool) -> Option<Duration> {
-        match self {
-            Self::Network if !already_failed => Some(QUICK_RETRY),
-            Self::Network | Self::Storage(_) => Some(DOWNLOAD_RETRY),
-            Self::Signature => None,
-        }
-    }
-
     fn message(self) -> String {
         match self {
             Self::Network => "更新包下载失败，请检查网络后重试".into(),
@@ -148,49 +169,39 @@ impl Updates {
         work: &mut Work,
         manual: bool,
     ) -> Result<(), String> {
+        work.schedule.checking(Time::now());
         let result = lookup(app).await;
         work.schedule.checked(Time::now(), result.is_ok());
         let Some(mut update) = result? else {
             work.ready = None;
-            work.failed_download = None;
             return Ok(());
         };
         if work.ready.as_ref().is_some_and(|ready| {
             ready.update.version == update.version && ready.update.signature == update.signature
         }) {
-            work.failed_download = None;
             return Ok(());
         }
-        let failure = work.failed_download.as_ref().filter(|f| f.matches(&update));
+        let package = (update.version.clone(), update.signature.clone());
+        let failure = work.failed_downloads.get(&package);
         if let Some(failure) = failure
             && !manual
             && !failure.can_retry(Time::now())
         {
+            failure.schedule_retry(&mut work.schedule);
             return Err(failure.message.clone());
         }
-        let already_failed = failure.is_some();
         self.publish(app, |status| status.phase = Phase::Downloading);
         match download(&mut update).await {
             Ok(file) => {
                 work.ready = Some(ReadyUpdate { update, file });
-                work.failed_download = None;
+                work.failed_downloads.remove(&package);
                 Ok(())
             }
             Err(error) => {
-                let now = Time::now();
-                let delay = error.delay(already_failed);
-                let retry = delay.map(|delay| Deadline::after(now, delay));
-                if delay == Some(QUICK_RETRY) {
-                    work.schedule
-                        .check_by(now, Deadline::after(now, QUICK_RETRY));
-                }
-                let message = error.message();
-                work.failed_download = Some(FailedDownload {
-                    version: update.version,
-                    signature: update.signature,
-                    retry,
-                    message: message.clone(),
-                });
+                let failure = FailedDownload::record(error, Time::now(), failure);
+                failure.schedule_retry(&mut work.schedule);
+                let message = failure.message.clone();
+                work.failed_downloads.insert(package, failure);
                 Err(message)
             }
         }
@@ -385,6 +396,28 @@ pub async fn install_update(
 mod tests {
     use super::*;
     use std::cell::RefCell;
+
+    #[test]
+    fn manual_network_failure_keeps_an_earlier_signature_rejection() {
+        let now = Time::now();
+        let rejected = FailedDownload::record(DownloadError::Signature, now, None);
+        let retry = FailedDownload::record(DownloadError::Network, now, Some(&rejected));
+        assert!(matches!(retry.retry, DownloadRetry::Manual));
+        assert!(!retry.can_retry(now));
+    }
+
+    #[test]
+    fn first_network_failure_retries_quickly_and_later_failures_wait_longer() {
+        let now = Time::now();
+        let first = FailedDownload::record(DownloadError::Network, now, None);
+        assert!(
+            matches!(first.retry, DownloadRetry::Soon(deadline) if deadline.remaining(now) == QUICK_RETRY)
+        );
+        let second = FailedDownload::record(DownloadError::Network, now, Some(&first));
+        assert!(
+            matches!(second.retry, DownloadRetry::Later(deadline) if deadline.remaining(now) == DOWNLOAD_RETRY)
+        );
+    }
 
     #[test]
     fn shutdown_failure_never_installs_and_reopens_requests() {

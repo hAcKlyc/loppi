@@ -6,7 +6,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
-from threading import Thread
+from threading import Event, Thread
 import time
 
 ROOT = Path.cwd()
@@ -48,6 +48,8 @@ key.unlink()
 versions = []
 downloads = {version: [] for version in packages}
 mode = {'version': None, 'lookup_failures': 1}
+lookup_started = Event()
+lookup_release = Event()
 
 class Feed(BaseHTTPRequestHandler):
     def send(self, status, data=b'', content_type='application/octet-stream'):
@@ -60,6 +62,9 @@ class Feed(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == '/latest':
             versions.append(time.monotonic())
+            if mode.pop('hold_lookup', False):
+                lookup_started.set()
+                lookup_release.wait(5)
             if mode['lookup_failures']:
                 mode['lookup_failures'] -= 1
                 self.send(503)
@@ -77,7 +82,8 @@ class Feed(BaseHTTPRequestHandler):
             self.send(404)
             return
         downloads[version].append(time.monotonic())
-        if version == '0.1.29' and len(downloads[version]) <= 2:
+        if (version == '0.1.29' and len(downloads[version]) <= 2
+                or version == '0.1.30' and mode.get('manual_network_failure')):
             self.send(503)
             return
         content = packages[version][0]
@@ -103,7 +109,7 @@ replace(schedule, 'wall: SystemTime::now(),', '''
 with (ROOT / schedule).open('a', encoding='utf-8') as handle:
     handle.write('\npub(super) static PROBE_WALL_OFFSET: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);\n')
 with (ROOT / 'src-tauri/src/updater.rs').open('a', encoding='utf-8') as handle:
-    handle.write('\npub(crate) fn probe_advance_wall() {\n    schedule::PROBE_WALL_OFFSET.store(30, std::sync::atomic::Ordering::Relaxed);\n}\n')
+    handle.write('\npub(crate) fn probe_advance_wall() {\n    schedule::PROBE_WALL_OFFSET.fetch_add(30, std::sync::atomic::Ordering::Relaxed);\n}\n')
 with (ROOT / 'src-tauri/src/entry.rs').open('a', encoding='utf-8') as handle:
     handle.write('''
 pub(crate) fn probe_native_wake(app: &tauri::AppHandle) {
@@ -118,7 +124,10 @@ native = ROOT / ('src-tauri/native/windows.cpp' if windows else 'src-tauri/nativ
 with native.open('a', encoding='utf-8') as handle:
     handle.write('''
 extern "C" void loppi_probe_native_wake(void *window) {
+    if (!entry((HWND)window)->power_notifications)
+        std::abort();
     SendMessageW((HWND)window, WM_POWERBROADCAST, PBT_APMRESUMEAUTOMATIC, 0);
+    SendMessageW((HWND)window, WM_POWERBROADCAST, PBT_APMRESUMESUSPEND, 0);
 }
 ''' if windows else '''
 void loppi_probe_native_wake(void *window) {
@@ -152,14 +161,16 @@ fn updater_probe(app: tauri::AppHandle) {
         tokio::time::sleep(Duration::from_millis(400)).await;
         assert!(!main.is_visible().unwrap());
         std::fs::write(path.join("hidden"), b"yes").unwrap();
-        for signal in ["wake", "show", "quit"] {
+        for signal in ["wake", "show", "manual", "shared-wake", "shared-manual", "quit"] {
             while !path.join(signal).exists() {
                 tokio::time::sleep(Duration::from_millis(40)).await;
             }
             let host = app.clone();
             app.run_on_main_thread(move || match signal {
-                "wake" => {
-                    assert!(!host.get_webview_window("main").unwrap().is_visible().unwrap());
+                "wake" | "shared-wake" => {
+                    if signal == "wake" {
+                        assert!(!host.get_webview_window("main").unwrap().is_visible().unwrap());
+                    }
                     updater::probe_advance_wall();
                     entry::probe_native_wake(&host);
                 }
@@ -177,6 +188,13 @@ fn updater_probe(app: tauri::AppHandle) {
                          }
                        },250);}
                     "#).unwrap();
+                }
+                "manual" | "shared-manual" => {
+                    let js = format!(
+                        r#"void window.__TAURI_INTERNALS__.invoke('check_update')
+                            .then(()=>window.__TAURI_INTERNALS__.invoke('probe_update_button',{{value:'{signal}'}}));"#
+                    );
+                    host.get_webview_window("main").unwrap().eval(&js).unwrap();
                 }
                 _ => host.exit(0),
             }).unwrap();
@@ -232,7 +250,36 @@ with (out/'app.log').open('w') as output:
         assert len(downloads['0.1.29']) == 3
         (out/'show').touch()
         wait_for(lambda: (out/'button').exists())
-        assert '0.1.29' in (out/'button').read_text(), (out/'button').read_text()
+        title = (out/'button').read_text()
+        assert '0.1.29' in title, title
+
+        # A failed explicit retry must not clear signature rejection, even
+        # across a later successful lookup that reports no update.
+        mode['manual_network_failure'] = True
+        (out/'manual').touch()
+        wait_for(lambda: (out/'button').read_text() == 'manual')
+        assert len(downloads['0.1.30']) == 2
+        before = len(versions)
+        mode['version'] = None
+        wait_for(lambda: len(versions) > before)
+        time.sleep(0.35)
+        mode['version'] = '0.1.30'
+        wait_for(lambda: len(versions) >= before+4)
+        assert len(downloads['0.1.30']) == 2, 'known bad package became eligible again'
+
+        # A wake and a manual request overlapping an eligible package lookup
+        # should share the lookup and the download.
+        mode['version'] = '0.1.29'
+        before = len(versions)
+        mode['hold_lookup'] = True
+        (out/'shared-wake').touch()
+        assert lookup_started.wait(10)
+        (out/'shared-manual').touch()
+        time.sleep(0.6)
+        lookup_release.set()
+        wait_for(lambda: (out/'button').read_text() == 'shared-manual')
+        assert len(versions) == before+1, versions
+        assert len(downloads['0.1.29']) == 4, downloads
         (out/'quit').touch()
         assert app.wait(timeout=30) == 0
         print(json.dumps({
@@ -242,8 +289,9 @@ with (out/'app.log').open('w') as output:
             'download_backoff_s':round(third-second, 2),
             'real_hidden_window':True, 'native_wake':True,
             'checks_continue_during_download_backoff':True,
-            'bad_signature_attempts':len(downloads['0.1.30']),
-            'reopened_verified_button':(out/'button').read_text(),
+            'signature_rejection_survived_manual_failure_and_feed_change':True,
+            'reopened_verified_button':title,
+            'overlapping_wake_and_manual_share_one_download':True,
             'accelerated_check_interval_s':4
         }, ensure_ascii=False))
     except BaseException:
