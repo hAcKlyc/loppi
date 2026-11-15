@@ -14,6 +14,9 @@ assert (ROOT / '.loppi-updater-probe').is_file(), 'use a disposable checkout'
 windows = sys.platform == 'win32'
 target = 'windows-x86_64' if windows else 'darwin-aarch64'
 out = Path(tempfile.mkdtemp(prefix='loppi-updater-'))
+gui = out / 'data/gui'
+gui.mkdir(parents=True)
+(gui / 'onboarding.json').write_text(json.dumps({'schema_version': 1, 'completed': True}))
 cli = ROOT / 'node_modules/@tauri-apps/cli/tauri.js'
 env = {key: value for key, value in os.environ.items() if not key.startswith(('TAURI_SIGNING_', 'LOPPI_TEST_'))}
 env.update(LOPPI_TEST_PARENT_PID=str(os.getpid()), LOPPI_DATA_DIR=str(out/'data'),
@@ -170,7 +173,7 @@ fn updater_probe(app: tauri::AppHandle) {
                          const title=document.querySelector('.restart-update-button')?.title;
                          if(title || --remaining<=0) {
                            clearInterval(timer);
-                           void window.__TAURI_INTERNALS__.invoke('probe_update_button',{value:title||'missing'});
+                           void window.__TAURI_INTERNALS__.invoke('probe_update_button',{value:title||document.body.innerText.slice(0,300)||'empty'});
                          }
                        },250);}
                     "#).unwrap();
