@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: implemented
 updated: 2026-11-16
 ---
 # 人物归属立即保存与后台声纹学习
@@ -34,7 +34,7 @@ updated: 2026-11-16
   - [x] 稳定请求 ID 和 GUI 状态
   - [x] 大库/并发/恢复/失效与 GUI 验证
   - [x] 更新架构文档，构建烟测及 cross-review
-  - [ ] 提交并创建 PR
+  - [x] 提交并创建 PR
 
 ### 当前批次 Review 基线
 - Batch base: df1b132
@@ -62,3 +62,9 @@ updated: 2026-11-16
 
 - ARM64 `./build_dev.sh --target aarch64-apple-darwin` exit 0；Core/CLI/worker/GUI 优化构建、四组件身份、原生运行时、模型哈希及 App/DMG 包内模型自动就绪/重试烟测通过。开发包为 ad-hoc 签名、未公证；源码身份 df1b132 + 本批 dirty 工作树，四组件一致。产物 `build/dev/0.1.28/macos-arm64/loppi_0.1.28_macos-arm64-dev.dmg`，185995941 bytes，SHA-256 `ba3f962a646dbbcd0d13137cb97943e0804451af4ea6521a75dbd40c5a88acfc`。
 - 三路审查后的唯一源码整理为恢复 main.rs 中无关的格式化，voice_loop 逻辑未改变；不再扩大范围。全部本次必做实现、自动验收及本机包体验证已闭环，待提交和 PR 创建。
+
+### 原子交付闭环
+- 从本开发契约整体复核：人工立即保存、后台候选准备、锁外分组/评分、过期校验、稳定成员、未知提交重试、持久任务恢复、状态反馈、合成性能/交互/运行时验证均已覆盖。无批次中间态或临时兼容层。
+- 实现 commit：`233c2be`；独立分支 `fix/speaker-enrollment-responsive` 已推送。
+- PR：<https://github.com/hAcKlyc/loppi/pull/50>，base main。未执行合并、正式发布或替换已安装应用。
+- 本文件收尾提交只记录最终状态与证据，不改变已验证实现。GitHub CI 为 PR 创建后的独立检查，以 PR 页面实时状态为准，不冒充本地验收结果。
