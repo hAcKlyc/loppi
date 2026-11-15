@@ -236,12 +236,28 @@ fn begin(
     }
 }
 
-fn token(value: &Value, key: &str) -> Option<i64> {
+pub(crate) fn token(value: &Value, key: &str) -> Option<i64> {
     value
         .get(key)?
         .as_i64()
         .filter(|v| (0..=100_000_000).contains(v))
 }
+
+pub fn recorded_asr_submission(
+    db: &Connection,
+    task_id: Uuid,
+    remote_id: Uuid,
+    connection: &str,
+) -> Result<bool, String> {
+    db.query_row(
+        "SELECT EXISTS(SELECT 1 FROM usage_requests WHERE model_id='volcengine:volc.seedasr.auc'
+         AND connection_id=?1 AND remote_id=?2 AND task_id=?3)",
+        params![connection, remote_id.to_string(), task_id.to_string()],
+        |row| row.get(0),
+    )
+    .map_err(|e| e.to_string())
+}
+
 fn llm_response(db: &Connection, id: &str, response: &Value, now: i64) -> Result<(), String> {
     let u = &response["usage"];
     let input = token(u, "prompt_tokens");

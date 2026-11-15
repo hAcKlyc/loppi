@@ -1,0 +1,338 @@
+{
+  "version": "0.1.26",
+  "source": "2f084c28c1bafa6f4bce5a5168263fdcac912ffa",
+  "tag": "v0.1.26",
+  "published": true,
+  "release_url": "https://github.com/hAcKlyc/loppi/releases/tag/v0.1.26",
+  "published_at": "2026-11-09T19:37:09Z",
+  "latest": true,
+  "anonymous_manifest_verified": true,
+  "release_run": 42676985694,
+  "release_attempt": 2,
+  "dev_verify_run": 42675464300,
+  "main_verify_run": 42676985869,
+  "asset_digest_method": "SHA256SUMS matched against GitHub asset digests. Downloaded reports, signatures and anonymous manifest hashed locally. Binary and updater signatures verified in Release publish job.",
+  "assets": [
+    {
+      "name": "SHA256SUMS",
+      "bytes": 1205,
+      "sha256": "485e6742c3e95137bfc2553cc6b28fd89cbd722e5bbf9b06e6fe4bfe0733a58e"
+    },
+    {
+      "name": "latest.json",
+      "bytes": 2554,
+      "sha256": "4c9a0fc28b53d76c6295a950f1381fe76e841072194a179e68bfb325f88f2bc4"
+    },
+    {
+      "name": "loppi_0.1.26_macos-arm64.app.tar.gz",
+      "bytes": 178774484,
+      "sha256": "45316f9f4c07fd7e0d6a119c6285ca70ab5dd8ff2d95e067fe20cc549874017e"
+    },
+    {
+      "name": "loppi_0.1.26_macos-arm64.app.tar.gz.sig",
+      "bytes": 448,
+      "sha256": "bae888850ae158a007655f25ddd1acd8b201d866546b52e175293b8440a11935"
+    },
+    {
+      "name": "loppi_0.1.26_macos-arm64.dmg",
+      "bytes": 184745309,
+      "sha256": "425766bd632e75b1e545f39ce7599ddd80219280613da32ce7b684a7384981b1"
+    },
+    {
+      "name": "loppi_0.1.26_macos-arm64.release-info.json",
+      "bytes": 2993,
+      "sha256": "cc759213f5bf5b2874523b831a3f6bee8d276409b18af0569e39379d38c1ec6f"
+    },
+    {
+      "name": "loppi_0.1.26_macos-x86_64.app.tar.gz",
+      "bytes": 181115660,
+      "sha256": "16f48f6501c3891b76bc037e6972dc37f7801672487efd76444aec9af9be692e"
+    },
+    {
+      "name": "loppi_0.1.26_macos-x86_64.app.tar.gz.sig",
+      "bytes": 448,
+      "sha256": "ee72fdefbf3ae1601fc1d9ee4c55a5626ba90d6c5384245842e089039517af6b"
+    },
+    {
+      "name": "loppi_0.1.26_macos-x86_64.dmg",
+      "bytes": 187657687,
+      "sha256": "d7197d4fb301557af2fe72c56a0dd3328c6165da870aad776d6ec79822034565"
+    },
+    {
+      "name": "loppi_0.1.26_macos-x86_64.release-info.json",
+      "bytes": 2976,
+      "sha256": "f7d4848cd8ec6ccc2795bf7e9756e4ca6afcb3c4889773a7df27f78ca184eea0"
+    },
+    {
+      "name": "loppi_0.1.26_windows-x64.release-info.json",
+      "bytes": 2370,
+      "sha256": "bc753f36b2cb9ee583d33cb031844a93ed077ea5869d362f05ccb6990faa04a3"
+    },
+    {
+      "name": "loppi_0.1.26_x64-setup.exe",
+      "bytes": 390258390,
+      "sha256": "bf7359446753c5cbaff43dc3dc5d55c1fbf30dc099b0387bfa13514b50cb614c"
+    },
+    {
+      "name": "loppi_0.1.26_x64-setup.exe.sig",
+      "bytes": 436,
+      "sha256": "993b0bce269a025f7df6a994e2d29813afbd9995e487e3c4aa8daf461654e9cc"
+    }
+  ],
+  "manifest": {
+    "version": "0.1.26",
+    "notes": "## 0.1.26 — 2026-11-10（UTC+08:00）\n\n- 策略结果在事件详情中边生成边显示。排队、等待精转和生成中增加动态状态提示，已生成的长结果可直接滚动查看全文。\n- 模型请求支持单次最长 15 分钟，网络连续 1 分钟无响应时提示超时，方便处理较长的转录。\n- 智能分析的单选和多选点选即应用。场景标签、自动精转和策略在各自的弹窗中保存一次即可生效。\n- 修复鼠标点击事件详情「更多」菜单中的编辑和调整分段无反应的问题。改善人物选择浮层和日期月历的关闭与键盘焦点。",
+    "pub_date": "2026-11-10T02:46:16+08:00",
+    "platforms": {
+      "darwin-aarch64": {
+        "url": "https://github.com/hAcKlyc/loppi/releases/download/v0.1.26/loppi_0.1.26_macos-arm64.app.tar.gz",
+        "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUcmJuVWFzYi9CdW9LUFBNZU1MczBnNERLcjdRQ3NLUVNzWTRpN1V2Y2ovbzZaYTJRQkdVcHQrNCtIUVpjWkNyWFpqNWcxMDIzMTIyM1VJRkFldTdRSTdQUmZtZG9JRVFVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0MjUxNjIyCWZpbGU6bG9wcGlfMC4xLjI2X21hY29zLWFybTY0LmFwcC50YXIuZ3oJdmVyc2lvbjowLjEuMjYKNmRpd3FlMGZZM005WE05aEt6dmo0ZG12T2tMVTI3OENrOWUzWklhNnBRVGduMHQzOEUyNHhhaXBCVFcvV082b0l1WE92bXF6QWRQYlRWaThzR1hQQ3c9PQo="
+      },
+      "darwin-x86_64": {
+        "url": "https://github.com/hAcKlyc/loppi/releases/download/v0.1.26/loppi_0.1.26_macos-x86_64.app.tar.gz",
+        "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUcmJuVWFzYi9CdWpQSTEzQ2pyYWViTU5Yb29xbDNtckZac0VtaVJMaE9HbnMyYU5xZFh2MkpWQXZmNSsyMWhZU0tlQ2N3ZHp6UldvRmx4K3dsRGhabXRjM0t6eXRqaEFBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0MjUyNzQyCWZpbGU6bG9wcGlfMC4xLjI2X21hY29zLXg4Nl82NC5hcHAudGFyLmd6CXZlcnNpb246MC4xLjI2Ck5FY25Sb01SMjhpa3VSSDBpR1czaWM3OU1wZ2ZjZUczajJXMHZSWlU2T1lOZXoyZFZvUUNLdHJBZ1l3c2h4SktObi9hd1ppYnR1U1dtTC9yb05QcENnPT0K"
+      },
+      "windows-x86_64": {
+        "url": "https://github.com/hAcKlyc/loppi/releases/download/v0.1.26/loppi_0.1.26_x64-setup.exe",
+        "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUcmJuVWFzYi9CdXA5NXppU3dRT1EyUXBBczQ2SUFEM2FUTWxQWGtIVkRsSU84ejJrSHpQUzZveWFMRGZWdkJySWhsSFpNdHc3VG82QzNHL0sxa3RzQUwvR3V2US9kS0FnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0MjUxNzk1CWZpbGU6bG9wcGlfMC4xLjI2X3g2NC1zZXR1cC5leGUJdmVyc2lvbjowLjEuMjYKOFd1QTN2by9FM29FUnZLelBvMklQaFVGUjBIVmtCS1JwSVc2OC9nT1FHNm9hd082SCtESlU3TFdGQXVsRXc1aVNjNDg2OXEzNUNjSWs2UG8vZ2d2RGc9PQo="
+      }
+    }
+  },
+  "reports": {
+    "loppi_0.1.26_macos-arm64.release-info.json": {
+      "version": "0.1.26",
+      "source": "2f084c28c1bafa6f4bce5a5168263fdcac912ffa",
+      "dirty": false,
+      "target": "aarch64-apple-darwin",
+      "architectures": [
+        "arm64"
+      ],
+      "built_at_epoch": 1794250679,
+      "models_lock_sha256": "e0320694c4f75c3c545886ae3439079c0f9d68fc536f30d8cbc07d1287470519",
+      "models_bytes": 204642977,
+      "native": {
+        "version": "2.0.0",
+        "sha256": "8ed41bf3b27ce55d6527bbc0f7754598c5afbb18e814ff0bddbc9ecd50fb09c5"
+      },
+      "toolchain": {
+        "node": "v24.22.2",
+        "rust": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+        "xcode": "Xcode 26.0.1\nBuild version 17A400",
+        "sdk": "26.0"
+      },
+      "identity": {
+        "schema": 1,
+        "components": {
+          "gui": {
+            "component": "gui",
+            "version": "0.1.26",
+            "protocol_version": 29,
+            "git_sha": "2f084c28c1bafa6f4bce5a5168263fdcac912ffa",
+            "dirty": false,
+            "built_at_epoch": 1794250679
+          },
+          "cli": {
+            "component": "cli",
+            "version": "0.1.26",
+            "protocol_version": 29,
+            "git_sha": "2f084c28c1bafa6f4bce5a5168263fdcac912ffa",
+            "dirty": false,
+            "built_at_epoch": 1794250679
+          },
+          "core": {
+            "component": "core",
+            "version": "0.1.26",
+            "protocol_version": 29,
+            "git_sha": "2f084c28c1bafa6f4bce5a5168263fdcac912ffa",
+            "dirty": false,
+            "built_at_epoch": 1794250679
+          },
+          "worker": {
+            "component": "worker",
+            "version": "0.1.26",
+            "protocol_version": 29,
+            "git_sha": "2f084c28c1bafa6f4bce5a5168263fdcac912ffa",
+            "dirty": false,
+            "built_at_epoch": 1794250679
+          }
+        }
+      },
+      "runtime": {
+        "architecture": "aarch64",
+        "onnxruntime": "1.28.2",
+        "provider": "cpu",
+        "sherpa_onnx": "2.0.0"
+      },
+      "runtime_execution": "native",
+      "runtime_checked_architecture": "arm64",
+      "intel_native_test": "not run on Intel hardware",
+      "minimum_os_runtime_test": "not run",
+      "dmg": "loppi_0.1.26_macos-arm64.dmg",
+      "dmg_bytes": 184745309,
+      "dmg_sha256": "425766bd632e75b1e545f39ce7599ddd80219280613da32ce7b684a7384981b1",
+      "updater": {
+        "version": "0.1.26",
+        "source": "2f084c28c1bafa6f4bce5a5168263fdcac912ffa",
+        "platforms": {
+          "darwin-aarch64": {
+            "url": "https://github.com/hAcKlyc/loppi/releases/download/v0.1.26/loppi_0.1.26_macos-arm64.app.tar.gz",
+            "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUcmJuVWFzYi9CdW9LUFBNZU1MczBnNERLcjdRQ3NLUVNzWTRpN1V2Y2ovbzZaYTJRQkdVcHQrNCtIUVpjWkNyWFpqNWcxMDIzMTIyM1VJRkFldTdRSTdQUmZtZG9JRVFVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0MjUxNjIyCWZpbGU6bG9wcGlfMC4xLjI2X21hY29zLWFybTY0LmFwcC50YXIuZ3oJdmVyc2lvbjowLjEuMjYKNmRpd3FlMGZZM005WE05aEt6dmo0ZG12T2tMVTI3OENrOWUzWklhNnBRVGduMHQzOEUyNHhhaXBCVFcvV082b0l1WE92bXF6QWRQYlRWaThzR1hQQ3c9PQo="
+          }
+        },
+        "artifact": "loppi_0.1.26_macos-arm64.app.tar.gz",
+        "bytes": 178774484,
+        "sha256": "45316f9f4c07fd7e0d6a119c6285ca70ab5dd8ff2d95e067fe20cc549874017e"
+      }
+    },
+    "loppi_0.1.26_macos-x86_64.release-info.json": {
+      "version": "0.1.26",
+      "source": "2f084c28c1bafa6f4bce5a5168263fdcac912ffa",
+      "dirty": false,
+      "target": "x86_64-apple-darwin",
+      "architectures": [
+        "x86_64"
+      ],
+      "built_at_epoch": 1794251018,
+      "models_lock_sha256": "e0320694c4f75c3c545886ae3439079c0f9d68fc536f30d8cbc07d1287470519",
+      "models_bytes": 204642977,
+      "native": {
+        "version": "2.0.0",
+        "sha256": "8ed41bf3b27ce55d6527bbc0f7754598c5afbb18e814ff0bddbc9ecd50fb09c5"
+      },
+      "toolchain": {
+        "node": "v24.19.0",
+        "rust": "rustc 1.98.0 (88d9e12ae 2026-08-18)",
+        "xcode": "Xcode 26.0.1\nBuild version 17A400",
+        "sdk": "26.0"
+      },
+      "identity": {
+        "schema": 1,
+        "components": {
+          "gui": {
+            "component": "gui",
+            "version": "0.1.26",
+            "protocol_version": 29,
+            "git_sha": "2f084c28c1bafa6f4bce5a5168263fdcac912ffa",
+            "dirty": false,
+            "built_at_epoch": 1794251018
+          },
+          "cli": {
+            "component": "cli",
+            "version": "0.1.26",
+            "protocol_version": 29,
+            "git_sha": "2f084c28c1bafa6f4bce5a5168263fdcac912ffa",
+            "dirty": false,
+            "built_at_epoch": 1794251018
+          },
+          "core": {
+            "component": "core",
+            "version": "0.1.26",
+            "protocol_version": 29,
+            "git_sha": "2f084c28c1bafa6f4bce5a5168263fdcac912ffa",
+            "dirty": false,
+            "built_at_epoch": 1794251018
+          },
+          "worker": {
+            "component": "worker",
+            "version": "0.1.26",
+            "protocol_version": 29,
+            "git_sha": "2f084c28c1bafa6f4bce5a5168263fdcac912ffa",
+            "dirty": false,
+            "built_at_epoch": 1794251018
+          }
+        }
+      },
+      "runtime": {
+        "architecture": "x86_64",
+        "onnxruntime": "1.28.2",
+        "provider": "cpu",
+        "sherpa_onnx": "2.0.0"
+      },
+      "runtime_execution": "native",
+      "runtime_checked_architecture": "x86_64",
+      "intel_native_test": "passed",
+      "minimum_os_runtime_test": "not run",
+      "dmg": "loppi_0.1.26_macos-x86_64.dmg",
+      "dmg_bytes": 187657687,
+      "dmg_sha256": "d7197d4fb301557af2fe72c56a0dd3328c6165da870aad776d6ec79822034565",
+      "updater": {
+        "version": "0.1.26",
+        "source": "2f084c28c1bafa6f4bce5a5168263fdcac912ffa",
+        "platforms": {
+          "darwin-x86_64": {
+            "url": "https://github.com/hAcKlyc/loppi/releases/download/v0.1.26/loppi_0.1.26_macos-x86_64.app.tar.gz",
+            "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUcmJuVWFzYi9CdWpQSTEzQ2pyYWViTU5Yb29xbDNtckZac0VtaVJMaE9HbnMyYU5xZFh2MkpWQXZmNSsyMWhZU0tlQ2N3ZHp6UldvRmx4K3dsRGhabXRjM0t6eXRqaEFBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0MjUyNzQyCWZpbGU6bG9wcGlfMC4xLjI2X21hY29zLXg4Nl82NC5hcHAudGFyLmd6CXZlcnNpb246MC4xLjI2Ck5FY25Sb01SMjhpa3VSSDBpR1czaWM3OU1wZ2ZjZUczajJXMHZSWlU2T1lOZXoyZFZvUUNLdHJBZ1l3c2h4SktObi9hd1ppYnR1U1dtTC9yb05QcENnPT0K"
+          }
+        },
+        "artifact": "loppi_0.1.26_macos-x86_64.app.tar.gz",
+        "bytes": 181115660,
+        "sha256": "16f48f6501c3891b76bc037e6972dc37f7801672487efd76444aec9af9be692e"
+      }
+    },
+    "loppi_0.1.26_windows-x64.release-info.json": {
+      "schema": 1,
+      "version": "0.1.26",
+      "source": "2f084c28c1bafa6f4bce5a5168263fdcac912ffa",
+      "epoch": "1794250852",
+      "dirty": false,
+      "platform": "windows-x64",
+      "minimum_build": 22000,
+      "authenticode": "unsigned",
+      "stage": "D:\\a\\loppi\\loppi\\build\\windows\\x86_64-pc-windows-msvc-1794250852-9052",
+      "components": {
+        "gui": {
+          "component": "gui",
+          "version": "0.1.26",
+          "protocol_version": 29,
+          "git_sha": "2f084c28c1bafa6f4bce5a5168263fdcac912ffa",
+          "dirty": false,
+          "built_at_epoch": 1794250852
+        },
+        "core": {
+          "component": "core",
+          "version": "0.1.26",
+          "protocol_version": 29,
+          "git_sha": "2f084c28c1bafa6f4bce5a5168263fdcac912ffa",
+          "dirty": false,
+          "built_at_epoch": 1794250852
+        },
+        "worker": {
+          "component": "worker",
+          "version": "0.1.26",
+          "protocol_version": 29,
+          "git_sha": "2f084c28c1bafa6f4bce5a5168263fdcac912ffa",
+          "dirty": false,
+          "built_at_epoch": 1794250852
+        },
+        "cli": {
+          "component": "cli",
+          "version": "0.1.26",
+          "protocol_version": 29,
+          "git_sha": "2f084c28c1bafa6f4bce5a5168263fdcac912ffa",
+          "dirty": false,
+          "built_at_epoch": 1794250852
+        }
+      },
+      "artifacts": [
+        {
+          "path": "D:\\a\\loppi\\loppi\\target\\x86_64-pc-windows-msvc\\release\\bundle\\nsis\\loppi_0.1.26_x64-setup.exe",
+          "bytes": 390258390,
+          "sha256": "bf7359446753c5cbaff43dc3dc5d55c1fbf30dc099b0387bfa13514b50cb614c"
+        }
+      ],
+      "updater": {
+        "version": "0.1.26",
+        "source": "2f084c28c1bafa6f4bce5a5168263fdcac912ffa",
+        "platforms": {
+          "windows-x86_64": {
+            "url": "https://github.com/hAcKlyc/loppi/releases/download/v0.1.26/loppi_0.1.26_x64-setup.exe",
+            "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUcmJuVWFzYi9CdXA5NXppU3dRT1EyUXBBczQ2SUFEM2FUTWxQWGtIVkRsSU84ejJrSHpQUzZveWFMRGZWdkJySWhsSFpNdHc3VG82QzNHL0sxa3RzQUwvR3V2US9kS0FnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0MjUxNzk1CWZpbGU6bG9wcGlfMC4xLjI2X3g2NC1zZXR1cC5leGUJdmVyc2lvbjowLjEuMjYKOFd1QTN2by9FM29FUnZLelBvMklQaFVGUjBIVmtCS1JwSVc2OC9nT1FHNm9hd082SCtESlU3TFdGQXVsRXc1aVNjNDg2OXEzNUNjSWs2UG8vZ2d2RGc9PQo="
+          }
+        },
+        "artifact": "loppi_0.1.26_x64-setup.exe",
+        "bytes": 390258390,
+        "sha256": "bf7359446753c5cbaff43dc3dc5d55c1fbf30dc099b0387bfa13514b50cb614c"
+      }
+    }
+  }
+}

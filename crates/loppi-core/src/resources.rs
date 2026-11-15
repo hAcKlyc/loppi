@@ -54,6 +54,7 @@ pub struct Power {
     pub available: u32,
     pub sleeping: u32,
     pub generation: u64,
+    /// Wall-clock Unix milliseconds at the start of the latest suspension.
     pub sleep_ms: i64,
 }
 pub fn power() -> Power {
@@ -461,6 +462,16 @@ impl State {
                 || self.last_admission[index].elapsed() >= Duration::from_secs(60))
     }
     fn advance(&mut self, now: Instant, pressure: bool, critical: bool) {
+        // Falling below Critical permits constrained work after the same
+        // stability window used to enter Constrained. Warning-only pressure
+        // can keep Normal out of reach without prolonging a full stop.
+        if self.mode == Mode::Critical
+            && !critical
+            && now.duration_since(self.since) >= Duration::from_secs(10)
+        {
+            self.mode = Mode::Constrained;
+            self.since = now;
+        }
         if critical {
             self.mode = Mode::Critical;
             self.since = now;
@@ -560,12 +571,30 @@ mod tests {
         assert_eq!(state.mode, Mode::Critical);
         state.advance(now + Duration::from_secs(12), false, false);
         state.advance(now + Duration::from_secs(71), false, false);
-        assert_eq!(state.mode, Mode::Critical);
+        assert_eq!(state.mode, Mode::Constrained);
         state.advance(now + Duration::from_secs(72), false, false);
         assert_eq!(state.mode, Mode::Recovering);
         state.advance(now + Duration::from_secs(132), false, false);
         assert_eq!(state.mode, Mode::Normal);
     }
+    #[test]
+    fn warning_pressure_after_critical_allows_constrained_work() {
+        let governor = Governor::new();
+        let mut state = governor.state.lock().unwrap();
+        let now = Instant::now();
+        state.advance(now, true, true);
+        for seconds in 1..10 {
+            state.advance(now + Duration::from_secs(seconds), true, false);
+            assert_eq!(state.mode, Mode::Critical);
+        }
+        for seconds in 10..120 {
+            state.advance(now + Duration::from_secs(seconds), seconds % 3 != 0, false);
+            assert_eq!(state.mode, Mode::Constrained);
+        }
+        state.advance(now + Duration::from_secs(120), true, true);
+        assert_eq!(state.mode, Mode::Critical);
+    }
+
     #[test]
     fn budget_reserves_peaks_and_releases_without_recording_mutation() {
         let governor = Governor::new();

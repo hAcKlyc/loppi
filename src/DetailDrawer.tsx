@@ -207,6 +207,7 @@ export function DetailDrawer({
 	detailRef.current = detail;
 	const [detailReady, setDetailReady] = useState(false);
 	const [detailError, setDetailError] = useState<string | null>(null);
+	const [transcriptStale, setTranscriptStale] = useState(false);
 	const [selectedTab, setTab] = useState("transcript");
 	const [strategyOpen, setStrategyOpen] = useState(false);
 	const focusNewStrategy = useRef(false);
@@ -308,6 +309,7 @@ export function DetailDrawer({
 	const momentsRequest = useRef(0);
 	const detailRequest = useRef(0);
 	const snapshotVersion = useRef<string | undefined>(undefined);
+	const cleanupGeneration = useRef<number | undefined>(undefined);
 	const asrDefaults = useRef({
 		from: localDateTime(Math.ceil(item.started_ms / 1000) * 1000),
 		to: localDateTime(Math.floor(item.ended_ms / 1000) * 1000),
@@ -321,6 +323,7 @@ export function DetailDrawer({
 			setLoadingPage(true);
 			if (paging) setPageError(null);
 			const token = ++detailRequest.current;
+			let rebuildingAfterCleanup = false;
 			setDetailError(null);
 			try {
 				const allCoarse: CoarseSegment[] = [];
@@ -330,14 +333,18 @@ export function DetailDrawer({
 					id: string;
 					event: TimelineItem;
 					snapshot_version?: string;
+					cleanup_generation?: number;
 				} | null = null;
 				let loadedPage = 0;
 				let loadedVersion: string | undefined;
+				let loadedGeneration: number | undefined;
 				for (let attempt = 0; attempt < 2; attempt++) {
 					allCoarse.length = 0;
 					allPrecise.length = 0;
 					const appendPage = paging && attempt === 0;
 					loadedVersion = appendPage ? snapshotVersion.current : undefined;
+					loadedGeneration = appendPage ? cleanupGeneration.current : undefined;
+					let cleanupChanged = false;
 					if (appendPage) {
 						allCoarse.push(...detailRef.current.coarse_segments);
 						allPrecise.push(...detailRef.current.precise_segments);
@@ -362,14 +369,26 @@ export function DetailDrawer({
 							type: "event";
 							id: string;
 							event: TimelineItem;
+							snapshot_version?: string;
+							cleanup_generation?: number;
 						}>(request);
 						if (token !== detailRequest.current) return;
+						if (
+							!rebuildingAfterCleanup &&
+							cleanupGeneration.current !== undefined &&
+							response.cleanup_generation !== undefined &&
+							response.cleanup_generation !== cleanupGeneration.current
+						) {
+							rebuildingAfterCleanup = true;
+							setTranscriptStale(true);
+						}
 						if (
 							refresh &&
 							offset === 0 &&
 							initialScroll.current === undefined &&
 							response.snapshot_version &&
 							response.snapshot_version === snapshotVersion.current &&
+							response.cleanup_generation === cleanupGeneration.current &&
 							response.event.id === detailRef.current.id &&
 							response.event.started_ms === detailRef.current.started_ms &&
 							response.event.ended_ms === detailRef.current.ended_ms &&
@@ -377,6 +396,15 @@ export function DetailDrawer({
 						) {
 							return;
 						}
+						if (
+							loadedGeneration !== undefined &&
+							response.cleanup_generation !== undefined &&
+							response.cleanup_generation !== loadedGeneration
+						) {
+							cleanupChanged = true;
+							break;
+						}
+						loadedGeneration ??= response.cleanup_generation;
 						loadedVersion =
 							!appendPage && offset === 0
 								? response.snapshot_version
@@ -415,6 +443,13 @@ export function DetailDrawer({
 									));
 						if (offset >= page && covered) break;
 					}
+					if (cleanupChanged) {
+						// OFFSET addresses a different set after a deletion.
+						// Replace the window as a unit, preserving its scroll container.
+						rebuildingAfterCleanup = true;
+						if (attempt === 0) continue;
+						throw new Error("转录在读取时又有清理，请重试");
+					}
 					if (
 						uniqueSegments(allCoarse).length === allCoarse.length &&
 						uniqueSegments(allPrecise).length === allPrecise.length
@@ -440,6 +475,8 @@ export function DetailDrawer({
 					precise_segments: uniqueSegments(allPrecise),
 				});
 				offset.current = loadedPage;
+				cleanupGeneration.current = loadedGeneration;
+				setTranscriptStale(false);
 				snapshotVersion.current = undefined;
 				setDetailReady(true);
 				setMore({
@@ -476,7 +513,18 @@ export function DetailDrawer({
 				snapshotVersion.current = loadedVersion;
 			} catch (error) {
 				if (token === detailRequest.current) {
-					if (paging) setPageError(userError(error));
+					if (rebuildingAfterCleanup) {
+						setDetail((current) => ({
+							...current,
+							coarse_segments: [],
+							precise_segments: [],
+						}));
+						setMore({ coarse: false, precise: false });
+						snapshotVersion.current = undefined;
+						cleanupGeneration.current = undefined;
+						setTranscriptStale(false);
+						setDetailError(userError(error));
+					} else if (paging) setPageError(userError(error));
 					else setDetailError(userError(error));
 				}
 			} finally {
@@ -1671,6 +1719,8 @@ export function DetailDrawer({
 							value="transcript"
 							selected={tab}
 							className={`detail-scroll transcript-list${crossesDay ? " crosses-day" : ""}`}
+							aria-hidden={transcriptStale || undefined}
+							style={{ visibility: transcriptStale ? "hidden" : undefined }}
 							key="transcript"
 							ref={transcriptRef}
 							onWheel={() => {

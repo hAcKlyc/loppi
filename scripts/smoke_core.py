@@ -9,11 +9,60 @@ import tempfile
 import time
 import uuid
 from pathlib import Path
+from test_upgrade_lifecycle import rpc
 
 
 ROOT = Path(__file__).resolve().parent.parent
 CLI = ROOT / "target/debug/loppi"
 CORE = ROOT / "target/debug/loppi-core"
+
+
+def verify_queued_cleanup(directory: Path, version: int) -> None:
+    now = int(time.time() * 1000)
+    for hours in (23, 24, 25):
+        timeline = rpc(directory, version, {'type': 'timeline', 'from_ms': now - hours * 3_600_000, 'to_ms': now})
+        assert timeline['type'] == 'timeline', timeline
+    start, end = now - 600_000, now + 600_000
+    preview_request = {'type': 'preview_cleanup', 'from_ms': start, 'to_ms': end,
+                       'sources': 'microphone', 'mode': 'all_data'}
+    stale = rpc(directory, version, preview_request)['preview']['token']
+    event = rpc(directory, version, {'type': 'create_event', 'started_ms': start, 'ended_ms': end,
+                                    'sources': 'microphone', 'title': 'Disposable cleanup fixture'})
+    assert event['type'] == 'accepted', event
+    event_id = event['object_id']
+    def disconnect_request(token, request):
+        with socket.socket(socket.AF_UNIX) as connection:
+            connection.connect(str(directory / 'core.sock'))
+            connection.sendall(json.dumps(dict(version=version, id=token, client='gui', request=request)).encode())
+            # Keep the peer identifiable through admission while discarding its reply.
+            connection.shutdown(socket.SHUT_RDWR)
+            return until_terminal(token)
+
+    def until_terminal(token):
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            status = rpc(directory, version, {'type': 'cleanup_result', 'preview_token': token})
+            if status['result'] is not None:
+                return status
+            time.sleep(.08)
+        raise AssertionError('Core did not expose the terminal cleanup receipt')
+
+    rejected = disconnect_request(stale, {'type': 'queue_cleanup', 'preview_token': stale, 'confirmed_all_data': True})
+    assert not rejected['accepted'] and rejected['result']['code'] == 'cleanup_invalid', rejected
+    assert 'preview changed' in rejected['result']['message'], rejected
+
+    preview = rpc(directory, version, preview_request)['preview']
+    token = preview['token']
+    lookup = {'type': 'cleanup_result', 'preview_token': token}
+    waiting = rpc(directory, version, lookup)
+    assert waiting['type'] == 'cleanup_result' and not waiting['accepted'] and waiting['result'] is None
+    request = {'type': 'queue_cleanup', 'preview_token': token, 'confirmed_all_data': True}
+    status = disconnect_request(token, request)
+    assert status['accepted'] and status['result']['type'] == 'cleanup_complete', status
+    assert rpc(directory, version, request)['type'] == 'accepted'
+    removed = rpc(directory, version, {'type': 'event_detail', 'event_id': event_id, 'offset': 0, 'limit': 30})
+    assert removed['type'] == 'error', removed
+    print('core smoke: 23/24/25 hour reads and exact queued cleanup with lost acceptance and rejection replies')
 
 
 def main() -> None:
@@ -95,6 +144,8 @@ def main() -> None:
                 except ConnectionResetError:
                     pass
             print("core/CLI smoke: isolated query, mutations, revision and correlated logs passed")
+            version = json.loads(subprocess.check_output([CORE, '--build-info']))['protocol_version']
+            verify_queued_cleanup(Path(directory), version)
         finally:
             command("quit")
 

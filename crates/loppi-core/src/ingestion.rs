@@ -52,6 +52,15 @@ pub enum Kind {
     },
 }
 
+pub fn cleanup_generation(db: &Connection) -> Result<i64, String> {
+    db.query_row(
+        "SELECT generation FROM ingestion_state WHERE id=1",
+        [],
+        |r| r.get(0),
+    )
+    .map_err(|e| e.to_string())
+}
+
 pub fn init(db: &Connection) -> Result<(), String> {
     db.execute_batch("CREATE TABLE IF NOT EXISTS ingestion_state(id INTEGER PRIMARY KEY CHECK(id=1),generation INTEGER NOT NULL);
       INSERT OR IGNORE INTO ingestion_state VALUES(1,0);
@@ -208,6 +217,22 @@ impl Journal {
         Ok(Self { root, session })
     }
 
+    fn publication_lock(&self, wait: Duration) -> std::io::Result<File> {
+        let directory = loppi_protocol::platform::open_directory(&self.root)?;
+        let deadline = Instant::now() + wait;
+        loop {
+            match loppi_protocol::platform::try_lock_exclusive(&directory) {
+                Ok(()) => return Ok(directory),
+                Err(e)
+                    if e.kind() == std::io::ErrorKind::WouldBlock && Instant::now() < deadline =>
+                {
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
     pub fn persist(&mut self, event: record::RecordEvent) -> Result<(), String> {
         let (entry, prepared) = match event {
             record::RecordEvent::Block(block) => {
@@ -268,20 +293,9 @@ impl Journal {
         // covers only the bounded journal namespace, never DB/model work. It
         // is on the directory inode (no extra journal file) and dies with its
         // owning descriptor/process. Capture callbacks never acquire it.
-        let publication =
-            loppi_protocol::platform::open_directory(&self.root).map_err(|e| e.to_string())?;
-        let deadline = Instant::now() + Duration::from_secs(2);
-        loop {
-            match loppi_protocol::platform::try_lock_exclusive(&publication) {
-                Ok(()) => break,
-                Err(e)
-                    if e.kind() == std::io::ErrorKind::WouldBlock && Instant::now() < deadline =>
-                {
-                    std::thread::sleep(Duration::from_millis(1));
-                }
-                Err(e) => return Err(format!("journal publication lock: {e}")),
-            }
-        }
+        let _publication = self
+            .publication_lock(Duration::from_secs(2))
+            .map_err(|e| format!("journal publication lock: {e}"))?;
         let name = entry.id.to_string();
         // Count logical entries, not publication files. Finishing a prepared
         // block must remain possible at capacity; otherwise the last admitted
@@ -396,41 +410,124 @@ impl Entry {
     }
 }
 
-pub fn load(path: &Path) -> Result<Entry, String> {
-    if fs::symlink_metadata(path)
-        .map_err(|e| e.to_string())?
-        .file_type()
-        .is_symlink()
+pub fn load(path: &Path) -> Result<Entry, PrepareError> {
+    if !fs::symlink_metadata(path)
+        .map_err(|_| PrepareError::Retry("ingestion_journal_metadata"))?
+        .is_file()
     {
-        return Err("journal is a symlink".into());
+        return Err(PrepareError::Invalid(
+            "journal is not a regular file".into(),
+        ));
     }
     let mut bytes = Vec::new();
     File::open(path)
-        .map_err(|e| e.to_string())?
+        .map_err(|_| PrepareError::Retry("ingestion_journal_open"))?
         .take(MAX_ENTRY_BYTES + 1)
         .read_to_end(&mut bytes)
-        .map_err(|e| e.to_string())?;
+        .map_err(|_| PrepareError::Retry("ingestion_journal_read"))?;
     if bytes.len() as u64 > MAX_ENTRY_BYTES {
-        return Err("journal metadata too large".into());
+        return Err(PrepareError::Invalid("journal metadata too large".into()));
     }
-    let entry: Entry = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
-    entry.validate()?;
+    let entry: Entry =
+        serde_json::from_slice(&bytes).map_err(|error| PrepareError::Invalid(error.to_string()))?;
+    entry.validate().map_err(PrepareError::Invalid)?;
     if path.extension().is_some_and(|x| x == "ready")
         && matches!(&entry.kind, Kind::Block { digital_silence: false, bytes, sha256, .. }
             if bytes.is_none() || sha256.is_none())
     {
-        return Err("final journal lacks media integrity".into());
+        return Err(PrepareError::Invalid(
+            "final journal lacks media integrity".into(),
+        ));
     }
     if path.file_stem().and_then(|p| p.to_str()) != Some(entry.id.to_string().as_str())
         || path
             .parent()
-            .and_then(|p| p.file_name())
+            .and_then(Path::file_name)
             .and_then(|p| p.to_str())
             != Some(entry.session.id.to_string().as_str())
     {
-        return Err("journal identity mismatch".into());
+        return Err(PrepareError::Invalid("journal identity mismatch".into()));
     }
     Ok(entry)
+}
+
+/// Bring a previously quarantined, verified final block back into the ordinary
+/// journal. Pending registration precedes publication; both crash orderings
+/// converge in the existing bounded recovery sweeps.
+pub fn recover_quarantined(
+    store: &std::sync::Mutex<crate::Store>,
+    gate: &std::sync::Mutex<()>,
+    directory: &Path,
+    path: &Path,
+) -> Result<(), String> {
+    if path.extension().is_none_or(|value| value != "ready") {
+        return Ok(());
+    }
+    let _gate = gate.lock().map_err(|e| e.to_string())?;
+    let Ok(entry) = load(path) else { return Ok(()) };
+    let Kind::Block {
+        sample_start,
+        frames,
+        digital_silence: false,
+        bytes: Some(bytes),
+        sha256: Some(hash),
+    } = &entry.kind
+    else {
+        return Ok(());
+    };
+    let session_id = entry.session.id.to_string();
+    let key = loppi_protocol::platform::relative_key(&entry.media_path());
+    {
+        let store = store.lock().map_err(|e| e.to_string())?;
+        if acknowledged(&store.db, &entry)? {
+            return Ok(());
+        }
+        let recoverable: bool = store.db.query_row(
+            "SELECT EXISTS(SELECT 1 FROM recording_sessions WHERE id=?1 AND state IN ('closed','interrupted','failed'))
+                AND NOT EXISTS(SELECT 1 FROM audio_blocks WHERE session_id=?1
+                  AND sample_start<?3 AND sample_start+frames>?2)
+                AND NOT EXISTS(SELECT 1 FROM media_gaps WHERE id GLOB ?4)
+                AND NOT EXISTS(SELECT 1 FROM media_deletion_jobs WHERE media_path=?5)",
+            params![session_id, *sample_start as i64, *sample_start as i64 + *frames as i64,
+                format!("{}:*", entry.id), key], |row| row.get(0),
+        ).map_err(|e| e.to_string())?;
+        if !recoverable {
+            return Ok(());
+        }
+    }
+    let media = directory.join(entry.media_path());
+    let Ok(metadata) = fs::symlink_metadata(&media) else {
+        return Ok(());
+    };
+    if !metadata.is_file() || metadata.len() != *bytes || hash_file(&media)? != *hash {
+        return Ok(());
+    }
+    let journal = Journal::new(directory, entry.session)?;
+    let destination = journal.root.join(format!("{}.ready", entry.id));
+    store
+        .lock()
+        .map_err(|e| e.to_string())?
+        .db
+        .execute(
+            "INSERT OR IGNORE INTO ingestion_pending_sessions VALUES(?1)",
+            [&session_id],
+        )
+        .map_err(|e| e.to_string())?;
+    let publication = match journal.publication_lock(Duration::ZERO) {
+        Ok(guard) => guard,
+        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => return Ok(()),
+        Err(error) => return Err(error.to_string()),
+    };
+    for extension in ["ready", "prepared", "writing"] {
+        match fs::symlink_metadata(destination.with_extension(extension)) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            _ => return Ok(()),
+        }
+    }
+    loppi_protocol::platform::rename(path, &destination).map_err(|e| e.to_string())?;
+    drop(publication);
+    sync_dir(&journal.root)?;
+    sync_dir(path.parent().ok_or("missing quarantine directory")?)
 }
 
 /// A bounded session journal makes restart independent of the historical media directory.
@@ -964,6 +1061,108 @@ mod tests {
             pending(dir.path(), session, false).unwrap_err().kind(),
             std::io::ErrorKind::NotADirectory
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unreadable_ready_journal_keeps_pending_session_and_imports_when_readable() {
+        let (directory, store, session) = setup();
+        let id = publish(directory.path(), &session, 0, true);
+        publish(directory.path(), &session, 1000, true);
+        let ready = directory
+            .path()
+            .join("ingestion")
+            .join(session.id.to_string())
+            .join(format!("{id}.ready"));
+        loppi_protocol::platform::set_mode(&ready, 0o000).unwrap();
+        assert_eq!(
+            crate::ingest_session_locked(&store, directory.path(), session.id, false).unwrap_err(),
+            "ingestion_journal_open"
+        );
+        store
+            .lock()
+            .unwrap()
+            .db
+            .execute("UPDATE recording_sessions SET state='closed'", [])
+            .unwrap();
+        let result = crate::ingest_session_locked(&store, directory.path(), session.id, true);
+        loppi_protocol::platform::set_mode(&ready, 0o600).unwrap();
+        assert_eq!(result.unwrap_err(), "ingestion_journal_open");
+        assert_eq!(count(&store), 1);
+        assert_eq!(
+            pending_sessions(&store.lock().unwrap().db, "").unwrap(),
+            [session.id]
+        );
+        assert!(!directory.path().join("ingestion-quarantine").exists());
+        drop(store);
+        let store = Mutex::new(
+            Store::new(Connection::open(directory.path().join("loppi.sqlite")).unwrap()).unwrap(),
+        );
+        crate::ingest_session_locked(&store, directory.path(), session.id, true).unwrap();
+        assert_eq!(count(&store), 2);
+        assert!(
+            pending_sessions(&store.lock().unwrap().db, "")
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn verified_quarantined_blocks_reenter_ingestion_and_obey_clear_generations() {
+        let (directory, store, session) = setup();
+        let kept = publish(directory.path(), &session, 0, true);
+        let cleared = publish(directory.path(), &session, 1000, true);
+        let corrupt = publish(directory.path(), &session, 2000, true);
+        let root = directory
+            .path()
+            .join("ingestion")
+            .join(session.id.to_string());
+        for id in [kept, cleared, corrupt] {
+            quarantine(directory.path(), &root.join(format!("{id}.ready"))).unwrap();
+        }
+        store
+            .lock()
+            .unwrap()
+            .db
+            .execute("UPDATE recording_sessions SET state='failed'", [])
+            .unwrap();
+        assert!(finish_journal(directory.path(), session.id).unwrap());
+        forget_session(&store.lock().unwrap().db, session.id).unwrap();
+        clear(&store, &session, 1000, 2000, 1, "all_data");
+        fs::write(
+            directory
+                .path()
+                .join(format!("media/microphone/{corrupt}.opus")),
+            b"different content",
+        )
+        .unwrap();
+        let gate = Mutex::new(());
+        let quarantine = directory
+            .path()
+            .join("ingestion-quarantine")
+            .join(session.id.to_string());
+        let journal = Journal::new(directory.path(), session.clone()).unwrap();
+        let active_publisher = journal.publication_lock(Duration::ZERO).unwrap();
+        let quarantined = quarantine.join(format!("{kept}.ready"));
+        recover_quarantined(&store, &gate, directory.path(), &quarantined).unwrap();
+        assert!(quarantined.exists());
+        drop(active_publisher);
+        for id in [kept, cleared, corrupt] {
+            recover_quarantined(
+                &store,
+                &gate,
+                directory.path(),
+                &quarantine.join(format!("{id}.ready")),
+            )
+            .unwrap();
+        }
+        crate::ingest_session_locked(&store, directory.path(), session.id, true).unwrap();
+        crate::ingest_session_locked(&store, directory.path(), session.id, true).unwrap();
+        assert_eq!(count(&store), 1);
+        assert!(quarantine.join(format!("{corrupt}.ready")).exists());
+        let store = store.lock().unwrap();
+        let pending = cleanup::deletion_batch(&store.db, "").unwrap();
+        assert_eq!(pending, [format!("media/microphone/{cleared}.opus")]);
     }
 
     fn setup() -> (tempfile::TempDir, Mutex<Store>, Session) {

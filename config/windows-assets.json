@@ -3,12 +3,12 @@
   "minimum_build": 22000,
   "target": "x86_64-pc-windows-msvc",
   "native": {
-    "url": "https://api.github.com/repos/k2-fsa/sherpa-onnx/releases/assets/669622208?download=1",
+    "url": "https://api.github.com/repos/k2-fsa/sherpa-onnx/releases/assets/678964366?download=1",
     "accept": "application/octet-stream",
-    "archive": "sherpa-onnx-2.0.0.tar.bz2",
-    "bytes": 7270549,
-    "sha256": "2b7f798a6586cc8cf37e226a82cd7f9727d7fe5ae73ef6244edbee766279a386",
-    "directory": "sherpa-onnx-v2.0.0-win-x64-shared-MD-Release-lib"
+    "archive": "sherpa-onnx-2.0.1.tar.bz2",
+    "bytes": 7289630,
+    "sha256": "c3c78220db8bebf97d5f932496165bb3897b163410427d7c021013439c80f183",
+    "directory": "sherpa-onnx-v2.0.1-win-x64-shared-MD-Release-lib"
   },
   "ocr": {
     "source_lock": "config/windows-ocr-sources.json",

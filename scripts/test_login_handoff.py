@@ -4,10 +4,13 @@ import argparse
 import json
 import os
 from pathlib import Path
+import socket
+import sqlite3
 import subprocess
 import tempfile
 import threading
 import time
+import uuid
 from test_upgrade_lifecycle import rpc, wait_status
 
 
@@ -67,9 +70,34 @@ def main():
             assert login.wait(timeout=10) == 0
             restarted = spawn('--on-demand')
             wait_status(directory, version)
+            # Close the reply end before Core completes its quit transaction.
+            db = sqlite3.connect(directory / 'loppi.sqlite', isolation_level=None)
+            quit_id = str(uuid.uuid4())
+            def logged(fragment):
+                return any(quit_id in line and fragment in line
+                           for path in (directory / 'logs').glob('loppi*.jsonl')
+                           for line in path.read_text().splitlines())
+            try:
+                db.execute('BEGIN IMMEDIATE')
+                with socket.socket(socket.AF_UNIX) as connection:
+                    connection.connect(str(directory / 'core.sock'))
+                    connection.sendall(json.dumps(dict(version=version, id=quit_id, client='gui',
+                                                       request={'type': 'lifecycle', 'action': 'quit'})).encode())
+                    connection.shutdown(socket.SHUT_WR)
+                    deadline = time.monotonic() + 3
+                    while not logged('"event":"request_received"'):
+                        assert time.monotonic() < deadline, 'Core did not admit the quit request'
+                        time.sleep(.01)
+                db.execute('ROLLBACK')
+            finally:
+                db.close()
+            assert restarted.wait(timeout=10) == 0, 'accepted quit must release the owner without a reply'
+            assert logged('"error_code":"ipc_write_'), 'fixture did not disconnect the server-side reply'
+            replacement = spawn('--on-demand')
+            wait_status(directory, version)
             rpc(directory, version, {'type': 'quit'})
-            assert restarted.wait(timeout=10) == 0
-            print('PASS startup exclusion, login takeover under contention, duplicate login, ordinary restart')
+            assert replacement.wait(timeout=10) == 0
+            print('PASS startup exclusion, login takeover under contention, duplicate login and restart after lost quit reply')
         finally:
             stop.set()
             if 'flood' in locals():

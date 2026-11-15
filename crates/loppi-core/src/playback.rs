@@ -5,15 +5,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
-pub fn generation(db: &Connection) -> Result<i64, String> {
-    db.query_row(
-        "SELECT generation FROM ingestion_state WHERE id=1",
-        [],
-        |r| r.get(0),
-    )
-    .map_err(|e| e.to_string())
-}
-
 /// Reuse the core's committed cleanup generations. No audio is decoded and no
 /// writer/cleanup lock is held; only clears since the fetched chunk matter.
 pub fn valid(
@@ -42,7 +33,7 @@ mod tests {
     #[test]
     fn committed_cleanup_revokes_only_matching_source_range_and_generation() {
         let mut store = crate::Store::new(Connection::open_in_memory().unwrap()).unwrap();
-        let baseline = generation(&store.db).unwrap();
+        let baseline = crate::ingestion::cleanup_generation(&store.db).unwrap();
         assert!(valid(&store.db, 0, 15_000, EventSources::Both, baseline).unwrap());
         // Preview and rolled-back cleanup cannot invalidate a fetched buffer.
         {
@@ -53,7 +44,10 @@ mod tests {
             )
             .unwrap();
         }
-        assert_eq!(generation(&store.db).unwrap(), baseline);
+        assert_eq!(
+            crate::ingestion::cleanup_generation(&store.db).unwrap(),
+            baseline
+        );
         store
             .db
             .execute(
@@ -71,7 +65,7 @@ mod tests {
                 0,
                 15_000,
                 EventSources::Both,
-                generation(&store.db).unwrap()
+                crate::ingestion::cleanup_generation(&store.db).unwrap()
             )
             .unwrap()
         );

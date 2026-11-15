@@ -567,7 +567,7 @@ mod tests {
         let scratch = tempfile::tempdir().unwrap();
         fs::write(scratch.path().join("capture.png"), b"synthetic image").unwrap();
         let store = crate::Store::new(Connection::open_in_memory().unwrap()).unwrap();
-        let generation = crate::playback::generation(&store.db).unwrap();
+        let generation = crate::ingestion::cleanup_generation(&store.db).unwrap();
         let capture = CaptureResult {
             id: Uuid::new_v4(),
             relative: PathBuf::from("screenshots/test.png"),

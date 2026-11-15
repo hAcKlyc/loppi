@@ -12,8 +12,8 @@ import {
 	core,
 	dateTitle,
 	dayBounds,
-	executeCleanup,
 	type PreciseSegment,
+	queueCleanup,
 	type ReviewItem,
 	type ServiceState,
 	type Sources,
@@ -565,7 +565,7 @@ export function SettingsView({
 	models,
 	onStatus,
 	onContext,
-	onTimeline,
+	onCleanupWatch,
 	onMessage,
 	cloudProvider,
 }: {
@@ -584,7 +584,7 @@ export function SettingsView({
 	busy: boolean;
 	onStatus: () => Promise<void>;
 	onContext: () => Promise<void>;
-	onTimeline: () => Promise<void>;
+	onCleanupWatch: (token: string, watch: boolean) => void;
 	onMutate: Mutation;
 	onMessage: (message: string) => void;
 	cloudProvider?: CloudProvider | null;
@@ -736,17 +736,15 @@ export function SettingsView({
 	const cleanup = async () => {
 		setDialogError("");
 		if (!cleanupPreview) return;
+		const { token } = cleanupPreview;
 		setWorking(true);
+		onCleanupWatch(token, true);
 		try {
-			await executeCleanup(
-				cleanupPreview.token,
-				cleanupPreview.mode === "all_data",
-			);
-			onMessage("清理已完成");
+			await queueCleanup(token, cleanupPreview.mode === "all_data");
 			setCleanupOpen(false);
 			setCleanupPreview(null);
-			await Promise.all([onStatus(), onTimeline(), onContext()]);
 		} catch (error) {
+			onCleanupWatch(token, false);
 			setDialogError(userError(error));
 			onMessage(userError(error));
 		} finally {

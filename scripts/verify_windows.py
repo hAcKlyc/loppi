@@ -15,8 +15,9 @@ def main():
     if sys.platform!='win32':parser.error('Windows host required')
     env={k:v for k,v in os.environ.items() if not k.startswith('LOPPI_TEST_') and k not in ['LOPPI_DATA_DIR','LOPPI_CORE_BIN']}
     env.update(LOPPI_TEST_PARENT_PID=str(os.getpid()),CARGO_PROFILE_DEV_DEBUG='0',CARGO_INCREMENTAL='0',LOPPI_BUILD_EPOCH=str(int(time.time())))
-    native=ROOT/'build/cache/windows/sherpa-onnx-v2.0.0-win-x64-shared-MD-Release-lib/lib'
-    if 'SHERPA_ONNX_LIB_DIR' not in env:env['SHERPA_ONNX_LIB_DIR']=str(native)
+    if 'SHERPA_ONNX_LIB_DIR' not in env:
+        assets=json.loads((ROOT/'config/windows-assets.json').read_text(encoding='utf-8'))
+        env['SHERPA_ONNX_LIB_DIR']=str(ROOT/'build/cache/windows'/assets['native']['directory']/'lib')
     checks=[];result=0
     def run(name,command):
         print(f'[{name}]',flush=True);start=time.monotonic()

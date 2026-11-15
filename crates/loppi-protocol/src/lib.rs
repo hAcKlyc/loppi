@@ -328,6 +328,13 @@ pub enum Request {
         preview_token: Uuid,
         confirmed_all_data: bool,
     },
+    QueueCleanup {
+        preview_token: Uuid,
+        confirmed_all_data: bool,
+    },
+    CleanupResult {
+        preview_token: Uuid,
+    },
     ExportRange {
         from_ms: i64,
         to_ms: i64,
@@ -415,6 +422,8 @@ impl Request {
             Self::ScreenshotData { .. } => "screenshot_data",
             Self::PreviewCleanup { .. } => "preview_cleanup",
             Self::ExecuteCleanup { .. } => "execute_cleanup",
+            Self::QueueCleanup { .. } => "queue_cleanup",
+            Self::CleanupResult { .. } => "cleanup_result",
             Self::ExportRange { .. } => "export_range",
             Self::Log { .. } => "log",
             Self::Logs { .. } => "logs",
@@ -867,6 +876,9 @@ pub enum Response {
         /// Identity of the Core read snapshot, not an editable event revision.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         snapshot_version: Option<String>,
+        /// Committed cleanup generation for continuation of this detail page.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cleanup_generation: Option<i64>,
     },
     Accepted {
         id: Uuid,
@@ -959,6 +971,11 @@ pub enum Response {
         id: Uuid,
         cleared_audio_blocks: u64,
         physical_deletions_pending: u64,
+    },
+    CleanupResult {
+        id: Uuid,
+        accepted: bool,
+        result: Option<Box<Response>>,
     },
     ExportComplete {
         id: Uuid,
@@ -1194,19 +1211,29 @@ fn send_with_policy(
     stream
         .write_all(&bytes)
         .map_err(|error| error.to_string())?;
+    let reply_error = |message: String| {
+        if matches!(envelope.request, Request::QueueCleanup { .. }) {
+            format!("cleanup_ack_unknown: {message}")
+        } else {
+            message
+        }
+    };
     stream
         .shutdown(std::net::Shutdown::Write)
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| reply_error(error.to_string()))?;
 
     let mut response = Vec::new();
     stream
         .take(MAX_RESPONSE_BYTES + 1)
         .read_to_end(&mut response)
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| reply_error(error.to_string()))?;
     if response.len() as u64 > MAX_RESPONSE_BYTES {
-        return Err("core response exceeded protocol limit".to_owned());
+        return Err(reply_error(
+            "core response exceeded protocol limit".to_owned(),
+        ));
     }
-    let decoded: Response = serde_json::from_slice(&response).map_err(|error| error.to_string())?;
+    let decoded: Response =
+        serde_json::from_slice(&response).map_err(|error| reply_error(error.to_string()))?;
     match &decoded {
         Response::Context { id, .. }
         | Response::Workflow { id, .. }
@@ -1244,13 +1271,16 @@ fn send_with_policy(
         | Response::PlaybackValid { id, .. }
         | Response::CleanupPreview { id, .. }
         | Response::CleanupComplete { id, .. }
+        | Response::CleanupResult { id, .. }
         | Response::ExportComplete { id, .. }
         | Response::Error { id, .. }
             if *id == envelope.id =>
         {
             Ok(decoded)
         }
-        _ => Err("core response ID did not match request".to_owned()),
+        _ => Err(reply_error(
+            "core response ID did not match request".to_owned(),
+        )),
     }
 }
 

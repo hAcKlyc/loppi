@@ -28,7 +28,11 @@ async fn core_request(
     {
         *excluded_window_ids = vec![entry::screenshot_window(app.clone()).await?];
     }
-    if matches!(request, loppi_protocol::Request::ExecuteCleanup { .. }) {
+    if matches!(
+        request,
+        loppi_protocol::Request::ExecuteCleanup { .. }
+            | loppi_protocol::Request::QueueCleanup { .. }
+    ) {
         return Err("use the cleanup confirmation flow".into());
     }
     let runtime = Arc::clone(&app.state::<Arc<EntryRuntime>>());
@@ -70,23 +74,27 @@ async fn cleanup_request(
     app: tauri::AppHandle,
     request: loppi_protocol::Request,
 ) -> Result<loppi_protocol::Response, String> {
-    let loppi_protocol::Request::ExecuteCleanup {
-        confirmed_all_data, ..
-    } = &request
-    else {
-        return Err("cleanup request required".into());
+    let (confirmed_all_data, request_id) = match &request {
+        loppi_protocol::Request::QueueCleanup {
+            preview_token,
+            confirmed_all_data,
+        } => (*confirmed_all_data, *preview_token),
+        loppi_protocol::Request::ExecuteCleanup {
+            confirmed_all_data, ..
+        } => (*confirmed_all_data, uuid::Uuid::new_v4()),
+        _ => return Err("cleanup request required".into()),
     };
     #[cfg(windows)]
-    if *confirmed_all_data {
+    if confirmed_all_data {
         use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
         let confirmed=tauri::async_runtime::spawn_blocking(move||app.dialog().message("将永久清除选中范围的录音、文字、笔记、截图和相关声纹样例。已经导出或发送给服务商的副本无法从这里撤回。")
             .title("清除全部数据").kind(MessageDialogKind::Warning).buttons(MessageDialogButtons::OkCancelCustom("清除全部数据".into(),"取消".into())).blocking_show()).await.map_err(|e|e.to_string())?;
         if !confirmed {
-            return Err("已取消清除全部数据".into());
+            return Err("cleanup_cancelled: 已取消清除全部数据".into());
         }
     }
     #[cfg(unix)]
-    if *confirmed_all_data {
+    if confirmed_all_data {
         let confirmed = tauri::async_runtime::spawn_blocking(|| {
             loppi_protocol::platform::command("/usr/bin/osascript")
                 .args(["-e", "display dialog \"将永久清除选中范围的录音、文字、笔记、截图和相关声纹样例。已经导出或发送给服务商的副本无法从这里撤回。\" with title \"清除全部数据\" buttons {\"取消\", \"清除全部数据\"} default button \"取消\" cancel button \"取消\" with icon caution"])
@@ -96,11 +104,11 @@ async fn cleanup_request(
         .await
         .map_err(|error| error.to_string())?;
         if !confirmed {
-            return Err("已取消清除全部数据".into());
+            return Err("cleanup_cancelled: 已取消清除全部数据".into());
         }
     }
     tauri::async_runtime::spawn_blocking(move || {
-        loppi_protocol::send_from(loppi_protocol::ClientKind::Gui, request)
+        loppi_protocol::send_from_with_id(loppi_protocol::ClientKind::Gui, request, request_id)
     })
     .await
     .map_err(|error| error.to_string())?

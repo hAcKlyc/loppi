@@ -44,6 +44,7 @@ const FIT_CONTINUATION_GAP_MS: i64 = 30 * 60 * 1000;
 const FIT_CONTEXT_TAIL_MS: i64 = 3 * 60 * 1000;
 const FIT_CONTEXT_MAX_LINES: usize = 24;
 const FIT_CONTEXT_TEXT_CHARS: usize = 400;
+const CALENDAR_SHORT_INTERVAL_MS: i64 = 3_600_000;
 // Only work that can still produce local evidence delays automatic fitting.
 // Terminal failures remain visible but cannot hold the LLM queue forever.
 const FIT_LOCAL_PENDING_RANGES: &str = "
@@ -150,6 +151,7 @@ pub fn init(db: &Connection) -> Result<(), String> {
          );
          INSERT OR IGNORE INTO candidate_scan_state VALUES (1,0);
          CREATE INDEX IF NOT EXISTS coarse_segments_ended ON coarse_segments(ended_ms);
+         CREATE INDEX IF NOT EXISTS coarse_segments_block_id ON coarse_segments(block_id);
          CREATE INDEX IF NOT EXISTS audio_blocks_started ON audio_blocks(started_ms);
          CREATE INDEX IF NOT EXISTS audio_blocks_ended ON audio_blocks(ended_ms);
          CREATE TABLE IF NOT EXISTS candidate_windows (
@@ -162,6 +164,8 @@ pub fn init(db: &Connection) -> Result<(), String> {
             CHECK(ended_ms > started_ms)
          );
          CREATE INDEX IF NOT EXISTS candidate_windows_time ON candidate_windows(started_ms);
+         CREATE INDEX IF NOT EXISTS candidate_windows_active_time ON candidate_windows(started_ms)
+           WHERE state IN ('pending','processing');
          CREATE TABLE IF NOT EXISTS named_events (
             id TEXT PRIMARY KEY,
             started_ms INTEGER NOT NULL,
@@ -178,6 +182,7 @@ pub fn init(db: &Connection) -> Result<(), String> {
             CHECK(ended_ms > started_ms)
          );
          CREATE INDEX IF NOT EXISTS named_events_time ON named_events(started_ms,ended_ms);
+         CREATE INDEX IF NOT EXISTS named_events_ended ON named_events(ended_ms) WHERE deleted_ms IS NULL;
          CREATE TABLE IF NOT EXISTS event_candidate_links (
             candidate_id TEXT NOT NULL,
             slot INTEGER NOT NULL,
@@ -225,6 +230,7 @@ pub fn init(db: &Connection) -> Result<(), String> {
          );
          CREATE UNIQUE INDEX IF NOT EXISTS manual_ranges_scope
            ON manual_ranges(started_ms,ended_ms,source_mask);
+         CREATE INDEX IF NOT EXISTS manual_ranges_ended ON manual_ranges(ended_ms,started_ms);
          CREATE TABLE IF NOT EXISTS event_lineage (
            old_event_id TEXT NOT NULL,
            new_event_id TEXT NOT NULL,
@@ -233,6 +239,18 @@ pub fn init(db: &Connection) -> Result<(), String> {
          );",
     )
     .map_err(|error| error.to_string())?;
+    // Bound the start-index probe without assuming a maximum duration for
+    // recordings or coarse segments produced by older releases.
+    db.execute_batch(&format!(
+        "CREATE INDEX IF NOT EXISTS audio_blocks_calendar_long ON audio_blocks(ended_ms,started_ms)
+          WHERE media_path IS NOT NULL AND ended_ms-started_ms>{CALENDAR_SHORT_INTERVAL_MS};
+         CREATE INDEX IF NOT EXISTS coarse_segments_calendar_long ON coarse_segments(ended_ms,started_ms)
+          WHERE ended_ms-started_ms>{CALENDAR_SHORT_INTERVAL_MS};
+         CREATE INDEX IF NOT EXISTS named_events_calendar_long ON named_events(ended_ms,started_ms)
+          WHERE deleted_ms IS NULL AND ended_ms-started_ms>{CALENDAR_SHORT_INTERVAL_MS};
+         CREATE INDEX IF NOT EXISTS manual_ranges_calendar_long ON manual_ranges(ended_ms,started_ms)
+          WHERE ended_ms-started_ms>{CALENDAR_SHORT_INTERVAL_MS};"
+    )).map_err(|e| e.to_string())?;
     crate::storage::migrate(
         db,
         "cloud_cooldown_v1",
@@ -358,6 +376,15 @@ pub fn model(db: &Connection, provider: CloudProvider) -> Result<Option<String>,
     )
     .optional()
     .map_err(|error| error.to_string())
+}
+
+pub fn is_paused(db: &Connection, provider: CloudProvider) -> Result<bool, String> {
+    db.query_row(
+        "SELECT paused FROM cloud_queues WHERE provider=?1",
+        [provider_name(provider)],
+        |row| row.get(0),
+    )
+    .map_err(|e| e.to_string())
 }
 
 pub fn queue_states(db: &Connection) -> Result<Vec<CloudQueueState>, String> {
@@ -620,6 +647,55 @@ fn g_start(group: &[&Evidence]) -> i64 {
     group[0].start
 }
 
+/// A cut can invalidate a current inference, or empty a candidate that was
+/// still waiting on local analysis. Retire only that work, keeping prior event
+/// links and legitimate deferred predecessors. A scan can plan surviving input.
+pub fn invalidate_cleared_candidates(
+    tx: &Transaction<'_>,
+    range: std::ops::Range<i64>,
+    now: i64,
+    rebuilding: bool,
+) -> Result<(), String> {
+    let earliest = {
+        let max_window = CANDIDATE_POLICY.max_window_ms;
+        let mut stmt = tx.prepare(&format!(
+            "UPDATE candidate_windows AS c SET state='failed',error_code='data_cleared'
+             WHERE c.state IN ('pending','processing') AND c.started_ms<?2 AND c.ended_ms>?1
+               AND ((NOT ?3 AND EXISTS(SELECT 1 FROM cloud_tasks t WHERE t.provider='llm' AND t.target_kind='candidate'
+                     AND t.target_id=c.id AND t.target_version=c.input_hash
+                     AND t.state='superseded' AND t.error_code='data_cleared'))
+                 OR (EXISTS(SELECT 1 FROM clear_ranges cut WHERE cut.mode='all_data'
+                       AND cut.from_ms<c.ended_ms AND cut.to_ms>c.started_ms)
+                     AND (?3 OR (
+                         NOT EXISTS(SELECT 1 FROM coarse_segments s WHERE s.started_ms<c.ended_ms AND s.ended_ms>c.started_ms)
+                         AND NOT EXISTS(SELECT 1 FROM audio_blocks b WHERE b.started_ms<c.ended_ms AND b.ended_ms>c.started_ms
+                           AND b.speech_active=1 AND b.retention_decision!='all_data')))))
+               AND NOT EXISTS(SELECT 1 FROM cloud_tasks active WHERE active.provider='llm' AND active.target_kind='candidate'
+                   AND active.target_id=c.id AND active.target_version=c.input_hash AND active.state!='superseded')
+               AND NOT EXISTS(SELECT 1 FROM ({FIT_LOCAL_PENDING_RANGES}) p
+                   WHERE p.started_ms<max(c.ended_ms,min(?4,c.started_ms+{max_window})) AND p.ended_ms>c.started_ms)
+             RETURNING started_ms"
+        )).map_err(|e| e.to_string())?;
+        let mut rows = stmt
+            .query(params![range.start, range.end, rebuilding, now])
+            .map_err(|e| e.to_string())?;
+        let mut earliest = None::<i64>;
+        while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+            let start = row.get(0).map_err(|e| e.to_string())?;
+            earliest = Some(earliest.map_or(start, |old| old.min(start)));
+        }
+        earliest
+    };
+    if let Some(start) = earliest {
+        tx.execute(
+            "UPDATE candidate_scan_state SET from_ms=min(from_ms,?1) WHERE id=1",
+            [start.saturating_sub(FIT_CONTINUATION_GAP_MS).max(0)],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 pub fn refresh_candidates(db: &mut Connection, now: i64, force: bool) -> Result<usize, String> {
     let tx = db.transaction().map_err(|error| error.to_string())?;
     let queued = refresh_candidates_in(&tx, now, force)?;
@@ -643,6 +719,10 @@ fn fit_local_pending(db: &Connection, start: i64, end: i64, now: i64) -> Result<
 }
 
 pub fn refresh_candidates_in(tx: &Transaction<'_>, now: i64, force: bool) -> Result<usize, String> {
+    // Once local work finishes, rebuild any tombstoned deferred window from
+    // current evidence in this transaction. Surviving input may form a wider
+    // window whose ID differs; the stale predecessor must stop blocking it.
+    invalidate_cleared_candidates(tx, 0..now.saturating_add(1), now, true)?;
     // A persisted cursor covers shutdowns of arbitrary length. The live
     // lookback bounds repeated work; late local analysis moves it backward.
     let checkpoint: i64 = tx
@@ -658,9 +738,9 @@ pub fn refresh_candidates_in(tx: &Transaction<'_>, now: i64, force: bool) -> Res
     let deferred: Option<i64> = tx
         .query_row(
             "SELECT min(started_ms) FROM candidate_windows c
-            WHERE c.state='pending' AND NOT EXISTS(
+            WHERE c.state IN ('pending','processing') AND NOT EXISTS(
                 SELECT 1 FROM cloud_tasks t WHERE t.target_kind='candidate'
-                AND t.target_id=c.id AND t.target_version=c.input_hash)",
+                AND t.target_id=c.id AND t.target_version=c.input_hash AND NOT (t.state='superseded' AND t.error_code IS 'data_cleared'))",
             [],
             |row| row.get(0),
         )
@@ -671,7 +751,7 @@ pub fn refresh_candidates_in(tx: &Transaction<'_>, now: i64, force: bool) -> Res
     let crossing: Option<i64> = tx
         .query_row(
             "SELECT min(started_ms) FROM candidate_windows
-        WHERE started_ms < ?1 AND ended_ms > ?1",
+        WHERE started_ms < ?1 AND ended_ms > ?1 AND error_code IS NOT 'data_cleared'",
             params![from],
             |row| row.get(0),
         )
@@ -696,7 +776,7 @@ pub fn refresh_candidates_in(tx: &Transaction<'_>, now: i64, force: bool) -> Res
     };
     let persisted = {
         let mut stmt = tx
-            .prepare("SELECT id,started_ms,ended_ms FROM candidate_windows WHERE started_ms>=?1 AND started_ms<?2 ORDER BY started_ms")
+            .prepare("SELECT id,started_ms,ended_ms FROM candidate_windows WHERE started_ms>=?1 AND started_ms<?2 AND error_code IS NOT 'data_cleared' ORDER BY started_ms")
             .map_err(|e| e.to_string())?;
         stmt.query_map(params![from, now + 1], |r| {
             Ok((
@@ -737,23 +817,23 @@ pub fn refresh_candidates_in(tx: &Transaction<'_>, now: i64, force: bool) -> Res
         if let Some(id) = existing_id {
             candidate.id = id;
         }
-        let current: Option<(String, String)> = tx
+        let current: Option<(String, String, Option<String>)> = tx
             .query_row(
-                "SELECT input_hash,state FROM candidate_windows WHERE id = ?1",
+                "SELECT input_hash,state,error_code FROM candidate_windows WHERE id = ?1",
                 params![candidate.id],
-                |row| Ok((row.get(0)?, row.get(1)?)),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .optional()
             .map_err(|error| error.to_string())?;
         let ready = force || !fit_local_pending(tx, candidate.start, candidate.end, now)?;
         if current
             .as_ref()
-            .is_some_and(|(hash, _)| hash == &candidate.hash)
+            .is_some_and(|(hash, _, _)| hash == &candidate.hash)
         {
             let queued: bool = tx
                 .query_row(
                     "SELECT EXISTS(SELECT 1 FROM cloud_tasks WHERE target_kind='candidate'
-                 AND target_id=?1 AND target_version=?2)",
+                 AND target_id=?1 AND target_version=?2 AND NOT (state='superseded' AND error_code IS 'data_cleared'))",
                     params![candidate.id, candidate.hash],
                     |r| r.get(0),
                 )
@@ -766,7 +846,10 @@ pub fn refresh_candidates_in(tx: &Transaction<'_>, now: i64, force: bool) -> Res
                 )
                 .map_err(|e| e.to_string())?;
             }
-            if queued || !ready || current.as_ref().unwrap().1 != "pending" {
+            let (_, state, error) = current.as_ref().unwrap();
+            if queued
+                || (error.as_deref() != Some("data_cleared") && (!ready || state != "pending"))
+            {
                 continue;
             }
         }
@@ -790,6 +873,15 @@ pub fn refresh_candidates_in(tx: &Transaction<'_>, now: i64, force: bool) -> Res
         if !ready {
             continue;
         }
+        // A previous cleanup may have hit another source in this window.
+        // Fresh evidence can have the same hash, but an invalidated ID must
+        // never become publishable again after its late provider reply.
+        let retired: Option<String> = tx.query_row(
+            "SELECT id FROM cloud_tasks WHERE provider='llm' AND target_kind='candidate' AND target_id=?1 AND target_version=?2
+             AND state='superseded' AND error_code='data_cleared' ORDER BY rowid DESC LIMIT 1",
+            params![candidate.id, candidate.hash], |row| row.get(0),
+        ).optional().map_err(|e| e.to_string())?;
+        let processor = retired.map(|id| format!("{FIT_POLICY_VERSION}:{id}"));
         insert_task(
             tx,
             "llm",
@@ -801,7 +893,7 @@ pub fn refresh_candidates_in(tx: &Transaction<'_>, now: i64, force: bool) -> Res
             None,
             force,
             now,
-            FIT_POLICY_VERSION,
+            processor.as_deref().unwrap_or(FIT_POLICY_VERSION),
         )?;
         queued += 1;
     }
@@ -871,7 +963,11 @@ fn insert_task(
 }
 
 fn validate_range(start: i64, end: i64) -> Result<(), String> {
-    if start < 0 || end <= start || end - start > 24 * 60 * 60 * 1000 {
+    validate_span(start, end, 24 * 60 * 60 * 1000)
+}
+
+fn validate_span(start: i64, end: i64, max_ms: i64) -> Result<(), String> {
+    if start < 0 || end <= start || end - start > max_ms {
         Err("invalid time range".to_owned())
     } else {
         Ok(())
@@ -1490,21 +1586,40 @@ fn visible_manual_ranges(
         .map_err(|error| error.to_string())
 }
 
-/// Shared availability projection for monthly and all-history date navigation.
-/// Points keep their exact timestamp; intervals remain half-open.
+/// Calendar readers share the same definition of an interval containing material.
+fn calendar_intervals() -> [String; 4] {
+    [
+        "SELECT started_ms,ended_ms FROM audio_blocks WHERE source IN ('microphone','system') AND media_path IS NOT NULL".into(),
+        "SELECT started_ms,ended_ms FROM coarse_segments".into(),
+        "SELECT started_ms,ended_ms FROM named_events WHERE deleted_ms IS NULL".into(),
+        format!("SELECT started_ms,ended_ms FROM ({VISIBLE_MANUAL_RANGES_SQL})"),
+    ]
+}
+
 fn calendar_material_sql() -> String {
-    format!(
-        "SELECT started_ms,ended_ms,0 AS point FROM audio_blocks
-         WHERE source IN ('microphone','system') AND media_path IS NOT NULL
-         UNION ALL SELECT started_ms,ended_ms,0 FROM coarse_segments
-         UNION ALL SELECT started_ms,ended_ms,0 FROM named_events WHERE deleted_ms IS NULL
-         UNION ALL SELECT anchor_ms,anchor_ms,1 FROM moments
-         UNION ALL SELECT started_ms,ended_ms,0 FROM ({VISIBLE_MANUAL_RANGES_SQL})"
-    )
+    calendar_intervals()
+        .into_iter()
+        .map(|query| format!("SELECT started_ms,ended_ms,0 AS point FROM ({query})"))
+        .chain(std::iter::once(
+            "SELECT anchor_ms,anchor_ms,1 AS point FROM moments".into(),
+        ))
+        .collect::<Vec<_>>()
+        .join(" UNION ALL ")
 }
 
 fn valid_calendar_day(start: i64, end: i64) -> bool {
     matches!(end.checked_sub(start), Some(82_800_000..=90_000_000))
+}
+
+fn calendar_crossing(material: &str, boundary: &str) -> String {
+    let width = CALENDAR_SHORT_INTERVAL_MS;
+    format!(
+        "COALESCE(
+           (SELECT {boundary} FROM ({material}) WHERE started_ms>{boundary}-{width}
+            AND started_ms<={boundary} AND ended_ms>{boundary} ORDER BY started_ms DESC LIMIT 1),
+           (SELECT {boundary} FROM ({material}) WHERE ended_ms-started_ms>{width}
+            AND started_ms<={boundary}-{width} AND ended_ms>{boundary} ORDER BY ended_ms LIMIT 1))"
+    )
 }
 
 /// Return material anchors on either side of a local day in one database read,
@@ -1518,21 +1633,26 @@ pub fn calendar_adjacent(
     if !valid_calendar_day(start, end) {
         return Err("invalid calendar boundaries".into());
     }
-    db.query_row(
-        &format!(
-            "WITH material AS ({}) SELECT
-             min(CASE WHEN (point=1 AND started_ms>=?2) OR (point=0 AND ended_ms>?2)
-                 THEN max(started_ms,?2) END),
-             max(CASE WHEN started_ms<?1 THEN
-                 CASE WHEN point=1 THEN started_ms ELSE min(ended_ms-1,?1-1,?3) END END)
-             FROM material WHERE started_ms<=?3 AND (point=1 OR ended_ms>started_ms)",
-            calendar_material_sql()
-        ),
-        params![start, end, now],
-        |row| Ok((row.get(0)?, row.get(1)?)),
-    )
-    .map_err(|error| error.to_string())
-    .map(|(newer, older): (Option<i64>, Option<i64>)| (newer.filter(|at| *at <= now), older))
+    let before = start.saturating_sub(1).min(now);
+    let (mut newer, mut older): (Option<i64>, Option<i64>) = db.query_row(
+        "SELECT (SELECT anchor_ms FROM moments WHERE anchor_ms>=?1 AND anchor_ms<=?3 ORDER BY anchor_ms LIMIT 1),
+                (SELECT anchor_ms FROM moments WHERE anchor_ms<=?2 ORDER BY anchor_ms DESC LIMIT 1)",
+        params![end,before,now], |row| Ok((row.get(0)?,row.get(1)?)),
+    ).map_err(|e| e.to_string())?;
+    for material in calendar_intervals() {
+        let crosses_end = calendar_crossing(&material, "?1");
+        let crosses_start = calendar_crossing(&material, "?2");
+        let (next, previous): (Option<i64>, Option<i64>) = db.query_row(&format!(
+            "SELECT CASE WHEN ?1<=?3 THEN COALESCE({crosses_end},
+                 (SELECT started_ms FROM ({material}) WHERE started_ms>?1 AND started_ms<=?3 AND ended_ms>started_ms ORDER BY started_ms LIMIT 1)) END,
+                COALESCE(
+                 {crosses_start},
+                 (SELECT ended_ms-1 FROM ({material}) WHERE ended_ms<=?2 AND ended_ms>started_ms ORDER BY ended_ms DESC LIMIT 1))"
+        ), params![end,before,now], |row| Ok((row.get(0)?,row.get(1)?))).map_err(|e| e.to_string())?;
+        newer = newer.into_iter().chain(next).min();
+        older = older.into_iter().chain(previous).max();
+    }
+    Ok((newer, older))
 }
 
 /// Calendar uses explicit local-midnight boundaries from the client, so DST and
@@ -1616,7 +1736,7 @@ pub fn mark_recording_items(
 }
 
 pub fn timeline(db: &Connection, start: i64, end: i64) -> Result<Vec<TimelineItem>, String> {
-    validate_range(start, end)?;
+    validate_span(start, end, 25 * 60 * 60 * 1000)?;
     let mut statement = db
         .prepare(
             "SELECT id,started_ms,ended_ms,title,revision,source_mask,summary FROM named_events
@@ -1934,7 +2054,7 @@ pub fn timeline_gaps(
     end: i64,
     now: i64,
 ) -> Result<Vec<TimeGap>, String> {
-    validate_range(start, end)?;
+    validate_span(start, end, 25 * 60 * 60 * 1000)?;
     let mut statement = db
         .prepare(
             "SELECT source,max(started_ms,?1),min(coalesce(ended_ms,?3),?2),reason
@@ -2001,7 +2121,7 @@ fn unorganized(db: &Connection, start: i64, end: i64, mask: i64) -> Result<Timel
     let status: Option<(String, Option<String>)> = db
         .query_row(
             "SELECT state,error_code FROM candidate_windows
-        WHERE started_ms < ?2 AND ended_ms > ?1
+        WHERE started_ms < ?2 AND ended_ms > ?1 AND error_code IS NOT 'data_cleared'
         ORDER BY CASE WHEN state='failed' OR (state='pending' AND error_code IS NOT NULL)
           THEN 0 ELSE 1 END, ended_ms DESC LIMIT 1",
             params![start, end],
@@ -2094,7 +2214,7 @@ fn event_fit_state(db: &Connection, id: &str) -> Result<String, String> {
         let mut stmt = db
             .prepare(
                 "SELECT DISTINCT c.state,c.error_code FROM event_candidate_links l
-            JOIN candidate_windows c ON c.id=l.candidate_id WHERE l.event_id=?1",
+            JOIN candidate_windows c ON c.id=l.candidate_id WHERE l.event_id=?1 AND c.error_code IS NOT 'data_cleared'",
             )
             .map_err(|e| e.to_string())?;
         stmt.query_map(params![id], |row| {
@@ -2654,6 +2774,7 @@ pub fn recover_tasks(db: &mut Connection, now: i64) -> Result<(), String> {
     // A fresh signed process can recover access after an in-place bundle update.
     // Recheck only credential-blocked work; retain provider/network backoff and pause.
     wake_credential_tasks(&tx, None)?;
+    invalidate_cleared_candidates(&tx, 0..i64::MAX, now, false)?;
     tx.execute("UPDATE cloud_tasks SET state='pending',next_attempt_ms=?1 WHERE provider='llm' AND state='processing'",
         params![now]).map_err(|e|e.to_string())?;
     tx.execute(
@@ -3127,9 +3248,14 @@ pub fn mark_submit_intent(db: &Connection, task: &CloudTask, now: i64) -> Result
     let count = db
         .execute(
             "UPDATE cloud_tasks SET submit_attempts=submit_attempts+1,
-        remote_id=coalesce(remote_id,id),updated_ms=?2,next_attempt_ms=?2+60000
-        WHERE id=?1 AND state='submitted'",
-            params![task.id.to_string(), now],
+        remote_id=coalesce(remote_id,id),updated_ms=?2,next_attempt_ms=?2+?4
+        WHERE id=?1 AND state='submitted' AND submit_attempts=?3 AND submit_attempts<2",
+            params![
+                task.id.to_string(),
+                now,
+                task.submit_attempts,
+                asr::MISSING_GRACE_MS
+            ],
         )
         .map_err(|e| e.to_string())?;
     if count == 1 {
@@ -4362,6 +4488,171 @@ mod tests {
             .query_row("SELECT count(*) FROM cloud_tasks", [], |r| r.get(0))
             .unwrap();
         assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn all_data_cleanup_retires_its_candidate_and_keeps_a_live_deferred_neighbor() {
+        let (mut db, task) = summary_fixture();
+        let clear_to = task.end + 1;
+        let neighbor_start = clear_to + 2_000;
+        let now = 100_100;
+        coarse(
+            &db,
+            "neighbor",
+            neighbor_start,
+            neighbor_start + 2_000,
+            "仍在等待的素材",
+        );
+        db.execute(
+            "INSERT INTO candidate_windows(id,started_ms,ended_ms,input_hash,state)
+                    VALUES('deferred',?1,?2,'original','pending')",
+            params![neighbor_start, neighbor_start + 2_000],
+        )
+        .unwrap();
+        let preview = crate::cleanup::preview(
+            &db,
+            task.start,
+            clear_to,
+            EventSources::Microphone,
+            loppi_protocol::CleanupMode::AllData,
+            now,
+        )
+        .unwrap();
+        let scope = crate::cleanup::verified_scope(&db, preview.token, true, now).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let prepared = crate::cleanup::prepare_media(dir.path(), &scope, vec![]).unwrap();
+        let tx = db.transaction().unwrap();
+        crate::cleanup::apply(&tx, &scope, &prepared, now + 1).unwrap();
+        tx.commit().unwrap();
+        let state = |id: &str| {
+            db.query_row(
+                "SELECT state,error_code FROM candidate_windows WHERE id=?1",
+                [id],
+                |r| Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?)),
+            )
+            .unwrap()
+        };
+        assert_eq!(
+            state(&task.target_id),
+            ("failed".into(), Some("data_cleared".into()))
+        );
+        assert_eq!(state("deferred"), ("pending".into(), None));
+        assert!(!task_current(&db, &task).unwrap());
+        assert_eq!(
+            asr::settling_state(&db, "fixture", task.start, task.end, 1).unwrap(),
+            Some("settling_asr")
+        );
+        db.execute("DELETE FROM candidate_windows WHERE id='deferred'", [])
+            .unwrap();
+        db.execute(
+            "DELETE FROM coarse_segments WHERE started_ms>=?1",
+            [neighbor_start],
+        )
+        .unwrap();
+        assert_eq!(
+            asr::settling_state(&db, "fixture", task.start, task.end, 1).unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn clearing_a_deferred_head_preserves_local_work_then_releases_the_next_candidate() {
+        for (surviving_text, queued_first) in [(false, false), (true, false), (true, true)] {
+            let mut db = db();
+            let now = 1_000_000;
+            set_configured(&db, CloudProvider::Llm, "deepseek-flash").unwrap();
+            coarse(&db, "head", 1_000, 2_000, "已清理");
+            if surviving_text {
+                coarse(&db, "tail", 3_000, 4_000, "保留的原句");
+            }
+            if queued_first {
+                assert_eq!(refresh_candidates(&mut db, now - 1, false).unwrap(), 1);
+            }
+            media(&db, "local-tail", 6_000, 7_000);
+            db.execute("UPDATE audio_blocks SET source='system',analysis_state='pending' WHERE id='local-tail'", []).unwrap();
+            assert_eq!(refresh_candidates(&mut db, now, false).unwrap(), 0);
+            let original: String = db
+                .query_row(
+                    "SELECT id FROM candidate_windows WHERE state='pending'",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            let preview = crate::cleanup::preview(
+                &db,
+                1_000,
+                2_000,
+                EventSources::Microphone,
+                loppi_protocol::CleanupMode::AllData,
+                now,
+            )
+            .unwrap();
+            let scope = crate::cleanup::verified_scope(&db, preview.token, true, now).unwrap();
+            let empty = crate::cleanup::PreparedMedia {
+                originals: vec![],
+                replacements: vec![],
+            };
+            let tx = db.transaction().unwrap();
+            crate::cleanup::apply(&tx, &scope, &empty, now + 1).unwrap();
+            tx.commit().unwrap();
+            assert_eq!(refresh_candidates(&mut db, now + 2, false).unwrap(), 0);
+            let original_state = |db: &Connection| {
+                db.query_row(
+                    "SELECT state FROM candidate_windows WHERE id=?1",
+                    [&original],
+                    |r| r.get::<_, String>(0),
+                )
+                .unwrap()
+            };
+            assert_eq!(original_state(&db), "pending");
+            if surviving_text {
+                coarse(&db, "late-extension", 19_000, 20_000, "清理后延伸的素材");
+            }
+            db.execute("UPDATE audio_blocks SET analysis_state='complete',media_path=NULL,retention_decision='discard_no_speech_v2' WHERE id='local-tail'", []).unwrap();
+            coarse(&db, "next", 600_000, 601_000, "后续工作");
+            refresh_candidates(&mut db, now + 3, false).unwrap();
+            let next = take_task(&mut db, CloudProvider::Llm, now + 4)
+                .unwrap()
+                .unwrap();
+            assert_eq!(original_state(&db), "failed");
+            if surviving_text {
+                assert_eq!((next.start, next.end), (3_000, 20_000));
+            } else {
+                assert_eq!(next.start, 600_000);
+            }
+            recover_tasks(&mut db, now + 5).unwrap();
+            assert_eq!(
+                take_task(&mut db, CloudProvider::Llm, now + 6)
+                    .unwrap()
+                    .unwrap()
+                    .id,
+                next.id
+            );
+        }
+    }
+
+    #[test]
+    fn timeline_accepts_a_fall_back_day_without_expanding_edit_ranges() {
+        let db = db();
+        let hour = 3_600_000;
+        let end = 25 * hour;
+        for length in [23 * hour, 24 * hour, end] {
+            assert!(timeline(&db, 0, length).is_ok());
+            assert!(timeline_gaps(&db, 0, length, end).is_ok());
+        }
+        db.execute(
+            "INSERT INTO media_gaps(id,source,started_ms,ended_ms,reason)
+                   VALUES('fallback','microphone',?1,?2,'manual_pause')",
+            params![24 * hour, end],
+        )
+        .unwrap();
+        assert!(timeline(&db, 0, end).is_ok());
+        let gaps = timeline_gaps(&db, 0, end, end).unwrap();
+        assert_eq!(gaps.len(), 1);
+        assert_eq!((gaps[0].started_ms, gaps[0].ended_ms), (24 * hour, end));
+        assert!(timeline(&db, 0, end + 1).is_err());
+        assert!(timeline_gaps(&db, 0, end + 1, end).is_err());
+        assert!(validate_range(0, end).is_err());
     }
 
     #[test]
@@ -6664,6 +6955,31 @@ mod tests {
                 "invalid calendar boundaries"
             );
         }
+    }
+
+    #[test]
+    fn calendar_crossing_keeps_long_legacy_intervals_that_start_before_the_bounded_probe() {
+        let db = db();
+        let day = 86_400_000;
+        media(&db, "long-legacy", 0, day * 3);
+        coarse(
+            &db,
+            "short-before",
+            day - 8_000,
+            day - 2_000,
+            "nearby short",
+        );
+        coarse(
+            &db,
+            "short-after",
+            day * 2 + 1_000,
+            day * 2 + 2_000,
+            "nearby short",
+        );
+        assert_eq!(
+            calendar_adjacent(&db, day, day * 2, day * 4).unwrap(),
+            (Some(day * 2), Some(day - 1))
+        );
     }
 
     #[test]

@@ -1,9 +1,11 @@
-use loppi_protocol::{CleanupMode, CleanupPreview, EventSources};
+use loppi_protocol::{CleanupMode, CleanupPreview, EventSources, Response};
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
+
+const PREVIEW_TTL_MS: i64 = 3_600_000;
 
 pub fn init(db: &Connection) -> Result<(), String> {
     db.execute_batch(
@@ -12,6 +14,10 @@ pub fn init(db: &Connection) -> Result<(), String> {
       source_mask INTEGER NOT NULL,mode TEXT NOT NULL,signature TEXT NOT NULL,
       created_ms INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS cleanup_jobs (
+      token TEXT PRIMARY KEY,accepted_ms INTEGER NOT NULL,result_json TEXT
+    );
+    CREATE INDEX IF NOT EXISTS cleanup_jobs_pending ON cleanup_jobs(accepted_ms,token) WHERE result_json IS NULL;
     CREATE TABLE IF NOT EXISTS clear_ranges (
       id TEXT PRIMARY KEY,from_ms INTEGER NOT NULL,to_ms INTEGER NOT NULL,
       source_mask INTEGER NOT NULL,mode TEXT NOT NULL,
@@ -292,8 +298,9 @@ pub fn preview(
     let token = Uuid::new_v4();
     let signature = selection_signature(db, start, end, mask)?;
     db.execute(
-        "DELETE FROM cleanup_previews WHERE created_ms<?1",
-        params![now - 3_600_000],
+        "DELETE FROM cleanup_previews WHERE created_ms<?1
+          AND NOT EXISTS(SELECT 1 FROM cleanup_jobs j WHERE j.token=cleanup_previews.token)",
+        params![now - PREVIEW_TTL_MS],
     )
     .map_err(|error| error.to_string())?;
     db.execute(
@@ -358,7 +365,8 @@ pub fn verified_scope(
     let row: Option<(i64, i64, i64, String, String, i64)> = db
         .query_row(
             "SELECT from_ms,to_ms,source_mask,mode,signature,created_ms
-       FROM cleanup_previews WHERE token=?1",
+       FROM cleanup_previews WHERE token=?1
+         AND NOT EXISTS(SELECT 1 FROM cleanup_jobs j WHERE j.token=cleanup_previews.token)",
             params![token.to_string()],
             |r| {
                 Ok((
@@ -376,7 +384,7 @@ pub fn verified_scope(
     let (start, end, mask, mode, signature, created) =
         row.ok_or_else(|| "cleanup preview expired".to_owned())?;
     let mode = parse_mode(&mode)?;
-    if now - created > 3_600_000
+    if now - created > PREVIEW_TTL_MS
         || now < created
         || (mode == CleanupMode::AllData && !confirmed_all)
     {
@@ -393,6 +401,134 @@ pub fn verified_scope(
         mode,
         signature,
     })
+}
+
+/// Verify the reviewed preview and reserve its exact selection.
+pub fn queue(
+    tx: &Transaction<'_>,
+    token: Uuid,
+    confirmed_all: bool,
+    now: i64,
+) -> Result<(), String> {
+    let key = token.to_string();
+    if tx
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM cleanup_jobs WHERE token=?1)",
+            [&key],
+            |r| r.get::<_, bool>(0),
+        )
+        .map_err(|e| e.to_string())?
+    {
+        return Ok(());
+    }
+    verified_scope(tx, token, confirmed_all, now)?;
+    tx.execute(
+        "INSERT INTO cleanup_jobs VALUES(?1,?2,NULL)",
+        params![key, now],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn preview_is_available(db: &Connection, token: Uuid, now: i64) -> Result<bool, String> {
+    db.query_row(
+        "SELECT EXISTS(SELECT 1 FROM cleanup_previews WHERE token=?1 AND created_ms BETWEEN ?2 AND ?3)",
+        params![token.to_string(), now - PREVIEW_TTL_MS, now],
+        |row| row.get(0),
+    ).map_err(|e| e.to_string())
+}
+
+pub fn recorded_rejection(db: &Connection, token: Uuid) -> Result<Option<Box<Response>>, String> {
+    // The native GUI submits this confirmation with the preview token as its
+    // mutation ID and may lose the reply before learning the validation result.
+    let receipt: Option<String> = db
+        .query_row(
+            "SELECT state_json FROM mutation_receipts WHERE request_id=?1
+         AND json_extract(state_json,'$.type')='cleanup_result'
+         AND json_extract(state_json,'$.accepted')=0",
+            [token.to_string()],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+    let Some(receipt) = receipt else {
+        return Ok(None);
+    };
+    match serde_json::from_str(&receipt).map_err(|e| e.to_string())? {
+        Response::CleanupResult {
+            accepted: false,
+            result,
+            ..
+        } => Ok(result),
+        _ => Err("invalid cleanup rejection receipt".into()),
+    }
+}
+
+pub fn next_job(db: &Connection) -> Result<Option<Uuid>, String> {
+    let token: Option<String> = db.query_row(
+        "SELECT token FROM cleanup_jobs WHERE result_json IS NULL ORDER BY accepted_ms,token LIMIT 1", [], |r| r.get(0),
+    ).optional().map_err(|e| e.to_string())?;
+    token
+        .map(|value| Uuid::parse_str(&value).map_err(|e| e.to_string()))
+        .transpose()
+}
+
+pub fn queued_scope(db: &Connection, token: Uuid) -> Result<PreviewScope, String> {
+    let (start, end, mask, mode): (i64, i64, i64, String) = db
+        .query_row(
+            "SELECT p.from_ms,p.to_ms,p.source_mask,p.mode FROM cleanup_previews p
+         JOIN cleanup_jobs j USING(token) WHERE p.token=?1 AND j.result_json IS NULL",
+            [token.to_string()],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        )
+        .map_err(|e| e.to_string())?;
+    // The confirmed interval and sources are fixed. Results that landed while
+    // waiting belong to that same selection. Apply still rechecks this execution snapshot.
+    Ok(PreviewScope {
+        token,
+        start,
+        end,
+        mask,
+        mode: parse_mode(&mode)?,
+        signature: selection_signature(db, start, end, mask)?,
+    })
+}
+
+pub fn finish_job(tx: &Transaction<'_>, token: Uuid, response: &Response) -> Result<(), String> {
+    let key = token.to_string();
+    let changed = tx
+        .execute(
+            "UPDATE cleanup_jobs SET result_json=?2 WHERE token=?1 AND result_json IS NULL",
+            params![
+                key,
+                serde_json::to_string(response).map_err(|e| e.to_string())?
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+    if changed != 1 {
+        return Err("cleanup job no longer pending".into());
+    }
+    tx.execute("DELETE FROM cleanup_previews WHERE token=?1", [&key])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn job_result(db: &Connection, token: Uuid) -> Result<Option<Option<Response>>, String> {
+    let result: Option<Option<String>> = db
+        .query_row(
+            "SELECT result_json FROM cleanup_jobs WHERE token=?1",
+            [token.to_string()],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+    result
+        .map(|value| {
+            value
+                .map(|json| serde_json::from_str(&json).map_err(|e| e.to_string()))
+                .transpose()
+        })
+        .transpose()
 }
 
 #[derive(Clone)]
@@ -1059,6 +1195,7 @@ pub fn apply(
             [],
         )
         .map_err(|error| error.to_string())?;
+        crate::events::invalidate_cleared_candidates(tx, scope.start..scope.end, now, false)?;
         // Completed transcripts outside the selected interval retain their
         // original task version. The selected sentences are deleted above;
         // requeuing a whole event would upload material outside the user's
@@ -1154,6 +1291,106 @@ pub fn drain_deletions(db: &Connection, directory: &Path, now: i64) -> Result<u6
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn queued_scope_and_terminal_result_survive_restart_without_extending_the_selection() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = directory.path().join("test.sqlite3");
+        let mut store = crate::Store::new(Connection::open(&database).unwrap()).unwrap();
+        let future_ending_event = crate::events::create_event(
+            &mut store.db,
+            500,
+            3_900,
+            "explicit selection",
+            EventSources::Microphone,
+            500,
+        )
+        .unwrap();
+        let token = preview(
+            &store.db,
+            100,
+            4_000,
+            EventSources::Microphone,
+            CleanupMode::AllData,
+            1_000,
+        )
+        .unwrap()
+        .token;
+        assert!(preview_is_available(&store.db, token, 1_100).unwrap());
+        assert!(job_result(&store.db, token).unwrap().is_none());
+        let tx = store.db.transaction().unwrap();
+        assert!(queue(&tx, token, false, 1_100).is_err());
+        queue(&tx, token, true, 1_100).unwrap();
+        queue(&tx, token, true, 1_200).unwrap();
+        tx.commit().unwrap();
+        drop(store);
+
+        let mut store = crate::Store::new(Connection::open(&database).unwrap()).unwrap();
+        let execution = 4_000_000;
+        preview(
+            &store.db,
+            0,
+            100,
+            EventSources::Both,
+            CleanupMode::RawAudio,
+            execution,
+        )
+        .unwrap();
+        assert_eq!(next_job(&store.db).unwrap(), Some(token));
+        assert!(matches!(job_result(&store.db, token).unwrap(), Some(None)));
+        assert!(verified_scope(&store.db, token, true, execution).is_err());
+        // A provider result or delayed local write can arrive in the approved interval.
+        store
+            .db
+            .execute_batch(
+                "INSERT INTO coarse_segments VALUES
+            ('late','b','s','microphone',1200,1300,'clear me','test'),
+            ('new','b','s','microphone',4200,4300,'keep new','test'),
+            ('other','b','s','system',500,600,'keep other source','test');",
+            )
+            .unwrap();
+        let scope = queued_scope(&store.db, token).unwrap();
+        assert_eq!((scope.start, scope.end, scope.mask), (100, 4_000, 1));
+        let prepared = PreparedMedia {
+            originals: vec![],
+            replacements: vec![],
+        };
+        let tx = store.db.transaction().unwrap();
+        let (cleared, pending) = apply(&tx, &scope, &prepared, execution).unwrap();
+        finish_job(
+            &tx,
+            token,
+            &Response::CleanupComplete {
+                id: token,
+                cleared_audio_blocks: cleared,
+                physical_deletions_pending: pending,
+            },
+        )
+        .unwrap();
+        tx.commit().unwrap();
+
+        drop(store);
+        let mut store = crate::Store::new(Connection::open(&database).unwrap()).unwrap();
+        assert_eq!(next_job(&store.db).unwrap(), None);
+        assert!(matches!(
+            job_result(&store.db, token).unwrap(),
+            Some(Some(Response::CleanupComplete { .. }))
+        ));
+        let tx = store.db.transaction().unwrap();
+        queue(&tx, token, true, execution).unwrap();
+        tx.commit().unwrap();
+        assert_eq!(next_job(&store.db).unwrap(), None);
+        let remaining: String = store
+            .db
+            .query_row(
+                "SELECT group_concat(id,',') FROM (SELECT id FROM coarse_segments ORDER BY id)",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(remaining, "new,other");
+        assert!(crate::events::event_detail(&store.db, future_ending_event, 0, 10).is_err());
+    }
 
     #[test]
     fn partial_cleanup_invalidates_summaries_using_a_removed_cross_boundary_sentence() {

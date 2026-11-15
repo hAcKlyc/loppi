@@ -58,6 +58,128 @@ fn auto(db: &mut Connection, a: i64, b: i64) -> Uuid {
     id
 }
 #[test]
+fn cropped_unsent_input_replans_only_the_authorized_samples() {
+    let mut db = database();
+    block(&db, "first", 1000, 6000, true);
+    block(&db, "tail", 6000, 11000, true);
+    let event_id = event(&mut db, 1000, 11000);
+    let old = task(&mut db);
+    let manifest = input(&db, old.id).unwrap().unwrap();
+    assert!(upload_allowed(&db, &old, Some(&manifest)).unwrap());
+    db.execute(
+        "UPDATE named_events SET started_ms=6000 WHERE id=?1",
+        [event_id.to_string()],
+    )
+    .unwrap();
+    assert!(task_current(&db, &old).unwrap());
+    assert!(!upload_allowed(&db, &old, Some(&manifest)).unwrap());
+    assert!(!crate::asr_upload_current(&mut db, &old, Some(&manifest), 5_000_001).unwrap());
+    let replacement = take_task(&mut db, CloudProvider::Asr, 5_000_002)
+        .unwrap()
+        .unwrap();
+    assert_ne!(replacement.id, old.id);
+    let input = input(&db, replacement.id).unwrap().unwrap();
+    assert_eq!(
+        input
+            .parts
+            .iter()
+            .map(|p| (p.start, p.end))
+            .collect::<Vec<_>>(),
+        [(6000, 11000)]
+    );
+    assert!(upload_allowed(&db, &replacement, Some(&input)).unwrap());
+    db.execute(
+        "UPDATE named_events SET source_mask=2 WHERE id=?1",
+        [event_id.to_string()],
+    )
+    .unwrap();
+    assert!(!upload_allowed(&db, &replacement, Some(&input)).unwrap());
+}
+
+#[test]
+fn asr_submit_budget_and_remote_identity_survive_recovery() {
+    let mut db = database();
+    block(&db, "audio", 1000, 6000, true);
+    event(&mut db, 1000, 6000);
+    let first = task(&mut db);
+    assert!(can_send_after_missing(&db, &first, "original", 5_000_000).unwrap());
+    mark_submit_intent(&db, &first, 5_000_001).unwrap();
+    recover_tasks(&mut db, 5_000_060).unwrap();
+    let second = take_task(&mut db, CloudProvider::Asr, 5_060_001)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        (second.remote_id, second.submit_attempts),
+        (first.remote_id, 1)
+    );
+    assert!(!can_send_after_missing(&db, &second, "original", 5_060_000).unwrap());
+    assert_eq!(
+        can_send_after_missing(&db, &second, "original", 5_060_001).unwrap_err(),
+        "asr_submit_account_unverified"
+    );
+    db.execute("INSERT INTO usage_requests(id,capability,model_id,connection_id,remote_id,task_id,purpose,started_ms,observed_ms,price_id)
+        SELECT 'metered','asr','volcengine:volc.seedasr.auc','original',?1,?2,'processing',5000001,5000001,id FROM usage_prices LIMIT 1",
+        params![first.remote_id.to_string(),first.id.to_string()]).unwrap();
+    assert_eq!(
+        can_send_after_missing(&db, &second, "replacement", 5_060_001).unwrap_err(),
+        "asr_submit_account_unverified"
+    );
+    assert!(can_send_after_missing(&db, &second, "original", 5_060_001).unwrap());
+    mark_submit_intent(&db, &second, 5_060_001).unwrap();
+    recover_tasks(&mut db, 5_060_002).unwrap();
+    let third = take_task(&mut db, CloudProvider::Asr, 5_120_001)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        (third.remote_id, third.submit_attempts),
+        (first.remote_id, 2)
+    );
+    assert!(mark_submit_intent(&db, &third, 5_120_001).is_err());
+    assert_eq!(
+        can_send_after_missing(&db, &third, "original", 5_120_001).unwrap_err(),
+        "provider_missing_submitted_task"
+    );
+}
+
+#[test]
+fn cropped_submitted_task_can_recover_late_result_under_the_original_id() {
+    let mut db = database();
+    block(&db, "original", 1_000, 11_000, true);
+    let owner = event(&mut db, 1_000, 11_000);
+    let first = task(&mut db);
+    mark_submit_intent(&db, &first, 5_000_000).unwrap();
+    db.execute(
+        "UPDATE named_events SET started_ms=6000 WHERE id=?1",
+        [owner.to_string()],
+    )
+    .unwrap();
+    let original = cloud_task_by_id(&db, first.id).unwrap();
+    let input = input(&db, first.id).unwrap().unwrap();
+    assert_eq!(
+        crate::asr_upload_current(&mut db, &original, Some(&input), 5_060_001).unwrap_err(),
+        "asr_upload_scope_changed"
+    );
+    task_failed(&db, &original, "asr_upload_scope_changed", 5_060_001).unwrap();
+    retry_task(&db, first.id, 5_060_002).unwrap();
+    let retry = take_task(&mut db, CloudProvider::Asr, 5_060_003)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        (retry.id, retry.remote_id, retry.submit_attempts),
+        (first.id, first.remote_id, 1)
+    );
+    publish_asr(
+        &mut db,
+        &retry,
+        &[utterance(5_000, 10_000, "原请求迟到的文字")],
+        5_060_004,
+    )
+    .unwrap();
+    let detail = event_detail(&db, owner, 0, 20).unwrap();
+    assert_eq!(detail.precise_segments[0].text, "原请求迟到的文字");
+}
+
+#[test]
 fn long_silence_and_unknown_or_capture_gaps_split_physical_requests() {
     for reason in ["unknown", "capture", "cleared"] {
         let mut db = database();

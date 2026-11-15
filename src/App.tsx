@@ -6,6 +6,7 @@ import {
 	type CloudProvider,
 	type CloudQueue,
 	type CloudTask,
+	cleanupResult,
 	core,
 	dayBounds,
 	isEventStale,
@@ -48,6 +49,26 @@ type Page =
 type EventForm = { mode: "create" | "edit"; item?: TimelineItem };
 type EventTool = { item: TimelineItem; mode: "split" | "merge" | "delete" };
 type DataAction = { kind: "export" | "cleanup"; item: TimelineItem };
+
+const cleanupNotificationsKey = "loppi.pendingCleanupNotifications";
+type CleanupWatch = { token: string; announced: boolean };
+
+function pendingCleanupNotifications(): CleanupWatch[] {
+	try {
+		const saved: unknown = JSON.parse(
+			window.localStorage.getItem(cleanupNotificationsKey) ?? "[]",
+		);
+		return Array.isArray(saved)
+			? saved.filter(
+					(value): value is CleanupWatch =>
+						typeof value?.token === "string" &&
+						typeof value.announced === "boolean",
+				)
+			: [];
+	} catch {
+		return [];
+	}
+}
 
 function localInput(timestamp: number): string {
 	const d = new Date(timestamp);
@@ -148,6 +169,8 @@ function App() {
 	const [sources, setSources] = useState<Sources>("both");
 	const [dialogError, setDialogError] = useState("");
 	const [toast, setToast] = useState<string | null>(null);
+	const [cleanupJobs, setCleanupJobs] = useState(pendingCleanupNotifications);
+	const cleanupJobsRef = useRef(cleanupJobs);
 	const [error, setError] = useState<string | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [commentOpen, setCommentOpen] = useState(false);
@@ -160,13 +183,13 @@ function App() {
 	const initialDatePending = useRef(true);
 	const manualSelection = useRef<string | null>(null);
 
-	const message = (text: string) => {
+	const message = useCallback((text: string) => {
 		setToast(text);
 		window.setTimeout(
 			() => setToast((current) => (current === text ? null : current)),
 			4500,
 		);
-	};
+	}, []);
 
 	const acceptSnapshot = useCallback((next: EntrySnapshot) => {
 		setSnapshot((current) =>
@@ -304,29 +327,42 @@ function App() {
 						) ?? null,
 					);
 				});
-				const available = await calendar;
-				if (request !== timelineRequest.current) return;
-				const neighbors = await adjacent;
-				if (request !== timelineRequest.current) return;
-				const all: Moment[] = [];
-				while (true) {
-					const page = await core<{
-						type: "moments";
-						id: string;
-						moments: Moment[];
-					}>({
-						type: "moments",
-						from_ms,
-						to_ms,
-						offset: all.length,
-						limit: 200,
-					});
-					if (request !== timelineRequest.current) return;
-					all.push(...page.moments);
-					if (page.moments.length < 200) break;
-				}
-				if (request === timelineRequest.current) {
-					if (available) setRecordedDays(available.days);
+				const moments = (async () => {
+					const all: Moment[] = [];
+					while (true) {
+						const page = await core<{
+							type: "moments";
+							id: string;
+							moments: Moment[];
+						}>({
+							type: "moments",
+							from_ms,
+							to_ms,
+							offset: all.length,
+							limit: 200,
+						});
+						if (request !== timelineRequest.current) return null;
+						all.push(...page.moments);
+						if (page.moments.length < 200) break;
+					}
+					setDayMoments(all);
+					setDayMomentsError("");
+					if (all.length) setTimelineReady(true);
+					return all;
+				})().catch((cause) => {
+					if (request === timelineRequest.current) {
+						setTimelineReady(true);
+						setDayMomentsError(errorText(cause));
+					}
+					return null;
+				});
+				const calendarDays = calendar.then((available) => {
+					if (available && request === timelineRequest.current)
+						setRecordedDays(available.days);
+					return available?.days;
+				});
+				const previousDay = adjacent.then((neighbors) => {
+					if (request !== timelineRequest.current) return null;
 					const today = dayBounds(new Date())[0];
 					const newer = adjacentRecordedDay(
 						neighbors?.newer_ms,
@@ -343,25 +379,29 @@ function App() {
 						today,
 					);
 					setAdjacentDays(neighbors ? { newer, older } : null);
-					if (initialDatePending.current) {
-						initialDatePending.current = false;
-						const latest = older ?? available?.days[available.days.length - 1];
-						if (
-							response.items.length === 0 &&
-							all.length === 0 &&
-							latest !== undefined &&
-							latest !== from_ms
-						) {
-							selectDate(new Date(latest));
-							return;
-						}
+					return older;
+				});
+				const [available, older, all] = await Promise.all([
+					calendarDays,
+					previousDay,
+					moments,
+				]);
+				if (request !== timelineRequest.current) return;
+				if (initialDatePending.current && all) {
+					initialDatePending.current = false;
+					const latest = older ?? available?.[available.length - 1];
+					if (
+						response.items.length === 0 &&
+						all.length === 0 &&
+						latest !== undefined &&
+						latest !== from_ms
+					) {
+						selectDate(new Date(latest));
+						return;
 					}
-					setTimelineReady(true);
-					setDayMoments(all);
-					setDayMomentsError("");
-
-					setError(null);
 				}
+				setTimelineReady(true);
+				if (all) setError(null);
 			} catch (cause) {
 				if (request === timelineRequest.current) {
 					if (timelineLoaded) {
@@ -525,6 +565,92 @@ function App() {
 				}),
 		]);
 	}, []);
+
+	const updateCleanupWatches = useCallback(
+		(update: (jobs: CleanupWatch[]) => CleanupWatch[]) => {
+			const next = update(cleanupJobsRef.current);
+			cleanupJobsRef.current = next;
+			try {
+				window.localStorage.setItem(
+					cleanupNotificationsKey,
+					JSON.stringify(next),
+				);
+			} catch {
+				// The Core job is durable even if the view cannot persist notifications.
+			}
+			setCleanupJobs(next);
+		},
+		[],
+	);
+	const watchCleanup = (token: string, watch: boolean) => {
+		updateCleanupWatches((jobs) =>
+			watch
+				? jobs.some((job) => job.token === token)
+					? jobs
+					: [...jobs, { token, announced: false }]
+				: jobs.filter((job) => job.token !== token),
+		);
+	};
+	useEffect(() => {
+		if (!cleanupJobs.length || !isTauri()) return;
+		let active = true;
+		let timer: number | undefined;
+		const poll = async () => {
+			const finished = new Set<string>();
+			const accepted = new Set<string>();
+			let notice = "";
+			let changed = false;
+			for (const { token, announced } of cleanupJobs) {
+				try {
+					const observation = await cleanupResult(token);
+					if (!active) return;
+					if (observation.accepted && !announced) accepted.add(token);
+					const { result } = observation;
+					if (!result) continue;
+					finished.add(token);
+					if (result.type === "cleanup_complete") changed = true;
+					if (result.type === "error")
+						notice = `清理未完成 · ${userError(String(result.message))}`;
+				} catch (error) {
+					if (!active) return;
+					if (String(error).includes("cleanup_not_found:")) {
+						finished.add(token);
+						notice = "未能确认清理，请重新查看清理范围";
+					}
+				}
+			}
+			if (notice || accepted.size) message(notice || "已受理，将在后台清理");
+			if (changed)
+				void Promise.all([
+					refreshStatus(),
+					refreshTimeline(false, true),
+					refreshContext(),
+				]);
+			if (finished.size || accepted.size) {
+				updateCleanupWatches((jobs) =>
+					jobs
+						.filter(({ token }) => !finished.has(token))
+						.map((job) =>
+							accepted.has(job.token) ? { ...job, announced: true } : job,
+						),
+				);
+			} else if (active) {
+				timer = window.setTimeout(poll, 1000);
+			}
+		};
+		void poll();
+		return () => {
+			active = false;
+			window.clearTimeout(timer);
+		};
+	}, [
+		cleanupJobs,
+		message,
+		refreshContext,
+		refreshStatus,
+		refreshTimeline,
+		updateCleanupWatches,
+	]);
 
 	useEffect(() => {
 		if (!isTauri()) return;
@@ -1111,7 +1237,7 @@ function App() {
 						busy={busy}
 						onStatus={refreshStatus}
 						onContext={refreshContext}
-						onTimeline={() => refreshTimeline(false, true)}
+						onCleanupWatch={watchCleanup}
 						onMutate={mutate}
 						onMessage={message}
 					/>

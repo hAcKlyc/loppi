@@ -6,6 +6,7 @@
 | --- | --- |
 | `sources.json` 与各原生组件 `.txt` | 离线语音运行库的固定来源及许可，保留原有来源哈希 |
 | `component-inventory.json` | 精确版本的全平台 Cargo 锁文件清单与 npm 生产依赖，不是二进制 SBOM |
+| `updater-third-party.txt` | 更新器新增 Cargo 依赖的源码来源与许可文本 |
 | `frontend-third-party.txt` | 精确已安装 npm 生产依赖的版权与许可文本 |
 | `rust-third-party.txt` | 按 Cargo 校验和核验的 crate 归档所含许可与 vendored 声明 |
 | `rust-upstream-notices.txt` | crate 未附独立许可文件时，其固定源码提交中的补充声明 |

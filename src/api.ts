@@ -33,6 +33,9 @@ const errorLabels: Record<string, string> = {
 	cleanup_preview_invalid: "清理预览已过期，请重新查看影响范围",
 	cleanup_invalid: "清理范围已变化，请重新确认",
 	cleanup_failed: "清理未完成，请稍后重试",
+	cleanup_cancelled: "已取消清除全部数据",
+	asr_upload_scope_changed: "当前范围已变化，不能补发原音频",
+	asr_submit_account_unverified: "无法确认原精转请求的账号，未补发音频",
 	export_failed: "导出未完成，请检查目标位置后重试",
 	screenshot_unavailable: "暂时无法读取这张截图",
 	screenshot_failed: "截屏未完成，请重试",
@@ -443,21 +446,52 @@ export async function core<T extends CoreResponse = CoreResponse>(
 	}
 }
 
-export async function executeCleanup(
+type CleanupObservation = {
+	type: "cleanup_result";
+	id: string;
+	accepted: boolean;
+	result: CoreResponse | null;
+};
+
+export async function cleanupResult(previewToken: string) {
+	return core<CleanupObservation>({
+		type: "cleanup_result",
+		preview_token: previewToken,
+	});
+}
+
+export async function queueCleanup(
 	previewToken: string,
 	allData: boolean,
-): Promise<CoreResponse> {
-	const response = await invoke<CoreResponse>("cleanup_request", {
-		request: {
-			type: "execute_cleanup",
-			preview_token: previewToken,
-			confirmed_all_data: allData,
-		},
-	});
+): Promise<void> {
+	let response: CoreResponse;
+	try {
+		response = await invoke<CoreResponse>("cleanup_request", {
+			request: {
+				type: "queue_cleanup",
+				preview_token: previewToken,
+				confirmed_all_data: allData,
+			},
+		});
+	} catch (error) {
+		if (!String(error).includes("cleanup_ack_unknown:")) throw error;
+		// The result observer already has the token. A lost reply leaves it
+		// watching the same confirmation and cannot trigger another request.
+		return;
+	}
 	if (response.type === "error") {
 		throw new Error(`${String(response.code)}: ${String(response.message)}`);
 	}
-	return response;
+	if (response.type === "cleanup_result") {
+		const rejection = (response as CleanupObservation).result;
+		if (rejection?.type === "error")
+			throw new Error(
+				`${String(rejection.code)}: ${String(rejection.message)}`,
+			);
+	}
+	if (response.type !== "accepted" || response.object_id !== previewToken) {
+		throw new Error("清理受理结果无效");
+	}
 }
 
 export function dayBounds(date: Date): [number, number] {

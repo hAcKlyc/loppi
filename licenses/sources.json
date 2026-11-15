@@ -1,7 +1,7 @@
 [
   {
     "name": "sherpa-onnx",
-    "source": "https://raw.githubusercontent.com/k2-fsa/sherpa-onnx/8abb7c8f87eae85b2e75f9a4115236c978980add/LICENSE",
+    "source": "https://raw.githubusercontent.com/k2-fsa/sherpa-onnx/af2d8d81dbfa61c4cea4c568da78f3982edca005/LICENSE",
     "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
     "bytes": 11358
   },
