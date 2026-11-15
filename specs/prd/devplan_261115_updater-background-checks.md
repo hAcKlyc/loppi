@@ -28,7 +28,7 @@ updated: 2026-11-15
 - [x] 宿主调度、失败重试、原生唤醒和窗口状态
 - [x] 可控时间、真实桌面和双平台验收
 - [x] 整体交叉审查和本机最终验证
-- [ ] 0.1.28 版本、发行说明、正式发行与公开校验
+- [x] 0.1.28 版本、发行说明、正式发行与公开校验
 
 ### Review 基线
 
@@ -42,3 +42,9 @@ updated: 2026-11-15
 - 2026-11-15 修复后的 macOS 隔离桌面测试通过。真实窗口隐藏，启动约 11.35 秒命中隔离清单（含进程启动），缩短重试和轮询时间后验证重试和限流、原生唤醒补查、同包验签拒绝在手动断网和列表变化后保留。重新打开窗口显示已验签版本，唤醒和手动检查同时发生时只查询和下载一次。Windows 同一探针正在运行。
 - 2026-11-15 修复后的 Mac 离线门禁 22 项通过。Windows 托管虚拟机用同一产品源码通过真实主窗口隐藏、待机通知注册、合成恢复通知、下载重试及限流、签名拒绝跨失败和列表变化、恢复后显示已验签按钮，以及合并唤醒和手动请求。生产间隔使用可控时间单测，实际桌面采用短间隔，唤醒通知为注入验证。[Windows 桌面验收](https://github.com/hAcKlyc/loppi/actions/runs/43719902107)
 - 2026-11-15 需求和故障复审通过。最终架构审查通过。保留单桌面进程、串行更新和会话内短期限，无需新进程或持久状态。0.1.28 版本及发行说明校验通过，等待 dev 确切提交的 Verify 和发行。
+
+### 正式发行
+
+- 候选 `60a571d4ff611c354eec5863cf5a873245e4d3aa` 在 dev 通过检查。合并到 `main` 后，共同交付源码为 `df1b132f4af5e595f23ba4bdb29b2b00d00cd165`，同一提交的 Mac 和 Windows 检查通过。[dev Verify](https://github.com/hAcKlyc/loppi/actions/runs/43720427645) · [main Verify](https://github.com/hAcKlyc/loppi/actions/runs/43721334518)
+- 两种 Mac 架构的应用及 DMG 通过签名、公证和票据校验。Windows 安装器的 Authenticode 状态为 `unsigned`，应用内更新已验签。GitHub 的发布步骤首次未读到刚建立的草稿，复用同一批产物单独重跑后通过。北京时间 2026-11-15 22:37:32，`v0.1.28` 公开为最新正式版，标签与平台报告都指向该源码。[发行运行](https://github.com/hAcKlyc/loppi/actions/runs/43721334629/attempts/2) · [发行页](https://github.com/hAcKlyc/loppi/releases/tag/v0.1.28)
+- 核对同一发行页的 13 份附件，从公开地址完整下载三份安装包和两份 Mac 更新归档，逐一校验大小及 SHA-256。匿名固定更新清单返回 0.1.28 和三平台，三份实际下载的更新包均使用应用内置公钥验签。[固定更新清单](https://github.com/hAcKlyc/loppi/releases/latest/download/latest.json) · [SHA256SUMS](https://github.com/hAcKlyc/loppi/releases/download/v0.1.28/SHA256SUMS)
