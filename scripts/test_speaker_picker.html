@@ -91,7 +91,7 @@ window.runRegression=async()=>{
  check(!panel().querySelector('.speaker-picker-create'),'精确同名仍显示创建');
  check(button('确认').disabled,'改搜索词后旧选择仍生效');
  await close();await open();await input('  周研究员  ');await choose('新建');panel().querySelectorAll('input[type=radio]')[0].click();await confirm();
- check(messages.includes('人物已保存 · 待补充声纹'),'建人成功但缺声纹未明确反馈');
+ check(messages.includes('人物归属已保存 · 正在学习声纹'),'建人成功但缺声纹未明确反馈');
  check(requests.at(-1).type==='create_and_bind_speaker'&&requests.at(-1).display_name==='周研究员'&&!requests.at(-1).entire_local_speaker&&requests.at(-1).expected_revision===7,'创建/单句提交错误');
  await open();panel().querySelectorAll('input[type=radio]')[0].click();await wait(20);button('取消人物归属').click();await wait(180);
  check(requests.at(-1).type==='unbind_speaker'&&!requests.at(-1).entire_local_speaker,'取消归属未使用明确范围');

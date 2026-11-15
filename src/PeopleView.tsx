@@ -117,9 +117,11 @@ function PeopleContent({
 									<span className="people-list-info">
 										<strong>{p.display_name}</strong>
 										<small>
-											{p.sample_count
-												? `${p.sample_count} 个声纹样例`
-												: "待补充声纹"}
+											{p.enrollment_pending
+												? "正在学习声纹"
+												: p.sample_count
+													? `${p.sample_count} 个声纹样例`
+													: "待补充声纹"}
 										</small>
 									</span>
 									<Icon name="next" />
@@ -387,9 +389,11 @@ function PersonDetail({
 						</button>
 					)}
 					<p>
-						{person.sample_count
-							? `${person.sample_count} 个声纹样例`
-							: "待补充声纹"}
+						{person.enrollment_pending
+							? "正在学习声纹"
+							: person.sample_count
+								? `${person.sample_count} 个声纹样例`
+								: "待补充声纹"}
 					</p>
 				</div>
 				<button

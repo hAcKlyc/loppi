@@ -322,6 +322,7 @@ export interface Person {
 	id: string;
 	display_name: string;
 	sample_count: number;
+	enrollment_pending?: boolean;
 	created_ms: number;
 	revision: number;
 }
@@ -547,4 +548,37 @@ export function audioCoverageLabel(item: TimelineItem): string {
 				`${c.source === "microphone" ? "麦克风" : "电脑声音"}：${c.interval_count} 段录音缺口，共 ${(c.duration_ms / 1000).toFixed(3)} 秒（${c.reasons.map((r) => reasons[r] ?? "其他录音缺口").join("、")}）`,
 		)
 		.join("；");
+}
+
+// Uncertain operations survive drawer recreation within this WebView. Reusing
+// the original packet also preserves the receipt fingerprint after a refresh.
+const speakerOperations = new Map<
+	string,
+	{ id: string; request: CoreRequest }
+>();
+export class SpeakerMutation {
+	async submit<T extends CoreResponse = CoreResponse>(
+		request: CoreRequest,
+	): Promise<T> {
+		const {
+			expected_revision: _revision,
+			target_revision: _target,
+			...intent
+		} = request;
+		const fingerprint = JSON.stringify(intent);
+		let operation = speakerOperations.get(fingerprint);
+		if (!operation) {
+			operation = { id: crypto.randomUUID(), request };
+			speakerOperations.set(fingerprint, operation);
+		}
+		try {
+			const result = await core<T>(operation.request, operation.id);
+			speakerOperations.delete(fingerprint);
+			return result;
+		} catch (error) {
+			if (!String(error).includes("core_transport:"))
+				speakerOperations.delete(fingerprint);
+			throw error;
+		}
+	}
 }

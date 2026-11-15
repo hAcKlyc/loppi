@@ -11,6 +11,9 @@ fn publish_voice(
     now: i64,
 ) -> Result<(), String> {
     crate::knowledge::publish_voice(db, work, vector, quality, now)?;
+    if work.enrollment.is_none() {
+        crate::knowledge::group_ready_for_test(db, work.segment_id, vector)?;
+    }
     drain_enrollment(db, now)
 }
 
@@ -608,7 +611,7 @@ fn unlabeled_short_utterance_preserves_new_and_existing_person_confirmation() {
 }
 
 #[test]
-fn late_composite_rejects_group_split_when_cleanup_removes_external_acoustic_support() {
+fn explicit_human_group_survives_cleanup_of_external_acoustic_support() {
     let (mut db, event, s) = fixture(&[
         ("A", 0, 1800),
         ("B", 2000, 3800),
@@ -652,12 +655,13 @@ fn late_composite_rejects_group_split_when_cleanup_removes_external_acoustic_sup
     .unwrap();
     tx.commit().unwrap();
     let detail = events::event_detail(&db, event, 0, 20).unwrap();
-    assert_ne!(
+    // Explicitly confirmed membership survives loss of automatic merge evidence.
+    assert_eq!(
         detail.precise_segments[0].speaker,
         detail.precise_segments[1].speaker
     );
     publish_voice(&mut db, &work, &vector(0), q(3600), 74000).unwrap();
-    assert_eq!(count(&db, p), 0);
+    assert_eq!(count(&db, p), 1);
 }
 
 #[test]
@@ -864,4 +868,154 @@ fn extracted_candidate_survives_restart_and_raw_cleanup_without_requiring_model(
     recover_voice(&reopened).unwrap();
     drain_enrollment(&mut reopened, 74000).unwrap();
     assert_eq!(count(&reopened, p), 1);
+}
+
+#[test]
+fn confirmation_commits_before_candidate_planning_and_survives_reopen() {
+    let (mut db, _, segments) = fixture(&[("A", 0, 1800), ("A", 2000, 3800)]);
+    let p = person(&mut db);
+    let tx = db.transaction().unwrap();
+    bind_speaker(&tx, segments[0].id, p, true, 71000).unwrap();
+    tx.commit().unwrap();
+    assert_eq!(people(&db).unwrap()[0].enrollment_pending, true);
+    assert_eq!(
+        db.query_row("SELECT count(*) FROM voice_enrollments", [], |r| r
+            .get::<_, i64>(0))
+            .unwrap(),
+        0
+    );
+    // Reopen an actual file-backed database, rather than merely reinitializing schema.
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("restart.sqlite");
+    db.execute("VACUUM INTO ?1", [path.to_str().unwrap()])
+        .unwrap();
+    drop(db);
+    let mut db = crate::Store::new(Connection::open(&path).unwrap())
+        .unwrap()
+        .db;
+    let plan = prepare_request(&db).unwrap().unwrap();
+    publish_request(&mut db, &plan, 72000).unwrap();
+    assert!(take_voice(&mut db, 72001).unwrap().is_some());
+    assert_eq!(people(&db).unwrap()[0].id, p);
+}
+
+#[test]
+fn late_preparation_cannot_train_a_reassigned_person() {
+    let (mut db, _, s) = fixture(&[("A", 0, 1800), ("A", 2000, 3800)]);
+    let first = person(&mut db);
+    let second = person(&mut db);
+    let tx = db.transaction().unwrap();
+    bind_speaker(&tx, s[0].id, first, true, 71000).unwrap();
+    tx.commit().unwrap();
+    let plan = prepare_request(&db).unwrap().unwrap();
+    let tx = db.transaction().unwrap();
+    bind_speaker(&tx, s[0].id, second, true, 71001).unwrap();
+    tx.commit().unwrap();
+    publish_request(&mut db, &plan, 72000).unwrap();
+    assert_eq!(
+        db.query_row(
+            "SELECT count(*) FROM voice_enrollments WHERE person_id=?1",
+            [first.to_string()],
+            |r| r.get::<_, i64>(0)
+        )
+        .unwrap(),
+        0
+    );
+    assert!(prepare_request(&db).unwrap().is_some());
+}
+
+#[test]
+fn short_confirmation_does_not_scan_unrelated_historical_speech() {
+    let (mut db, event, s) = fixture(&[("A", 0, 1800), ("A", 2000, 3800)]);
+    db.execute_batch("WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<45000)
+      INSERT INTO precise_segments SELECT 'history-'||x,'historical-task','microphone',x*2000,x*2000+1000,
+        'synthetic','historical-scope','A' FROM n;").unwrap();
+    let p = person(&mut db);
+    let start = std::time::Instant::now();
+    let tx = db.transaction().unwrap();
+    bind_speaker(&tx, s[0].id, p, true, 71000).unwrap();
+    tx.commit().unwrap();
+    assert!(
+        start.elapsed() < std::time::Duration::from_secs(1),
+        "confirmation took {:?}",
+        start.elapsed()
+    );
+    let detail = events::event_detail(&db, event, 0, 20).unwrap();
+    assert!(
+        detail
+            .precise_segments
+            .iter()
+            .all(|s| s.person_id == Some(p))
+    );
+    assert_eq!(
+        db.query_row("SELECT count(*) FROM voice_enrollment_requests", [], |r| {
+            r.get::<_, i64>(0)
+        })
+        .unwrap(),
+        1
+    );
+}
+
+#[test]
+fn acoustic_plan_runs_read_only_and_rejects_a_concurrent_human_edit() {
+    let (mut db, _, s) = fixture(&[
+        ("A", 0, 4000),
+        ("A", 5000, 9000),
+        ("B", 10000, 14000),
+        ("B", 15000, 19000),
+    ]);
+    let bytes = encode_vector(&vector(0)).unwrap();
+    db.execute(
+        "UPDATE voice_observations SET state='ready',vector=?1,model_version=?2",
+        params![bytes, VOICE_MODEL_VERSION],
+    )
+    .unwrap();
+    db.execute_batch("PRAGMA query_only=ON").unwrap();
+    let plan = prepare_session_merge(&db).unwrap().unwrap();
+    db.execute_batch("PRAGMA query_only=OFF").unwrap();
+    let p = person(&mut db);
+    let tx = db.transaction().unwrap();
+    bind_speaker(&tx, s[0].id, p, false, 71000).unwrap();
+    tx.commit().unwrap();
+    assert!(
+        !publish_session_merge(&mut db, &plan).unwrap(),
+        "stale acoustic computation must not publish after an edit"
+    );
+    assert_eq!(
+        db.query_row(
+            "SELECT person_id FROM speaker_bindings WHERE current_segment_id=?1 AND state='active'",
+            [s[0].id.to_string()],
+            |r| r.get::<_, String>(0)
+        )
+        .unwrap(),
+        p.to_string()
+    );
+}
+
+#[test]
+fn long_scene_preparation_fits_the_background_read_budget() {
+    let utterances: Vec<_> = (0..1000).map(|i| ("A", i * 50, i * 50 + 8)).collect();
+    let (mut db, _, s) = fixture(&utterances);
+    db.execute_batch("UPDATE precise_segments SET started_ms=1000+(started_ms-1000)*200,
+        ended_ms=1000+(ended_ms-1000)*200;
+      UPDATE named_events SET ended_ms=12000000;
+      UPDATE cloud_tasks SET ended_ms=12000000;
+      UPDATE event_asr_refs SET ended_ms=12000000;
+      WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<45000)
+      INSERT INTO precise_segments SELECT 'history-'||x,'historical-task','microphone',x*2000,x*2000+1000,
+        'synthetic','historical-scope','A' FROM n;").unwrap();
+    let p = person(&mut db);
+    let start = std::time::Instant::now();
+    let tx = db.transaction().unwrap();
+    bind_speaker(&tx, s[0].id, p, true, 12001000).unwrap();
+    tx.commit().unwrap();
+    let confirmation = start.elapsed();
+    let start = std::time::Instant::now();
+    assert!(prepare_request(&db).unwrap().is_some());
+    let preparation = start.elapsed();
+    println!(
+        "1000 scene members + 45000 unrelated historical segments: confirmation={confirmation:?}, preparation={preparation:?}"
+    );
+    assert!(confirmation < std::time::Duration::from_secs(1));
+    assert!(preparation < std::time::Duration::from_secs(3));
 }

@@ -275,9 +275,11 @@ export function SpeakerPicker({
 									>
 										{person.display_name}
 									</span>
-									{person.sample_count === 0 && (
+									{(person.enrollment_pending || person.sample_count === 0) && (
 										<small className="speaker-picker-sample-status">
-											待补充声纹
+											{person.enrollment_pending
+												? "正在学习声纹"
+												: "待补充声纹"}
 										</small>
 									)}
 									<span className="speaker-picker-check" aria-hidden="true">
@@ -300,9 +302,7 @@ export function SpeakerPicker({
 							>
 								<span aria-hidden="true">＋</span>
 								<span className="speaker-picker-option-name">
-									{trimmed
-										? `新建「${trimmed}」并建立声纹`
-										: "新建人物并建立声纹"}
+									{trimmed ? `新建并指定「${trimmed}」` : "新建并指定人物"}
 								</span>
 								<span className="speaker-picker-check" aria-hidden="true">
 									{choice?.kind === "create" ? "✓" : ""}

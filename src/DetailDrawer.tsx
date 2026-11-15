@@ -20,6 +20,7 @@ import {
 	type PreciseSegment,
 	processingLabel,
 	type Sources,
+	SpeakerMutation,
 	type TimelineItem,
 	time,
 	userError,
@@ -913,13 +914,14 @@ export function DetailDrawer({
 		action();
 	};
 
+	const speakerMutation = useRef(new SpeakerMutation());
 	const updateSpeaker = useCallback(
 		async (segment: PreciseSegment, action: SpeakerAction) => {
 			setBusy(true);
 			try {
 				let creationMessage: string | null = null;
 				if (action.kind === "sample") {
-					await core({
+					await speakerMutation.current.submit({
 						type: "add_voice_sample",
 						segment_id: segment.id,
 						expected_revision: segment.revision,
@@ -933,21 +935,24 @@ export function DetailDrawer({
 							: segment.revision,
 					};
 					if (action.kind === "unbind")
-						await core({ type: "unbind_speaker", ...scope });
+						await speakerMutation.current.submit({
+							type: "unbind_speaker",
+							...scope,
+						});
 					else if (action.choice.kind === "local") {
 						const groupId = action.choice.groupId;
 						const target = localSpeakers.find(
 							(s) => s.group_id === groupId && s.anonymous,
 						);
 						if (!target) throw new Error("说话人已变化，请重新选择");
-						await core({
+						await speakerMutation.current.submit({
 							type: "assign_local_speaker",
 							target_segment_id: target.segment_id,
 							target_revision: target.revision,
 							...scope,
 						});
 					} else if (action.choice.kind === "create") {
-						const response = await core<{
+						const response = await speakerMutation.current.submit<{
 							type: "person_changed";
 							id: string;
 							sample_count: number;
@@ -960,9 +965,9 @@ export function DetailDrawer({
 						creationMessage =
 							response.sample_count > 0
 								? "人物与声纹已保存"
-								: "人物已保存 · 待补充声纹";
+								: "人物归属已保存 · 正在学习声纹";
 					} else
-						await core({
+						await speakerMutation.current.submit({
 							type: "bind_speaker",
 							person_id: action.choice.personId,
 							...scope,

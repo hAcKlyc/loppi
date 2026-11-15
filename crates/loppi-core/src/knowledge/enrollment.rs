@@ -59,7 +59,11 @@ pub struct EnrollmentWork {
 }
 
 pub fn init(db: &Connection) -> Result<(), String> {
-    db.execute_batch("CREATE TABLE IF NOT EXISTS voice_observation_quality(
+    db.execute_batch("CREATE TABLE IF NOT EXISTS voice_enrollment_requests(
+      id TEXT PRIMARY KEY, person_id TEXT NOT NULL REFERENCES people(id) ON DELETE CASCADE,
+      parts_json TEXT NOT NULL, created_ms INTEGER NOT NULL);
+      CREATE INDEX IF NOT EXISTS voice_enrollment_requests_person ON voice_enrollment_requests(person_id);
+      CREATE TABLE IF NOT EXISTS voice_observation_quality(
       segment_id TEXT PRIMARY KEY, voiced_ms INTEGER NOT NULL, score INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS voice_sample_quality(
       sample_id TEXT PRIMARY KEY, bucket TEXT NOT NULL, score INTEGER NOT NULL);
@@ -75,6 +79,7 @@ pub fn init(db: &Connection) -> Result<(), String> {
       error_code TEXT, attempts INTEGER NOT NULL DEFAULT 0,
       available_ms INTEGER NOT NULL DEFAULT 0, updated_ms INTEGER NOT NULL,
       vector BLOB, score INTEGER);
+      CREATE INDEX IF NOT EXISTS voice_enrollments_person ON voice_enrollments(person_id,state);
       CREATE INDEX IF NOT EXISTS voice_enrollments_pending ON voice_enrollments(state,available_ms);
       CREATE INDEX IF NOT EXISTS voice_enrollments_ready ON voice_enrollments(updated_ms,score DESC,id)
         WHERE state='pending' AND vector IS NOT NULL;
@@ -118,6 +123,9 @@ pub fn init(db: &Connection) -> Result<(), String> {
       END;
       CREATE TRIGGER IF NOT EXISTS enrollment_job_delete AFTER DELETE ON voice_enrollments BEGIN
         DELETE FROM voice_enrollment_parts WHERE job_id=old.id;
+      END;
+      CREATE TRIGGER IF NOT EXISTS enrollment_request_person_delete AFTER DELETE ON people BEGIN
+        DELETE FROM voice_enrollment_requests WHERE person_id=old.id;
       END;
       CREATE TRIGGER IF NOT EXISTS enrollment_person_delete AFTER DELETE ON people BEGIN
         DELETE FROM voice_enrollments WHERE person_id=old.id;
@@ -218,9 +226,16 @@ pub fn add_single(
     person: Uuid,
     now: i64,
 ) -> Result<bool, String> {
-    let Ok(part) = evidence(tx, segment, person) else {
+    let Some((work, vector, score)) = single_candidate(tx, segment, person)? else {
         return Ok(false);
     };
+    queue_candidate(tx, &work, Some((&vector, score)), now)
+}
+fn single_candidate(
+    tx: &Connection,
+    segment: Uuid,
+    person: Uuid,
+) -> Result<Option<(EnrollmentWork, Vec<u8>, i64)>, String> {
     let row: Option<(String, Vec<u8>, i64, i64)> = tx
         .query_row(
             "SELECT o.source,o.vector,q.voiced_ms,q.score
@@ -232,11 +247,14 @@ pub fn add_single(
         .optional()
         .map_err(|e| e.to_string())?;
     let Some((source, vector, voiced_ms, score)) = row else {
-        return Ok(false);
+        return Ok(None);
     };
     if voiced_ms < MIN_VOICED_MS {
-        return Ok(false);
+        return Ok(None);
     }
+    let Ok(part) = evidence(tx, segment, person) else {
+        return Ok(None);
+    };
     let work = EnrollmentWork {
         id: Uuid::new_v4(),
         person,
@@ -244,7 +262,7 @@ pub fn add_single(
         bucket: bucket(tx, segment)?,
         parts: vec![part],
     };
-    queue_candidate(tx, &work, Some((&vector, score)), now)
+    Ok(Some((work, vector, score)))
 }
 
 struct Sample {
@@ -406,22 +424,25 @@ fn admit(
 
 /// Only the just-confirmed scope participates. A single-sentence action cannot
 /// borrow neighboring speech just because the cloud reused the same label.
+#[cfg(test)]
 pub fn queue_short_samples(
     tx: &Transaction<'_>,
     ids: &[Uuid],
     person: Uuid,
     now: i64,
 ) -> Result<(), String> {
+    for work in plan_short_samples(tx, ids, person)? {
+        queue_candidate(tx, &work, None, now)?;
+    }
+    Ok(())
+}
+fn plan_short_samples(
+    tx: &Connection,
+    ids: &[Uuid],
+    person: Uuid,
+) -> Result<Vec<EnrollmentWork>, String> {
     let mut candidates = Vec::new();
     for id in ids {
-        // Old vectors remain matchable, but new enrollment needs measured PCM quality.
-        tx.execute(
-            "UPDATE voice_observations SET state='pending',available_ms=0,attempts=0,updated_ms=?2
-          WHERE segment_id=?1 AND state='ready' AND NOT EXISTS
-          (SELECT 1 FROM voice_observation_quality q WHERE q.segment_id=?1)",
-            params![id.to_string(), now],
-        )
-        .map_err(|e| e.to_string())?;
         let Ok(part) = evidence(tx, *id, person) else {
             continue;
         };
@@ -484,6 +505,7 @@ pub fn queue_short_samples(
     chunks.sort_by_key(|w| std::cmp::Reverse(w.parts.iter().map(|p| p.end - p.start).sum::<i64>()));
     // Bound inference work as well as the resulting active sample library.
     let mut counts = std::collections::HashMap::new();
+    let mut output = Vec::new();
     for work in chunks {
         let key = (work.source.clone(), work.bucket.clone());
         let count = counts.entry(key).or_insert(0);
@@ -491,9 +513,9 @@ pub fn queue_short_samples(
             continue;
         }
         *count += 1;
-        queue_candidate(tx, &work, None, now)?;
+        output.push(work);
     }
-    Ok(())
+    Ok(output)
 }
 fn queue_candidate(
     tx: &Transaction<'_>,
@@ -671,6 +693,9 @@ pub fn publish_enrollment(
 
 #[cfg(test)]
 pub(super) fn drain_enrollment(db: &mut Connection, now: i64) -> Result<(), String> {
+    while let Some(plan) = prepare_request(db)? {
+        publish_request(db, &plan, now)?;
+    }
     let mut matcher = VoiceMatcher::default();
     while let Some(input) = prepare_enrollment(db)? {
         let allowed = matcher.allows_enrollment(&input.matching, &input.person, |after| {
@@ -844,3 +869,119 @@ fn migrate_samples(db: &Connection) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests;
+
+pub fn request(tx: &Transaction<'_>, ids: &[Uuid], person: Uuid, now: i64) -> Result<(), String> {
+    let mut parts = Vec::new();
+    for id in ids {
+        let binding: String = tx
+            .query_row(
+                "SELECT id FROM speaker_bindings WHERE current_segment_id=?1
+          AND person_id=?2 AND state='active' AND origin='manual'",
+                params![id.to_string(), person.to_string()],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        parts.push((*id, binding));
+    }
+    tx.execute(
+        "INSERT INTO voice_enrollment_requests VALUES(?1,?2,?3,?4)",
+        params![
+            Uuid::new_v4().to_string(),
+            person.to_string(),
+            serde_json::to_string(&parts).map_err(|e| e.to_string())?,
+            now
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub struct RequestPlan {
+    id: String,
+    person: Uuid,
+    parts: Vec<(Uuid, String)>,
+    candidates: Vec<(EnrollmentWork, Option<(Vec<u8>, i64)>)>,
+}
+
+pub fn prepare_request(db: &Connection) -> Result<Option<RequestPlan>, String> {
+    let row: Option<(String, String, String)> = db
+        .query_row(
+            "SELECT id,person_id,parts_json
+      FROM voice_enrollment_requests ORDER BY created_ms,id LIMIT 1",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+    let Some((id, person, json)) = row else {
+        return Ok(None);
+    };
+    let person = Uuid::parse_str(&person).map_err(|e| e.to_string())?;
+    let parts: Vec<(Uuid, String)> = serde_json::from_str(&json).map_err(|e| e.to_string())?;
+    let mut ids = Vec::new();
+    for (segment, binding) in &parts {
+        let current: bool = db
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM speaker_bindings WHERE id=?1
+          AND current_segment_id=?2 AND person_id=?3 AND state='active' AND origin='manual')",
+                params![binding, segment.to_string(), person.to_string()],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        if current {
+            ids.push(*segment);
+        }
+    }
+    let mut candidates = Vec::new();
+    for segment in &ids {
+        if let Some((work, vector, score)) = single_candidate(db, *segment, person)? {
+            candidates.push((work, Some((vector, score))));
+        }
+    }
+    for work in plan_short_samples(db, &ids, person)? {
+        candidates.push((work, None));
+    }
+    Ok(Some(RequestPlan {
+        id,
+        person,
+        parts,
+        candidates,
+    }))
+}
+
+pub fn publish_request(db: &mut Connection, plan: &RequestPlan, now: i64) -> Result<(), String> {
+    let tx = db.transaction().map_err(|e| e.to_string())?;
+    let exists: bool = tx
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM voice_enrollment_requests WHERE id=?1)",
+            [&plan.id],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if !exists {
+        return Ok(());
+    }
+    for (work, ready) in &plan.candidates {
+        if evidence_current(&tx, work)? {
+            queue_candidate(
+                &tx,
+                work,
+                ready.as_ref().map(|(v, s)| (v.as_slice(), *s)),
+                now,
+            )?;
+        }
+    }
+    // Re-extract legacy vectors only for still-current explicit human evidence.
+    for (id, binding) in &plan.parts {
+        tx.execute("UPDATE voice_observations SET state='pending',available_ms=0,attempts=0,updated_ms=?4
+          WHERE segment_id=?1 AND state='ready' AND NOT EXISTS(SELECT 1 FROM voice_observation_quality WHERE segment_id=?1)
+          AND EXISTS(SELECT 1 FROM speaker_bindings WHERE id=?2 AND current_segment_id=?1 AND person_id=?3 AND state='active' AND origin='manual')",
+          params![id.to_string(),binding,plan.person.to_string(),now]).map_err(|e|e.to_string())?;
+    }
+    tx.execute(
+        "DELETE FROM voice_enrollment_requests WHERE id=?1",
+        [&plan.id],
+    )
+    .map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())
+}

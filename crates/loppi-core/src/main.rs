@@ -1435,18 +1435,40 @@ fn voice_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
         if shared.resources.unload(resources::Work::Voice) {
             matcher.clear();
         }
+        let prepared = (|| -> Result<bool, String> {
+            let plan = {
+                let reader = shared.readers.snapshot()?;
+                knowledge::enrollment::prepare_request(&reader)?
+            };
+            let Some(plan) = plan else {
+                return Ok(false);
+            };
+            knowledge::enrollment::publish_request(
+                &mut shared.store.lock().map_err(|e| e.to_string())?.db,
+                &plan,
+                now,
+            )?;
+            Ok(true)
+        })();
+        match prepared {
+            Ok(true) => continue,
+            Err(_) => {
+                thread::sleep(Duration::from_millis(500));
+                continue;
+            }
+            Ok(false) => {}
+        }
         let enrolled = (|| -> Result<bool, String> {
-            let input =
-                knowledge::prepare_enrollment(&shared.store.lock().map_err(|e| e.to_string())?.db)?;
+            let input = {
+                let reader = shared.readers.snapshot()?;
+                knowledge::prepare_enrollment(&reader)?
+            };
             let Some(input) = input else {
                 return Ok(false);
             };
             let allowed = matcher.allows_enrollment(&input.matching, &input.person, |after| {
-                knowledge::match_sample_page(
-                    &shared.store.lock().map_err(|e| e.to_string())?.db,
-                    &input.matching,
-                    after,
-                )
+                let reader = shared.readers.snapshot()?;
+                knowledge::match_sample_page(&reader, &input.matching, after)
             })?;
             knowledge::publish_enrollment(
                 &mut shared.store.lock().map_err(|e| e.to_string())?.db,
@@ -1466,25 +1488,31 @@ fn voice_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
             }
             Ok(false) => {}
         }
+        // Plan grouping and score this exact observation against a WAL snapshot.
+        // The Store lock is acquired only for version-checked publication.
         let matched = (|| -> Result<bool, String> {
-            let input =
-                knowledge::prepare_match(&shared.store.lock().map_err(|e| e.to_string())?.db)?;
-            let Some(input) = input else {
+            let Some(_permit) = shared.resources.try_admit(resources::Work::Voice) else {
                 return Ok(false);
             };
+            let (input, plan) = {
+                let reader = shared.readers.snapshot()?;
+                let Some(input) = knowledge::prepare_match(&reader)? else {
+                    return Ok(false);
+                };
+                let plan = knowledge::prepare_session_for(&reader, &input)?;
+                (input, plan)
+            };
             let selected = matcher.select(&input, |after| {
-                knowledge::match_sample_page(
-                    &shared.store.lock().map_err(|e| e.to_string())?.db,
-                    &input,
-                    after,
-                )
+                let reader = shared.readers.snapshot()?;
+                knowledge::match_sample_page(&reader, &input, after)
             })?;
-            knowledge::publish_match(
-                &mut shared.store.lock().map_err(|e| e.to_string())?.db,
-                &input,
-                selected,
-                now,
-            )
+            let mut store = shared.store.lock().map_err(|e| e.to_string())?;
+            if let Some(plan) = plan {
+                if !knowledge::publish_session_merge(&mut store.db, &plan)? {
+                    return Ok(false);
+                }
+            }
+            knowledge::publish_match(&mut store.db, &input, selected, now)
         })();
         match matched {
             Ok(true) => {

@@ -5385,7 +5385,7 @@ mod tests {
         crate::knowledge::bind_speaker(&tx, unknown, person, true, 50_005).unwrap();
         tx.commit().unwrap();
         let detail = event_detail(&db, event, 0, 100).unwrap();
-        assert_eq!(detail.precise_segments[4].speaker, None);
+        assert!(detail.precise_segments[4].speaker.is_some(), "explicit whole-speaker confirmation establishes stable human membership");
         assert_eq!(
             detail.precise_segments[4].person_name.as_deref(),
             Some("小林")
