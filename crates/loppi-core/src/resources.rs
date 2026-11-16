@@ -527,6 +527,21 @@ impl Drop for Resident {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn idle_voice_matching_leaves_extraction_eligible_on_battery() {
+        let governor = Governor::new();
+        governor.state.lock().unwrap().on_battery = true;
+        let store = crate::Store::new(rusqlite::Connection::open_in_memory().unwrap()).unwrap();
+
+        assert!(
+            crate::admit_voice_match(&store.db, &governor)
+                .unwrap()
+                .is_none()
+        );
+        assert!(governor.try_admit(Work::Voice).is_some());
+    }
+
     #[test]
     fn source_observations_cannot_inherit_another_session_or_process_metrics() {
         let governor = Governor::new();

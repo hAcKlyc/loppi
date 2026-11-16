@@ -1413,6 +1413,18 @@ fn voice_error_code(error: &str) -> &'static str {
     }
 }
 
+fn admit_voice_match(
+    db: &Connection,
+    resources: &Arc<resources::Governor>,
+) -> Result<Option<(knowledge::MatchInput, resources::Permit)>, String> {
+    let Some(input) = knowledge::prepare_match(db)? else {
+        return Ok(None);
+    };
+    Ok(resources
+        .try_admit(resources::Work::Voice)
+        .map(|permit| (input, permit)))
+}
+
 fn voice_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
     let mut worker: Option<analysis::AnalysisClient> = None;
     let mut matcher = knowledge::VoiceMatcher::default();
@@ -1491,16 +1503,13 @@ fn voice_loop(shared: Arc<CoreState>, stop: Arc<AtomicBool>) {
         // Plan grouping and score this exact observation against a WAL snapshot.
         // The Store lock is acquired only for version-checked publication.
         let matched = (|| -> Result<bool, String> {
-            let Some(_permit) = shared.resources.try_admit(resources::Work::Voice) else {
-                return Ok(false);
-            };
-            let (input, plan) = {
+            let (input, plan, _permit) = {
                 let reader = shared.readers.snapshot()?;
-                let Some(input) = knowledge::prepare_match(&reader)? else {
+                let Some((input, permit)) = admit_voice_match(&reader, &shared.resources)? else {
                     return Ok(false);
                 };
                 let plan = knowledge::prepare_session_for(&reader, &input)?;
-                (input, plan)
+                (input, plan, permit)
             };
             let selected = matcher.select(&input, |after| {
                 let reader = shared.readers.snapshot()?;

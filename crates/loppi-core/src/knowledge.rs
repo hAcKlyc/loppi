@@ -2310,102 +2310,34 @@ fn rebuild_for_segment(tx: &Transaction<'_>, segment_id: Uuid, now: i64) -> Resu
     rebuild_speaker_groups(tx, &target.0, &target.1, &target.2, now)
 }
 
-// Both acoustic reconciliation and background matching must read human scope
-// through effective membership, never the provider group a correction replaced.
-
-fn apply_group_binding(
+fn apply_automatic_match(
     tx: &Transaction<'_>,
-    group: &str,
-    only_segment: Option<Uuid>,
+    segment: Uuid,
     person: &str,
-    origin: &str,
     now: i64,
 ) -> Result<(), String> {
-    let mut stmt=tx.prepare(
-        "SELECT p.id,p.source,p.started_ms,p.ended_ms FROM precise_segments p
-         JOIN speaker_groups g ON g.speaker_scope=p.speaker_scope AND g.speaker_label=p.speaker_label
-         WHERE (p.id=?2 OR (?2 IS NULL AND g.group_id=?1
-           AND NOT EXISTS(SELECT 1 FROM local_speaker_assignments a WHERE a.segment_id=p.id)))
-         ORDER BY p.started_ms,p.id"
-    ).map_err(|error|error.to_string())?;
-    let segments = stmt
-        .query_map(params![group, only_segment.map(|id| id.to_string())], |r| {
-            Ok((
-                r.get::<_, String>(0)?,
-                r.get::<_, String>(1)?,
-                r.get::<_, i64>(2)?,
-                r.get::<_, i64>(3)?,
-            ))
-        })
-        .map_err(|error| error.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| error.to_string())?;
-    for (id, source, start, end) in segments {
-        let uuid = Uuid::parse_str(&id).map_err(|error| error.to_string())?;
-        if only_segment.is_some_and(|selected| selected != uuid) {
-            continue;
-        }
-        if visible_segment(tx, uuid)?.is_none() {
-            continue;
-        }
-        let manual: Option<String> = tx
-            .query_row(
-                "SELECT person_id FROM speaker_bindings WHERE current_segment_id=?1
-             AND state='active' AND origin='manual'",
-                params![id],
-                |r| r.get(0),
-            )
-            .optional()
-            .map_err(|error| error.to_string())?;
-        if manual.is_some() {
-            continue;
-        }
-        let denied: i64 = tx
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM denied_matches WHERE segment_id=?1 AND person_id=?2)",
-                params![id, person],
-                |r| r.get(0),
-            )
-            .map_err(|error| error.to_string())?;
-        if denied != 0 {
-            continue;
-        }
-        let current: Option<String> = tx
-            .query_row(
-                "SELECT person_id FROM speaker_bindings WHERE current_segment_id=?1
-             AND state='active' AND origin='automatic'",
-                params![id],
-                |r| r.get(0),
-            )
-            .optional()
-            .map_err(|error| error.to_string())?;
-        if current.as_deref() == Some(person) {
-            continue;
-        }
-        tx.execute(
-            "UPDATE speaker_bindings SET state='revoked',current_segment_id=NULL,
-          updated_ms=?2 WHERE current_segment_id=?1 AND state='active' AND origin='automatic'",
-            params![id, now],
-        )
-        .map_err(|error| error.to_string())?;
-        tx.execute(
-            "INSERT INTO speaker_bindings
-             (id,original_segment_id,current_segment_id,person_id,source,started_ms,ended_ms,
-              origin,apply_scope,state,created_ms,updated_ms)
-             VALUES (?1,?2,?2,?3,?4,?5,?6,?7,'segment','active',?8,?8)",
-            params![
-                Uuid::new_v4().to_string(),
-                id,
-                person,
-                source,
-                start,
-                end,
-                origin,
-                now
-            ],
-        )
-        .map_err(|error| error.to_string())?;
-    }
+    let Some((source, start, end)) = visible_segment(tx, segment)? else {
+        return Ok(());
+    };
+    tx.execute(
+        "INSERT INTO speaker_bindings
+           (id,original_segment_id,current_segment_id,person_id,source,started_ms,ended_ms,
+            origin,apply_scope,state,created_ms,updated_ms)
+         SELECT ?1,?2,?2,?3,?4,?5,?6,'automatic','segment','active',?7,?7
+         WHERE NOT EXISTS(SELECT 1 FROM speaker_bindings
+           WHERE current_segment_id=?2 AND state='active' AND origin='manual')
+         AND NOT EXISTS(SELECT 1 FROM denied_matches WHERE segment_id=?2 AND person_id=?3)",
+        params![
+            Uuid::new_v4().to_string(),
+            segment.to_string(),
+            person,
+            source,
+            start,
+            end,
+            now
+        ],
+    )
+    .map_err(|error| error.to_string())?;
     Ok(())
 }
 
@@ -2589,34 +2521,9 @@ pub fn publish_match(
         params![id, now],
     )
     .map_err(|error| error.to_string())?;
-    if visible_segment(&tx, segment)?.is_some() {
-        let group: String = tx
-            .query_row(
-                "SELECT g.group_id FROM precise_segments p JOIN speaker_groups g
-              ON g.speaker_scope=p.speaker_scope AND g.speaker_label=p.speaker_label
-              WHERE p.id=?1",
-                params![id],
-                |r| r.get(0),
-            )
-            .map_err(|error| error.to_string())?;
-        let manual: i64 = tx
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM speaker_bindings
-          WHERE current_segment_id=?1 AND state='active' AND origin='manual')",
-                params![id],
-                |r| r.get(0),
-            )
-            .map_err(|error| error.to_string())?;
-        if manual == 0 {
-            let selected_id = selected;
-            if let Some(person) = selected_id {
-                // A provider label is an anonymous hint, not proof that all
-                // its utterances have one voice. Name only the utterance with
-                // a matching local embedding; short/unmatched turns stay
-                // anonymous until the user confirms them.
-                apply_group_binding(&tx, &group, Some(segment), &person, "automatic", now)?;
-            }
-        }
+    if let Some(person) = selected {
+        // Only the utterance with matching local evidence receives a name.
+        apply_automatic_match(&tx, segment, &person, now)?;
     }
     tx.execute(
         "UPDATE voice_observations SET matched_generation=?2 WHERE segment_id=?1",
@@ -3737,16 +3644,9 @@ mod tests {
         // Model an existing installation where a single matching utterance
         // incorrectly named the entire cloud group, then upgrade its policy.
         let tx = db.transaction().unwrap();
-        let group: String = tx
-            .query_row(
-                "SELECT g.group_id FROM speaker_groups g JOIN precise_segments p
-                 ON p.speaker_scope=g.speaker_scope AND p.speaker_label=g.speaker_label
-                 WHERE p.id=?1",
-                params![segments[0].id.to_string()],
-                |r| r.get(0),
-            )
-            .unwrap();
-        apply_group_binding(&tx, &group, None, &person.to_string(), "automatic", 63030).unwrap();
+        for segment in &segments[1..] {
+            apply_automatic_match(&tx, segment.id, &person.to_string(), 63030).unwrap();
+        }
         tx.execute(
             "UPDATE identity_state SET speaker_policy_version=2 WHERE id=1",
             [],
