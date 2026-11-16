@@ -12,7 +12,7 @@ cpal = "0.18.2"
 loppi-protocol = { path = "../loppi-protocol" }
 serde_json.workspace = true
 serde.workspace = true
-rusqlite = { version = "0.40", features = ["bundled", "hooks"] }
+rusqlite = { version = "0.41.1", features = ["bundled", "hooks"] }
 fs2 = "0.4"
 libc = "0.2"
 uuid = "1"

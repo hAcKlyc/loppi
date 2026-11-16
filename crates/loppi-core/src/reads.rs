@@ -89,7 +89,7 @@ impl Pool {
         let deadline = Instant::now() + timeout;
         loop {
             for (slot, entry) in self.readers.iter().enumerate() {
-                if let Ok(reader) = entry.try_lock() {
+                if let Ok(mut reader) = entry.try_lock() {
                     reader
                         .db
                         .progress_handler(1000, Some(move || Instant::now() >= deadline))

@@ -1,7 +1,7 @@
 {
   "name": "loppi",
   "private": true,
-  "version": "0.1.28",
+  "version": "0.1.29",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -31,7 +31,7 @@
     "jsdom": "29.1.1",
     "sharp": "0.35.5",
     "typescript": "~6.0.3",
-    "vite": "^8.0.16"
+    "vite": "^8.3.3"
   },
   "license": "Apache-2.0",
   "author": {
