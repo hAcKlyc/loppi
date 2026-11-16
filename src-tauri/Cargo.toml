@@ -3,7 +3,7 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 name = "loppi-desktop"
-version = "0.1.28"
+version = "0.1.29"
 description = "A local-first audio memory companion for macOS and Windows"
 edition = "2024"
 
@@ -23,7 +23,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 uuid = { version = "1", features = ["v4", "serde"] }
 libc = "0.2"
-tauri-plugin-updater = "2"
+tauri-plugin-updater = "2.14.1"
 tempfile = "3"
 tokio = { version = "1", features = ["sync", "time"] }
 

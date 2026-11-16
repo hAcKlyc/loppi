@@ -743,6 +743,8 @@ pub struct PersonView {
     pub id: Uuid,
     pub display_name: String,
     pub sample_count: u32,
+    #[serde(default)]
+    pub enrollment_pending: bool,
     pub created_ms: i64,
     pub revision: i64,
 }

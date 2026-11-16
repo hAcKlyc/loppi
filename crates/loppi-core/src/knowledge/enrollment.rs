@@ -59,7 +59,11 @@ pub struct EnrollmentWork {
 }
 
 pub fn init(db: &Connection) -> Result<(), String> {
-    db.execute_batch("CREATE TABLE IF NOT EXISTS voice_observation_quality(
+    db.execute_batch("CREATE TABLE IF NOT EXISTS voice_enrollment_requests(
+      id TEXT PRIMARY KEY, person_id TEXT NOT NULL REFERENCES people(id) ON DELETE CASCADE,
+      parts_json TEXT NOT NULL, created_ms INTEGER NOT NULL);
+      CREATE INDEX IF NOT EXISTS voice_enrollment_requests_person ON voice_enrollment_requests(person_id);
+      CREATE TABLE IF NOT EXISTS voice_observation_quality(
       segment_id TEXT PRIMARY KEY, voiced_ms INTEGER NOT NULL, score INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS voice_sample_quality(
       sample_id TEXT PRIMARY KEY, bucket TEXT NOT NULL, score INTEGER NOT NULL);
@@ -75,6 +79,7 @@ pub fn init(db: &Connection) -> Result<(), String> {
       error_code TEXT, attempts INTEGER NOT NULL DEFAULT 0,
       available_ms INTEGER NOT NULL DEFAULT 0, updated_ms INTEGER NOT NULL,
       vector BLOB, score INTEGER);
+      CREATE INDEX IF NOT EXISTS voice_enrollments_person ON voice_enrollments(person_id,state);
       CREATE INDEX IF NOT EXISTS voice_enrollments_pending ON voice_enrollments(state,available_ms);
       CREATE INDEX IF NOT EXISTS voice_enrollments_ready ON voice_enrollments(updated_ms,score DESC,id)
         WHERE state='pending' AND vector IS NOT NULL;
@@ -119,6 +124,9 @@ pub fn init(db: &Connection) -> Result<(), String> {
       CREATE TRIGGER IF NOT EXISTS enrollment_job_delete AFTER DELETE ON voice_enrollments BEGIN
         DELETE FROM voice_enrollment_parts WHERE job_id=old.id;
       END;
+      CREATE TRIGGER IF NOT EXISTS enrollment_request_person_delete AFTER DELETE ON people BEGIN
+        DELETE FROM voice_enrollment_requests WHERE person_id=old.id;
+      END;
       CREATE TRIGGER IF NOT EXISTS enrollment_person_delete AFTER DELETE ON people BEGIN
         DELETE FROM voice_enrollments WHERE person_id=old.id;
       END;") .map_err(|e| e.to_string())?;
@@ -127,60 +135,68 @@ pub fn init(db: &Connection) -> Result<(), String> {
 
 fn bucket(db: &Connection, segment: Uuid) -> Result<String, String> {
     let parts: (String, String, String) = db
-        .query_row(
+        .prepare_cached(
             "SELECT t.target_kind,t.target_id,t.target_version
-      FROM precise_segments p JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms WHERE p.id=?1",
-            [segment.to_string()],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+             FROM precise_segments p JOIN transcript_tasks t ON t.id=p.task_id
+             AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms WHERE p.id=?1",
         )
+        .map_err(|e| e.to_string())?
+        .query_row([segment.to_string()], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+        })
         .map_err(|e| e.to_string())?;
     serde_json::to_string(&parts).map_err(|e| e.to_string())
 }
 
-fn evidence(db: &Connection, segment: Uuid, person: Uuid) -> Result<EnrollmentPart, String> {
-    let (source, start, end) =
-        visible_segment(db, segment)?.ok_or("speaker is no longer current")?;
-    let binding: String = db
-        .query_row(
+fn evidence(
+    db: &Connection,
+    segment: Uuid,
+    person: Uuid,
+) -> Result<Option<(EnrollmentPart, String)>, String> {
+    let Some((source, start, end)) = visible_segment(db, segment)? else {
+        return Ok(None);
+    };
+    let binding: Option<String> = db
+        .prepare_cached(
             "SELECT id FROM speaker_bindings WHERE current_segment_id=?1
-      AND person_id=?2 AND origin='manual' AND state='active'",
-            params![segment.to_string(), person.to_string()],
-            |r| r.get(0),
+             AND person_id=?2 AND origin='manual' AND state='active'",
         )
-        .map_err(|_| "speaker is not manually confirmed".to_string())?;
-    // Check all requests in this target/version, not just one provider request.
-    let overlap: bool = db.query_row("SELECT EXISTS(SELECT 1 FROM precise_segments p
-      JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms JOIN precise_segments seed ON seed.id=?1
-      JOIN transcript_tasks st ON st.id=seed.task_id AND seed.started_ms>=st.started_ms AND seed.ended_ms<=st.ended_ms
-      WHERE t.target_kind=st.target_kind AND t.target_id=st.target_id AND t.target_version=st.target_version
-      AND t.state='complete' AND p.source=?2 AND p.id!=seed.id
-      AND p.started_ms<?4 AND p.ended_ms>?3)", params![segment.to_string(),source,start,end], |r|r.get(0)).map_err(|e|e.to_string())?;
-    if overlap {
-        return Err("overlapping_speakers".into());
+        .map_err(|e| e.to_string())?
+        .query_row(params![segment.to_string(), person.to_string()], |r| {
+            r.get(0)
+        })
+        .optional()
+        .map_err(|e| e.to_string())?;
+    let Some(binding) = binding else {
+        return Ok(None);
+    };
+    if scene_has_other_segment(db, segment, None, start, end)? {
+        return Ok(None);
     }
-    Ok(EnrollmentPart {
-        segment_id: segment,
-        binding_id: binding,
-        start,
-        end,
-    })
+    Ok(Some((
+        EnrollmentPart {
+            segment_id: segment,
+            binding_id: binding,
+            start,
+            end,
+        },
+        source,
+    )))
 }
 
 fn current_group(db: &Connection, segment: Uuid) -> Result<Option<String>, String> {
-    db.query_row(
-        "SELECT group_id FROM precise_group_membership WHERE segment_id=?1",
-        [segment.to_string()],
-        |r| r.get::<_, Option<String>>(0),
-    )
-    .optional()
-    .map(Option::flatten)
-    .map_err(|e| e.to_string())
+    db.prepare_cached("SELECT group_id FROM precise_group_membership WHERE segment_id=?1")
+        .map_err(|e| e.to_string())?
+        .query_row([segment.to_string()], |r| r.get::<_, Option<String>>(0))
+        .optional()
+        .map(Option::flatten)
+        .map_err(|e| e.to_string())
 }
 
 fn evidence_current(db: &Connection, work: &EnrollmentWork) -> Result<bool, String> {
     let mut shared_group = None;
     for part in &work.parts {
-        let Ok(current) = evidence(db, part.segment_id, work.person) else {
+        let Some((current, source)) = evidence(db, part.segment_id, work.person)? else {
             return Ok(false);
         };
         if work.parts.len() > 1 {
@@ -199,7 +215,7 @@ fn evidence_current(db: &Connection, work: &EnrollmentWork) -> Result<bool, Stri
             || current.start != part.start
             || current.end != part.end
             || bucket(db, part.segment_id)? != work.bucket
-            || visible_segment(db, part.segment_id)?.map(|s| s.0) != Some(work.source.clone())
+            || source != work.source
         {
             return Ok(false);
         }
@@ -218,25 +234,37 @@ pub fn add_single(
     person: Uuid,
     now: i64,
 ) -> Result<bool, String> {
-    let Ok(part) = evidence(tx, segment, person) else {
+    let Some((work, vector, score)) = single_candidate(tx, segment, person)? else {
         return Ok(false);
     };
+    queue_candidate(tx, &work, Some((&vector, score)), now)
+}
+fn single_candidate(
+    tx: &Connection,
+    segment: Uuid,
+    person: Uuid,
+) -> Result<Option<(EnrollmentWork, Vec<u8>, i64)>, String> {
     let row: Option<(String, Vec<u8>, i64, i64)> = tx
-        .query_row(
+        .prepare_cached(
             "SELECT o.source,o.vector,q.voiced_ms,q.score
       FROM voice_observations o JOIN voice_observation_quality q ON q.segment_id=o.segment_id
       WHERE o.segment_id=?1 AND o.state='ready' AND o.model_version=?2",
-            params![segment.to_string(), VOICE_MODEL_VERSION],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
         )
+        .map_err(|e| e.to_string())?
+        .query_row(params![segment.to_string(), VOICE_MODEL_VERSION], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+        })
         .optional()
         .map_err(|e| e.to_string())?;
     let Some((source, vector, voiced_ms, score)) = row else {
-        return Ok(false);
+        return Ok(None);
     };
     if voiced_ms < MIN_VOICED_MS {
-        return Ok(false);
+        return Ok(None);
     }
+    let Some((part, _)) = evidence(tx, segment, person)? else {
+        return Ok(None);
+    };
     let work = EnrollmentWork {
         id: Uuid::new_v4(),
         person,
@@ -244,7 +272,7 @@ pub fn add_single(
         bucket: bucket(tx, segment)?,
         parts: vec![part],
     };
-    queue_candidate(tx, &work, Some((&vector, score)), now)
+    Ok(Some((work, vector, score)))
 }
 
 struct Sample {
@@ -406,29 +434,31 @@ fn admit(
 
 /// Only the just-confirmed scope participates. A single-sentence action cannot
 /// borrow neighboring speech just because the cloud reused the same label.
+#[cfg(test)]
 pub fn queue_short_samples(
     tx: &Transaction<'_>,
     ids: &[Uuid],
     person: Uuid,
     now: i64,
 ) -> Result<(), String> {
+    for work in plan_short_samples(tx, ids, person)? {
+        queue_candidate(tx, &work, None, now)?;
+    }
+    Ok(())
+}
+fn plan_short_samples(
+    tx: &Connection,
+    ids: &[Uuid],
+    person: Uuid,
+) -> Result<Vec<EnrollmentWork>, String> {
     let mut candidates = Vec::new();
     for id in ids {
-        // Old vectors remain matchable, but new enrollment needs measured PCM quality.
-        tx.execute(
-            "UPDATE voice_observations SET state='pending',available_ms=0,attempts=0,updated_ms=?2
-          WHERE segment_id=?1 AND state='ready' AND NOT EXISTS
-          (SELECT 1 FROM voice_observation_quality q WHERE q.segment_id=?1)",
-            params![id.to_string(), now],
-        )
-        .map_err(|e| e.to_string())?;
-        let Ok(part) = evidence(tx, *id, person) else {
+        let Some((part, source)) = evidence(tx, *id, person)? else {
             continue;
         };
         if !(400..3_000).contains(&(part.end - part.start)) {
             continue;
         }
-        let source = visible_segment(tx, *id)?.unwrap().0;
         let Some(group) = current_group(tx, *id)? else {
             continue;
         };
@@ -484,6 +514,7 @@ pub fn queue_short_samples(
     chunks.sort_by_key(|w| std::cmp::Reverse(w.parts.iter().map(|p| p.end - p.start).sum::<i64>()));
     // Bound inference work as well as the resulting active sample library.
     let mut counts = std::collections::HashMap::new();
+    let mut output = Vec::new();
     for work in chunks {
         let key = (work.source.clone(), work.bucket.clone());
         let count = counts.entry(key).or_insert(0);
@@ -491,9 +522,9 @@ pub fn queue_short_samples(
             continue;
         }
         *count += 1;
-        queue_candidate(tx, &work, None, now)?;
+        output.push(work);
     }
-    Ok(())
+    Ok(output)
 }
 fn queue_candidate(
     tx: &Transaction<'_>,
@@ -671,6 +702,9 @@ pub fn publish_enrollment(
 
 #[cfg(test)]
 pub(super) fn drain_enrollment(db: &mut Connection, now: i64) -> Result<(), String> {
+    while let Some(plan) = prepare_request(db)? {
+        publish_request(db, &plan, now)?;
+    }
     let mut matcher = VoiceMatcher::default();
     while let Some(input) = prepare_enrollment(db)? {
         let allowed = matcher.allows_enrollment(&input.matching, &input.person, |after| {
@@ -686,12 +720,69 @@ fn intervening_segment(
     a: &EnrollmentPart,
     b: &EnrollmentPart,
 ) -> Result<bool, String> {
-    db.query_row("SELECT EXISTS(SELECT 1 FROM precise_segments p
-      JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms JOIN precise_segments seed ON seed.id=?1
-      JOIN transcript_tasks st ON st.id=seed.task_id AND seed.started_ms>=st.started_ms AND seed.ended_ms<=st.ended_ms
-      WHERE t.target_kind=st.target_kind AND t.target_id=st.target_id AND t.target_version=st.target_version
-      AND t.state='complete' AND p.source=seed.source AND p.id NOT IN(?1,?2)
-      AND p.started_ms<?4 AND p.ended_ms>?3)",params![a.segment_id.to_string(),b.segment_id.to_string(),a.end,b.start],|r|r.get(0)).map_err(|e|e.to_string())
+    scene_has_other_segment(db, a.segment_id, Some(b.segment_id), a.end, b.start)
+}
+
+fn scene_has_other_segment(
+    db: &Connection,
+    seed: Uuid,
+    other_endpoint: Option<Uuid>,
+    start: i64,
+    end: i64,
+) -> Result<bool, String> {
+    let seed = seed.to_string();
+    let details: Option<(String, String, i64, i64)> = db
+        .prepare_cached(
+            "SELECT task_id,source,started_ms,ended_ms FROM precise_segments WHERE id=?1",
+        )
+        .map_err(|e| e.to_string())?
+        .query_row([&seed], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+        })
+        .optional()
+        .map_err(|e| e.to_string())?;
+    let Some((task, source, seed_start, seed_end)) = details else {
+        return Ok(false);
+    };
+
+    // Bind the seed task and each scene separately so both lookups can push
+    // their indexed keys through the compound transcript_tasks view.
+    let mut scenes = db
+        .prepare_cached(
+            "SELECT target_kind,target_id,target_version FROM transcript_tasks
+             WHERE id=?1 AND started_ms<=?2 AND ended_ms>=?3",
+        )
+        .map_err(|e| e.to_string())?;
+    let mut rows = scenes
+        .query(params![task, seed_start, seed_end])
+        .map_err(|e| e.to_string())?;
+    let mut search = db
+        .prepare_cached(
+            "SELECT EXISTS(SELECT 1 FROM transcript_tasks t
+           CROSS JOIN precise_segments p INDEXED BY precise_segments_task_time ON p.task_id=t.id
+             AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms
+           WHERE t.provider='asr' AND t.state='complete'
+             AND t.target_kind=?1 AND t.target_id=?2 AND t.target_version=?3
+             AND p.source=?4 AND p.id!=?5 AND (?6 IS NULL OR p.id!=?6)
+             AND p.started_ms<?8 AND p.ended_ms>?7)",
+        )
+        .map_err(|e| e.to_string())?;
+    let endpoint = other_endpoint.map(|id| id.to_string());
+    while let Some(scene) = rows.next().map_err(|e| e.to_string())? {
+        let kind: String = scene.get(0).map_err(|e| e.to_string())?;
+        let target: String = scene.get(1).map_err(|e| e.to_string())?;
+        let version: String = scene.get(2).map_err(|e| e.to_string())?;
+        let found: bool = search
+            .query_row(
+                params![kind, target, version, source, seed, endpoint, start, end],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        if found {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 pub fn take(db: &mut Connection, now: i64) -> Result<Option<EnrollmentWork>, String> {
@@ -786,7 +877,7 @@ fn migrate_samples(db: &Connection) -> Result<(), String> {
     for (id, person, segment, model, duration) in rows {
         let person_id = Uuid::parse_str(&person).map_err(|e| e.to_string())?;
         let segment_id = Uuid::parse_str(&segment).map_err(|e| e.to_string())?;
-        if let Ok(part) = evidence(&tx, segment_id, person_id) {
+        if let Some((part, _)) = evidence(&tx, segment_id, person_id)? {
             tx.execute(
                 "INSERT OR IGNORE INTO voice_sample_parts VALUES(?1,?2,?3)",
                 params![id, segment, part.binding_id],
@@ -844,3 +935,125 @@ fn migrate_samples(db: &Connection) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests;
+
+pub fn request(tx: &Transaction<'_>, ids: &[Uuid], person: Uuid, now: i64) -> Result<(), String> {
+    let mut parts = Vec::with_capacity(ids.len());
+    let person = person.to_string();
+    let mut current = tx
+        .prepare_cached(
+            "SELECT id FROM speaker_bindings WHERE current_segment_id=?1
+         AND person_id=?2 AND state='active' AND origin='manual'",
+        )
+        .map_err(|e| e.to_string())?;
+    for id in ids {
+        let binding: String = current
+            .query_row(params![id.to_string(), person], |r| r.get(0))
+            .map_err(|e| e.to_string())?;
+        parts.push((*id, binding));
+    }
+    tx.execute(
+        "INSERT INTO voice_enrollment_requests VALUES(?1,?2,?3,?4)",
+        params![
+            Uuid::new_v4().to_string(),
+            person,
+            serde_json::to_string(&parts).map_err(|e| e.to_string())?,
+            now
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub struct RequestPlan {
+    id: String,
+    person: Uuid,
+    parts: Vec<(Uuid, String)>,
+    candidates: Vec<(EnrollmentWork, Option<(Vec<u8>, i64)>)>,
+}
+
+pub fn prepare_request(db: &Connection) -> Result<Option<RequestPlan>, String> {
+    let row: Option<(String, String, String)> = db
+        .query_row(
+            "SELECT id,person_id,parts_json
+      FROM voice_enrollment_requests ORDER BY created_ms,id LIMIT 1",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+    let Some((id, person, json)) = row else {
+        return Ok(None);
+    };
+    let person = Uuid::parse_str(&person).map_err(|e| e.to_string())?;
+    let parts: Vec<(Uuid, String)> = serde_json::from_str(&json).map_err(|e| e.to_string())?;
+    let mut ids = Vec::with_capacity(parts.len());
+    let person_id = person.to_string();
+    let mut current = db
+        .prepare_cached(
+            "SELECT EXISTS(SELECT 1 FROM speaker_bindings WHERE id=?1
+         AND current_segment_id=?2 AND person_id=?3 AND state='active' AND origin='manual')",
+        )
+        .map_err(|e| e.to_string())?;
+    for (segment, binding) in &parts {
+        let active: bool = current
+            .query_row(params![binding, segment.to_string(), person_id], |r| {
+                r.get(0)
+            })
+            .map_err(|e| e.to_string())?;
+        if active {
+            ids.push(*segment);
+        }
+    }
+    let mut candidates = Vec::new();
+    for segment in &ids {
+        if let Some((work, vector, score)) = single_candidate(db, *segment, person)? {
+            candidates.push((work, Some((vector, score))));
+        }
+    }
+    for work in plan_short_samples(db, &ids, person)? {
+        candidates.push((work, None));
+    }
+    Ok(Some(RequestPlan {
+        id,
+        person,
+        parts,
+        candidates,
+    }))
+}
+
+pub fn publish_request(db: &mut Connection, plan: &RequestPlan, now: i64) -> Result<(), String> {
+    let tx = db.transaction().map_err(|e| e.to_string())?;
+    let exists: bool = tx
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM voice_enrollment_requests WHERE id=?1)",
+            [&plan.id],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if !exists {
+        return Ok(());
+    }
+    for (work, ready) in &plan.candidates {
+        if evidence_current(&tx, work)? {
+            queue_candidate(
+                &tx,
+                work,
+                ready.as_ref().map(|(v, s)| (v.as_slice(), *s)),
+                now,
+            )?;
+        }
+    }
+    // Re-extract legacy vectors only for still-current explicit human evidence.
+    for (id, binding) in &plan.parts {
+        tx.execute("UPDATE voice_observations SET state='pending',available_ms=0,attempts=0,updated_ms=?4
+          WHERE segment_id=?1 AND state='ready' AND NOT EXISTS(SELECT 1 FROM voice_observation_quality WHERE segment_id=?1)
+          AND EXISTS(SELECT 1 FROM speaker_bindings WHERE id=?2 AND current_segment_id=?1 AND person_id=?3 AND state='active' AND origin='manual')",
+          params![id.to_string(),binding,plan.person.to_string(),now]).map_err(|e|e.to_string())?;
+    }
+    tx.execute(
+        "DELETE FROM voice_enrollment_requests WHERE id=?1",
+        [&plan.id],
+    )
+    .map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())
+}

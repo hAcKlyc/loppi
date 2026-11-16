@@ -131,7 +131,7 @@ try {
   assert.equal(requests[1].expected_revision, 7);
   assert.equal(requests[1].entire_local_speaker, false);
   assert(chips()[0].textContent.includes('新人物'));
-  assert(messages.includes('人物已保存 · 待补充声纹'));
+  assert(messages.includes('人物归属已保存 · 正在学习声纹'));
 
   await open(); await pointer(option('测试人物'));
   failure = { type: 'error', id: 'failed', code: 'speaker_binding_invalid', message: '测试写入失败' };
