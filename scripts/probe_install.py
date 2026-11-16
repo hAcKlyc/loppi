@@ -91,6 +91,7 @@ def run(directory):
         worker.start()
         env = os.environ | {
             "LOPPI_PROBE_MARKER": str(marker),
+            "LOPPI_PROBE_STATUS": str(directory / "verify-status.txt"),
             "LOPPI_PROBE_EXECUTABLE": str(executable),
             "CARGO_INCREMENTAL": "0",
             "CARGO_PROFILE_DEV_DEBUG": "0",
@@ -107,13 +108,15 @@ def run(directory):
         }
         try:
             subprocess.run(["cargo", "build", "--locked", "-p", "loppi-desktop",
-                            "--example", "install_probe"], env=env, check=True)
-            binary = ROOT / "target/debug/examples" / ("install_probe.exe" if WINDOWS else "install_probe")
-            result = subprocess.run([str(binary)], env=env, capture_output=True, text=True, timeout=60)
+                            "--bin", "loppi-desktop"], env=env, check=True)
+            binary = ROOT / "target/debug" / ("loppi-desktop.exe" if WINDOWS else "loppi-desktop")
+            result = subprocess.run([str(binary.resolve())], env=env, capture_output=True, text=True, timeout=60)
             print(result.stdout)
             print(result.stderr, file=sys.stderr)
+            if WINDOWS and result.returncode == 0xC0000139:
+                subprocess.run(["dumpbin", "/imports", str(binary)], check=False)
             result.check_returncode()
-            assert "tampered signed update rejected" in result.stdout
+            assert (directory / "verify-status.txt").read_text() == "tampered signed update rejected"
             if WINDOWS:
                 deadline = time.monotonic() + 15
                 while not marker.exists() and time.monotonic() < deadline:

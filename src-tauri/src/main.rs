@@ -1,6 +1,8 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
+mod install_probe;
+
 fn main() {
     #[cfg(windows)]
     if let Err(error) = loppi_protocol::platform::initialize_process() {
@@ -12,6 +14,10 @@ fn main() {
             "{}",
             serde_json::to_string(&loppi_protocol::build_info("gui")).unwrap()
         );
+        return;
+    }
+    if std::env::var_os("LOPPI_PROBE_EXECUTABLE").is_some() {
+        install_probe::run();
         return;
     }
     loppi_desktop_lib::run()

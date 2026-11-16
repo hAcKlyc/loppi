@@ -1,8 +1,8 @@
-use tauri::Manager;
 use tauri_plugin_updater::UpdaterExt;
 
-fn main() {
+pub fn run() {
     let executable = std::path::PathBuf::from(std::env::var_os("LOPPI_PROBE_EXECUTABLE").unwrap());
+    let status = std::path::PathBuf::from(std::env::var_os("LOPPI_PROBE_STATUS").unwrap());
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(move |app| {
@@ -13,6 +13,7 @@ fn main() {
                 .timeout(std::time::Duration::from_secs(15))
                 .on_before_exit(|| {})
                 .build()?;
+            let status = status.clone();
             tauri::async_runtime::spawn(async move {
                 let result = async {
                     let update = updater.check().await?.expect("synthetic update is newer");
@@ -20,8 +21,7 @@ fn main() {
                     let mut tampered = bytes.clone();
                     tampered.push(0);
                     assert!(update.install(&tampered).is_err(), "tampered update was accepted");
-                    println!("tampered signed update rejected");
-                    std::io::Write::flush(&mut std::io::stdout()).unwrap();
+                    std::fs::write(&status, "tampered signed update rejected").unwrap();
                     update.install(&bytes)
                 }.await;
                 let exit = match result {
