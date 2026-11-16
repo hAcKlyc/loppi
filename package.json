@@ -31,7 +31,7 @@
     "jsdom": "29.1.1",
     "sharp": "0.35.5",
     "typescript": "~6.0.3",
-    "vite": "^8.3.3"
+    "vite": "^8.3.8"
   },
   "license": "Apache-2.0",
   "author": {
