@@ -68,3 +68,10 @@ updated: 2026-11-16
 - 实现 commit：`233c2be`；独立分支 `fix/speaker-enrollment-responsive` 已推送。
 - PR：<https://github.com/hAcKlyc/loppi/pull/50>，base main。未执行合并、正式发布或替换已安装应用。
 - 本文件收尾提交只记录最终状态与证据，不改变已验证实现。GitHub CI 为 PR 创建后的独立检查，以 PR 页面实时状态为准，不冒充本地验收结果。
+
+### 0.1.29 正式发行
+
+- 合并前修复空匹配占用声纹提取资格、声纹写回扫描无关历史、证据读取失败丢弃待办等问题。首次远程限时测试在并行负载中失败后，缩小同场查询范围、复用数据库语句，并在两平台的必跑验证中单独执行原限时夹具。最终 main 上 1,000 个同场句段和 45,000 条无关历史下，macOS 确认耗时约 232 ms、准备约 889 ms，Windows 约 243 ms、1.00 s。数据为合成样本。
+- 候选 `20baac08ba6f6f39abcb528c132b38e92a163b11` 通过本机 23 项验证和 dev 的双平台 CI。PR #50 合入 main 后，精确发行源码 `b2290985e71f1d661367c1f6230b11e644ddd135` 的双平台 CI、npm/Rust 漏洞审计和凭据扫描通过。macOS 与 Windows 用合成签名包验证安装路径和拒绝篡改。[dev 验证](https://github.com/hAcKlyc/loppi/actions/runs/43817850596) · [main 验证](https://github.com/hAcKlyc/loppi/actions/runs/43819296455) · [审计](https://github.com/hAcKlyc/loppi/actions/runs/43819296461) · [隔离安装测试](https://github.com/hAcKlyc/loppi/actions/runs/43815561261)
+- 两个 macOS 架构的应用和 DMG 都通过 Developer ID 签名、Apple 公证和票据校验。Windows 安装器的 Authenticode 状态为 unsigned，应用内更新签名通过。发布任务首次未读取到新建草稿，复用同一批产物重跑发布步骤后成功。[发行运行](https://github.com/hAcKlyc/loppi/actions/runs/43819296529/attempts/2)
+- 北京时间 2026-11-16 15:29:56，`v0.1.29` 成为公开最新版。已核对标签、三平台报告及四组件身份都指向上述 main 提交，13 份公开附件与发行校验和一致。匿名固定更新清单返回 0.1.29，且三个平台的下载地址和签名与正式附件一致。[发行页](https://github.com/hAcKlyc/loppi/releases/tag/v0.1.29) · [固定更新清单](https://github.com/hAcKlyc/loppi/releases/latest/download/latest.json)
