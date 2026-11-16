@@ -993,6 +993,36 @@ fn acoustic_plan_runs_read_only_and_rejects_a_concurrent_human_edit() {
 }
 
 #[test]
+fn enrollment_preparation_keeps_the_request_after_an_evidence_read_failure() {
+    use rusqlite::hooks::{AuthAction, AuthContext, Authorization};
+
+    let (mut db, _, segments) = fixture(&[("A", 0, 1800), ("A", 2000, 3800)]);
+    let p = person(&mut db);
+    let tx = db.transaction().unwrap();
+    bind_speaker(&tx, segments[0].id, p, true, 71_000).unwrap();
+    tx.commit().unwrap();
+    db.flush_prepared_statement_cache();
+    db.authorizer(Some(|context: AuthContext<'_>| match context.action {
+        AuthAction::Read {
+            table_name: "precise_segments",
+            ..
+        } => Authorization::Deny,
+        _ => Authorization::Allow,
+    }))
+    .unwrap();
+
+    assert!(prepare_request(&db).is_err());
+
+    db.authorizer(None::<fn(AuthContext<'_>) -> Authorization>)
+        .unwrap();
+    let plan = prepare_request(&db).unwrap().unwrap();
+    assert_eq!(plan.candidates.len(), 1);
+    publish_request(&mut db, &plan, 72_000).unwrap();
+    assert!(prepare_request(&db).unwrap().is_none());
+}
+
+#[test]
+#[ignore = "wall-clock fixture run separately by the required verification suite"]
 fn long_scene_preparation_fits_the_background_read_budget() {
     let utterances: Vec<_> = (0..1000).map(|i| ("A", i * 50, i * 50 + 8)).collect();
     let (mut db, _, s) = fixture(&utterances);

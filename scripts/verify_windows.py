@@ -31,6 +31,11 @@ def main():
             run('rust-check',['cargo','check','--workspace','--locked'])
         if args.suite in ['all','test']:
             run('rust-regressions',['cargo','test','--workspace','--locked'])
+            run('voice-scene-read-budget',[
+                'cargo','test','-p','loppi-core','--locked',
+                'knowledge::enrollment::tests::long_scene_preparation_fits_the_background_read_budget',
+                '--','--exact','--ignored','--nocapture',
+            ])
             run('frontend-regressions',['node','--test',*[str(p.relative_to(ROOT)) for p in sorted((ROOT/'scripts').glob('test_*.mjs'))]])
             run('rabbit-assets',['node','scripts/test_rabbit_assets.cjs'])
             run('python-regressions',[sys.executable,'-m','unittest','discover','-s','scripts','-p','test_*.py'])

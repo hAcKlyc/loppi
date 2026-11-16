@@ -69,7 +69,7 @@ macOS、Node 24、当前稳定 Rust、Xcode 26.0.1 或更新版本（含 macOS 2
 
 历史问题已在 0.1.4 修复：手动模型入口改名为 `scripts/smoke_model_preparation.py`，不再被普通 unittest discovery 导入。下方保留修复记录；当前默认入口以 `scripts/verify.py` / `verify_windows.py` 实际结果为准。
 
-默认门禁包含前端静态检查、Rust workspace check/test、Node 逻辑/React 交互、Python 资源测试、真实 native entry policy、全工作区构建、四组件身份校验、隔离 Core 和诊断导出烟测。禁用私有 fixture 环境；不启用 ignored 测试、不读用户活跃库、不调用付费 API。脚本及 CI 报告明列未覆盖项。
+默认门禁包含前端静态检查、Rust workspace check/test、Node 逻辑/React 交互、Python 资源测试、真实 native entry policy、全工作区构建、四组件身份校验、隔离 Core 和诊断导出烟测。macOS 和 Windows 都在并行 Rust 测试结束后单独执行长场景声纹限时测试。默认验证使用合成数据，私有样本测试需手动启用。脚本及 CI 报告明列未覆盖项。
 
 默认门禁复用生产函数的合成最小回归，避免复制一份“模拟处理器”：
 

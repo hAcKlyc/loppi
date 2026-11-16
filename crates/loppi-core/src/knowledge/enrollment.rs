@@ -148,9 +148,15 @@ fn bucket(db: &Connection, segment: Uuid) -> Result<String, String> {
     serde_json::to_string(&parts).map_err(|e| e.to_string())
 }
 
-fn evidence(db: &Connection, segment: Uuid, person: Uuid) -> Result<EnrollmentPart, String> {
-    let (_, start, end) = visible_segment(db, segment)?.ok_or("speaker is no longer current")?;
-    let binding: String = db
+fn evidence(
+    db: &Connection,
+    segment: Uuid,
+    person: Uuid,
+) -> Result<Option<(EnrollmentPart, String)>, String> {
+    let Some((source, start, end)) = visible_segment(db, segment)? else {
+        return Ok(None);
+    };
+    let binding: Option<String> = db
         .prepare_cached(
             "SELECT id FROM speaker_bindings WHERE current_segment_id=?1
              AND person_id=?2 AND origin='manual' AND state='active'",
@@ -159,16 +165,23 @@ fn evidence(db: &Connection, segment: Uuid, person: Uuid) -> Result<EnrollmentPa
         .query_row(params![segment.to_string(), person.to_string()], |r| {
             r.get(0)
         })
-        .map_err(|_| "speaker is not manually confirmed".to_string())?;
+        .optional()
+        .map_err(|e| e.to_string())?;
+    let Some(binding) = binding else {
+        return Ok(None);
+    };
     if scene_has_other_segment(db, segment, None, start, end)? {
-        return Err("overlapping_speakers".into());
+        return Ok(None);
     }
-    Ok(EnrollmentPart {
-        segment_id: segment,
-        binding_id: binding,
-        start,
-        end,
-    })
+    Ok(Some((
+        EnrollmentPart {
+            segment_id: segment,
+            binding_id: binding,
+            start,
+            end,
+        },
+        source,
+    )))
 }
 
 fn current_group(db: &Connection, segment: Uuid) -> Result<Option<String>, String> {
@@ -183,7 +196,7 @@ fn current_group(db: &Connection, segment: Uuid) -> Result<Option<String>, Strin
 fn evidence_current(db: &Connection, work: &EnrollmentWork) -> Result<bool, String> {
     let mut shared_group = None;
     for part in &work.parts {
-        let Ok(current) = evidence(db, part.segment_id, work.person) else {
+        let Some((current, source)) = evidence(db, part.segment_id, work.person)? else {
             return Ok(false);
         };
         if work.parts.len() > 1 {
@@ -202,7 +215,7 @@ fn evidence_current(db: &Connection, work: &EnrollmentWork) -> Result<bool, Stri
             || current.start != part.start
             || current.end != part.end
             || bucket(db, part.segment_id)? != work.bucket
-            || visible_segment(db, part.segment_id)?.map(|s| s.0) != Some(work.source.clone())
+            || source != work.source
         {
             return Ok(false);
         }
@@ -249,7 +262,7 @@ fn single_candidate(
     if voiced_ms < MIN_VOICED_MS {
         return Ok(None);
     }
-    let Ok(part) = evidence(tx, segment, person) else {
+    let Some((part, _)) = evidence(tx, segment, person)? else {
         return Ok(None);
     };
     let work = EnrollmentWork {
@@ -440,13 +453,12 @@ fn plan_short_samples(
 ) -> Result<Vec<EnrollmentWork>, String> {
     let mut candidates = Vec::new();
     for id in ids {
-        let Ok(part) = evidence(tx, *id, person) else {
+        let Some((part, source)) = evidence(tx, *id, person)? else {
             continue;
         };
         if !(400..3_000).contains(&(part.end - part.start)) {
             continue;
         }
-        let source = visible_segment(tx, *id)?.unwrap().0;
         let Some(group) = current_group(tx, *id)? else {
             continue;
         };
@@ -865,7 +877,7 @@ fn migrate_samples(db: &Connection) -> Result<(), String> {
     for (id, person, segment, model, duration) in rows {
         let person_id = Uuid::parse_str(&person).map_err(|e| e.to_string())?;
         let segment_id = Uuid::parse_str(&segment).map_err(|e| e.to_string())?;
-        if let Ok(part) = evidence(&tx, segment_id, person_id) {
+        if let Some((part, _)) = evidence(&tx, segment_id, person_id)? {
             tx.execute(
                 "INSERT OR IGNORE INTO voice_sample_parts VALUES(?1,?2,?3)",
                 params![id, segment, part.binding_id],
