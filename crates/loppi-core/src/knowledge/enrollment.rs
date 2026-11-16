@@ -135,35 +135,32 @@ pub fn init(db: &Connection) -> Result<(), String> {
 
 fn bucket(db: &Connection, segment: Uuid) -> Result<String, String> {
     let parts: (String, String, String) = db
-        .query_row(
+        .prepare_cached(
             "SELECT t.target_kind,t.target_id,t.target_version
-      FROM precise_segments p JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms WHERE p.id=?1",
-            [segment.to_string()],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+             FROM precise_segments p JOIN transcript_tasks t ON t.id=p.task_id
+             AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms WHERE p.id=?1",
         )
+        .map_err(|e| e.to_string())?
+        .query_row([segment.to_string()], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+        })
         .map_err(|e| e.to_string())?;
     serde_json::to_string(&parts).map_err(|e| e.to_string())
 }
 
 fn evidence(db: &Connection, segment: Uuid, person: Uuid) -> Result<EnrollmentPart, String> {
-    let (source, start, end) =
-        visible_segment(db, segment)?.ok_or("speaker is no longer current")?;
+    let (_, start, end) = visible_segment(db, segment)?.ok_or("speaker is no longer current")?;
     let binding: String = db
-        .query_row(
+        .prepare_cached(
             "SELECT id FROM speaker_bindings WHERE current_segment_id=?1
-      AND person_id=?2 AND origin='manual' AND state='active'",
-            params![segment.to_string(), person.to_string()],
-            |r| r.get(0),
+             AND person_id=?2 AND origin='manual' AND state='active'",
         )
+        .map_err(|e| e.to_string())?
+        .query_row(params![segment.to_string(), person.to_string()], |r| {
+            r.get(0)
+        })
         .map_err(|_| "speaker is not manually confirmed".to_string())?;
-    // Check all requests in this target/version, not just one provider request.
-    let overlap: bool = db.query_row("SELECT EXISTS(SELECT 1 FROM precise_segments p
-      JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms JOIN precise_segments seed ON seed.id=?1
-      JOIN transcript_tasks st ON st.id=seed.task_id AND seed.started_ms>=st.started_ms AND seed.ended_ms<=st.ended_ms
-      WHERE t.target_kind=st.target_kind AND t.target_id=st.target_id AND t.target_version=st.target_version
-      AND t.state='complete' AND p.source=?2 AND p.id!=seed.id
-      AND p.started_ms<?4 AND p.ended_ms>?3)", params![segment.to_string(),source,start,end], |r|r.get(0)).map_err(|e|e.to_string())?;
-    if overlap {
+    if scene_has_other_segment(db, segment, None, start, end)? {
         return Err("overlapping_speakers".into());
     }
     Ok(EnrollmentPart {
@@ -175,14 +172,12 @@ fn evidence(db: &Connection, segment: Uuid, person: Uuid) -> Result<EnrollmentPa
 }
 
 fn current_group(db: &Connection, segment: Uuid) -> Result<Option<String>, String> {
-    db.query_row(
-        "SELECT group_id FROM precise_group_membership WHERE segment_id=?1",
-        [segment.to_string()],
-        |r| r.get::<_, Option<String>>(0),
-    )
-    .optional()
-    .map(Option::flatten)
-    .map_err(|e| e.to_string())
+    db.prepare_cached("SELECT group_id FROM precise_group_membership WHERE segment_id=?1")
+        .map_err(|e| e.to_string())?
+        .query_row([segment.to_string()], |r| r.get::<_, Option<String>>(0))
+        .optional()
+        .map(Option::flatten)
+        .map_err(|e| e.to_string())
 }
 
 fn evidence_current(db: &Connection, work: &EnrollmentWork) -> Result<bool, String> {
@@ -237,13 +232,15 @@ fn single_candidate(
     person: Uuid,
 ) -> Result<Option<(EnrollmentWork, Vec<u8>, i64)>, String> {
     let row: Option<(String, Vec<u8>, i64, i64)> = tx
-        .query_row(
+        .prepare_cached(
             "SELECT o.source,o.vector,q.voiced_ms,q.score
       FROM voice_observations o JOIN voice_observation_quality q ON q.segment_id=o.segment_id
       WHERE o.segment_id=?1 AND o.state='ready' AND o.model_version=?2",
-            params![segment.to_string(), VOICE_MODEL_VERSION],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
         )
+        .map_err(|e| e.to_string())?
+        .query_row(params![segment.to_string(), VOICE_MODEL_VERSION], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+        })
         .optional()
         .map_err(|e| e.to_string())?;
     let Some((source, vector, voiced_ms, score)) = row else {
@@ -711,12 +708,69 @@ fn intervening_segment(
     a: &EnrollmentPart,
     b: &EnrollmentPart,
 ) -> Result<bool, String> {
-    db.query_row("SELECT EXISTS(SELECT 1 FROM precise_segments p
-      JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms JOIN precise_segments seed ON seed.id=?1
-      JOIN transcript_tasks st ON st.id=seed.task_id AND seed.started_ms>=st.started_ms AND seed.ended_ms<=st.ended_ms
-      WHERE t.target_kind=st.target_kind AND t.target_id=st.target_id AND t.target_version=st.target_version
-      AND t.state='complete' AND p.source=seed.source AND p.id NOT IN(?1,?2)
-      AND p.started_ms<?4 AND p.ended_ms>?3)",params![a.segment_id.to_string(),b.segment_id.to_string(),a.end,b.start],|r|r.get(0)).map_err(|e|e.to_string())
+    scene_has_other_segment(db, a.segment_id, Some(b.segment_id), a.end, b.start)
+}
+
+fn scene_has_other_segment(
+    db: &Connection,
+    seed: Uuid,
+    other_endpoint: Option<Uuid>,
+    start: i64,
+    end: i64,
+) -> Result<bool, String> {
+    let seed = seed.to_string();
+    let details: Option<(String, String, i64, i64)> = db
+        .prepare_cached(
+            "SELECT task_id,source,started_ms,ended_ms FROM precise_segments WHERE id=?1",
+        )
+        .map_err(|e| e.to_string())?
+        .query_row([&seed], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+        })
+        .optional()
+        .map_err(|e| e.to_string())?;
+    let Some((task, source, seed_start, seed_end)) = details else {
+        return Ok(false);
+    };
+
+    // Bind the seed task and each scene separately so both lookups can push
+    // their indexed keys through the compound transcript_tasks view.
+    let mut scenes = db
+        .prepare_cached(
+            "SELECT target_kind,target_id,target_version FROM transcript_tasks
+             WHERE id=?1 AND started_ms<=?2 AND ended_ms>=?3",
+        )
+        .map_err(|e| e.to_string())?;
+    let mut rows = scenes
+        .query(params![task, seed_start, seed_end])
+        .map_err(|e| e.to_string())?;
+    let mut search = db
+        .prepare_cached(
+            "SELECT EXISTS(SELECT 1 FROM transcript_tasks t
+           CROSS JOIN precise_segments p INDEXED BY precise_segments_task_time ON p.task_id=t.id
+             AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms
+           WHERE t.provider='asr' AND t.state='complete'
+             AND t.target_kind=?1 AND t.target_id=?2 AND t.target_version=?3
+             AND p.source=?4 AND p.id!=?5 AND (?6 IS NULL OR p.id!=?6)
+             AND p.started_ms<?8 AND p.ended_ms>?7)",
+        )
+        .map_err(|e| e.to_string())?;
+    let endpoint = other_endpoint.map(|id| id.to_string());
+    while let Some(scene) = rows.next().map_err(|e| e.to_string())? {
+        let kind: String = scene.get(0).map_err(|e| e.to_string())?;
+        let target: String = scene.get(1).map_err(|e| e.to_string())?;
+        let version: String = scene.get(2).map_err(|e| e.to_string())?;
+        let found: bool = search
+            .query_row(
+                params![kind, target, version, source, seed, endpoint, start, end],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        if found {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 pub fn take(db: &mut Connection, now: i64) -> Result<Option<EnrollmentWork>, String> {
@@ -871,15 +925,17 @@ fn migrate_samples(db: &Connection) -> Result<(), String> {
 mod tests;
 
 pub fn request(tx: &Transaction<'_>, ids: &[Uuid], person: Uuid, now: i64) -> Result<(), String> {
-    let mut parts = Vec::new();
+    let mut parts = Vec::with_capacity(ids.len());
+    let person = person.to_string();
+    let mut current = tx
+        .prepare_cached(
+            "SELECT id FROM speaker_bindings WHERE current_segment_id=?1
+         AND person_id=?2 AND state='active' AND origin='manual'",
+        )
+        .map_err(|e| e.to_string())?;
     for id in ids {
-        let binding: String = tx
-            .query_row(
-                "SELECT id FROM speaker_bindings WHERE current_segment_id=?1
-          AND person_id=?2 AND state='active' AND origin='manual'",
-                params![id.to_string(), person.to_string()],
-                |r| r.get(0),
-            )
+        let binding: String = current
+            .query_row(params![id.to_string(), person], |r| r.get(0))
             .map_err(|e| e.to_string())?;
         parts.push((*id, binding));
     }
@@ -887,7 +943,7 @@ pub fn request(tx: &Transaction<'_>, ids: &[Uuid], person: Uuid, now: i64) -> Re
         "INSERT INTO voice_enrollment_requests VALUES(?1,?2,?3,?4)",
         params![
             Uuid::new_v4().to_string(),
-            person.to_string(),
+            person,
             serde_json::to_string(&parts).map_err(|e| e.to_string())?,
             now
         ],
@@ -918,17 +974,21 @@ pub fn prepare_request(db: &Connection) -> Result<Option<RequestPlan>, String> {
     };
     let person = Uuid::parse_str(&person).map_err(|e| e.to_string())?;
     let parts: Vec<(Uuid, String)> = serde_json::from_str(&json).map_err(|e| e.to_string())?;
-    let mut ids = Vec::new();
+    let mut ids = Vec::with_capacity(parts.len());
+    let person_id = person.to_string();
+    let mut current = db
+        .prepare_cached(
+            "SELECT EXISTS(SELECT 1 FROM speaker_bindings WHERE id=?1
+         AND current_segment_id=?2 AND person_id=?3 AND state='active' AND origin='manual')",
+        )
+        .map_err(|e| e.to_string())?;
     for (segment, binding) in &parts {
-        let current: bool = db
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM speaker_bindings WHERE id=?1
-          AND current_segment_id=?2 AND person_id=?3 AND state='active' AND origin='manual')",
-                params![binding, segment.to_string(), person.to_string()],
-                |r| r.get(0),
-            )
+        let active: bool = current
+            .query_row(params![binding, segment.to_string(), person_id], |r| {
+                r.get(0)
+            })
             .map_err(|e| e.to_string())?;
-        if current {
+        if active {
             ids.push(*segment);
         }
     }

@@ -305,7 +305,7 @@ fn visible_segment(
     db: &Connection,
     segment_id: Uuid,
 ) -> Result<Option<(String, i64, i64)>, String> {
-    db.query_row(
+    db.prepare_cached(
         "SELECT p.source,p.started_ms,p.ended_ms FROM precise_segments p
          JOIN transcript_tasks t ON t.id=p.task_id AND p.started_ms>=t.started_ms AND p.ended_ms<=t.ended_ms
          WHERE p.id=?1 AND t.state='complete' AND
@@ -316,6 +316,9 @@ fn visible_segment(
              OR (t.target_kind='range' AND EXISTS (
               SELECT 1 FROM manual_ranges m WHERE m.id=t.target_id
               AND t.target_version=cast(m.revision AS TEXT))))",
+    )
+    .map_err(|error| error.to_string())?
+    .query_row(
         params![segment_id.to_string()],
         |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
     )
@@ -1325,8 +1328,8 @@ fn current_scope_segments(
         .map_err(|_| "speaker is unknown".to_owned())?;
     let mut stmt = db
         .prepare(
-            "SELECT p.id,p.source,p.started_ms,p.ended_ms FROM precise_segments p
-         JOIN precise_group_membership g ON g.segment_id=p.id
+            "SELECT p.id,p.source,p.started_ms,p.ended_ms FROM precise_group_membership g
+         CROSS JOIN precise_segments p ON p.id=g.segment_id
          WHERE g.group_id=?1 ORDER BY p.started_ms,p.id",
         )
         .map_err(|e| e.to_string())?;
@@ -1484,57 +1487,67 @@ pub fn bind_speaker(
     let mut samples_revoked = false;
     let selected = current_scope_segments(tx, segment_id, entire)?;
     let selected_ids: Vec<_> = selected.iter().map(|s| s.0).collect();
+    let person = person_id.to_string();
+    let mut previous_binding = tx
+        .prepare_cached(
+            "SELECT person_id FROM speaker_bindings WHERE current_segment_id=?1
+         AND state='active'",
+        )
+        .map_err(|error| error.to_string())?;
+    let mut revoke_binding = tx
+        .prepare_cached(
+            "UPDATE speaker_bindings SET state='revoked',current_segment_id=NULL,
+         updated_ms=?2 WHERE current_segment_id=?1 AND state='active'",
+        )
+        .map_err(|error| error.to_string())?;
+    let mut revoke_samples = tx
+        .prepare_cached(
+            "UPDATE voice_samples SET revoked_ms=?2
+         WHERE segment_id=?1 AND person_id!=?3 AND revoked_ms IS NULL",
+        )
+        .map_err(|error| error.to_string())?;
+    let mut insert_binding = tx
+        .prepare_cached(
+            "INSERT INTO speaker_bindings
+          (id,original_segment_id,current_segment_id,person_id,source,started_ms,ended_ms,
+           origin,apply_scope,state,created_ms,updated_ms)
+         VALUES (?1,?2,?2,?3,?4,?5,?6,'manual',?8,'active',?7,?7)",
+        )
+        .map_err(|error| error.to_string())?;
     for (id, source, start, end) in selected {
-        let previous: Option<String> = tx
-            .query_row(
-                "SELECT person_id FROM speaker_bindings WHERE current_segment_id=?1
-              AND state='active' ORDER BY CASE origin WHEN 'manual' THEN 0 ELSE 1 END,
-              updated_ms DESC LIMIT 1",
-                params![id.to_string()],
-                |r| r.get(0),
-            )
+        let id = id.to_string();
+        let previous: Option<String> = previous_binding
+            .query_row([&id], |r| r.get(0))
             .optional()
             .map_err(|error| error.to_string())?;
         if let Some(old) = previous {
-            if old != person_id.to_string() {
+            if old != person {
                 tx.execute(
                     "INSERT OR IGNORE INTO denied_matches VALUES (?1,?2,?3)",
-                    params![id.to_string(), old, now],
+                    params![id, old, now],
                 )
                 .map_err(|error| error.to_string())?;
             }
         }
-        tx.execute(
-            "UPDATE speaker_bindings SET state='revoked',current_segment_id=NULL,
-          updated_ms=?2 WHERE current_segment_id=?1 AND state='active'",
-            params![id.to_string(), now],
-        )
-        .map_err(|error| error.to_string())?;
-        samples_revoked |= tx
-            .execute(
-                "UPDATE voice_samples SET revoked_ms=?2
-          WHERE segment_id=?1 AND person_id!=?3 AND revoked_ms IS NULL",
-                params![id.to_string(), now, person_id.to_string()],
-            )
+        revoke_binding
+            .execute(params![id, now])
+            .map_err(|error| error.to_string())?;
+        samples_revoked |= revoke_samples
+            .execute(params![id, now, person])
             .map_err(|error| error.to_string())?
             > 0;
-        tx.execute(
-            "INSERT INTO speaker_bindings
-          (id,original_segment_id,current_segment_id,person_id,source,started_ms,ended_ms,
-           origin,apply_scope,state,created_ms,updated_ms)
-          VALUES (?1,?2,?2,?3,?4,?5,?6,'manual',?8,'active',?7,?7)",
-            params![
+        insert_binding
+            .execute(params![
                 Uuid::new_v4().to_string(),
-                id.to_string(),
-                person_id.to_string(),
+                id,
+                person,
                 source,
                 start,
                 end,
                 now,
                 if entire { "group" } else { "segment" }
-            ],
-        )
-        .map_err(|error| error.to_string())?;
+            ])
+            .map_err(|error| error.to_string())?;
     }
     if samples_revoked {
         tx.execute(
@@ -1553,10 +1566,14 @@ pub fn bind_speaker(
             .map_err(|e| e.to_string())?
     {
         let group = format!("manual:{}", Uuid::new_v4());
+        let mut assign = tx.prepare_cached(
+            "INSERT INTO local_speaker_assignments VALUES(?1,?2,?3)
+             ON CONFLICT(segment_id) DO UPDATE SET group_id=excluded.group_id,updated_ms=excluded.updated_ms",
+        ).map_err(|e| e.to_string())?;
         for id in &selected_ids {
-            tx.execute("INSERT INTO local_speaker_assignments VALUES(?1,?2,?3)
-              ON CONFLICT(segment_id) DO UPDATE SET group_id=excluded.group_id,updated_ms=excluded.updated_ms",
-              params![id.to_string(),group,now]).map_err(|e|e.to_string())?;
+            assign
+                .execute(params![id.to_string(), group, now])
+                .map_err(|e| e.to_string())?;
         }
     }
     enrollment::request(tx, &selected_ids, person_id, now)?;
